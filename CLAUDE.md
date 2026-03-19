@@ -5,10 +5,10 @@ Kodr is a compiled, memory-safe programming language that transpiles to Zig.
 Written in Zig 0.15.x. Lives entirely in `src/`.
 One-sentence pitch: *"A simple yet powerful language that is safe."*
 
-**Full language spec:** `README.md` — read it before making any decisions about
+**Full language spec:** `docs/` folder — read relevant files before making any decisions about
 language behavior, syntax, or semantics. Do not rely on memory or assumptions — check the spec.
 
-**Other docs:** `COMPILER.md` — compiler architecture. `STDLIB.md` — stdlib roadmap. `FUTURE.md` — uncommitted ideas.
+**Other docs:** `docs/COMPILER.md` — compiler architecture. `docs/STDLIB.md` — stdlib roadmap. `docs/FUTURE.md` — uncommitted ideas. `docs/TODO.md` — prioritized next steps.
 
 ---
 

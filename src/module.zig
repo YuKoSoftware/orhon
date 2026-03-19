@@ -271,6 +271,9 @@ pub const Resolver = struct {
                 if (decl.is_c_header) continue;
 
                 if (decl.scope) |sc| {
+                    // std::mem is a built-in compiler module — no .kodr file needed
+                    if (std.mem.eql(u8, sc, "std") and std.mem.eql(u8, decl.path, "mem")) continue;
+
                     // Scoped import: std::name or global::name
                     const scope_dir = try std.fs.path.join(self.allocator, &.{ self.kodr_dir, sc });
                     defer self.allocator.free(scope_dir);

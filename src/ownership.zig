@@ -298,6 +298,15 @@ pub const OwnershipChecker = struct {
             },
 
             .call_expr => |c| {
+                // a.free(x) — the freed value is moved (becomes invalid)
+                if (c.callee.* == .field_expr) {
+                    const fe = c.callee.field_expr;
+                    if (std.mem.eql(u8, fe.field, "free") and c.args.len == 1) {
+                        try self.checkExpr(fe.object, scope, true); // allocator is borrowed
+                        try self.checkExpr(c.args[0], scope, false); // freed value is moved
+                        return;
+                    }
+                }
                 try self.checkExpr(c.callee, scope, true); // callee is always borrowed
                 for (c.args) |arg| {
                     // Arguments passed by value are moves, by & are borrows

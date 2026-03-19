@@ -9,6 +9,15 @@ const builtins = @import("builtins.zig");
 const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 
+/// Built-in allocator kinds from std::mem
+const AllocKind = enum { gpa, arena, temp, page };
+
+/// Info tracked per allocator variable
+const AllocInfo = struct {
+    kind: AllocKind,
+    impl_name: []const u8, // backing Zig var name, e.g. "_a_impl"
+};
+
 /// The Zig code generator
 pub const CodeGen = struct {
     reporter: *errors.Reporter,
@@ -20,9 +29,11 @@ pub const CodeGen = struct {
     decls: ?*declarations.DeclTable,
     in_error_union_func: bool, // current function returns (Error | T)
     in_null_union_func: bool, // current function returns (null | T)
-    null_vars: std.StringHashMapUnmanaged(void),    // variables with (null | T) type
-    rawptr_vars: std.StringHashMapUnmanaged(void),  // variables holding RawPtr(T) or VolatilePtr(T)
-    ptr_vars: std.StringHashMapUnmanaged(void),     // variables holding Ptr(T)
+    null_vars: std.StringHashMapUnmanaged(void),       // variables with (null | T) type
+    rawptr_vars: std.StringHashMapUnmanaged(void),     // variables holding RawPtr(T) or VolatilePtr(T)
+    ptr_vars: std.StringHashMapUnmanaged(void),        // variables holding Ptr(T)
+    allocator_vars: std.StringHashMapUnmanaged(AllocInfo), // variables holding a mem.* allocator
+    heap_single_vars: std.StringHashMapUnmanaged([]const u8), // heap singles: var → allocator name
     in_test_block: bool, // inside a test { } block — @assert uses std.testing.expect
     destruct_counter: usize, // unique index for destructuring temp vars
 
@@ -40,6 +51,8 @@ pub const CodeGen = struct {
             .null_vars = .{},
             .rawptr_vars = .{},
             .ptr_vars = .{},
+            .allocator_vars = .{},
+            .heap_single_vars = .{},
             .in_test_block = false,
             .destruct_counter = 0,
         };
@@ -64,6 +77,12 @@ pub const CodeGen = struct {
         self.null_vars.deinit(self.allocator);
         self.rawptr_vars.deinit(self.allocator);
         self.ptr_vars.deinit(self.allocator);
+        var it = self.allocator_vars.iterator();
+        while (it.next()) |e| if (e.value_ptr.impl_name.len > 0) self.allocator.free(e.value_ptr.impl_name);
+        self.allocator_vars.deinit(self.allocator);
+        var hs_it = self.heap_single_vars.iterator();
+        while (hs_it.next()) |e| self.allocator.free(e.value_ptr.*);
+        self.heap_single_vars.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -227,6 +246,12 @@ pub const CodeGen = struct {
         if (node.* != .import_decl) return;
         const imp = node.import_decl;
 
+        // std::mem is a built-in compiler module — no Zig import needed,
+        // allocator types map directly to std.heap.* which is always available.
+        if (imp.scope) |sc| {
+            if (std.mem.eql(u8, sc, "std") and std.mem.eql(u8, imp.path, "mem")) return;
+        }
+
         // Alias defaults to the module name (last segment of path)
         const alias = imp.alias orelse imp.path;
 
@@ -262,13 +287,17 @@ pub const CodeGen = struct {
         // Track if this function returns an error or null union
         const prev_error = self.in_error_union_func;
         const prev_null = self.in_null_union_func;
-        // Clear null/rawptr vars per function scope (each function tracks its own)
+        // Clear per-function tracking maps — each function has its own scope
         const prev_null_vars = self.null_vars;
         const prev_rawptr_vars = self.rawptr_vars;
         const prev_ptr_vars = self.ptr_vars;
+        const prev_allocator_vars = self.allocator_vars;
+        const prev_heap_single_vars = self.heap_single_vars;
         self.null_vars = .{};
         self.rawptr_vars = .{};
         self.ptr_vars = .{};
+        self.allocator_vars = .{};
+        self.heap_single_vars = .{};
         self.in_error_union_func = false;
         self.in_null_union_func = false;
         if (f.return_type.* == .type_union) {
@@ -286,6 +315,14 @@ pub const CodeGen = struct {
             self.rawptr_vars = prev_rawptr_vars;
             self.ptr_vars.deinit(self.allocator);
             self.ptr_vars = prev_ptr_vars;
+            var _it = self.allocator_vars.iterator();
+            while (_it.next()) |e| if (e.value_ptr.impl_name.len > 0) self.allocator.free(e.value_ptr.impl_name);
+            self.allocator_vars.deinit(self.allocator);
+            self.allocator_vars = prev_allocator_vars;
+            var _hs_it = self.heap_single_vars.iterator();
+            while (_hs_it.next()) |e| self.allocator.free(e.value_ptr.*);
+            self.heap_single_vars.deinit(self.allocator);
+            self.heap_single_vars = prev_heap_single_vars;
         }
 
         // pub modifier — always pub for main (Zig requires pub fn main for exe entry)
@@ -435,10 +472,124 @@ pub const CodeGen = struct {
     }
 
     // ============================================================
+    // MEMORY ALLOCATORS (std::mem)
+    // ============================================================
+
+    /// Detect if a node is a mem.GPA() / mem.Arena() / mem.Temp(n) / mem.Page() constructor call.
+    fn getMemAllocKind(node: *parser.Node) ?AllocKind {
+        if (node.* != .call_expr) return null;
+        const c = node.call_expr;
+        if (c.callee.* != .field_expr) return null;
+        const fe = c.callee.field_expr;
+        if (fe.object.* != .identifier) return null;
+        if (!std.mem.eql(u8, fe.object.identifier, "mem")) return null;
+        if (std.mem.eql(u8, fe.field, "GPA"))   return .gpa;
+        if (std.mem.eql(u8, fe.field, "Arena")) return .arena;
+        if (std.mem.eql(u8, fe.field, "Temp"))  return .temp;
+        if (std.mem.eql(u8, fe.field, "Page"))  return .page;
+        return null;
+    }
+
+    /// Generate allocator initialization statements for: var a = mem.GPA() etc.
+    /// Expands to multi-line Zig — backing struct + defer deinit + allocator() call.
+    /// NOTE: generateBlock already called writeIndent() before this statement, so the
+    /// first line must NOT call writeIndent(); subsequent lines must.
+    fn generateAllocatorInit(self: *CodeGen, name: []const u8, kind: AllocKind, args: []*parser.Node) anyerror!void {
+        const impl_name = try std.fmt.allocPrint(self.allocator, "_{s}_impl", .{name});
+        switch (kind) {
+            .gpa => {
+                try self.writeFmt("var {s} = std.heap.GeneralPurposeAllocator(.{{}}){{}};\n", .{impl_name});
+                try self.writeIndent(); try self.writeFmt("defer _ = {s}.deinit();\n", .{impl_name});
+                try self.writeIndent(); try self.writeFmt("const {s} = {s}.allocator();", .{name, impl_name});
+            },
+            .arena => {
+                try self.writeFmt("var {s} = std.heap.ArenaAllocator.init(std.heap.page_allocator);\n", .{impl_name});
+                try self.writeIndent(); try self.writeFmt("defer {s}.deinit();\n", .{impl_name});
+                try self.writeIndent(); try self.writeFmt("const {s} = {s}.allocator();", .{name, impl_name});
+            },
+            .temp => {
+                if (args.len < 1) {
+                    try self.reporter.report(.{ .message = "mem.Temp requires a size argument" });
+                    return error.CompileError;
+                }
+                try self.writeFmt("var _{s}_buf: [", .{name});
+                try self.generateExpr(args[0]);
+                try self.write("]u8 = undefined;\n");
+                try self.writeIndent(); try self.writeFmt("var {s} = std.heap.FixedBufferAllocator.init(&_{s}_buf);\n", .{ impl_name, name });
+                try self.writeIndent(); try self.writeFmt("const {s} = {s}.allocator();", .{name, impl_name});
+            },
+            .page => {
+                // page_allocator is a static global — no init/deinit needed
+                try self.writeFmt("const {s} = std.heap.page_allocator;", .{name});
+                self.allocator.free(impl_name);
+                try self.allocator_vars.put(self.allocator, name, .{ .kind = kind, .impl_name = "" });
+                return;
+            },
+        }
+        try self.allocator_vars.put(self.allocator, name, .{ .kind = kind, .impl_name = impl_name });
+    }
+
+    /// Generate a method call on an allocator variable: a.alloc(), a.allocOne(), a.free(), a.freeAll()
+    fn generateAllocatorMethod(self: *CodeGen, alloc_name: []const u8, info: AllocInfo, method: []const u8, args: []*parser.Node) anyerror!void {
+        if (std.mem.eql(u8, method, "allocOne")) {
+            // a.allocOne(T, val) — single heap value, returns *T in Zig
+            // Handled at var decl level via generateAllocOneDecl, not here
+            try self.reporter.report(.{ .message = "allocOne must be used as a variable initializer: var x = a.allocOne(T, val)" });
+            return error.CompileError;
+        } else if (std.mem.eql(u8, method, "alloc")) {
+            // a.alloc(T, n) — heap slice
+            if (args.len < 2) {
+                try self.reporter.report(.{ .message = "alloc requires two arguments: alloc(Type, count)" });
+                return error.CompileError;
+            }
+            try self.writeFmt("{s}.alloc(", .{alloc_name});
+            try self.generateExpr(args[0]);
+            try self.write(", ");
+            try self.generateExpr(args[1]);
+            try self.write(") catch @panic(\"out of memory\")");
+        } else if (std.mem.eql(u8, method, "free")) {
+            // a.free(x) — free single value or slice
+            if (args.len < 1) {
+                try self.reporter.report(.{ .message = "free requires one argument" });
+                return error.CompileError;
+            }
+            if (args[0].* == .identifier and self.heap_single_vars.contains(args[0].identifier)) {
+                // Single value allocated with allocOne — use destroy(), pass the raw pointer
+                try self.writeFmt("{s}.destroy({s})", .{ alloc_name, args[0].identifier });
+            } else {
+                // Slice allocated with alloc
+                try self.writeFmt("{s}.free(", .{alloc_name});
+                try self.generateExpr(args[0]);
+                try self.write(")");
+            }
+        } else if (std.mem.eql(u8, method, "freeAll")) {
+            // arena.freeAll() — reset arena, free all allocations at once
+            if (info.kind != .arena) {
+                try self.reporter.report(.{ .message = "freeAll is only available on mem.Arena()" });
+                return error.CompileError;
+            }
+            try self.writeFmt("_ = {s}.reset(.free_all)", .{info.impl_name});
+        } else {
+            const msg = try std.fmt.allocPrint(self.allocator, "unknown allocator method '{s}'", .{method});
+            defer self.allocator.free(msg);
+            try self.reporter.report(.{ .message = msg });
+            return error.CompileError;
+        }
+    }
+
+    // ============================================================
     // VARIABLE DECLARATIONS
     // ============================================================
 
     fn generateConst(self: *CodeGen, v: parser.VarDecl) anyerror!void {
+        // mem.GPA() / mem.Arena() / mem.Temp(n) / mem.Page() — multi-statement expansion
+        if (getMemAllocKind(v.value)) |kind| {
+            return self.generateAllocatorInit(v.name, kind, v.value.call_expr.args);
+        }
+        // a.allocOne(T, val) — heap single value, expands to create + init
+        if (self.getAllocOneCall(v.value)) |ac| {
+            return self.generateAllocOneDecl(v.name, ac.alloc_name, ac.type_arg, ac.val_arg);
+        }
         if (v.is_pub) try self.write("pub ");
         try self.writeFmt("const {s}", .{v.name});
         const is_null_union = if (v.type_annotation) |t| isNullUnionType(t) else false;
@@ -458,6 +609,14 @@ pub const CodeGen = struct {
     }
 
     fn generateVar(self: *CodeGen, v: parser.VarDecl) anyerror!void {
+        // mem.GPA() / mem.Arena() / mem.Temp(n) / mem.Page() — multi-statement expansion
+        if (getMemAllocKind(v.value)) |kind| {
+            return self.generateAllocatorInit(v.name, kind, v.value.call_expr.args);
+        }
+        // a.allocOne(T, val) — heap single value, expands to create + init
+        if (self.getAllocOneCall(v.value)) |ac| {
+            return self.generateAllocOneDecl(v.name, ac.alloc_name, ac.type_arg, ac.val_arg);
+        }
         if (v.is_pub) try self.write("pub ");
         try self.writeFmt("var {s}", .{v.name});
         const is_null_union = if (v.type_annotation) |t| isNullUnionType(t) else false;
@@ -474,6 +633,41 @@ pub const CodeGen = struct {
             try self.generateExpr(v.value);
         }
         try self.write(";\n");
+    }
+
+    /// Info extracted from an a.allocOne(T, val) call expression
+    const AllocOneCall = struct {
+        alloc_name: []const u8,
+        type_arg: *parser.Node,
+        val_arg: *parser.Node,
+    };
+
+    /// Detect if a node is <allocator>.allocOne(T, val) where allocator is tracked.
+    fn getAllocOneCall(self: *const CodeGen, node: *parser.Node) ?AllocOneCall {
+        if (node.* != .call_expr) return null;
+        const c = node.call_expr;
+        if (c.callee.* != .field_expr) return null;
+        const fe = c.callee.field_expr;
+        if (!std.mem.eql(u8, fe.field, "allocOne")) return null;
+        if (fe.object.* != .identifier) return null;
+        if (!self.allocator_vars.contains(fe.object.identifier)) return null;
+        if (c.args.len < 2) return null;
+        return .{ .alloc_name = fe.object.identifier, .type_arg = c.args[0], .val_arg = c.args[1] };
+    }
+
+    /// Generate: const x = a.create(T) catch @panic("out of memory"); x.* = val;
+    /// Tracks x in heap_single_vars so identifier access emits x.* and free uses destroy().
+    /// NOTE: generateBlock already called writeIndent() before this, so first line must NOT.
+    fn generateAllocOneDecl(self: *CodeGen, name: []const u8, alloc_name: []const u8, type_arg: *parser.Node, val_arg: *parser.Node) anyerror!void {
+        try self.writeFmt("const {s} = {s}.create(", .{ name, alloc_name });
+        try self.generateExpr(type_arg);
+        try self.write(") catch @panic(\"out of memory\");\n");
+        try self.writeIndent(); try self.writeFmt("{s}.* = ", .{name});
+        try self.generateExpr(val_arg);
+        try self.write(";");
+        // Track so identifier access emits name.* and a.free(name) uses destroy()
+        const duped = try self.allocator.dupe(u8, alloc_name);
+        try self.heap_single_vars.put(self.allocator, name, duped);
     }
 
     fn generateCompt(self: *CodeGen, v: parser.VarDecl) anyerror!void {
@@ -522,6 +716,12 @@ pub const CodeGen = struct {
     fn generateStatement(self: *CodeGen, node: *parser.Node) anyerror!void {
         switch (node.*) {
             .var_decl => |v| {
+                if (getMemAllocKind(v.value)) |kind| {
+                    return self.generateAllocatorInit(v.name, kind, v.value.call_expr.args);
+                }
+                if (self.getAllocOneCall(v.value)) |ac| {
+                    return self.generateAllocOneDecl(v.name, ac.alloc_name, ac.type_arg, ac.val_arg);
+                }
                 const is_null_union = if (v.type_annotation) |t| isNullUnionType(t) else false;
                 try self.writeFmt("var {s}", .{v.name});
                 if (v.type_annotation) |t| try self.writeFmt(": {s}", .{try self.typeToZig(t)});
@@ -537,6 +737,12 @@ pub const CodeGen = struct {
                 try self.write(";");
             },
             .const_decl => |v| {
+                if (getMemAllocKind(v.value)) |kind| {
+                    return self.generateAllocatorInit(v.name, kind, v.value.call_expr.args);
+                }
+                if (self.getAllocOneCall(v.value)) |ac| {
+                    return self.generateAllocOneDecl(v.name, ac.alloc_name, ac.type_arg, ac.val_arg);
+                }
                 const is_null_union = if (v.type_annotation) |t| isNullUnionType(t) else false;
                 try self.writeFmt("const {s}", .{v.name});
                 if (v.type_annotation) |t| try self.writeFmt(": {s}", .{try self.typeToZig(t)});
@@ -841,6 +1047,9 @@ pub const CodeGen = struct {
             .identifier => |name| {
                 if (self.isEnumVariant(name)) {
                     try self.writeFmt(".{s}", .{name});
+                } else if (self.heap_single_vars.contains(name)) {
+                    // Heap-single var: access through the implicit pointer
+                    try self.writeFmt("{s}.*", .{name});
                 } else {
                     try self.write(name);
                 }
@@ -927,6 +1136,16 @@ pub const CodeGen = struct {
                 try self.write(")");
             },
             .call_expr => |c| {
+                // Allocator method calls: a.alloc(), a.free(), a.freeAll()
+                if (c.callee.* == .field_expr) {
+                    const fe = c.callee.field_expr;
+                    if (fe.object.* == .identifier) {
+                        if (self.allocator_vars.get(fe.object.identifier)) |info| {
+                            try self.generateAllocatorMethod(fe.object.identifier, info, fe.field, c.args);
+                            return;
+                        }
+                    }
+                }
                 if (c.arg_names.len > 0) {
                     // Named arguments → struct instantiation: Type{ .field = value, ... }
                     try self.generateExpr(c.callee);

@@ -9,7 +9,7 @@ main.build = build.exe
 main.version = Version(1, 0, 0)
 main.name = "example"
 
-import std::zigstd as console
+import std::console
 
 // --- NUMERIC LITERALS ---
 compt HEX_COLOR: u32 = 0xFF_AA_00

@@ -11,7 +11,7 @@ Both have the following fields:
 ```
 arr.len    // number of elements — compt for [n]T, runtime for []T
 arr[i]     // index access, bounds checked, compile time error if out of range
-arr.ptr    // RawPtr(T), for bare metal / Zig bridge use — always emits a compiler warning
+arr[a..b]  // slice of arr from index a up to (not including) b — returns []T
 ```
 
 ### Array Literals

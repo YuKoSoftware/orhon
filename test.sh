@@ -163,19 +163,19 @@ section "kodr initstd"
 "$KODR" initstd >/dev/null 2>&1 || true
 KODR_DIR="$(dirname "$KODR")"
 
-if [ -f "$KODR_DIR/std/zigstd.kodr" ]; then pass "creates std/zigstd.kodr"
-else fail "creates std/zigstd.kodr"; fi
+if [ -f "$KODR_DIR/std/console.kodr" ]; then pass "creates std/console.kodr"
+else fail "creates std/console.kodr"; fi
 
-if [ -f "$KODR_DIR/std/zigstd.zig" ]; then pass "creates std/zigstd.zig sidecar"
-else fail "creates std/zigstd.zig sidecar"; fi
+if [ -f "$KODR_DIR/std/console.zig" ]; then pass "creates std/console.zig sidecar"
+else fail "creates std/console.zig sidecar"; fi
 
 if [ -d "$KODR_DIR/global" ]; then pass "creates global/ directory"
 else fail "creates global/ directory"; fi
 
-if grep -q "pub fn print" "$KODR_DIR/std/zigstd.zig"; then
-    pass "zigstd.zig contains print function"
+if grep -q "pub fn print" "$KODR_DIR/std/console.zig"; then
+    pass "console.zig contains print function"
 else
-    fail "zigstd.zig contains print function"
+    fail "console.zig contains print function"
 fi
 
 # ══════════════════════════════════════════════════════════════
@@ -224,7 +224,7 @@ else fail "generates main.zig"; fi
 if [ -f .kodr-cache/generated/example.zig ]; then pass "generates example.zig"
 else fail "generates example.zig"; fi
 
-if grep -q "pub fn print" .kodr-cache/generated/zigstd.zig; then
+if grep -q "pub fn print" .kodr-cache/generated/console.zig; then
     pass "sidecar preserved"
 else
     fail "sidecar preserved"
@@ -356,10 +356,10 @@ module main
 main.name = "multimod"
 main.version = Version(1, 0, 0)
 main.build = build.exe
-import std::zigstd
+import std::console
 import utils
 func main() void {
-    zigstd.print("multi-module works\n")
+    console.println("multi-module works")
 }
 KODR
 
@@ -391,10 +391,10 @@ else
     fail "imports std"
 fi
 
-if grep -q 'const zigstd = @import("zigstd.zig")' .kodr-cache/generated/main.zig; then
-    pass "imports zigstd"
+if grep -q 'const console = @import("console.zig")' .kodr-cache/generated/main.zig; then
+    pass "imports console"
 else
-    fail "imports zigstd"
+    fail "imports console"
 fi
 
 if grep -q "const Point" .kodr-cache/generated/example.zig; then
@@ -540,7 +540,7 @@ else
 fi
 
 # Check individual results
-for TEST_NAME in add sub factorial is_positive compound sum_to match match_default break_continue abs compt_func struct_instantiation default_fields default_override static_method mutable_method error_ok error_fail null_some null_none null_reassign enum_usage enum_method nested_scopes tuple tuple_destruct slice_for for_index for_range while_continue cast_int cast_float cast_float_to_int func_ptr func_ptr_var fixed_array array_index raw_ptr safe_ptr; do
+for TEST_NAME in add sub factorial is_positive compound sum_to match match_default break_continue abs compt_func struct_instantiation default_fields default_override static_method mutable_method error_ok error_fail null_some null_none null_reassign enum_usage enum_method nested_scopes tuple tuple_destruct slice_for for_index for_range while_continue cast_int cast_float cast_float_to_int func_ptr func_ptr_var fixed_array array_index slice_expr raw_ptr safe_ptr typeid_same typeid_diff; do
     if echo "$BINOUT" | grep -q "PASS $TEST_NAME"; then pass "runtime: $TEST_NAME"
     else fail "runtime: $TEST_NAME"; fi
 done

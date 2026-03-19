@@ -261,8 +261,8 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8) !void {
 // STD INIT
 // ============================================================
 
-const ZIGSTD_KODR = @embedFile("std/zigstd.kodr");
-const ZIGSTD_ZIG  = @embedFile("std/zigstd.zig");
+const CONSOLE_KODR = @embedFile("std/console.kodr");
+const CONSOLE_ZIG  = @embedFile("std/console.zig");
 
 fn initStd(allocator: std.mem.Allocator) !void {
     // Find directory containing the kodr binary
@@ -275,19 +275,19 @@ fn initStd(allocator: std.mem.Allocator) !void {
     defer allocator.free(std_dir);
     try std.fs.cwd().makePath(std_dir);
 
-    // Write zigstd.kodr into std/
-    const zigstd_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "zigstd.kodr" });
-    defer allocator.free(zigstd_kodr_path);
-    const zigstd_kodr_file = try std.fs.cwd().createFile(zigstd_kodr_path, .{});
-    defer zigstd_kodr_file.close();
-    try zigstd_kodr_file.writeAll(ZIGSTD_KODR);
+    // Write console.kodr into std/
+    const console_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "console.kodr" });
+    defer allocator.free(console_kodr_path);
+    const console_kodr_file = try std.fs.cwd().createFile(console_kodr_path, .{});
+    defer console_kodr_file.close();
+    try console_kodr_file.writeAll(CONSOLE_KODR);
 
-    // Write zigstd.zig into std/ — paired implementation file
-    const zigstd_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "zigstd.zig" });
-    defer allocator.free(zigstd_zig_path);
-    const zigstd_zig_file = try std.fs.cwd().createFile(zigstd_zig_path, .{});
-    defer zigstd_zig_file.close();
-    try zigstd_zig_file.writeAll(ZIGSTD_ZIG);
+    // Write console.zig into std/ — paired implementation file
+    const console_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "console.zig" });
+    defer allocator.free(console_zig_path);
+    const console_zig_file = try std.fs.cwd().createFile(console_zig_path, .{});
+    defer console_zig_file.close();
+    try console_zig_file.writeAll(CONSOLE_ZIG);
 
     // Create global/ next to binary (empty — user fills this)
     const global_dir = try std.fs.path.join(allocator, &.{ exe_dir, "global" });
@@ -296,8 +296,8 @@ fn initStd(allocator: std.mem.Allocator) !void {
 
     std.debug.print("Initialized kodr stdlib:\n", .{});
     std.debug.print("  {s}/std/\n", .{exe_dir});
-    std.debug.print("  {s}/std/zigstd.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/zigstd.zig\n", .{exe_dir});
+    std.debug.print("  {s}/std/console.kodr\n", .{exe_dir});
+    std.debug.print("  {s}/std/console.zig\n", .{exe_dir});
     std.debug.print("  {s}/global/\n", .{exe_dir});
     std.debug.print("\nAdd your shared modules to {s}/global/\n", .{exe_dir});
 }
@@ -630,7 +630,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
         if (reporter.hasErrors()) return null;
 
         // Write generated .zig file to cache — but skip if a sidecar .zig
-        // was already copied (e.g. extern modules like zigstd)
+        // was already copied (e.g. extern modules like console)
         const gen_path = try std.fmt.allocPrint(allocator, "{s}/{s}.zig", .{ cache.GENERATED_DIR, mod_name });
         defer allocator.free(gen_path);
         const sidecar_exists = blk: {

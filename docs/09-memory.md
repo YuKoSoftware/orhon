@@ -163,7 +163,7 @@ a.free(x)       // explicit early free — x is now invalid (ownership move)
 a.free(data)    // free slice
 ```
 
-`a.free(x)` is an ownership move — `x` becomes invalid after the call. Using `x` after freeing is a compile-time error. If a heap-allocated value goes out of scope without an explicit free, the compiler inserts a deferred free automatically — no leaks, no manual cleanup needed in the common case.
+`a.free(x)` is an ownership move — `x` becomes invalid after the call. Using `x` after freeing is a compile-time error. Heap-allocated values that go out of scope without an explicit free are a memory leak — always call `a.free(x)` explicitly.
 
 ### Passing Allocators Around
 ```
@@ -189,9 +189,6 @@ Custom allocator *implementation* belongs in Zig via `extern func` — Kodr code
 |-----------|-------|-------|
 | `mem.GPA()` | safe | general purpose, leak detection in debug builds |
 | `mem.Arena()` | fast | batch work, free all at once via `freeAll()` |
-| `mem.Pool(T)` | fast | homogeneous objects, fixed-size chunks, no fragmentation |
-| `mem.Ring(T, n)` | fast | circular buffer, error when full (backpressure) |
-| `mem.OverwriteRing(T, n)` | fast | circular buffer, overwrites oldest when full |
 | `mem.Page()` | varies | OS page-sized chunks, large allocations, bypasses heap |
 | `mem.Temp(compt n)` | fastest | stack-backed scratch, no heap, auto-reset at scope exit |
 
@@ -201,7 +198,6 @@ var arena = mem.Arena()
 var buf: []u8 = arena.alloc(u8, 4096)
 var tmp: []i32 = arena.alloc(i32, 100)
 arena.freeAll()    // frees everything at once — all arena values become invalid
-// or let arena go out of scope — compiler inserts defer arena.freeAll() automatically
 ```
 
 `arena.free(x)` on an individually arena-allocated value is a no-op — Arena does not track individual allocations. Use `arena.freeAll()` to release memory.

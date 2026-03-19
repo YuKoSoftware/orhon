@@ -5,8 +5,8 @@ main.version = Version(1, 0, 0)
 main.build = build.exe
 main.bitsize = 32
 
-import std::zigstd
+import std::console
 
 func main() void {
-    zigstd.print("hello kodr !\n")
+    console.println("hello kodr !")
 }

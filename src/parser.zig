@@ -47,6 +47,7 @@ pub const NodeKind = enum {
     unary_expr,
     call_expr,
     index_expr,
+    slice_expr,
     field_expr,
     borrow_expr,
     compiler_func,
@@ -110,6 +111,7 @@ pub const Node = union(NodeKind) {
     unary_expr: UnaryOp,
     call_expr: CallExpr,
     index_expr: IndexExpr,
+    slice_expr: SliceExpr,
     field_expr: FieldExpr,
     borrow_expr: *Node,
     compiler_func: CompilerFunc,
@@ -279,6 +281,12 @@ pub const CallExpr = struct {
 pub const IndexExpr = struct {
     object: *Node,
     index: *Node,
+};
+
+pub const SliceExpr = struct {
+    object: *Node,
+    low: *Node,
+    high: *Node,
 };
 
 pub const FieldExpr = struct {
@@ -1573,9 +1581,17 @@ pub const Parser = struct {
                 }
             } else if (self.check(.lbracket)) {
                 _ = self.advance();
-                const index = try self.parseExpr();
-                _ = try self.expect(.rbracket);
-                expr = try self.newNode(.{ .index_expr = .{ .object = expr, .index = index } });
+                // Parse below range level so `..` is not consumed by the sub-expression
+                const first = try self.parseOrExpr();
+                if (self.check(.dotdot)) {
+                    _ = self.advance();
+                    const high = try self.parseOrExpr();
+                    _ = try self.expect(.rbracket);
+                    expr = try self.newNode(.{ .slice_expr = .{ .object = expr, .low = first, .high = high } });
+                } else {
+                    _ = try self.expect(.rbracket);
+                    expr = try self.newNode(.{ .index_expr = .{ .object = expr, .index = first } });
+                }
             } else if (self.check(.lparen)) {
                 _ = self.advance();
                 var args: std.ArrayListUnmanaged(*Node) = .{};
@@ -2046,7 +2062,7 @@ test "parser - var declaration" {
 test "parser - extern func" {
     const alloc = std.testing.allocator;
     var lex = lexer.Lexer.init((
-        \\module zigstd
+        \\module console
         \\pub extern func print(msg: string) void
         \\
     ));
@@ -2073,7 +2089,7 @@ test "parser - scoped import" {
     const alloc = std.testing.allocator;
     var lex = lexer.Lexer.init((
         \\module main
-        \\import std::zigstd
+        \\import std::console
         \\
     ));
     var tokens = try lex.tokenize(alloc);
@@ -2089,7 +2105,7 @@ test "parser - scoped import" {
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expectEqual(@as(usize, 1), prog.program.imports.len);
     const imp = prog.program.imports[0].import_decl;
-    try std.testing.expectEqualStrings("zigstd", imp.path);
+    try std.testing.expectEqualStrings("console", imp.path);
     try std.testing.expectEqualStrings("std", imp.scope.?);
     try std.testing.expect(imp.alias == null);
 }
@@ -2098,7 +2114,7 @@ test "parser - scoped import with alias" {
     const alloc = std.testing.allocator;
     var lex = lexer.Lexer.init((
         \\module main
-        \\import std::zigstd as io
+        \\import std::console as io
         \\
     ));
     var tokens = try lex.tokenize(alloc);
@@ -2113,7 +2129,7 @@ test "parser - scoped import with alias" {
     const prog = try p.parseProgram();
     try std.testing.expect(!reporter.hasErrors());
     const imp = prog.program.imports[0].import_decl;
-    try std.testing.expectEqualStrings("zigstd", imp.path);
+    try std.testing.expectEqualStrings("console", imp.path);
     try std.testing.expectEqualStrings("std",    imp.scope.?);
     try std.testing.expectEqualStrings("io",     imp.alias.?);
 }

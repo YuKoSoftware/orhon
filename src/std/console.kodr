@@ -1,0 +1,17 @@
+module console
+
+// console — terminal I/O for Kodr programs
+// Import with: import std::console
+// Implementation lives in console.zig — do not generate body, use paired .zig file.
+
+// Print a string — no newline added
+pub extern func print(msg: string) void
+
+// Print a string followed by a newline
+pub extern func println(msg: string) void
+
+// Print to stderr — for debugging
+pub extern func debugPrint(msg: string) void
+
+// Read one line from stdin — returns Error on EOF or read failure
+pub extern func get() (Error | string)

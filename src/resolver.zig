@@ -367,6 +367,13 @@ pub const TypeResolver = struct {
                 return "inferred";
             },
 
+            .slice_expr => |s| {
+                _ = try self.resolveExpr(s.object, scope);
+                _ = try self.resolveExpr(s.low, scope);
+                _ = try self.resolveExpr(s.high, scope);
+                return "inferred";
+            },
+
             .compiler_func => |cf| {
                 for (cf.args) |arg| _ = try self.resolveExpr(arg, scope);
                 // @type returns a type, @size returns usize, etc.

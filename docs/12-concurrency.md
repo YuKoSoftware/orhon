@@ -1,5 +1,10 @@
 # Concurrency & Threading
 
+> **Not yet implemented.** The syntax and semantics below are the planned design.
+> Using `Thread` or `Async` currently produces a compiler error.
+
+---
+
 ## `Thread` — CPU Parallelism
 
 Creates a real OS thread. Use for CPU-heavy work.

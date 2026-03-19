@@ -135,6 +135,7 @@ pub const CodeGen = struct {
         if (self.moduleUsesNullUnion(ast)) {
             try self.write("fn KodrNullable(comptime T: type) type { return union(enum) { some: T, none: void }; }\n");
         }
+        try self.write("fn kodrTypeId(comptime T: type) usize { return @intFromPtr(@typeName(T).ptr); }\n");
 
         // Generate imports
         for (ast.program.imports) |imp| {
@@ -982,36 +983,15 @@ pub const CodeGen = struct {
                     try self.write(";");
                 }
             },
-            .thread_block => |t| {
-                // Thread(T) name { body } → Zig thread spawn
-                try self.writeFmt("const {s}_handle = try std.Thread.spawn(.{{}}, struct {{\n", .{t.name});
-                self.indent += 1;
-                try self.writeIndent();
-                try self.writeFmt("fn run() {s} ", .{try self.typeToZig(t.result_type)});
-                try self.generateBlock(t.body);
-                try self.write("\n");
-                self.indent -= 1;
-                try self.writeIndent();
-                try self.writeFmt("}}.run, .{{}});\n", .{});
-                try self.writeIndent();
-                try self.writeFmt("const {s} = KodrThread({s}){{ .handle = {s}_handle }};",
-                    .{ t.name, try self.typeToZig(t.result_type), t.name });
+            .thread_block => {
+                const msg = try std.fmt.allocPrint(self.allocator, "Thread is not yet implemented", .{});
+                defer self.allocator.free(msg);
+                try self.reporter.report(.{ .message = msg });
             },
-            .async_block => |a| {
-                // Async(T) name { body } → similar to thread but IO scheduled
-                try self.writeFmt("const {s} = KodrAsync({s}).spawn(struct {{\n", .{
-                    a.name, try self.typeToZig(a.result_type)
-                });
-                self.indent += 1;
-                try self.writeIndent();
-                try self.write("fn run() ");
-                try self.write(try self.typeToZig(a.result_type));
-                try self.write(" ");
-                try self.generateBlock(a.body);
-                try self.write("\n");
-                self.indent -= 1;
-                try self.writeIndent();
-                try self.write("}.run);");
+            .async_block => {
+                const msg = try std.fmt.allocPrint(self.allocator, "Async is not yet implemented", .{});
+                defer self.allocator.free(msg);
+                try self.reporter.report(.{ .message = msg });
             },
             .block => try self.generateBlock(node),
             else => {
@@ -1212,6 +1192,28 @@ pub const CodeGen = struct {
                     try self.write(")");
                 } else {
                     try self.generateExpr(i.index);
+                }
+                try self.write("]");
+            },
+            .slice_expr => |s| {
+                try self.generateExpr(s.object);
+                try self.write("[");
+                const low_is_literal = s.low.* == .int_literal;
+                if (!low_is_literal) {
+                    try self.write("@intCast(");
+                    try self.generateExpr(s.low);
+                    try self.write(")");
+                } else {
+                    try self.generateExpr(s.low);
+                }
+                try self.write("..");
+                const high_is_literal = s.high.* == .int_literal;
+                if (!high_is_literal) {
+                    try self.write("@intCast(");
+                    try self.generateExpr(s.high);
+                    try self.write(")");
+                } else {
+                    try self.generateExpr(s.high);
                 }
                 try self.write("]");
             },
@@ -1467,16 +1469,8 @@ pub const CodeGen = struct {
                     .{ params_str.items, ret });
             },
             .type_generic => |g| blk: {
-                if (std.mem.eql(u8, g.name, "Thread")) {
-                    if (g.args.len > 0) {
-                        const inner = try self.typeToZig(g.args[0]);
-                        break :blk try self.allocTypeStr("KodrThread({s})", .{inner});
-                    }
-                } else if (std.mem.eql(u8, g.name, "Async")) {
-                    if (g.args.len > 0) {
-                        const inner = try self.typeToZig(g.args[0]);
-                        break :blk try self.allocTypeStr("KodrAsync({s})", .{inner});
-                    }
+                if (std.mem.eql(u8, g.name, "Thread") or std.mem.eql(u8, g.name, "Async")) {
+                    break :blk "void"; // not yet implemented — codegen emits error at thread_block/async_block
                 } else if (std.mem.eql(u8, g.name, "Ptr")) {
                     // Ptr(T) → *const T
                     if (g.args.len > 0) {
@@ -1663,6 +1657,50 @@ test "codegen - simple program" {
     try std.testing.expect(std.mem.indexOf(u8, output, "pub fn main()") != null);
 }
 
+test "codegen - kodrTypeId always in preamble" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const ret_type = try a.create(parser.Node);
+    ret_type.* = .{ .type_named = "void" };
+    const block = try a.create(parser.Node);
+    block.* = .{ .block = .{ .statements = &.{} } };
+    const func = try a.create(parser.Node);
+    func.* = .{ .func_decl = .{
+        .name = "main",
+        .params = &.{},
+        .return_type = ret_type,
+        .body = block,
+        .is_compt = false,
+        .is_pub = false,
+        .is_extern = false,
+    }};
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = func;
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "main" } };
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{
+        .module = module_node,
+        .metadata = &.{},
+        .imports = &.{},
+        .top_level = top_level,
+    }};
+
+    try gen.generate(prog, "main");
+    try std.testing.expect(!reporter.hasErrors());
+    const output = gen.getOutput();
+    try std.testing.expect(std.mem.indexOf(u8, output, "fn kodrTypeId(") != null);
+}
+
 test "codegen - type to zig" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
@@ -1722,7 +1760,7 @@ test "codegen - extern func emits nothing" {
     top_level[0] = func;
 
     const module_node = try a.create(parser.Node);
-    module_node.* = .{ .module_decl = .{ .name = "zigstd" } };
+    module_node.* = .{ .module_decl = .{ .name = "console" } };
 
     const prog = try a.create(parser.Node);
     prog.* = .{ .program = .{
@@ -1732,7 +1770,7 @@ test "codegen - extern func emits nothing" {
         .top_level = top_level,
     }};
 
-    try gen.generate(prog, "zigstd");
+    try gen.generate(prog, "console");
     try std.testing.expect(!reporter.hasErrors());
 
     // extern func should produce no function definition in output
@@ -1754,7 +1792,7 @@ test "codegen - scoped import generates correct @import" {
 
     const imp = try a.create(parser.Node);
     imp.* = .{ .import_decl = .{
-        .path = "zigstd",
+        .path = "console",
         .scope = "std",
         .alias = null,
         .is_c_header = false,
@@ -1777,6 +1815,6 @@ test "codegen - scoped import generates correct @import" {
     try gen.generate(prog, "main");
     try std.testing.expect(!reporter.hasErrors());
     const output = gen.getOutput();
-    // alias defaults to module name "zigstd", not scope "std"
-    try std.testing.expect(std.mem.indexOf(u8, output, "const zigstd = @import(\"zigstd.zig\")") != null);
+    // alias defaults to module name "console", not scope "std"
+    try std.testing.expect(std.mem.indexOf(u8, output, "const console = @import(\"console.zig\")") != null);
 }

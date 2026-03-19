@@ -184,6 +184,11 @@ pub const BorrowChecker = struct {
                 try self.checkExpr(i.object);
                 try self.checkExpr(i.index);
             },
+            .slice_expr => |s| {
+                try self.checkExpr(s.object);
+                try self.checkExpr(s.low);
+                try self.checkExpr(s.high);
+            },
             .compiler_func => |cf| {
                 for (cf.args) |arg| try self.checkExpr(arg);
             },
@@ -197,6 +202,7 @@ pub const BorrowChecker = struct {
             .identifier => |name| try self.checkNotMutablyBorrowed(name),
             .field_expr => |f| try self.checkExprAccess(f.object),
             .index_expr => |i| try self.checkExprAccess(i.object),
+            .slice_expr => |s| try self.checkExprAccess(s.object),
             else => {},
         }
     }

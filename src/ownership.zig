@@ -345,6 +345,12 @@ pub const OwnershipChecker = struct {
                 try self.checkExpr(i.index, scope, true);
             },
 
+            .slice_expr => |s| {
+                try self.checkExpr(s.object, scope, true);
+                try self.checkExpr(s.low, scope, true);
+                try self.checkExpr(s.high, scope, true);
+            },
+
             .compiler_func => |cf| {
                 if (std.mem.eql(u8, cf.name, "move")) {
                     // @move(x) — explicit move, mark source as moved

@@ -46,8 +46,8 @@ kodr/
             example.kodr    — @embedFile, language manual anchor (see below)
             *.kodr          — @embedFile, additional manual files (module example)
         std/
-            zigstd.kodr     — @embedFile, extracted by kodr initstd
-            zigstd.zig      — Zig stdlib bridge implementation
+            console.kodr    — @embedFile, extracted by kodr initstd
+            console.zig     — std::console implementation
 ```
 
 ---
@@ -263,7 +263,7 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 - `kodr init <n>`, `kodr build`, `kodr run`, `kodr test`, `kodr initstd`, `kodr debug`
 - Import system with `::` scope operator, missing module errors reported cleanly
 - `extern func` — Kodr interface for paired `.zig` sidecar implementation
-- `import std::zigstd` — Zig stdlib bridge, `kodr initstd` installs it
+- `import std::console` — terminal I/O stdlib module, `kodr initstd` installs it
 - `++` concatenation (strings and arrays), `main.bitsize` numeric literal defaults
 - Structs — instantiation, methods (static/const/var), default field values
 - Enums — instantiation, matching, methods

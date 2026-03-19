@@ -610,7 +610,7 @@ test "lexer - line tracking" {
 
 test "lexer - scope operator ::" {
     const alloc = std.testing.allocator;
-    var lex = Lexer.init("std::zigstd");
+    var lex = Lexer.init("std::console");
     var tokens = try lex.tokenize(alloc);
     defer tokens.deinit(alloc);
 

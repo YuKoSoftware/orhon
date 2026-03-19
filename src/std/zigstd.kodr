@@ -1,8 +1,0 @@
-module zigstd
-
-// zigstd — Kodr bridge to Zig's standard library
-// Import with: import std::zigstd
-// Implementation lives in zigstd.zig — do not generate body, use paired .zig file.
-
-// Print a string — no newline added, user controls formatting
-pub extern func print(msg: string) void

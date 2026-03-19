@@ -139,6 +139,11 @@ pub const ThreadSafetyChecker = struct {
                 try self.checkExprForThreadMoves(i.object);
                 try self.checkExprForThreadMoves(i.index);
             },
+            .slice_expr => |s| {
+                try self.checkExprForThreadMoves(s.object);
+                try self.checkExprForThreadMoves(s.low);
+                try self.checkExprForThreadMoves(s.high);
+            },
             else => {},
         }
     }

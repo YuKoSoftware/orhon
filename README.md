@@ -24,7 +24,7 @@ module main
 
 main.build = build.exe
 
-import std::zigstd as console
+import std::console
 import std::mem
 
 // Structs with methods

@@ -14,32 +14,36 @@ implementation. The `.kodr` file declares the public interface using `extern fun
 The compiler emits nothing for `extern func` bodies — it uses the paired `.zig` directly.
 
 ```
-// zigstd.kodr — public Kodr interface
-module zigstd
+// console.kodr — public Kodr interface
+module console
 
 pub extern func print(msg: string) void
 pub extern func println(msg: string) void
+pub extern func debugPrint(msg: string) void
+pub extern func get() (Error | string)
 ```
 
 ```zig
-// zigstd.zig — hand-written Zig implementation
+// console.zig — hand-written Zig implementation
 const std = @import("std");
 
 pub fn print(msg: []const u8) void {
-    std.debug.print("{s}", .{msg});
+    std.io.getStdOut().writer().writeAll(msg) catch {};
 }
 
 pub fn println(msg: []const u8) void {
-    std.debug.print("{s}\n", .{msg});
+    const w = std.io.getStdOut().writer();
+    w.writeAll(msg) catch {};
+    w.writeAll("\n") catch {};
 }
 ```
 
 ```
 // usage in any Kodr file
-import std::zigstd
+import std::console
 
 func main() void {
-    zigstd.print("hello kodr !\n")
+    console.println("hello kodr !")
 }
 ```
 
@@ -51,6 +55,27 @@ func main() void {
 - Must be `pub` — extern functions are always part of a module's public interface
 - The paired `.zig` file must exist alongside the `.kodr` file — hard compiler error if missing
 - The `.zig` function signature must match the Kodr declaration — mismatch is a Zig compile error
+
+---
+
+## Error Union Return Types
+
+When an `extern func` returns `(Error | T)`, the Zig sidecar must return a union with
+`.ok: T` and `.err: struct { message: []const u8 }` tags. The codegen accesses these
+by tag name, so the Zig type name does not need to match exactly.
+
+```zig
+// sidecar pattern for (Error | string) return
+const GetError = struct { message: []const u8 };
+const GetResult = union(enum) { ok: []const u8, err: GetError };
+
+pub fn get() GetResult {
+    // ...
+    return .{ .ok = line };
+    // or
+    return .{ .err = .{ .message = "end of input" } };
+}
+```
 
 ---
 
@@ -81,17 +106,3 @@ import global::gtk
 
 var window = gtk.windowNew()
 ```
-
----
-
-## Naming Convention
-
-Zig bridge files use the `zig` prefix to signal they are bridges, not native Kodr:
-- `zigstd.kodr` / `zigstd.zig` — Zig stdlib bridge
-- `zigmath.kodr` / `zigmath.zig` — Zig math bridge
-- `zigallocator.kodr` / `zigallocator.zig` — Zig allocator bridge
-
-Third-party C libraries use descriptive names without the prefix:
-- `gtk.kodr` / `gtk.zig`
-- `sdl.kodr` / `sdl.zig`
-- `vulkan.kodr` / `vulkan.zig`

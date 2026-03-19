@@ -196,11 +196,6 @@ main.name = "my_project"
 main.version = Version(1, 0, 0)
 main.build = build.exe
 main.bitsize = 32
-main.deps = [
-    Dependency("https://github.com/user/lib", Preferred(Version(2, 4, 1)))
-    Dependency("https://myregistry.io/package", Minimum(Version(1, 0, 0)))
-]
-main.gpu = gpu.unified.auto
 
 func main() void { }
 ```
@@ -212,7 +207,6 @@ module main
 main.name = "mylib"
 main.version = Version(1, 0, 0)
 main.build = build.static
-main.deps = [...]
 ```
 
 ```
@@ -231,17 +225,5 @@ math.name = "math"
 `build` is a compiler-known enum. No import needed.
 
 ### External Dependencies
-Dependencies are managed manually — the user downloads libraries and places them in their project. The compiler finds and links them from local paths. No automatic fetching, no network code in the compiler.
 
-```
-main.deps = [
-    Dependency("./libs/mylib", Exact(Version(2, 4, 1)))
-    Dependency("./libs/sdl2", Minimum(Version(2, 0, 0)))
-]
-```
-
-**Hard compiler errors:**
-- Dependency path not found
-- `.kodrm` not found alongside precompiled library
-- Version mismatch with `Exact` rule
-- Version below minimum with `Minimum` rule
+Not yet implemented. See `docs/FUTURE.md`.

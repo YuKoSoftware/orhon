@@ -840,66 +840,50 @@ Moving individual fields out of a struct is a compile time error.
 Traditional `*T` pointer syntax does not exist in Kodr. Instead there are three distinct pointer types, each with a clear purpose. All follow the same `Type(T, value)` instantiation pattern used everywhere in Kodr.
 
 ### `Ptr(T)` — safe pointer, general use
-Compiler tracked. Always `const` — the pointer itself cannot be reassigned. `valid` is automatically set to `false` when the pointed-to value is moved or goes out of scope. Validity is compile-time verified — using a pointer after the pointee moves is a hard compiler error. No warnings emitted — safe to use anywhere.
+Compiler tracked. Always `const` — the pointer cannot be reassigned. Points to a single value only — no pointer arithmetic, no `[]` indexing. Must be initialized from a variable address (`&x`) — raw integer addresses are not allowed. The ownership pass ensures you cannot use a `Ptr(T)` after the pointee has moved — this is a hard compile-time error. No warnings emitted.
 
 ```
+var x: i32 = 10
 const ptr: Ptr(i32) = Ptr(i32, &x)
 
-ptr.valid          // true — compile time known
-ptr.value          // safe dereference
+ptr.value          // read the pointed-to value
 
-var x2: i32 = x   // x moved — compiler error if ptr.value used after this
+var x2: i32 = x   // x moved — compiler error if ptr.value is used after this
 ```
 
-No `[]` indexing — `Ptr(T)` points to a single value. Use `[]T` for array access.
-
-### `RawPtr(T)` — unsafe pointer, C interop and bare metal
-Zero overhead — just a memory address, nothing else. Always emits a compiler warning. `[]` indexing available for working with C arrays — no bounds checking.
+### `RawPtr(T)` — unsafe pointer, no restrictions
+Zero overhead — just a memory address. No compiler tracking, no ownership checks, no bounds checking. Accepts `&variable` or a raw integer address. `[]` indexing with full pointer arithmetic. Always emits a compiler warning — you are opting out of safety.
 
 ```
-RawPtr(T) {
-    address: usize    // nothing else, zero overhead
-}
-```
+// from a variable
+const raw: RawPtr(i32) = RawPtr(i32, &x)
+raw[0]    // read value, no bounds check
 
-```
-var raw: RawPtr(u8) = RawPtr(u8, 0xB8000)    // hardware address
-raw.value                                     // direct dereference, no checks
-raw[0]                                        // first element, no bounds check
-raw[5]                                        // sixth element, no bounds check
+// from a hardware address
+const vga: RawPtr(u8) = RawPtr(u8, 0xB8000)
+vga[0]
+vga[5]
 
-// C array example
-var c_arr: RawPtr(i32) = some_c_function()
-c_arr[0]    // first element
-c_arr[n]    // nth element, pointer arithmetic under the hood
+// from a C function returning a pointer
+const arr: RawPtr(i32) = some_c_function()
+arr[n]    // nth element, pointer arithmetic under the hood
 ```
 
 ### `VolatilePtr(T)` — unsafe pointer, hardware registers
-Zero overhead. All reads and writes are volatile — the compiler never optimizes them away. `[]` indexing available for memory mapped register arrays — all accesses remain volatile. Always emits a compiler warning.
+Same as `RawPtr(T)` with one difference: every read and write is volatile — the compiler never caches or optimizes them away. For memory-mapped hardware registers where the value can change outside the program. Always emits a compiler warning.
 
 ```
-VolatilePtr(T) {
-    address: usize    // nothing else, zero overhead
-}
-```
-
-```
-var reg: VolatilePtr(u32) = VolatilePtr(u32, 0xFF200000)
-reg.value          // volatile read
-reg.value = 0x1    // volatile write
-reg[0] = 0x1       // volatile write to first register
-reg[1] = 0x2       // volatile write to second register
-reg[4]             // volatile read from fifth register
+const reg: VolatilePtr(u32) = VolatilePtr(u32, 0xFF200000)
+reg[0]         // volatile read
+reg[0] = 0x1   // volatile write
+reg[1] = 0x2   // volatile write to next register
 ```
 
 ### Rules
-- `Ptr(T)` — always `const`, safe, no warnings, single value only
-- `RawPtr(T)` — always warns, bare metal and C interop only, `[]` for pointer arithmetic
-- `VolatilePtr(T)` — always warns, hardware registers and memory mapped IO, `[]` for register arrays
-- `Ptr(T)` uses `&` to get the address of a variable
-- `RawPtr(T)` and `VolatilePtr(T)` use `&` for variables or a literal integer for hardware addresses
+- `Ptr(T)` — always `const`, safe, no warnings, single value, `&variable` only
+- `RawPtr(T)` — always warns, no restrictions, full pointer arithmetic, escape hatch
+- `VolatilePtr(T)` — always warns, like `RawPtr(T)` but all accesses are volatile, hardware registers only
 - Self-referential structures use array indices instead of pointers — faster and safer
-- `RawPtr(T)` and `VolatilePtr(T)` are escape hatches — discouraged for general programming
 
 ---
 

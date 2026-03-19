@@ -957,11 +957,6 @@ pub const CodeGen = struct {
                 {
                     try self.generateExpr(f.object);
                     try self.write(".*");
-                // ptr.valid → true (compile-time known)
-                } else if (std.mem.eql(u8, f.field, "valid") and
-                    f.object.* == .identifier and self.isPtrVar(f.object.identifier))
-                {
-                    try self.write("true");
                 // raw.value → raw[0] (RawPtr/VolatilePtr dereference)
                 } else if (std.mem.eql(u8, f.field, "value") and
                     f.object.* == .identifier and self.isRawPtrVar(f.object.identifier))
@@ -1152,7 +1147,7 @@ pub const CodeGen = struct {
 
     fn generatePtrExpr(self: *CodeGen, p: parser.PtrExpr) anyerror!void {
         if (std.mem.eql(u8, p.kind, "Ptr")) {
-            // Ptr(T, &x) → &x  (const pointer, compile-time validity tracking)
+            // Ptr(T, &x) → &x  (safe const pointer, ownership tracked)
             try self.generateExpr(p.addr_arg);
         } else if (std.mem.eql(u8, p.kind, "RawPtr")) {
             std.debug.print("WARNING: RawPtr used — unsafe, no bounds checking\n", .{});

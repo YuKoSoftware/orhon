@@ -208,6 +208,10 @@ pub func cast_to_f32(x: i32) f32 {
     return @cast(f32, x)
 }
 
+pub func cast_float_to_int() i32 {
+    return @cast(i32, 3.7)
+}
+
 // ─── While with continue expression ─────────────────────────
 
 pub func sum_while_continue(n: i32) i32 {
@@ -530,6 +534,10 @@ test "cast int" {
 
 test "cast float" {
     @assert(cast_to_f32(7) == 7.0)
+}
+
+test "cast float to int" {
+    @assert(cast_float_to_int() == 3)
 }
 
 test "function pointer" {

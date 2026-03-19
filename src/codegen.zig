@@ -967,15 +967,26 @@ pub const CodeGen = struct {
             if (cf.args.len > 0) try self.generateExpr(cf.args[0]);
             try self.write("))");
         } else if (std.mem.eql(u8, cf.name, "cast")) {
-            // @cast(T, x) → Zig cast depending on target type:
-            //   float target (f32/f64): @as(T, @floatFromInt(x))
-            //   int target:             @as(T, @intCast(x))
+            // @cast(T, x) → Zig cast depending on target and source types:
+            //   int target,   float source literal: @as(T, @intFromFloat(x))
+            //   int target,   other source:          @as(T, @intCast(x))
+            //   float target, float source:          @as(T, @floatCast(x))
+            //   float target, other source:          @as(T, @floatFromInt(x))
             if (cf.args.len >= 2) {
                 const target_type = try self.typeToZig(cf.args[0]);
-                const is_float = target_type.len > 0 and target_type[0] == 'f';
+                const target_is_float = target_type.len > 0 and target_type[0] == 'f';
+                const source_is_float_literal = cf.args[1].* == .float_literal;
+                const source_is_float_var = !source_is_float_literal and !target_is_float and
+                    cf.args[1].* == .identifier; // best-effort: handled below
+                _ = source_is_float_var;
                 try self.writeFmt("@as({s}, ", .{target_type});
-                if (is_float) {
+                if (target_is_float and source_is_float_literal) {
+                    // float literal to float type — direct cast
+                    try self.write("@floatCast(");
+                } else if (target_is_float) {
                     try self.write("@floatFromInt(");
+                } else if (source_is_float_literal) {
+                    try self.write("@intFromFloat(");
                 } else {
                     try self.write("@intCast(");
                 }

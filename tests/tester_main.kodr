@@ -199,5 +199,11 @@ func main() void {
         zigstd.print("FAIL cast_float\n")
     }
 
+    if(tester.cast_float_to_int() == 3) {
+        zigstd.print("PASS cast_float_to_int\n")
+    } else {
+        zigstd.print("FAIL cast_float_to_int\n")
+    }
+
     zigstd.print("TESTER:DONE\n")
 }

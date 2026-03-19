@@ -222,6 +222,33 @@ func call_via_pointer() i32 {
     return f(10)
 }
 
+// ─── Tuples ──────────────────────────────────────────────────────────────────
+
+// named tuple — fields accessed by name, also usable as a return type
+func min_max(a: i32, b: i32) (min: i32, max: i32) {
+    if(a < b) {
+        return (min: a, max: b)
+    }
+    return (min: b, max: a)
+}
+
+func tuple_demo() i32 {
+    const result = min_max(3, 7)
+
+    // access by field name
+    const s = result.min + result.max
+
+    // destructure a named tuple — names must match field names
+    const (min, max) = min_max(1, 9)
+    return s + min + max
+}
+
+// anonymous tuple — positional, destructured by position
+func anon_tuple_demo() i32 {
+    const (r, g, b) = (255, 128, 0)
+    return r + g + b
+}
+
 // ─── Compound Assignment ─────────────────────────────────────────────────────
 
 // += -= *= /=

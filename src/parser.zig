@@ -244,8 +244,9 @@ pub const DeferStmt = struct {
 };
 
 pub const DestructDecl = struct {
-    names: [][]const u8, // variable names — also used as field names
+    names: [][]const u8, // variable names — field names for named, positions for anon
     is_const: bool,
+    is_anon: bool, // true when destructuring an anonymous tuple literal
     value: *Node,
 };
 
@@ -1003,9 +1004,11 @@ pub const Parser = struct {
         _ = try self.expect(.assign);
         const value = try self.parseExpr();
         try self.expectNewlineOrEof();
+        const is_anon = value.* == .tuple_literal and !value.tuple_literal.is_named;
         return self.newNode(.{ .destruct_decl = .{
             .names = try names.toOwnedSlice(self.alloc()),
             .is_const = is_const,
+            .is_anon = is_anon,
             .value = value,
         }});
     }
@@ -1710,9 +1713,24 @@ pub const Parser = struct {
                         .field_names = try names.toOwnedSlice(self.alloc()),
                     }});
                 }
-                const expr = try self.parseExpr();
+                const first = try self.parseExpr();
+                // Anonymous tuple literal: (expr, expr, ...)
+                if (self.check(.comma)) {
+                    var fields: std.ArrayListUnmanaged(*Node) = .{};
+                    try fields.append(self.alloc(), first);
+                    while (self.eat(.comma)) {
+                        if (self.check(.rparen)) break;
+                        try fields.append(self.alloc(), try self.parseExpr());
+                    }
+                    _ = try self.expect(.rparen);
+                    return self.newNode(.{ .tuple_literal = .{
+                        .is_named = false,
+                        .fields = try fields.toOwnedSlice(self.alloc()),
+                        .field_names = &.{},
+                    }});
+                }
                 _ = try self.expect(.rparen);
-                return expr;
+                return first;
             },
 
             // Identifier — could be variable, function call, enum variant, etc.

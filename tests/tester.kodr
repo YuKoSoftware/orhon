@@ -474,6 +474,11 @@ pub func test_tuple_destruct() i32 {
     return min + max
 }
 
+pub func test_anon_tuple() i32 {
+    const (a, b, c) = (1, 2, 3)
+    return a + b + c
+}
+
 // ─── Nested scopes ──────────────────────────────────────────
 
 pub func nested_scope() i32 {
@@ -596,6 +601,10 @@ test "tuple" {
 
 test "tuple destructure" {
     @assert(test_tuple_destruct() == 10)
+}
+
+test "anon_tuple" {
+    @assert(test_anon_tuple() == 6)
 }
 
 test "slice for loop" {

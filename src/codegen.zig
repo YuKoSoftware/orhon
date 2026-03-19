@@ -515,10 +515,14 @@ pub const CodeGen = struct {
                 try self.generateExpr(d.value);
                 try self.write(";");
                 const kw = if (d.is_const) "const" else "var";
-                for (d.names) |name| {
+                for (d.names, 0..) |name, pos| {
                     try self.write("\n");
                     try self.writeIndent();
-                    try self.writeFmt("{s} {s} = _kodr_d{d}.{s};", .{ kw, name, idx, name });
+                    if (d.is_anon) {
+                        try self.writeFmt("{s} {s} = _kodr_d{d}[{d}];", .{ kw, name, idx, pos });
+                    } else {
+                        try self.writeFmt("{s} {s} = _kodr_d{d}.{s};", .{ kw, name, idx, name });
+                    }
                 }
             },
             .compt_decl => |v| {

@@ -168,6 +168,12 @@ func main() void {
         zigstd.print("FAIL tuple_destruct\n")
     }
 
+    if(tester.test_anon_tuple() == 6) {
+        zigstd.print("PASS anon_tuple\n")
+    } else {
+        zigstd.print("FAIL anon_tuple\n")
+    }
+
     if(tester.sum_slice_test() == 6) {
         zigstd.print("PASS slice_for\n")
     } else {

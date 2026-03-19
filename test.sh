@@ -540,7 +540,7 @@ else
 fi
 
 # Check individual results
-for TEST_NAME in add sub factorial is_positive compound sum_to match match_default break_continue abs compt_func struct_instantiation default_fields default_override static_method mutable_method error_ok error_fail null_some null_none null_reassign enum_usage enum_method nested_scopes tuple tuple_destruct slice_for for_index for_range while_continue cast_int cast_float cast_float_to_int func_ptr func_ptr_var fixed_array array_index; do
+for TEST_NAME in add sub factorial is_positive compound sum_to match match_default break_continue abs compt_func struct_instantiation default_fields default_override static_method mutable_method error_ok error_fail null_some null_none null_reassign enum_usage enum_method nested_scopes tuple tuple_destruct anon_tuple slice_for for_index for_range while_continue cast_int cast_float cast_float_to_int func_ptr func_ptr_var fixed_array array_index; do
     if echo "$BINOUT" | grep -q "PASS $TEST_NAME"; then pass "runtime: $TEST_NAME"
     else fail "runtime: $TEST_NAME"; fi
 done

@@ -5,7 +5,7 @@ Kodr is a compiled, memory-safe programming language that transpiles to Zig.
 Written in Zig 0.15.x. Lives entirely in `src/`.
 One-sentence pitch: *"A simple yet powerful language that is safe."*
 
-**Full language spec:** `kodr_technical_blueprint_025.md` — read it before making
+**Full language spec:** `README.md` — read it before making
 any decisions about language behavior, syntax, or semantics. Do not rely on memory
 or assumptions — check the blueprint.
 

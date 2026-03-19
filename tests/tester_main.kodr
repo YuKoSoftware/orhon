@@ -1,0 +1,154 @@
+module main
+
+main.name = "comptest"
+main.version = Version(1, 0, 0)
+main.build = build.exe
+main.bitsize = 32
+
+import std::zigstd
+import tester
+
+func main() void {
+    // Runtime correctness — each check calls a tester function
+    // and prints PASS or FAIL. test.sh verifies no FAIL lines.
+
+    if(tester.add(2, 3) == 5) {
+        zigstd.print("PASS add\n")
+    } else {
+        zigstd.print("FAIL add\n")
+    }
+
+    if(tester.sub(10, 3) == 7) {
+        zigstd.print("PASS sub\n")
+    } else {
+        zigstd.print("FAIL sub\n")
+    }
+
+    if(tester.factorial(5) == 120) {
+        zigstd.print("PASS factorial\n")
+    } else {
+        zigstd.print("FAIL factorial\n")
+    }
+
+    if(tester.is_positive(1)) {
+        zigstd.print("PASS is_positive\n")
+    } else {
+        zigstd.print("FAIL is_positive\n")
+    }
+
+    if(tester.test_compound() == 70) {
+        zigstd.print("PASS compound\n")
+    } else {
+        zigstd.print("FAIL compound\n")
+    }
+
+    if(tester.sum_to(10) == 55) {
+        zigstd.print("PASS sum_to\n")
+    } else {
+        zigstd.print("FAIL sum_to\n")
+    }
+
+    if(tester.match_test(1) == 10) {
+        zigstd.print("PASS match\n")
+    } else {
+        zigstd.print("FAIL match\n")
+    }
+
+    if(tester.match_test(99) == 0) {
+        zigstd.print("PASS match_default\n")
+    } else {
+        zigstd.print("FAIL match_default\n")
+    }
+
+    if(tester.first_over(5) == 6) {
+        zigstd.print("PASS break_continue\n")
+    } else {
+        zigstd.print("FAIL break_continue\n")
+    }
+
+    if(tester.abs(0 - 7) == 7) {
+        zigstd.print("PASS abs\n")
+    } else {
+        zigstd.print("FAIL abs\n")
+    }
+
+    if(tester.doubled(21) == 42) {
+        zigstd.print("PASS compt_func\n")
+    } else {
+        zigstd.print("FAIL compt_func\n")
+    }
+
+    if(tester.make_internal() == 42) {
+        zigstd.print("PASS struct_instantiation\n")
+    } else {
+        zigstd.print("FAIL struct_instantiation\n")
+    }
+
+    if(tester.test_defaults() == 42) {
+        zigstd.print("PASS default_fields\n")
+    } else {
+        zigstd.print("FAIL default_fields\n")
+    }
+
+    if(tester.test_defaults_override() == 99) {
+        zigstd.print("PASS default_override\n")
+    } else {
+        zigstd.print("FAIL default_override\n")
+    }
+
+    if(tester.test_static_method() == 10) {
+        zigstd.print("PASS static_method\n")
+    } else {
+        zigstd.print("FAIL static_method\n")
+    }
+
+    if(tester.test_mutable_method() == 3) {
+        zigstd.print("PASS mutable_method\n")
+    } else {
+        zigstd.print("FAIL mutable_method\n")
+    }
+
+    if(tester.test_error_ok() == 5) {
+        zigstd.print("PASS error_ok\n")
+    } else {
+        zigstd.print("FAIL error_ok\n")
+    }
+
+    if(tester.test_error_fail() == 0 - 1) {
+        zigstd.print("PASS error_fail\n")
+    } else {
+        zigstd.print("FAIL error_fail\n")
+    }
+
+    if(tester.test_null_some() == 50) {
+        zigstd.print("PASS null_some\n")
+    } else {
+        zigstd.print("FAIL null_some\n")
+    }
+
+    if(tester.test_null_none() == 0 - 1) {
+        zigstd.print("PASS null_none\n")
+    } else {
+        zigstd.print("FAIL null_none\n")
+    }
+
+    if(tester.test_null_reassign() == 42) {
+        zigstd.print("PASS null_reassign\n")
+    } else {
+        zigstd.print("FAIL null_reassign\n")
+    }
+
+    if(tester.test_enum() == 1) {
+        zigstd.print("PASS enum_usage\n")
+    } else {
+        zigstd.print("FAIL enum_usage\n")
+    }
+
+    if(tester.nested_scope() == 6) {
+        zigstd.print("PASS nested_scopes\n")
+    } else {
+        zigstd.print("FAIL nested_scopes\n")
+    }
+
+    zigstd.print("TESTER:DONE\n")
+}

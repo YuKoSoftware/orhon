@@ -1,0 +1,456 @@
+module tester
+
+// ═══════════════════════════════════════════════════════════════
+// Kodr compiler test module — exercises all implemented features.
+// If this compiles, the pipeline works. Tests verify correctness.
+// Runtime output is checked by test.sh for known values.
+// ═══════════════════════════════════════════════════════════════
+
+import std::zigstd
+
+// ─── Variables ───────────────────────────────────────────────
+
+var mutable_var: i32 = 10
+const immutable_const: i32 = 20
+compt COMPT_VALUE: i32 = 1024
+
+// ─── Structs ─────────────────────────────────────────────────
+
+pub struct Vec2 {
+    pub x: f32
+    pub y: f32
+}
+
+struct Internal {
+    value: i32
+    name: string
+}
+
+pub struct WithDefaults {
+    pub name: string
+    pub value: i32 = 42
+    pub flag: bool = true
+}
+
+pub struct Counter {
+    pub count: i32
+
+    pub func create(start: i32) Counter {
+        return Counter(count: start)
+    }
+
+    pub func get(self: const &Counter) i32 {
+        return self.count
+    }
+
+    pub func increment(self: var &Counter) void {
+        self.count = self.count + 1
+    }
+}
+
+// ─── Enums ───────────────────────────────────────────────────
+
+pub enum Color(u8) {
+    Red
+    Green
+    Blue
+}
+
+// ─── Functions ───────────────────────────────────────────────
+
+// basic function
+pub func add(a: i32, b: i32) i32 {
+    return a + b
+}
+
+// pub function
+pub func sub(a: i32, b: i32) i32 {
+    return a - b
+}
+
+// recursive function
+pub func factorial(n: i32) i32 {
+    if(n <= 1) {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+// compt function
+pub compt func doubled(n: i32) i32 {
+    return n * 2
+}
+
+// function returning bool
+pub func is_positive(n: i32) bool {
+    return n > 0
+}
+
+// function with string
+pub func greeting() string {
+    return "hello" ++ " " ++ "world"
+}
+
+// ─── Arithmetic operators ────────────────────────────────────
+
+pub func test_arithmetic(a: i32, b: i32) i32 {
+    var result: i32 = a + b
+    result = result - 1
+    result = result * 2
+    result = result / 2
+    result = result % 7
+    return result
+}
+
+// ─── Comparison operators ────────────────────────────────────
+
+pub func test_comparisons(a: i32, b: i32) bool {
+    if(a == b) { return true }
+    if(a != b) { return true }
+    if(a < b) { return true }
+    if(a > b) { return true }
+    if(a <= b) { return true }
+    if(a >= b) { return true }
+    return false
+}
+
+// ─── Logical operators ───────────────────────────────────────
+
+pub func test_logical(a: bool, b: bool) bool {
+    if(a and b) { return true }
+    if(a or b) { return true }
+    if(not a) { return true }
+    return false
+}
+
+// ─── Bitwise operators ───────────────────────────────────────
+
+pub func test_bitwise(a: i32, b: i32) i32 {
+    var r: i32 = a & b
+    r = r | a
+    r = r ^ b
+    r = a << 1
+    r = a >> 1
+    return r
+}
+
+// ─── Compound assignment ─────────────────────────────────────
+
+pub func test_compound() i32 {
+    var x: i32 = 100
+    x += 10
+    x -= 5
+    x *= 2
+    x /= 3
+    return x
+}
+
+// ─── If / Else ───────────────────────────────────────────────
+
+pub func abs(n: i32) i32 {
+    if(n < 0) {
+        return 0 - n
+    } else {
+        return n
+    }
+}
+
+// ─── While loop ──────────────────────────────────────────────
+
+pub func sum_to(n: i32) i32 {
+    var total: i32 = 0
+    var i: i32 = 1
+    while(i <= n) {
+        total += i
+        i += 1
+    }
+    return total
+}
+
+// ─── For loop ────────────────────────────────────────────────
+
+pub func sum_slice(arr: []i32) i32 {
+    var total: i32 = 0
+    for(arr) |val| {
+        total += val
+    }
+    return total
+}
+
+// ─── Match ───────────────────────────────────────────────────
+
+pub func match_test(n: i32) i32 {
+    match(n) {
+        1 => {
+            return 10
+        }
+        2 => {
+            return 20
+        }
+        3 => {
+            return 30
+        }
+    }
+    return 0
+}
+
+// ─── Defer ───────────────────────────────────────────────────
+
+pub func with_defer() i32 {
+    var x: i32 = 0
+    defer {
+        x = 0
+    }
+    x = 99
+    return x
+}
+
+// ─── Break / Continue ────────────────────────────────────────
+
+pub func first_over(limit: i32) i32 {
+    var i: i32 = 0
+    while(i < 100) {
+        i += 1
+        if(i <= limit) {
+            continue
+        }
+        break
+    }
+    return i
+}
+
+// ─── Concatenation ───────────────────────────────────────────
+
+pub func concat_test() string {
+    const a: string = "foo"
+    const b: string = "bar"
+    return a ++ b
+}
+
+// ─── Struct instantiation ────────────────────────────────────
+
+pub func make_vec2(a: f32, b: f32) f32 {
+    const v: Vec2 = Vec2(x: a, y: b)
+    return v.x + v.y
+}
+
+pub func make_internal() i32 {
+    const s: Internal = Internal(value: 42, name: "test")
+    return s.value
+}
+
+// ─── Default field values ────────────────────────────────────
+
+pub func test_defaults() i32 {
+    const w: WithDefaults = WithDefaults(name: "test")
+    return w.value
+}
+
+pub func test_defaults_override() i32 {
+    const w: WithDefaults = WithDefaults(name: "test", value: 99)
+    return w.value
+}
+
+// ─── Struct methods ──────────────────────────────────────────
+
+pub func test_static_method() i32 {
+    var c: Counter = Counter.create(10)
+    return c.get()
+}
+
+pub func test_mutable_method() i32 {
+    var c: Counter = Counter.create(0)
+    c.increment()
+    c.increment()
+    c.increment()
+    return c.get()
+}
+
+// ─── Error handling ──────────────────────────────────────────
+
+const ErrDivByZero: Error = Error("division by zero")
+
+pub func safe_divide(a: i32, b: i32) (Error | i32) {
+    if(b == 0) {
+        return ErrDivByZero
+    }
+    return a / b
+}
+
+pub func test_error_ok() i32 {
+    const result = safe_divide(10, 2)
+    if(@type(result) == Error) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+pub func test_error_fail() i32 {
+    const result = safe_divide(10, 0)
+    if(@type(result) == Error) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+// ─── Null handling ──────────────────────────────────────
+
+pub func find_player(id: i32) (null | i32) {
+    if(id > 0) {
+        return id * 10
+    }
+    return null
+}
+
+pub func test_null_some() i32 {
+    const result: (null | i32) = find_player(5)
+    if(@type(result) == null) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+pub func test_null_none() i32 {
+    const result: (null | i32) = find_player(0)
+    if(@type(result) == null) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+pub func test_null_reassign() i32 {
+    var x: (null | i32) = null
+    x = 42
+    if(@type(x) == null) {
+        return 0 - 1
+    }
+    return x.i32
+}
+
+// ─── Enum usage ─────────────────────────────────────────────
+
+pub func color_to_int(c: Color) i32 {
+    match(c) {
+        Red => { return 1 }
+        Green => { return 2 }
+        Blue => { return 3 }
+    }
+    return 0
+}
+
+pub func test_enum() i32 {
+    const c: Color = Red
+    return color_to_int(c)
+}
+
+// ─── Nested scopes ──────────────────────────────────────────
+
+pub func nested_scope() i32 {
+    var x: i32 = 1
+    if(x == 1) {
+        const y: i32 = 2
+        if(y == 2) {
+            const z: i32 = 3
+            x = x + y + z
+        }
+    }
+    return x
+}
+
+// ─── Tests ───────────────────────────────────────────────────
+
+test "add" {
+    @assert(add(2, 3) == 5)
+}
+
+test "sub" {
+    @assert(sub(10, 3) == 7)
+}
+
+test "factorial" {
+    @assert(factorial(5) == 120)
+}
+
+test "is_positive" {
+    @assert(is_positive(1))
+    @assert(not is_positive(0 - 1))
+}
+
+test "arithmetic" {
+    @assert(test_arithmetic(10, 5) == 0)
+}
+
+test "compound assignment" {
+    @assert(test_compound() == 70)
+}
+
+test "abs" {
+    @assert(abs(5) == 5)
+    @assert(abs(0 - 5) == 5)
+}
+
+test "sum_to" {
+    @assert(sum_to(10) == 55)
+}
+
+test "match" {
+    @assert(match_test(1) == 10)
+    @assert(match_test(2) == 20)
+    @assert(match_test(99) == 0)
+}
+
+test "first_over" {
+    @assert(first_over(5) == 6)
+}
+
+test "compt func" {
+    @assert(doubled(21) == 42)
+}
+
+test "struct instantiation" {
+    @assert(make_internal() == 42)
+}
+
+test "default field values" {
+    @assert(test_defaults() == 42)
+}
+
+test "default field override" {
+    @assert(test_defaults_override() == 99)
+}
+
+test "static method" {
+    @assert(test_static_method() == 10)
+}
+
+test "mutable method" {
+    @assert(test_mutable_method() == 3)
+}
+
+test "error handling ok" {
+    @assert(test_error_ok() == 5)
+}
+
+test "error handling fail" {
+    @assert(test_error_fail() == 0 - 1)
+}
+
+test "null some" {
+    @assert(test_null_some() == 50)
+}
+
+test "null none" {
+    @assert(test_null_none() == 0 - 1)
+}
+
+test "null reassign" {
+    @assert(test_null_reassign() == 42)
+}
+
+test "enum usage" {
+    @assert(test_enum() == 1)
+}
+
+test "nested scopes" {
+    @assert(nested_scope() == 6)
+}

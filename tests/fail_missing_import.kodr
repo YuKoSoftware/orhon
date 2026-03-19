@@ -1,0 +1,7 @@
+module main
+main.name = "failtest"
+main.version = Version(1, 0, 0)
+main.build = build.exe
+import does_not_exist
+func main() void {
+}

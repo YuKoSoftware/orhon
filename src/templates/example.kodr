@@ -1,0 +1,236 @@
+module example
+
+// ─── Imports ─────────────────────────────────────────────────────────────────
+
+// local module import
+import std::zigstd
+
+// ─── Variables & Constants ───────────────────────────────────────────────────
+
+// mutable variable with explicit type
+var counter: i32 = 0
+
+// immutable constant
+const MAX_SIZE: i32 = 100
+const PI: f64 = 3.14159
+
+// compile-time evaluated constant
+compt BUFFER_SIZE: i32 = 1024
+
+// compile-time function — entire body evaluated at compile time
+compt func double(n: i32) i32 {
+    return n * 2
+}
+
+// numeric literal formats
+var decimal: i32 = 1_000_000
+var hex: u32 = 0xFF
+var binary: u8 = 0b1010
+var octal: u8 = 0o77
+
+// type is inferred from main.bitsize when no annotation is given
+// var x = 42          // i32 if main.bitsize = 32
+// const y = 3.14      // f32 if main.bitsize = 32
+
+// ─── Structs ─────────────────────────────────────────────────────────────────
+
+// public struct with typed fields
+// fields are private by default, use pub for outside access
+pub struct Point {
+    pub x: f64
+    pub y: f64
+}
+
+// struct with methods
+pub struct Player {
+    pub name: string
+    health: f32
+
+    // static method — no self, called on type name
+    pub func create(n: string) Player {
+        return Player(name: n, health: 100.0)
+    }
+
+    // immutable instance method — reads but can't modify
+    pub func is_alive(self: const &Player) bool {
+        return self.health > 0.0
+    }
+
+    // mutable instance method — can modify fields
+    pub func take_damage(self: var &Player, amount: f32) void {
+        self.health = self.health - amount
+    }
+}
+
+// struct instantiation with named fields
+func make_player() Player {
+    return Player(name: "hero", health: 100.0)
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+// enum with explicit backing type
+pub enum Direction(u8) {
+    North
+    South
+    East
+    West
+}
+
+// enum instantiation — no type prefix on the right side
+func go_north() Direction {
+    const d: Direction = North
+    return d
+}
+
+// ─── Functions ───────────────────────────────────────────────────────────────
+
+// basic function with parameters and return type
+func add(a: i32, b: i32) i32 {
+    return a + b
+}
+
+// public function visible to other modules
+pub func multiply(a: i32, b: i32) i32 {
+    return a * b
+}
+
+// function returning bool
+func is_even(n: i32) bool {
+    return (n % 2) == 0
+}
+
+// recursive function
+func fibonacci(n: i32) i32 {
+    if(n <= 1) {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+// ─── Operators ───────────────────────────────────────────────────────────────
+
+// arithmetic: + - * / %
+func arithmetic(a: i32, b: i32) i32 {
+    return (a + b) * (a - b) / (a % b)
+}
+
+// comparison: == != < > <= >=
+func in_range(value: i32, low: i32, high: i32) bool {
+    return (value >= low) and (value <= high)
+}
+
+// logical: and, or, not
+func is_valid(a: bool, b: bool) bool {
+    return (a and b) or (not a)
+}
+
+// bitwise: | ^ & << >>
+func bitwise_ops(a: i32, b: i32) i32 {
+    return (a & b) | (a ^ b)
+}
+
+func shift_ops(a: i32) i32 {
+    return (a << 2) >> 1
+}
+
+// concatenation: ++ (strings and arrays, never arithmetic)
+func greet(name: string) string {
+    return "Hello, " ++ name ++ "!"
+}
+
+// ─── Error Handling ──────────────────────────────────────────────────────────
+
+// error constant — named error with message
+const ErrNotFound: Error = Error("not found")
+
+// function returning an error union — (Error | T)
+func safe_divide(a: i32, b: i32) (Error | i32) {
+    if(b == 0) {
+        return Error("division by zero")
+    }
+    return a / b
+}
+
+// checking the result type with @type
+func divide_or_default(a: i32, b: i32) i32 {
+    const result = safe_divide(a, b)
+    if(@type(result) == Error) {
+        return 0
+    }
+    return result.i32
+}
+
+// ─── Null Handling ──────────────────────────────────────────────────────────
+
+// function returning a nullable union — (null | T)
+func find_value(id: i32) (null | i32) {
+    if(id > 0) {
+        return id * 10
+    }
+    return null
+}
+
+// checking for null with @type
+func value_or_default(id: i32) i32 {
+    const result: (null | i32) = find_value(id)
+    if(@type(result) == null) {
+        return 0
+    }
+    return result.i32
+}
+
+// nullable variable — starts null, assigned later
+func nullable_var_demo() i32 {
+    var x: (null | i32) = null
+    x = 42
+    if(@type(x) == null) {
+        return 0
+    }
+    return x.i32
+}
+
+// ─── Compound Assignment ─────────────────────────────────────────────────────
+
+// += -= *= /=
+func compound_demo() i32 {
+    var x: i32 = 10
+    x += 5
+    x -= 2
+    x *= 3
+    x /= 2
+    return x
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+// test blocks with descriptions
+test "add works" {
+    @assert(add(2, 3) == 5)
+}
+
+test "fibonacci" {
+    @assert(fibonacci(10) == 55)
+}
+
+test "compound assignment" {
+    @assert(compound_demo() == 19)
+}
+
+test "struct methods" {
+    var p: Player = Player.create("test")
+    @assert(p.is_alive())
+    p.take_damage(50.0)
+    @assert(p.is_alive())
+}
+
+test "error handling" {
+    @assert(divide_or_default(10, 2) == 5)
+    @assert(divide_or_default(10, 0) == 0)
+}
+
+test "null handling" {
+    @assert(value_or_default(5) == 50)
+    @assert(value_or_default(0) == 0)
+    @assert(nullable_var_demo() == 42)
+}

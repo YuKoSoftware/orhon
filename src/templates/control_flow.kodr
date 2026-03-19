@@ -1,0 +1,120 @@
+module example
+
+// ─── If / Else ───────────────────────────────────────────────────────────────
+
+// conditional with else branch
+func max(a: i32, b: i32) i32 {
+    if(a > b) {
+        return a
+    } else {
+        return b
+    }
+}
+
+// ─── While Loops ─────────────────────────────────────────────────────────────
+
+// basic while loop
+func countdown(n: i32) i32 {
+    var result: i32 = 0
+    var i: i32 = n
+    while(i > 0) {
+        result += i
+        i -= 1
+    }
+    return result
+}
+
+// ─── For Loops ───────────────────────────────────────────────────────────────
+
+// for loop over array
+func sum_array(arr: []i32) i32 {
+    var total: i32 = 0
+    for(arr) |val| {
+        total += val
+    }
+    return total
+}
+
+// compile-time loop — unrolls at compile time
+compt func sum_sizes(sizes: []i32) i32 {
+    var total: i32 = 0
+    compt for(sizes) |s| {
+        total += s
+    }
+    return total
+}
+
+// ─── Match ───────────────────────────────────────────────────────────────────
+
+// match on integers
+func classify(n: i32) i32 {
+    match(n) {
+        0 => { return 0 }
+        1 => { return 10 }
+        2 => { return 20 }
+    }
+    return 99
+}
+
+// ─── Defer ───────────────────────────────────────────────────────────────────
+
+// defer runs cleanup at end of scope
+func with_cleanup() i32 {
+    var x: i32 = 0
+    defer {
+        x = 0
+    }
+    x = 42
+    return x
+}
+
+// ─── Break & Continue ────────────────────────────────────────────────────────
+
+// break exits the loop, continue skips to next iteration
+func count_odd(limit: i32) i32 {
+    var count: i32 = 0
+    var i: i32 = 0
+    while(i < limit) {
+        i += 1
+        if((i % 2) == 0) {
+            continue
+        }
+        count += 1
+    }
+    return count
+}
+
+// ─── Labels ─────────────────────────────────────────────────────────────
+
+// labeled break exits an outer loop from inside an inner loop
+func find_pair(limit: i32) i32 {
+    var result: i32 = 0
+    label outer
+    var i: i32 = 0
+    while(i < limit) {
+        var j: i32 = 0
+        while(j < limit) {
+            if(i + j == 5) {
+                result = i * 10 + j
+                break outer
+            }
+            j += 1
+        }
+        i += 1
+    }
+    return result
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+test "max" {
+    @assert(max(3, 7) == 7)
+}
+
+test "countdown" {
+    @assert(countdown(5) == 15)
+}
+
+test "with cleanup" {
+    @assert(with_cleanup() == 42)
+}

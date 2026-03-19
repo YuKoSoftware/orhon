@@ -1,0 +1,31 @@
+module alpha
+
+// alpha — temporary Kodr stdlib bridge to Zig's std
+// Used during early alpha development only.
+// Will be replaced by a proper Kodr std once the language matures.
+// Import with: import std::alpha
+
+// Print a string without a newline
+func print(msg: string) void {
+    @zig_print(msg)
+}
+
+// Print a string followed by a newline
+func println(msg: string) void {
+    @zig_println(msg)
+}
+
+// Print an integer
+func print_int(n: i64) void {
+    @zig_print_int(n)
+}
+
+// Print a float
+func print_float(f: f64) void {
+    @zig_print_float(f)
+}
+
+// Print a boolean
+func print_bool(b: bool) void {
+    @zig_print_bool(b)
+}

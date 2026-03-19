@@ -37,7 +37,6 @@ pub const NodeKind = enum {
     defer_stmt,
     match_stmt,
     match_arm,
-    label_stmt,
     break_stmt,
     continue_stmt,
     assignment,
@@ -103,9 +102,8 @@ pub const Node = union(NodeKind) {
     defer_stmt: DeferStmt,
     match_stmt: MatchStmt,
     match_arm: MatchArm,
-    label_stmt: []const u8,
-    break_stmt: ?[]const u8,
-    continue_stmt: ?[]const u8,
+    break_stmt,
+    continue_stmt,
     assignment: BinaryOp,
     thread_block: ConcurrencyBlock,
     async_block: ConcurrencyBlock,
@@ -681,7 +679,14 @@ pub const Parser = struct {
         const tok = self.peek();
         return switch (tok.kind) {
             .kw_func      => try self.parseFuncDecl(true, false),
-            .kw_extern    => try self.parseExternDecl(),  // pub extern func
+            .kw_extern    => {
+                const ext_tok = self.peek();
+                try self.reporter.report(.{
+                    .message = "'pub extern func' is redundant — extern func is always public, use 'extern func'",
+                    .loc = .{ .file = "", .line = ext_tok.line, .col = ext_tok.col },
+                });
+                return error.ParseError;
+            },
             .kw_struct    => try self.parseStructDecl(true),
             .kw_enum      => try self.parseEnumDecl(true),
             .kw_bitfield  => try self.parseBitfieldDecl(true),
@@ -1099,7 +1104,6 @@ pub const Parser = struct {
             .kw_for => try self.parseFor(),
             .kw_defer => try self.parseDefer(),
             .kw_match => try self.parseMatch(),
-            .kw_label => try self.parseLabel(),
             .kw_break => try self.parseBreak(),
             .kw_continue => try self.parseContinue(),
             .kw_thread => try self.parseThreadBlock(),
@@ -1259,31 +1263,40 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseLabel(self: *Parser) anyerror!*Node {
-        _ = try self.expect(.kw_label);
-        const name_tok = try self.expect(.identifier);
-        try self.expectNewlineOrEof();
-        return self.newNode(.{ .label_stmt = name_tok.text });
-    }
-
     fn parseBreak(self: *Parser) anyerror!*Node {
-        _ = try self.expect(.kw_break);
-        var label: ?[]const u8 = null;
+        const tok = try self.expect(.kw_break);
         if (self.check(.identifier)) {
-            label = self.advance().text;
+            const label_tok = self.peek();
+            const msg = try std.fmt.allocPrint(self.alloc(),
+                "labeled break is not supported — extract the loop into a func and use return", .{});
+            defer self.alloc().free(msg);
+            try self.reporter.report(.{
+                .message = msg,
+                .loc = .{ .file = "", .line = label_tok.line, .col = label_tok.col },
+            });
+            return error.ParseError;
         }
         try self.expectNewlineOrEof();
-        return self.newNode(.{ .break_stmt = label });
+        _ = tok;
+        return self.newNode(.{ .break_stmt = {} });
     }
 
     fn parseContinue(self: *Parser) anyerror!*Node {
-        _ = try self.expect(.kw_continue);
-        var label: ?[]const u8 = null;
+        const tok = try self.expect(.kw_continue);
         if (self.check(.identifier)) {
-            label = self.advance().text;
+            const label_tok = self.peek();
+            const msg = try std.fmt.allocPrint(self.alloc(),
+                "labeled continue is not supported — extract the loop into a func and use return", .{});
+            defer self.alloc().free(msg);
+            try self.reporter.report(.{
+                .message = msg,
+                .loc = .{ .file = "", .line = label_tok.line, .col = label_tok.col },
+            });
+            return error.ParseError;
         }
         try self.expectNewlineOrEof();
-        return self.newNode(.{ .continue_stmt = label });
+        _ = tok;
+        return self.newNode(.{ .continue_stmt = {} });
     }
 
     fn parseThreadBlock(self: *Parser) anyerror!*Node {
@@ -1434,7 +1447,7 @@ pub const Parser = struct {
             const right = try self.parseBitorExpr();
             left = try self.newNode(.{ .binary_expr = .{ .op = o, .left = left, .right = right } });
         } else if (self.eat(.kw_is)) {
-            // `expr is Type` / `expr is not Type` — desugar into `@type(expr) == Type` / `@type(expr) != Type`
+            // `expr is Type` / `expr is not Type` — desugar to internal type check
             const negated = self.eat(.kw_not);
             const args = try self.alloc().alloc(*Node, 1);
             args[0] = left;
@@ -1565,7 +1578,7 @@ pub const Parser = struct {
                 _ = self.advance();
                 const field_tok = self.peek();
                 if (field_tok.kind == .identifier or field_tok.kind == .kw_var or
-                    field_tok.kind == .kw_const or field_tok.kind == .kw_type)
+                    field_tok.kind == .kw_const)
                 {
                     _ = self.advance();
                     // Check if it's a method call
@@ -1672,17 +1685,10 @@ pub const Parser = struct {
         const tok = self.peek();
 
         switch (tok.kind) {
-            // Compiler functions: @name(...)
-            .at => {
-                _ = self.advance();
-                // Compiler function name — accept identifier or 'type' keyword
-                const func_tok = blk: {
-                    const t = self.peek();
-                    if (t.kind == .identifier or t.kind == .kw_type) {
-                        break :blk self.advance();
-                    }
-                    break :blk try self.expect(.identifier);
-                };
+            // Compiler functions — reserved keywords, called like regular functions
+            .kw_cast, .kw_copy, .kw_move, .kw_swap,
+            .kw_assert, .kw_size, .kw_align, .kw_typename, .kw_typeid => {
+                const func_tok = self.advance();
                 _ = try self.expect(.lparen);
                 var args: std.ArrayListUnmanaged(*Node) = .{};
                 self.skipNewlines();
@@ -1914,6 +1920,13 @@ pub const Parser = struct {
                     .args = try args.toOwnedSlice(self.alloc()),
                 }});
             }
+            // Check for scoped type: mem.Allocator, etc.
+            if (self.check(.dot)) {
+                _ = self.advance();
+                const field_tok = try self.expect(.identifier);
+                const full_name = try std.fmt.allocPrint(self.alloc(), "{s}.{s}", .{ tok.text, field_tok.text });
+                return self.newNode(.{ .type_named = full_name });
+            }
             return self.newNode(.{ .type_named = tok.text });
         }
 
@@ -1930,11 +1943,6 @@ pub const Parser = struct {
             _ = self.advance();
             return self.newNode(.{ .type_named = "null" });
         }
-        if (tok.kind == .kw_type) {
-            _ = self.advance();
-            return self.newNode(.{ .type_named = "type" });
-        }
-
         const msg = try std.fmt.allocPrint(self.alloc(),
             "expected type, found '{s}'", .{tok.text});
         defer self.alloc().free(msg);
@@ -2090,7 +2098,7 @@ test "parser - extern func" {
     const alloc = std.testing.allocator;
     var lex = lexer.Lexer.init((
         \\module console
-        \\pub extern func print(msg: String) void
+        \\extern func print(msg: String) void
         \\
     ));
     var tokens = try lex.tokenize(alloc);

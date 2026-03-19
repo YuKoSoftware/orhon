@@ -12,8 +12,8 @@
 ### Copy vs Move
 - **Primitives** (`i32`, `i64`, `u8`, `f64`, `bool`, `usize`, `isize`, `string` etc.) — silently copy on assignment, compiler does not track them. `string` is `[]const u8` under the hood (a pointer + length), so copying is always cheap (16 bytes).
 - **Everything else** (structs, slices, user types) — move by default, compiler tracks ownership
-- `@move` for explicit move intent
-- `@copy` for explicit copies of non-primitives
+- `move` for explicit move intent
+- `copy` for explicit copies of non-primitives
 - For mutable byte manipulation, use `[]u8` (mutable array) — this is a move type
 
 ```
@@ -25,8 +25,8 @@ var s2: string = s        // copy, s still valid (string is a slice — cheap)
 
 var data: MyStruct = getData()
 var d2: MyStruct = data          // move, data is now invalid
-var d3: MyStruct = @copy(d2)     // explicit copy, d2 still valid
-var d4: MyStruct = @move(d2)     // explicit move, documents intent
+var d3: MyStruct = copy(d2)     // explicit copy, d2 still valid
+var d4: MyStruct = move(d2)     // explicit move, documents intent
 ```
 
 Use-after-move is a compile time error. Zero runtime overhead — moved variables do not exist in the output binary.
@@ -51,7 +51,7 @@ func mutate(x: var &string) void { }    // mutable borrow, can modify
 - `var &T` — mutable borrow, only one at a time
 - Cannot have immutable and mutable borrow simultaneously — compile time error
 - Functions can never return references, only owned values
-- If you need to return borrowed data, use `@copy` to return an owned copy
+- If you need to return borrowed data, use `copy` to return an owned copy
 - Instead of getters that return references, provide methods that do the work inside the struct:
 ```
 struct Game {
@@ -66,7 +66,7 @@ struct Game {
 ```
 
 ### Lifetimes
-No lifetime annotations ever. The language stays simple — complexity lives in `@` compiler functions. Functions cannot return references — only owned values. If you need to return borrowed data, use `@copy` to return an owned copy. Lexical lifetimes only — a borrow is valid only within the block it was created in.
+No lifetime annotations ever. The language stays simple — complexity lives in `@` compiler functions. Functions cannot return references — only owned values. If you need to return borrowed data, use `copy` to return an owned copy. Lexical lifetimes only — a borrow is valid only within the block it was created in.
 
 ### Structs and Ownership
 Structs are atomic ownership units — all fields move together or none do.
@@ -190,7 +190,7 @@ Custom allocator *implementation* belongs in Zig via `extern func` — Kodr code
 | `mem.GPA()` | safe | general purpose, leak detection in debug builds |
 | `mem.Arena()` | fast | batch work, free all at once via `freeAll()` |
 | `mem.Page()` | varies | OS page-sized chunks, large allocations, bypasses heap |
-| `mem.Temp(compt n)` | fastest | stack-backed scratch, no heap, auto-reset at scope exit |
+| `mem.Temp(n)` | fastest | stack-backed scratch, no heap, auto-reset at scope exit — `n` must be a compile-time constant |
 
 ### Arena — Batch Free
 ```
@@ -204,10 +204,10 @@ arena.freeAll()    // frees everything at once — all arena values become inval
 
 ### Temp — Stack-backed Scratch
 ```
-var tmp = mem.Temp(4096)            // 4096 bytes on the stack, n must be compt
+var tmp = mem.Temp(4096)            // 4096 bytes on the stack — must be a compile-time constant
 var scratch: []u8 = tmp.alloc(u8, 256)
 var nums: []i32 = tmp.alloc(i32, 16)
 // all memory freed automatically when tmp goes out of scope — no heap involved
 ```
 
-`n` must be a compile-time known value (`compt`) — the buffer lives on the stack.
+`n` must be a compile-time constant (a literal or `compt` variable) — the buffer lives on the stack.

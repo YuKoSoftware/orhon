@@ -39,7 +39,7 @@ At this point you have a working compiler for simple Kodr programs. Test with Zi
 16. Write stdlib in Kodr — once compiler is stable enough
 17. Add modules phase by phase following the planned roadmap
 
-The `test` keyword and `@assert` builtin are phase 3 features — implemented after the compiler can already compile real Kodr programs. Kodr test blocks require the full pipeline to work before they can run.
+The `test` keyword and `assert` builtin are phase 3 features — implemented after the compiler can already compile real Kodr programs. Kodr test blocks require the full pipeline to work before they can run.
 
 ### Compilation pipeline
 Each pass runs only if the previous succeeded. First error stops compilation with a clear message. Where possible, multiple errors per pass are collected before stopping — so the programmer sees several issues at once rather than fixing one at a time.

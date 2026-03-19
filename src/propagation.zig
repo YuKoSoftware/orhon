@@ -148,11 +148,11 @@ pub const PropChecker = struct {
             },
 
             .if_stmt => |i| {
-                // Check if condition is a @type check that handles a union
+                // Check if condition is a type check that handles a union (via `is`)
                 if (i.condition.* == .binary_expr) {
                     const be = i.condition.binary_expr;
                     if (std.mem.eql(u8, be.op, "==")) {
-                        // @type(x) == Error or @type(x) == null
+                        // `x is Error` or `x is null`
                         if (be.left.* == .compiler_func and std.mem.eql(u8, be.left.compiler_func.name, "type")) {
                             if (be.left.compiler_func.args.len > 0) {
                                 const checked_var = be.left.compiler_func.args[0];

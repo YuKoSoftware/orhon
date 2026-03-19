@@ -169,7 +169,7 @@ func safe_divide(a: i32, b: i32) (Error | i32) {
     return a / b
 }
 
-// is keyword — shorthand for @type(result) == Error
+// is keyword — check if result is an Error
 func divide_or_default(a: i32, b: i32) i32 {
     const result = safe_divide(a, b)
     if(result is Error) {
@@ -188,7 +188,7 @@ func find_value(id: i32) (null | i32) {
     return null
 }
 
-// is keyword — shorthand for @type(result) == null
+// is keyword — check if result is null
 func value_or_default(id: i32) i32 {
     const result: (null | i32) = find_value(id)
     if(result is null) {
@@ -201,7 +201,7 @@ func value_or_default(id: i32) i32 {
 func nullable_var_demo() i32 {
     var x: (null | i32) = null
     x = 42
-    if(@type(x) == null) {
+    if(x is null) {
         return 0
     }
     return x.i32
@@ -271,6 +271,23 @@ func tuple_demo() i32 {
     return s + min + max
 }
 
+// ─── Integer Overflow ─────────────────────────────────────────────────────────
+
+// wrap(a op b) — explicit wrapping arithmetic, documents intent
+func wrap_add(a: i32, b: i32) i32 {
+    return wrap(a + b)
+}
+
+// sat(a op b) — saturating arithmetic, clamps to min/max instead of wrapping
+func sat_add(a: i32, b: i32) i32 {
+    return sat(a + b)
+}
+
+// overflow(a op b) — returns (Error | T), must be handled
+func checked_add(a: i32, b: i32) (Error | i32) {
+    return overflow(a + b)
+}
+
 // ─── Compound Assignment ─────────────────────────────────────────────────────
 
 // += -= *= /=
@@ -287,33 +304,33 @@ func compound_demo() i32 {
 
 // test blocks with descriptions
 test "add works" {
-    @assert(add(2, 3) == 5)
+    assert(add(2, 3) == 5)
 }
 
 test "fibonacci" {
-    @assert(fibonacci(10) == 55)
+    assert(fibonacci(10) == 55)
 }
 
 test "compound assignment" {
-    @assert(compound_demo() == 19)
+    assert(compound_demo() == 19)
 }
 
 test "struct methods" {
     var p: Player = Player.create("test")
-    @assert(p.is_alive())
+    assert(p.is_alive())
     p.take_damage(50.0)
-    @assert(p.is_alive())
+    assert(p.is_alive())
 }
 
 test "error handling" {
-    @assert(divide_or_default(10, 2) == 5)
-    @assert(divide_or_default(10, 0) == 0)
+    assert(divide_or_default(10, 2) == 5)
+    assert(divide_or_default(10, 0) == 0)
 }
 
 test "null handling" {
-    @assert(value_or_default(5) == 50)
-    @assert(value_or_default(0) == 0)
-    @assert(nullable_var_demo() == 42)
+    assert(value_or_default(5) == 50)
+    assert(value_or_default(0) == 0)
+    assert(nullable_var_demo() == 42)
 }
 
 // ─── Pointers ────────────────────────────────────────────────
@@ -333,9 +350,9 @@ func read_via_rawptr(n: i32) i32 {
 }
 
 test "safe pointer" {
-    @assert(read_via_ptr(42) == 42)
+    assert(read_via_ptr(42) == 42)
 }
 
 test "raw pointer" {
-    @assert(read_via_rawptr(99) == 99)
+    assert(read_via_rawptr(99) == 99)
 }

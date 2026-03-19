@@ -36,6 +36,8 @@ pub const CodeGen = struct {
     heap_single_vars: std.StringHashMapUnmanaged([]const u8), // heap singles: var → allocator name
     in_test_block: bool, // inside a test { } block — @assert uses std.testing.expect
     destruct_counter: usize, // unique index for destructuring temp vars
+    warned_rawptr: bool,     // RawPtr/VolatilePtr warning printed once per module
+    module_name: []const u8, // current module name — used for extern re-exports
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter, is_debug: bool) CodeGen {
         return .{
@@ -55,6 +57,8 @@ pub const CodeGen = struct {
             .heap_single_vars = .{},
             .in_test_block = false,
             .destruct_counter = 0,
+            .warned_rawptr = false,
+            .module_name = "",
         };
     }
 
@@ -128,6 +132,7 @@ pub const CodeGen = struct {
     /// Generate Zig source from a program AST
     pub fn generate(self: *CodeGen, ast: *parser.Node, module_name: []const u8) !void {
         if (ast.* != .program) return;
+        self.module_name = module_name;
 
         // File header
         try self.writeFmt("// generated from module {s} — do not edit\n", .{module_name});
@@ -161,6 +166,7 @@ pub const CodeGen = struct {
         if (ast.* != .program) return false;
         for (ast.program.top_level) |node| {
             if (nodeContainsErrorUnion(node)) return true;
+            if (nodeUsesOverflow(node)) return true;
         }
         return false;
     }
@@ -289,8 +295,11 @@ pub const CodeGen = struct {
     // ============================================================
 
     fn generateFunc(self: *CodeGen, f: parser.FuncDecl) anyerror!void {
-        // extern func — implementation in paired .zig file, emit nothing
-        if (f.is_extern) return;
+        // extern func — re-export from paired sidecar file
+        if (f.is_extern) {
+            try self.writeLineFmt("pub const {s} = @import(\"{s}_extern.zig\").{s};", .{ f.name, self.module_name, f.name });
+            return;
+        }
 
         // Track if this function returns an error or null union
         const prev_error = self.in_error_union_func;
@@ -905,6 +914,19 @@ pub const CodeGen = struct {
                 try self.generateBlock(d.body);
             },
             .match_stmt => |m| {
+                // String match — Zig has no string switch, desugar to if/else chain
+                const is_string_match = blk: {
+                    for (m.arms) |arm| {
+                        if (arm.* == .match_arm and arm.match_arm.pattern.* == .string_literal)
+                            break :blk true;
+                    }
+                    break :blk false;
+                };
+
+                if (is_string_match) {
+                    try self.generateStringMatch(m);
+                } else {
+
                 try self.write("switch (");
                 // self in a method is *T in Zig — must dereference for switch
                 if (m.value.* == .identifier and std.mem.eql(u8, m.value.identifier, "self")) {
@@ -924,6 +946,12 @@ pub const CodeGen = struct {
                         {
                             has_wildcard = true;
                             try self.write("else");
+                        } else if (arm.match_arm.pattern.* == .range_expr) {
+                            // Range pattern: 4..8 in Kodr → 4...8 in Zig switch (inclusive)
+                            const r = arm.match_arm.pattern.range_expr;
+                            try self.generateExpr(r.left);
+                            try self.write("...");
+                            try self.generateExpr(r.right);
                         } else {
                             try self.generateExpr(arm.match_arm.pattern);
                         }
@@ -952,18 +980,10 @@ pub const CodeGen = struct {
                 self.indent -= 1;
                 try self.writeIndent();
                 try self.write("}");
+                } // close else (non-string match)
             },
-            .label_stmt => |name| {
-                try self.writeFmt("{s}:", .{name});
-            },
-            .break_stmt => |label| {
-                if (label) |l| try self.writeFmt("break :{s};", .{l})
-                else try self.write("break;");
-            },
-            .continue_stmt => |label| {
-                if (label) |l| try self.writeFmt("continue :{s};", .{l})
-                else try self.write("continue;");
-            },
+            .break_stmt => try self.write("break;"),
+            .continue_stmt => try self.write("continue;"),
             .assignment => |a| {
                 if (std.mem.eql(u8, a.op, "/=")) {
                     // x /= y → x = @divTrunc(x, y)
@@ -1068,8 +1088,8 @@ pub const CodeGen = struct {
                 try self.write("}");
             },
             .binary_expr => |b| {
-                // @type(x) == Error → x == .err
-                // @type(x) == null  → x == .none
+                // `x is Error` → x == .err
+                // `x is null`  → x == .none
                 if (std.mem.eql(u8, b.op, "==") and
                     b.left.* == .compiler_func and
                     std.mem.eql(u8, b.left.compiler_func.name, "type") and
@@ -1121,6 +1141,20 @@ pub const CodeGen = struct {
                 try self.write(")");
             },
             .call_expr => |c| {
+                // overflow/wrap/sat builtins
+                if (c.callee.* == .identifier and c.args.len == 1) {
+                    const callee_name = c.callee.identifier;
+                    if (std.mem.eql(u8, callee_name, "wrap")) {
+                        try self.generateWrapExpr(c.args[0]);
+                        return;
+                    } else if (std.mem.eql(u8, callee_name, "sat")) {
+                        try self.generateSatExpr(c.args[0]);
+                        return;
+                    } else if (std.mem.eql(u8, callee_name, "overflow")) {
+                        try self.generateOverflowExpr(c.args[0]);
+                        return;
+                    }
+                }
                 // Allocator method calls: a.alloc(), a.free(), a.freeAll()
                 if (c.callee.* == .field_expr) {
                     const fe = c.callee.field_expr;
@@ -1305,14 +1339,124 @@ pub const CodeGen = struct {
         }
     }
 
+    /// Desugar a string match into an if/else chain.
+    /// match s { "hello" => { } "world" => { } _ => { } }
+    /// → if (std.mem.eql(u8, s, "hello")) { } else if (...) { } else { }
+    fn generateStringMatch(self: *CodeGen, m: parser.MatchStmt) anyerror!void {
+        var first = true;
+        var wildcard_body: ?*parser.Node = null;
+
+        for (m.arms) |arm| {
+            if (arm.* != .match_arm) continue;
+            const pat = arm.match_arm.pattern;
+            const body = arm.match_arm.body;
+
+            // Wildcard (_) — save for the final else
+            if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, "_")) {
+                wildcard_body = body;
+                continue;
+            }
+
+            if (first) {
+                try self.write("if (std.mem.eql(u8, ");
+                first = false;
+            } else {
+                try self.write(" else if (std.mem.eql(u8, ");
+            }
+
+            // The value being matched
+            if (m.value.* == .identifier and std.mem.eql(u8, m.value.identifier, "self")) {
+                try self.write("self.*");
+            } else {
+                try self.generateExpr(m.value);
+            }
+            try self.write(", ");
+            try self.generateExpr(pat);
+            try self.write(")) ");
+            try self.generateBlock(body);
+        }
+
+        if (wildcard_body) |wb| {
+            if (first) {
+                // All arms were wildcards — just emit the body
+                try self.generateBlock(wb);
+            } else {
+                try self.write(" else ");
+                try self.generateBlock(wb);
+            }
+        } else if (!first) {
+            // No wildcard — close with empty else to be safe
+            try self.write(" else {}");
+        }
+    }
+
+    fn generateWrapExpr(self: *CodeGen, arg: *parser.Node) anyerror!void {
+        if (arg.* == .binary_expr) {
+            const b = arg.binary_expr;
+            const wrap_op: ?[]const u8 =
+                if (std.mem.eql(u8, b.op, "+")) "+%"
+                else if (std.mem.eql(u8, b.op, "-")) "-%"
+                else if (std.mem.eql(u8, b.op, "*")) "*%"
+                else null;
+            if (wrap_op) |op| {
+                try self.generateExpr(b.left);
+                try self.writeFmt(" {s} ", .{op});
+                try self.generateExpr(b.right);
+                return;
+            }
+        }
+        try self.generateExpr(arg);
+    }
+
+    fn generateSatExpr(self: *CodeGen, arg: *parser.Node) anyerror!void {
+        if (arg.* == .binary_expr) {
+            const b = arg.binary_expr;
+            const sat_op: ?[]const u8 =
+                if (std.mem.eql(u8, b.op, "+")) "+|"
+                else if (std.mem.eql(u8, b.op, "-")) "-|"
+                else if (std.mem.eql(u8, b.op, "*")) "*|"
+                else null;
+            if (sat_op) |op| {
+                try self.generateExpr(b.left);
+                try self.writeFmt(" {s} ", .{op});
+                try self.generateExpr(b.right);
+                return;
+            }
+        }
+        try self.generateExpr(arg);
+    }
+
+    fn generateOverflowExpr(self: *CodeGen, arg: *parser.Node) anyerror!void {
+        if (arg.* == .binary_expr) {
+            const b = arg.binary_expr;
+            const builtin_name: ?[]const u8 =
+                if (std.mem.eql(u8, b.op, "+")) "@addWithOverflow"
+                else if (std.mem.eql(u8, b.op, "-")) "@subWithOverflow"
+                else if (std.mem.eql(u8, b.op, "*")) "@mulWithOverflow"
+                else null;
+            if (builtin_name) |builtin| {
+                // overflow(a + b) → (blk: { const _ov = @addWithOverflow(a, b);
+                //   if (_ov[1] != 0) break :blk KodrResult(@TypeOf(a)){ .err = .{ .message = "overflow" } }
+                //   else break :blk KodrResult(@TypeOf(a)){ .ok = _ov[0] }; })
+                try self.write("(blk: { const _ov = ");
+                try self.writeFmt("{s}(", .{builtin});
+                try self.generateExpr(b.left);
+                try self.write(", ");
+                try self.generateExpr(b.right);
+                try self.write("); if (_ov[1] != 0) break :blk KodrResult(@TypeOf(");
+                try self.generateExpr(b.left);
+                try self.write(")){ .err = .{ .message = \"overflow\" } } else break :blk KodrResult(@TypeOf(");
+                try self.generateExpr(b.left);
+                try self.write(")){ .ok = _ov[0] }; })");
+                return;
+            }
+        }
+        try self.generateExpr(arg);
+    }
+
     fn generateCompilerFunc(self: *CodeGen, cf: parser.CompilerFunc) anyerror!void {
         // Map Kodr @functions to Zig equivalents
-        if (std.mem.eql(u8, cf.name, "type")) {
-            // @type(x) → @TypeOf(x)
-            try self.write("@TypeOf(");
-            if (cf.args.len > 0) try self.generateExpr(cf.args[0]);
-            try self.write(")");
-        } else if (std.mem.eql(u8, cf.name, "typename")) {
+        if (std.mem.eql(u8, cf.name, "typename")) {
             // @typename(x) → @typeName(@TypeOf(x))
             try self.write("@typeName(@TypeOf(");
             if (cf.args.len > 0) try self.generateExpr(cf.args[0]);
@@ -1395,7 +1539,10 @@ pub const CodeGen = struct {
             // Ptr(T, &x) → &x  (safe const pointer, ownership tracked)
             try self.generateExpr(p.addr_arg);
         } else if (std.mem.eql(u8, p.kind, "RawPtr")) {
-            std.debug.print("WARNING: RawPtr used — unsafe, no bounds checking\n", .{});
+            if (!self.warned_rawptr) {
+                std.debug.print("WARNING: RawPtr used — unsafe, no bounds checking\n", .{});
+                self.warned_rawptr = true;
+            }
             const zig_type = try self.typeToZig(p.type_arg);
             if (p.addr_arg.* == .borrow_expr) {
                 // RawPtr(T, &x) → @as([*]T, @ptrCast(&x))
@@ -1409,7 +1556,10 @@ pub const CodeGen = struct {
                 try self.write("))");
             }
         } else if (std.mem.eql(u8, p.kind, "VolatilePtr")) {
-            std.debug.print("WARNING: VolatilePtr used — unsafe, hardware access only\n", .{});
+            if (!self.warned_rawptr) {
+                std.debug.print("WARNING: VolatilePtr used — unsafe, hardware access only\n", .{});
+                self.warned_rawptr = true;
+            }
             const zig_type = try self.typeToZig(p.type_arg);
             if (p.addr_arg.* == .borrow_expr) {
                 // VolatilePtr(T, &x) → @as(*volatile T, @ptrCast(&x))
@@ -1440,6 +1590,7 @@ pub const CodeGen = struct {
         return switch (node.*) {
             .type_named => |name| {
                 if (std.mem.eql(u8, name, "Error")) return "KodrError";
+                if (std.mem.eql(u8, name, "mem.Allocator")) return "std.mem.Allocator";
                 return builtins.ZigMapping.primitiveToZig(name);
             },
             .type_slice => |elem| blk: {
@@ -1568,6 +1719,31 @@ fn isResultValueField(name: []const u8) bool {
     // PascalCase user type names (first char uppercase, not a field name)
     if (name.len > 0 and name[0] >= 'A' and name[0] <= 'Z') return true;
     return false;
+}
+
+/// Check if an AST node (or its descendants) contains an overflow() call
+fn nodeUsesOverflow(node: *parser.Node) bool {
+    return switch (node.*) {
+        .call_expr => |c| blk: {
+            if (c.callee.* == .identifier and std.mem.eql(u8, c.callee.identifier, "overflow")) break :blk true;
+            for (c.args) |a| { if (nodeUsesOverflow(a)) break :blk true; }
+            break :blk false;
+        },
+        .func_decl => |f| nodeUsesOverflow(f.body),
+        .struct_decl => |s| blk: {
+            for (s.members) |m| { if (nodeUsesOverflow(m)) break :blk true; }
+            break :blk false;
+        },
+        .block => |b| blk: {
+            for (b.statements) |s| { if (nodeUsesOverflow(s)) break :blk true; }
+            break :blk false;
+        },
+        .var_decl, .const_decl => |v| nodeUsesOverflow(v.value),
+        .return_stmt => |r| if (r.value) |v| nodeUsesOverflow(v) else false,
+        .if_stmt => |i| nodeUsesOverflow(i.condition) or nodeUsesOverflow(i.then_block) or
+            if (i.else_block) |eb| nodeUsesOverflow(eb) else false,
+        else => false,
+    };
 }
 
 /// Check if an AST node (or its children) contains an Error union type
@@ -1750,7 +1926,7 @@ test "codegen - type to zig" {
     try std.testing.expectEqualStrings("[]i32", slice_zig);
 }
 
-test "codegen - extern func emits nothing" {
+test "codegen - extern func emits re-export" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
@@ -1797,9 +1973,11 @@ test "codegen - extern func emits nothing" {
     try gen.generate(prog, "console");
     try std.testing.expect(!reporter.hasErrors());
 
-    // extern func should produce no function definition in output
+    // extern func should re-export from sidecar, not emit a function definition
     const output = gen.getOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "fn print(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "console_extern.zig") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "pub const print =") != null);
 }
 
 test "codegen - scoped import generates correct @import" {
@@ -1841,4 +2019,81 @@ test "codegen - scoped import generates correct @import" {
     const output = gen.getOutput();
     // alias defaults to module name "console", not scope "std"
     try std.testing.expect(std.mem.indexOf(u8, output, "const console = @import(\"console.zig\")") != null);
+}
+
+test "codegen - overflow helpers wrap/sat/overflow" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Build: func check(x: i32, y: i32) i32 { return wrap(x + y) }
+    const id_x = try a.create(parser.Node);
+    id_x.* = .{ .identifier = "x" };
+    const id_y = try a.create(parser.Node);
+    id_y.* = .{ .identifier = "y" };
+    const id_x2 = try a.create(parser.Node);
+    id_x2.* = .{ .identifier = "x" };
+    const id_y2 = try a.create(parser.Node);
+    id_y2.* = .{ .identifier = "y" };
+    const id_x3 = try a.create(parser.Node);
+    id_x3.* = .{ .identifier = "x" };
+    const id_y3 = try a.create(parser.Node);
+    id_y3.* = .{ .identifier = "y" };
+
+    const bin_add = try a.create(parser.Node);
+    bin_add.* = .{ .binary_expr = .{ .op = "+", .left = id_x, .right = id_y } };
+    const bin_add2 = try a.create(parser.Node);
+    bin_add2.* = .{ .binary_expr = .{ .op = "+", .left = id_x2, .right = id_y2 } };
+    const bin_add3 = try a.create(parser.Node);
+    bin_add3.* = .{ .binary_expr = .{ .op = "+", .left = id_x3, .right = id_y3 } };
+
+    // wrap(x + y)
+    const wrap_callee = try a.create(parser.Node);
+    wrap_callee.* = .{ .identifier = "wrap" };
+    const wrap_args = try a.alloc(*parser.Node, 1);
+    wrap_args[0] = bin_add;
+    const wrap_call = try a.create(parser.Node);
+    wrap_call.* = .{ .call_expr = .{ .callee = wrap_callee, .args = wrap_args, .arg_names = &.{} } };
+
+    // sat(x + y)
+    const sat_callee = try a.create(parser.Node);
+    sat_callee.* = .{ .identifier = "sat" };
+    const sat_args = try a.alloc(*parser.Node, 1);
+    sat_args[0] = bin_add2;
+    const sat_call = try a.create(parser.Node);
+    sat_call.* = .{ .call_expr = .{ .callee = sat_callee, .args = sat_args, .arg_names = &.{} } };
+
+    // overflow(x + y)
+    const ov_callee = try a.create(parser.Node);
+    ov_callee.* = .{ .identifier = "overflow" };
+    const ov_args = try a.alloc(*parser.Node, 1);
+    ov_args[0] = bin_add3;
+    const ov_call = try a.create(parser.Node);
+    ov_call.* = .{ .call_expr = .{ .callee = ov_callee, .args = ov_args, .arg_names = &.{} } };
+
+    // Verify wrap codegen
+    gen.output.clearRetainingCapacity();
+    try gen.generateExpr(wrap_call);
+    const wrap_out = gen.getOutput();
+    try std.testing.expect(std.mem.indexOf(u8, wrap_out, "+%") != null);
+
+    // Verify sat codegen
+    gen.output.clearRetainingCapacity();
+    try gen.generateExpr(sat_call);
+    const sat_out = gen.getOutput();
+    try std.testing.expect(std.mem.indexOf(u8, sat_out, "+|") != null);
+
+    // Verify overflow codegen uses @addWithOverflow and KodrResult
+    gen.output.clearRetainingCapacity();
+    try gen.generateExpr(ov_call);
+    const ov_out = gen.getOutput();
+    try std.testing.expect(std.mem.indexOf(u8, ov_out, "@addWithOverflow") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ov_out, "KodrResult") != null);
 }

@@ -103,37 +103,38 @@ func count_odd(limit: i32) i32 {
     return count
 }
 
-// ─── Labels ─────────────────────────────────────────────────────────────
+// ─── Nested loops ────────────────────────────────────────────────────────
 
-// labeled break exits an outer loop from inside an inner loop
+// to break out of a nested loop, extract the inner logic into a func and use return
+func find_pair_inner(limit: i32, i: i32) i32 {
+    var j: i32 = 0
+    while(j < limit) {
+        if(i + j == 5) { return i * 10 + j }
+        j += 1
+    }
+    return 0 - 1
+}
+
 func find_pair(limit: i32) i32 {
-    var result: i32 = 0
-    label outer
     var i: i32 = 0
     while(i < limit) {
-        var j: i32 = 0
-        while(j < limit) {
-            if(i + j == 5) {
-                result = i * 10 + j
-                break outer
-            }
-            j += 1
-        }
+        const r = find_pair_inner(limit, i)
+        if(r != 0 - 1) { return r }
         i += 1
     }
-    return result
+    return 0 - 1
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 test "max" {
-    @assert(max(3, 7) == 7)
+    assert(max(3, 7) == 7)
 }
 
 test "countdown" {
-    @assert(countdown(5) == 15)
+    assert(countdown(5) == 15)
 }
 
 test "with cleanup" {
-    @assert(with_cleanup() == 42)
+    assert(with_cleanup() == 42)
 }

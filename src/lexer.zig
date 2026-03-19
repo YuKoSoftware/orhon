@@ -42,14 +42,21 @@ pub const TokenKind = enum {
     kw_not,
     kw_main,
     kw_as,
-    kw_type,
-    kw_label,
     kw_break,
     kw_continue,
     kw_true,
     kw_false,
     kw_extern,
     kw_is,
+    kw_cast,
+    kw_copy,
+    kw_move,
+    kw_swap,
+    kw_assert,
+    kw_size,
+    kw_align,
+    kw_typename,
+    kw_typeid,
 
     // Punctuation
     lparen,     // (
@@ -67,7 +74,6 @@ pub const TokenKind = enum {
     arrow,      // =>
     pipe,       // |
     ampersand,  // &
-    at,         // @
 
     // Operators
     plus,       // +
@@ -135,14 +141,21 @@ const KEYWORDS = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "not",      .kw_not },
     .{ "main",     .kw_main },
     .{ "as",       .kw_as },
-    .{ "type",     .kw_type },
-    .{ "label",    .kw_label },
     .{ "break",    .kw_break },
     .{ "continue", .kw_continue },
     .{ "true",     .kw_true },
     .{ "false",    .kw_false },
     .{ "extern",   .kw_extern },
     .{ "is",       .kw_is },
+    .{ "cast",     .kw_cast },
+    .{ "copy",     .kw_copy },
+    .{ "move",     .kw_move },
+    .{ "swap",     .kw_swap },
+    .{ "assert",   .kw_assert },
+    .{ "size",     .kw_size },
+    .{ "align",    .kw_align },
+    .{ "typename", .kw_typename },
+    .{ "typeid",   .kw_typeid },
 });
 
 /// The lexer state machine
@@ -365,7 +378,6 @@ pub const Lexer = struct {
                 break :blk .colon;
             },
             ';' => .semicolon,
-            '@' => .at,
             '^' => .caret,
             '%' => .percent,
             '*' => blk: {

@@ -9,4 +9,5 @@ import std::console
 
 func main() void {
     console.println("hello kodr !")
+    console.printPrefixed("info", "ready")
 }

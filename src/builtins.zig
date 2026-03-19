@@ -19,7 +19,6 @@ pub const BUILTIN_TYPES = [_][]const u8{
 
 /// All compiler function names (prefixed with @ in Kodr source)
 pub const COMPILER_FUNCS = [_][]const u8{
-    "type",
     "typename",
     "typeid",
     "cast",
@@ -155,7 +154,6 @@ test "builtin type detection" {
 }
 
 test "compiler func detection" {
-    try std.testing.expect(isCompilerFunc("type"));
     try std.testing.expect(isCompilerFunc("cast"));
     try std.testing.expect(!isCompilerFunc("print"));
 }

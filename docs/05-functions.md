@@ -48,9 +48,6 @@ var pos: Vec2(f32) = Vec2(f32)(x: 1.0, y: 2.0)
 var p: Pair(i32, String) = Pair(i32, String)(first: 42, second: "hello")
 ```
 
-Note: `type` as a keyword is distinct from `@type()` as a compiler function:
-- `type` — return type annotation meaning "this function produces a type"
-- `@type(x)` — compiler function meaning "give me the type of this value"
 
 ## `compt for` — Compile-time Loop Unrolling
 `compt for` unrolls a loop at compile time. Maps to Zig's `inline for`. Used for generating code per type or per item in a compile-time known collection.
@@ -78,86 +75,65 @@ For callback patterns, pass context as extra arguments or wrap state in a struct
 
 ## Compiler Functions
 
-Compiler functions are instructions to the compiler — not real function calls. Prefixed with `@` to make this distinction explicit. Zero runtime cost — they disappear entirely in the output binary.
+Compiler functions are reserved keywords that look like function calls. Zero runtime cost — they disappear entirely in the output binary. Cannot be shadowed or redefined by user code.
 
 ```
-@type(x)                 // returns the actual type of x — usable in type positions
-@typename(x)             // returns the type name as a String — usable for display
-@typeid(x)               // returns unique compiler assigned integer ID — fast identity check
-@cast(T, x)              // converts x to target type T — always explicit
-@copy(x)                 // explicitly copies a non-primitive, original stays valid
-@move(x)                 // explicitly moves a value, original becomes invalid
-@swap(x, y)              // swaps ownership between two variables
-@assert(x)               // assertion, checked at compile time or test time
-@assert(x, "message")    // with custom failure message
-@size(x)                 // returns size of type or value in bytes
-@align(x)                // returns alignment requirement of type or value in bytes
+typename(x)             // returns the type name as a String — usable for display
+typeid(x)               // returns unique compiler assigned integer ID — fast identity check
+cast(T, x)              // converts x to target type T — always explicit
+copy(x)                 // explicitly copies a non-primitive, original stays valid
+move(x)                 // explicitly moves a value, original becomes invalid
+swap(x, y)              // swaps ownership between two variables
+assert(x)               // assertion, checked at compile time or test time
+assert(x, "message")    // with custom failure message
+size(x)                 // returns size of type or value in bytes
+align(x)                // returns alignment requirement of type or value in bytes
 ```
 
-### `@type` — actual type
-Returns the actual type — usable anywhere a type is expected, including declarations and function signatures:
-```
-var x: @type(some_var) = some_var           // use inferred type in declaration
-func process(arg: @type(some_var)) void { } // use inferred type in signature
-
-var result: (Error | i32) = divide(10, 0)
-if(@type(result) == Error) {
-    console.print(result.Error)
-}
-```
-
-For type comparison, use the `is` / `is not` keywords — see the operators doc:
-```
-result is Error        // sugar for @type(result) == Error
-result is null         // sugar for @type(result) == null
-result is not Error    // sugar for @type(result) != Error
-result is not null     // sugar for @type(result) != null
-```
-
-### `@typename` — type name as `String`
+### `typename` — type name as `String`
 Returns the name of the type as a `String`. Useful for debugging, logging, and serialization. Cannot be used in type positions.
 ```
-@typename(x)              // "Player"
-@typename(42)             // "i32"
-@typename(Error("x"))     // "Error"
-console.print(@typename(x))
+typename(x)              // "Player"
+typename(42)             // "i32"
+typename(Error("x"))     // "Error"
+console.print(typename(x))
 ```
 
-### `@typeid` — unique type identity
+### `typeid` — unique type identity
 Returns a compiler assigned unique integer ID for the type. Fast, unambiguous. Two structurally identical types with different names have different IDs.
 ```
-@typeid(p1) == @typeid(p2)          // true only if exact same type
-@typeid(Point) == @typeid(Velocity) // false — different types despite identical structure
+typeid(p1) == typeid(p2)          // true only if exact same type
+typeid(Point) == typeid(Velocity) // false — different types despite identical structure
 ```
 
-### `@cast` — type conversion
+### `cast` — type conversion
 Target type is always explicit — no inference, no guessing:
 ```
 var x: i32 = 42
-var y: i64 = @cast(i64, x)    // explicit target type
-var z: f32 = @cast(f32, x)    // explicit conversion
+var y: i64 = cast(i64, x)    // explicit target type
+var z: f32 = cast(f32, x)    // explicit conversion
 func add(x: i64) i64 { }
-add(@cast(i64, my_i32))       // explicit at call site
+add(cast(i64, my_i32))       // explicit at call site
 ```
 Widening casts are always safe. Narrowing casts emit a compiler warning.
 
-### `@size` — size in bytes
+### `size` — size in bytes
 Returns the size of a type or value in bytes. Resolved at compile time whenever possible.
 ```
-@size(i32)          // 4
-@size(f64)          // 8
-@size(my_struct)    // size of struct instance in bytes
-@size([10]i32)      // 40 — fixed array, compt value
-@size([]i32)        // size of slice header, not the data
-@size(i32) * 8      // 32 — bits, just multiply by 8
+size(i32)          // 4
+size(f64)          // 8
+size(my_struct)    // size of struct instance in bytes
+size([10]i32)      // 40 — fixed array, compt value
+size([]i32)        // size of slice header, not the data
+size(i32) * 8      // 32 — bits, just multiply by 8
 ```
 
-### `@align` — alignment in bytes
+### `align` — alignment in bytes
 Returns the alignment requirement of a type or value in bytes. Essential for custom allocators, C interop, hardware access, and SIMD operations.
 ```
-@align(i32)         // 4 — must be on a 4 byte boundary
-@align(f64)         // 8
-@align(MyStruct)    // largest alignment of any field in the struct
+align(i32)         // 4 — must be on a 4 byte boundary
+align(f64)         // 8
+align(MyStruct)    // largest alignment of any field in the struct
 ```
 
 ---

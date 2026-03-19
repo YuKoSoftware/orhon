@@ -215,16 +215,6 @@ func main() void {
         console.println(i)
     }
 
-    // labeled break
-    label outerLoop
-    for([1, 2, 3]) |a| {
-        for([4, 5, 6]) |b| {
-            if(a == 2 and b == 5) {
-                break outerLoop
-            }
-        }
-    }
-
     // --- FIRST CLASS FUNCTIONS ---
     applyToAll([1, 2, 3, 4, 5], double)
 
@@ -232,10 +222,10 @@ func main() void {
     console.println(fibonacci(10))
 
     // --- COMPILER FUNCTIONS ---
-    console.println(@size(Player))
-    console.println(@align(f64))
-    console.println(@typename(p))
-    console.println(@typeid(p))
+    console.println(size(Player))
+    console.println(align(f64))
+    console.println(typename(p))
+    console.println(typeid(p))
 
     // --- THREADING ---
     var data: []i32 = [1, 2, 3, 4, 5, 6]
@@ -277,19 +267,19 @@ func main() void {
 test"player takes damage correctly" {
     var p = Player.create("test")
     p.takeDamage(50.0)
-    @assert(p.health == 50.0)
-    @assert(p.isAlive())
+    assert(p.health == 50.0)
+    assert(p.isAlive())
 }
 
 test"divide returns error on zero" {
     var result = divide(10, 0)
-    @assert(result is Error)
-    @assert(result.Error == ErrDivByZero)
+    assert(result is Error)
+    assert(result.Error == ErrDivByZero)
 }
 
 test"fibonacci is correct" {
-    @assert(fibonacci(0) == 0)
-    @assert(fibonacci(1) == 1)
-    @assert(fibonacci(10) == 55)
+    assert(fibonacci(0) == 0)
+    assert(fibonacci(1) == 1)
+    assert(fibonacci(10) == 55)
 }
 ```

@@ -80,8 +80,8 @@ func main() void {
 test"damage reduces health" {
     var p = Player(name: "test")
     p.takeDamage(50.0)
-    @assert(p.health == 50.0)
-    @assert(p.isAlive())
+    assert(p.health == 50.0)
+    assert(p.isAlive())
 }
 ```
 

@@ -265,5 +265,17 @@ func main() void {
         console.print("FAIL typeid_diff\n")
     }
 
+    if(tester.match_range(3) == 1 and tester.match_range(5) == 2 and tester.match_range(7) == 0) {
+        console.print("PASS match_range\n")
+    } else {
+        console.print("FAIL match_range\n")
+    }
+
+    if(tester.match_string("hello") == 1 and tester.match_string("world") == 2 and tester.match_string("x") == 0) {
+        console.print("PASS match_string\n")
+    } else {
+        console.print("FAIL match_string\n")
+    }
+
     console.print("TESTER:DONE\n")
 }

@@ -5,8 +5,8 @@ Tests declared with the `test` keyword. Description string directly after `test`
 ```
 test"adds two numbers correctly" {
     var result: i32 = add(1, 2)
-    @assert(result == 3)
-    @assert(result == 3, "expected 3")
+    assert(result == 3)
+    assert(result == 3, "expected 3")
 }
 ```
 

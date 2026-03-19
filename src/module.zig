@@ -306,7 +306,7 @@ pub const Resolver = struct {
                     if (sidecar_exists) {
                         try cache.ensureGeneratedDir();
                         const sidecar_dst = try std.fmt.allocPrint(self.allocator,
-                            "{s}/{s}.zig", .{ cache.GENERATED_DIR, decl.path });
+                            "{s}/{s}_extern.zig", .{ cache.GENERATED_DIR, decl.path });
                         defer self.allocator.free(sidecar_dst);
                         try std.fs.cwd().copyFile(sidecar_src, std.fs.cwd(), sidecar_dst, .{});
                     }

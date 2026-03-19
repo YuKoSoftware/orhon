@@ -383,11 +383,11 @@ pub const TypeResolver = struct {
 
             .compiler_func => |cf| {
                 for (cf.args) |arg| _ = try self.resolveExpr(arg, scope);
-                // @type returns a type, @size returns usize, etc.
+                // size/align return usize, typeid returns usize, typename returns String
                 if (std.mem.eql(u8, cf.name, "size") or std.mem.eql(u8, cf.name, "align")) return "usize";
                 if (std.mem.eql(u8, cf.name, "typeid")) return "usize";
                 if (std.mem.eql(u8, cf.name, "typename")) return "String";
-                return "type";
+                return "unknown";
             },
 
             .array_literal => "[]inferred",
@@ -408,7 +408,6 @@ pub const TypeResolver = struct {
                     std.mem.eql(u8, name, "any") or
                     std.mem.eql(u8, name, "void") or
                     std.mem.eql(u8, name, "null") or
-                    std.mem.eql(u8, name, "type") or
                     scope.lookup(name) != null;
 
                 if (!is_known) {

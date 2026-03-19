@@ -42,27 +42,22 @@ for(my_array) |value| {
 }
 ```
 
-## Labels — Named Loop Control
+## Breaking Out of Nested Loops
 
-`label` placed directly before a loop. Used with `break` and `continue` to control nested loops. Labels are compile time only — zero runtime overhead, disappear entirely in output binary.
+Labels are not supported. To break out of a nested loop early, extract the inner logic into a function and use `return`:
 
 ```
-label outerLoop
-for(array_a) |a| {
-    label innerLoop
-    for(array_b) |b| {
-        if(someCondition) {
-            break outerLoop      // exit outer loop entirely
+func findZero(items: []Item) bool {
+    for(items) |item| {
+        for(item.values) |v| {
+            if(v == 0) { return true }
         }
-        if(otherCondition) {
-            continue outerLoop   // next iteration of outer loop
-        }
-        break innerLoop          // exit inner loop only
     }
+    return false
 }
 ```
 
-Hard compiler error if label name doesn't match any enclosing loop. No shadowing of label names allowed.
+`break label` and `continue label` are compiler errors.
 
 ---
 
@@ -92,28 +87,16 @@ match value {
 }
 ```
 
-### Type Matching
-`match` can match on `@type()` and on type parameters in `compt` functions. Always resolved at compile time — hard compiler error if used in a runtime context. Zero runtime overhead.
+### Type Checking in `compt` Functions
+
+Use `is` / `is not` to branch on type inside a `compt func`:
 
 ```
-// matching on @type() — compt resolved
-func process(val: any) void {
-    match @type(val) {
-        i32    => { console.print("integer") }
-        f32    => { console.print("float") }
-        String => { console.print("String") }
-        Player => { console.print("player") }
-        _      => { console.print("unknown") }
-    }
-}
-
-// matching on type parameter in compt function
-compt func describe(T: any) type {
-    match T {
-        i32 => { return @type(struct { value: i32, label: String }) }
-        f32 => { return @type(struct { value: f32, label: String }) }
-        _   => { }
-    }
+compt func describe(val: any) String {
+    if(val is i32) { return "integer" }
+    if(val is f32) { return "float" }
+    if(val is String) { return "String" }
+    return "unknown"
 }
 ```
 

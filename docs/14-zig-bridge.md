@@ -10,17 +10,17 @@ layouts. No need to duplicate that work in Kodr.
 ## How It Works
 
 A Kodr module can be paired with a hand-written `.zig` file that provides the actual
-implementation. The `.kodr` file declares the public interface using `extern func`.
+implementation. The `.kodr` file declares the interface using `extern func` — always implicitly public.
 The compiler emits nothing for `extern func` bodies — it uses the paired `.zig` directly.
 
 ```
 // console.kodr — public Kodr interface
 module console
 
-pub extern func print(msg: String) void
-pub extern func println(msg: String) void
-pub extern func debugPrint(msg: String) void
-pub extern func get() (Error | String)
+extern func print(msg: String) void
+extern func println(msg: String) void
+extern func debugPrint(msg: String) void
+extern func get() (Error | String)
 ```
 
 ```zig
@@ -52,7 +52,7 @@ func main() void {
 ## `extern func` Rules
 
 - `extern func` has a signature but no body — hard compiler error if body is present
-- Must be `pub` — extern functions are always part of a module's public interface
+- Always implicitly public — `pub extern func` is a compiler error (redundant)
 - The paired `.zig` file must exist alongside the `.kodr` file — hard compiler error if missing
 - The `.zig` function signature must match the Kodr declaration — mismatch is a Zig compile error
 
@@ -97,7 +97,7 @@ pub fn windowNew() *c.GtkWidget {
 // gtk.kodr — clean Kodr interface, no C visible
 module gtk
 
-pub extern func windowNew() Ptr(u8)
+extern func windowNew() Ptr(u8)
 ```
 
 ```

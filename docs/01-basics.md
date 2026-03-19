@@ -41,8 +41,9 @@ Every keyword in Kodr earns its place. No keyword exists for convenience alone.
 ```
 func, var, const, if, else, for, while, return, import, pub,
 match, struct, enum, defer, thread, null, void, compt,
-any, module, test, and, or, not, main, as, type, label,
-break, continue, true, false, extern, is
+any, module, test, and, or, not, main, as,
+break, continue, true, false, extern, is,
+cast, copy, move, swap, assert, size, align, typename, typeid
 ```
 
 ---

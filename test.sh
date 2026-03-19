@@ -224,7 +224,8 @@ else fail "generates main.zig"; fi
 if [ -f .kodr-cache/generated/example.zig ]; then pass "generates example.zig"
 else fail "generates example.zig"; fi
 
-if grep -q "pub fn print" .kodr-cache/generated/console.zig; then
+if grep -q "pub fn print" .kodr-cache/generated/console_extern.zig && \
+   grep -q "console_extern.zig" .kodr-cache/generated/console.zig; then
     pass "sidecar preserved"
 else
     fail "sidecar preserved"
@@ -233,6 +234,9 @@ fi
 BINOUT=$(./bin/testproj 2>&1)
 if echo "$BINOUT" | grep -q "hello kodr"; then pass "binary runs"
 else fail "binary runs" "$BINOUT"; fi
+
+if echo "$BINOUT" | grep -q "\[info\] ready"; then pass "mixed extern+kodr func (printPrefixed)"
+else fail "mixed extern+kodr func (printPrefixed)" "$BINOUT"; fi
 
 # ══════════════════════════════════════════════════════════════
 # STAGE 8: Incremental build
@@ -540,7 +544,7 @@ else
 fi
 
 # Check individual results
-for TEST_NAME in add sub factorial is_positive compound sum_to match match_default break_continue abs compt_func struct_instantiation default_fields default_override static_method mutable_method error_ok error_fail null_some null_none null_reassign enum_usage enum_method nested_scopes tuple tuple_destruct slice_for for_index for_range while_continue cast_int cast_float cast_float_to_int func_ptr func_ptr_var fixed_array array_index slice_expr raw_ptr safe_ptr typeid_same typeid_diff; do
+for TEST_NAME in add sub factorial is_positive compound sum_to match match_default break_continue abs compt_func struct_instantiation default_fields default_override static_method mutable_method error_ok error_fail null_some null_none null_reassign enum_usage enum_method nested_scopes tuple tuple_destruct slice_for for_index for_range while_continue cast_int cast_float cast_float_to_int func_ptr func_ptr_var fixed_array array_index slice_expr raw_ptr safe_ptr typeid_same typeid_diff match_range match_string; do
     if echo "$BINOUT" | grep -q "PASS $TEST_NAME"; then pass "runtime: $TEST_NAME"
     else fail "runtime: $TEST_NAME"; fi
 done
@@ -593,6 +597,46 @@ if echo "$NEG_OUT" | grep -qi "no anchor file"; then
     pass "rejects missing anchor file"
 else
     fail "rejects missing anchor file" "$NEG_OUT"
+fi
+
+# pub extern func must error (redundant)
+cd "$TESTDIR"
+mkdir -p neg_extern_pub/src
+cat > neg_extern_pub/src/main.kodr <<'KODR'
+module main
+main.name = "neg_extern_pub"
+main.version = Version(1, 0, 0)
+main.build = build.exe
+pub extern func do_thing() void
+func main() void {
+}
+KODR
+cd neg_extern_pub
+NEG_OUT=$("$KODR" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "redundant\|pub extern"; then
+    pass "rejects pub extern func (redundant)"
+else
+    fail "rejects pub extern func (redundant)" "$NEG_OUT"
+fi
+
+# missing extern sidecar
+cd "$TESTDIR"
+mkdir -p neg_extern/src
+cat > neg_extern/src/main.kodr <<'KODR'
+module main
+main.name = "neg_extern"
+main.version = Version(1, 0, 0)
+main.build = build.exe
+extern func do_thing() void
+func main() void {
+}
+KODR
+cd neg_extern
+NEG_OUT=$("$KODR" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "sidecar\|extern"; then
+    pass "rejects missing extern sidecar"
+else
+    fail "rejects missing extern sidecar" "$NEG_OUT"
 fi
 
 # ══════════════════════════════════════════════════════════════

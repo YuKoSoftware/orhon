@@ -124,7 +124,7 @@ Inline type alternatives. Defined with pipe-separated types in parentheses. Must
 const MyUnion = (i32 | f32)
 
 var x: MyUnion = 100
-@type(x) == i32    // true
+x is i32    // true
 ```
 
 Union values accessed via dot syntax with the type name:

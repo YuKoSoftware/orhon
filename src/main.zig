@@ -620,6 +620,46 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
         try mir_gen.generate(ast);
         if (reporter.hasErrors()) return null;
 
+        // ── Extern Sidecar Validation ──────────────────────────
+        // If the module has extern func declarations, a paired .zig sidecar
+        // must exist next to the anchor .kodr file.
+        if (collectExternFuncNames(ast, allocator)) |extern_names| {
+            defer {
+                for (extern_names) |n| allocator.free(n);
+                allocator.free(extern_names);
+            }
+            if (extern_names.len > 0) {
+                // Find the anchor file — the one whose stem matches the module name
+                var anchor_dir: ?[]const u8 = null;
+                for (mod_ptr.files) |file| {
+                    const stem = std.fs.path.stem(file);
+                    if (std.mem.eql(u8, stem, mod_name)) {
+                        anchor_dir = std.fs.path.dirname(file) orelse ".";
+                        break;
+                    }
+                }
+                const dir = anchor_dir orelse (if (mod_ptr.files.len > 0) std.fs.path.dirname(mod_ptr.files[0]) orelse "." else ".");
+                const sidecar_src = try std.fmt.allocPrint(allocator, "{s}/{s}.zig", .{ dir, mod_name });
+                defer allocator.free(sidecar_src);
+                std.fs.cwd().access(sidecar_src, .{}) catch {
+                    const first_name = extern_names[0];
+                    const msg = try std.fmt.allocPrint(allocator,
+                        "extern func '{s}': missing sidecar file '{s}'",
+                        .{ first_name, sidecar_src });
+                    defer allocator.free(msg);
+                    try reporter.report(.{ .message = msg });
+                };
+                if (!reporter.hasErrors()) {
+                    // Sidecar exists — copy as <mod>_extern.zig so generated <mod>.zig can @import it
+                    try cache.ensureGeneratedDir();
+                    const sidecar_dst = try std.fmt.allocPrint(allocator, "{s}/{s}_extern.zig", .{ cache.GENERATED_DIR, mod_name });
+                    defer allocator.free(sidecar_dst);
+                    try std.fs.cwd().copyFile(sidecar_src, std.fs.cwd(), sidecar_dst, .{});
+                }
+            }
+        } else |_| {}
+        if (reporter.hasErrors()) return null;
+
         // ── Pass 11: Zig Code Generation ───────────────────────
         const is_debug = cli.optimize == .debug;
         var cg = codegen.CodeGen.init(allocator, reporter, is_debug);
@@ -629,17 +669,8 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
         try cg.generate(ast, mod_name);
         if (reporter.hasErrors()) return null;
 
-        // Write generated .zig file to cache — but skip if a sidecar .zig
-        // was already copied (e.g. extern modules like console)
-        const gen_path = try std.fmt.allocPrint(allocator, "{s}/{s}.zig", .{ cache.GENERATED_DIR, mod_name });
-        defer allocator.free(gen_path);
-        const sidecar_exists = blk: {
-            std.fs.cwd().access(gen_path, .{}) catch break :blk false;
-            break :blk true;
-        };
-        if (!sidecar_exists) {
-            try cache.writeGeneratedZig(mod_name, cg.getOutput(), allocator);
-        }
+        // Write generated .zig file to cache
+        try cache.writeGeneratedZig(mod_name, cg.getOutput(), allocator);
 
         // Update timestamp cache
         for (mod_ptr.files) |file| {
@@ -753,6 +784,33 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
 
     const built = try runner.build(target_str, opt_str, root_module_name, binary_name);
     return if (built) try allocator.dupe(u8, binary_name) else null;
+}
+
+/// Collect the names of all extern func declarations in an AST.
+/// Returns an allocated slice of duped name strings, or an error.
+/// Caller must free each name and the slice itself.
+fn collectExternFuncNames(ast: *parser.Node, allocator: std.mem.Allocator) ![][]const u8 {
+    var names: std.ArrayListUnmanaged([]const u8) = .{};
+    errdefer {
+        for (names.items) |n| allocator.free(n);
+        names.deinit(allocator);
+    }
+    if (ast.* != .program) return names.toOwnedSlice(allocator);
+    for (ast.program.top_level) |node| {
+        switch (node.*) {
+            .func_decl => |f| {
+                if (f.is_extern) try names.append(allocator, try allocator.dupe(u8, f.name));
+            },
+            .struct_decl => |s| {
+                for (s.members) |m| {
+                    if (m.* == .func_decl and m.func_decl.is_extern)
+                        try names.append(allocator, try allocator.dupe(u8, m.func_decl.name));
+                }
+            },
+            else => {},
+        }
+    }
+    return names.toOwnedSlice(allocator);
 }
 
 // ============================================================

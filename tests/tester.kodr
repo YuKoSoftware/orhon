@@ -229,15 +229,15 @@ pub func call_via_ptr() i32 {
 // ─── Cast ────────────────────────────────────────────────────
 
 pub func cast_to_i64(x: i32) i64 {
-    return @cast(i64, x)
+    return cast(i64, x)
 }
 
 pub func cast_to_f32(x: i32) f32 {
-    return @cast(f32, x)
+    return cast(f32, x)
 }
 
 pub func cast_float_to_int() i32 {
-    return @cast(i32, 3.7)
+    return cast(i32, 3.7)
 }
 
 // ─── While with continue expression ─────────────────────────
@@ -392,7 +392,7 @@ pub func safe_divide(a: i32, b: i32) (Error | i32) {
 
 pub func test_error_ok() i32 {
     const result = safe_divide(10, 2)
-    if(@type(result) == Error) {
+    if(result is Error) {
         return 0 - 1
     }
     return result.i32
@@ -400,7 +400,7 @@ pub func test_error_ok() i32 {
 
 pub func test_error_fail() i32 {
     const result = safe_divide(10, 0)
-    if(@type(result) == Error) {
+    if(result is Error) {
         return 0 - 1
     }
     return result.i32
@@ -417,7 +417,7 @@ pub func find_player(id: i32) (null | i32) {
 
 pub func test_null_some() i32 {
     const result: (null | i32) = find_player(5)
-    if(@type(result) == null) {
+    if(result is null) {
         return 0 - 1
     }
     return result.i32
@@ -425,7 +425,7 @@ pub func test_null_some() i32 {
 
 pub func test_null_none() i32 {
     const result: (null | i32) = find_player(0)
-    if(@type(result) == null) {
+    if(result is null) {
         return 0 - 1
     }
     return result.i32
@@ -434,7 +434,7 @@ pub func test_null_none() i32 {
 pub func test_null_reassign() i32 {
     var x: (null | i32) = null
     x = 42
-    if(@type(x) == null) {
+    if(x is null) {
         return 0 - 1
     }
     return x.i32
@@ -502,135 +502,135 @@ pub func nested_scope() i32 {
 // ─── Tests ───────────────────────────────────────────────────
 
 test "add" {
-    @assert(add(2, 3) == 5)
+    assert(add(2, 3) == 5)
 }
 
 test "sub" {
-    @assert(sub(10, 3) == 7)
+    assert(sub(10, 3) == 7)
 }
 
 test "factorial" {
-    @assert(factorial(5) == 120)
+    assert(factorial(5) == 120)
 }
 
 test "is_positive" {
-    @assert(is_positive(1))
-    @assert(not is_positive(0 - 1))
+    assert(is_positive(1))
+    assert(not is_positive(0 - 1))
 }
 
 test "arithmetic" {
-    @assert(test_arithmetic(10, 5) == 0)
+    assert(test_arithmetic(10, 5) == 0)
 }
 
 test "compound assignment" {
-    @assert(test_compound() == 70)
+    assert(test_compound() == 70)
 }
 
 test "abs" {
-    @assert(abs(5) == 5)
-    @assert(abs(0 - 5) == 5)
+    assert(abs(5) == 5)
+    assert(abs(0 - 5) == 5)
 }
 
 test "sum_to" {
-    @assert(sum_to(10) == 55)
+    assert(sum_to(10) == 55)
 }
 
 test "match" {
-    @assert(match_test(1) == 10)
-    @assert(match_test(2) == 20)
-    @assert(match_test(99) == 0)
+    assert(match_test(1) == 10)
+    assert(match_test(2) == 20)
+    assert(match_test(99) == 0)
 }
 
 test "first_over" {
-    @assert(first_over(5) == 6)
+    assert(first_over(5) == 6)
 }
 
 test "compt func" {
-    @assert(doubled(21) == 42)
+    assert(doubled(21) == 42)
 }
 
 test "struct instantiation" {
-    @assert(make_internal() == 42)
+    assert(make_internal() == 42)
 }
 
 test "default field values" {
-    @assert(test_defaults() == 42)
+    assert(test_defaults() == 42)
 }
 
 test "default field override" {
-    @assert(test_defaults_override() == 99)
+    assert(test_defaults_override() == 99)
 }
 
 test "static method" {
-    @assert(test_static_method() == 10)
+    assert(test_static_method() == 10)
 }
 
 test "mutable method" {
-    @assert(test_mutable_method() == 3)
+    assert(test_mutable_method() == 3)
 }
 
 test "error handling ok" {
-    @assert(test_error_ok() == 5)
+    assert(test_error_ok() == 5)
 }
 
 test "error handling fail" {
-    @assert(test_error_fail() == 0 - 1)
+    assert(test_error_fail() == 0 - 1)
 }
 
 test "null some" {
-    @assert(test_null_some() == 50)
+    assert(test_null_some() == 50)
 }
 
 test "null none" {
-    @assert(test_null_none() == 0 - 1)
+    assert(test_null_none() == 0 - 1)
 }
 
 test "null reassign" {
-    @assert(test_null_reassign() == 42)
+    assert(test_null_reassign() == 42)
 }
 
 test "enum usage" {
-    @assert(test_enum() == 1)
+    assert(test_enum() == 1)
 }
 
 test "enum method" {
-    @assert(test_enum_method() == 1)
+    assert(test_enum_method() == 1)
 }
 
 test "nested scopes" {
-    @assert(nested_scope() == 6)
+    assert(nested_scope() == 6)
 }
 
 test "tuple" {
-    @assert(test_tuple() == 10)
+    assert(test_tuple() == 10)
 }
 
 test "tuple destructure" {
-    @assert(test_tuple_destruct() == 10)
+    assert(test_tuple_destruct() == 10)
 }
 
 test "slice for loop" {
-    @assert(sum_slice_test() == 6)
+    assert(sum_slice_test() == 6)
 }
 
 test "for with index" {
-    @assert(indexed_sum() == 63)
+    assert(indexed_sum() == 63)
 }
 
 test "for range" {
-    @assert(sum_range(5) == 10)
+    assert(sum_range(5) == 10)
 }
 
 test "while continue" {
-    @assert(sum_while_continue(5) == 10)
+    assert(sum_while_continue(5) == 10)
 }
 
 test "cast int" {
-    @assert(cast_to_i64(42) == 42)
+    assert(cast_to_i64(42) == 42)
 }
 
 test "cast float" {
-    @assert(cast_to_f32(7) == 7.0)
+    assert(cast_to_f32(7) == 7.0)
 }
 
 pub func raw_ptr_read() i32 {
@@ -653,13 +653,13 @@ pub func safe_ptr_read() i32 {
 }
 
 test "safe ptr" {
-    @assert(safe_ptr_read() == 77)
+    assert(safe_ptr_read() == 77)
 }
 
 pub func typeid_same() i32 {
     const x: i32 = 1
     const y: i32 = 2
-    if(@typeid(x) == @typeid(y)) {
+    if(typeid(x) == typeid(y)) {
         return 1
     }
     return 0
@@ -668,32 +668,78 @@ pub func typeid_same() i32 {
 pub func typeid_diff() i32 {
     const x: i32 = 1
     const f: f32 = 1.0
-    if(@typeid(x) != @typeid(f)) {
+    if(typeid(x) != typeid(f)) {
         return 1
     }
     return 0
 }
 
 test "cast float to int" {
-    @assert(cast_float_to_int() == 3)
+    assert(cast_float_to_int() == 3)
 }
 
 test "function pointer" {
-    @assert(apply_fn(triple, 5) == 15)
-    @assert(call_via_ptr() == 12)
+    assert(apply_fn(triple, 5) == 15)
+    assert(call_via_ptr() == 12)
 }
 
 test "fixed array" {
     const arr: [3]i32 = [10, 20, 30]
-    @assert(sum_fixed_array(arr) == 60)
-    @assert(array_index_test() == 20)
+    assert(sum_fixed_array(arr) == 60)
+    assert(array_index_test() == 20)
 }
 
 test "slice expr" {
-    @assert(slice_expr_test() == 9)
+    assert(slice_expr_test() == 9)
 }
 
 test "raw ptr" {
-    @assert(raw_ptr_read() == 99)
-    @assert(raw_ptr_index() == 2)
+    assert(raw_ptr_read() == 99)
+    assert(raw_ptr_index() == 2)
+}
+
+// ─── Match — ranges ──────────────────────────────────────────
+
+pub func match_range(n: i32) i32 {
+    match(n) {
+        1..3 => {
+            return 1
+        }
+        4..6 => {
+            return 2
+        }
+        _ => {
+            return 0
+        }
+    }
+}
+
+test "match_range" {
+    assert(match_range(1) == 1)
+    assert(match_range(3) == 1)
+    assert(match_range(4) == 2)
+    assert(match_range(6) == 2)
+    assert(match_range(7) == 0)
+}
+
+// ─── Match — strings ─────────────────────────────────────────
+
+pub func match_string(s: String) i32 {
+    match(s) {
+        "hello" => {
+            return 1
+        }
+        "world" => {
+            return 2
+        }
+        _ => {
+            return 0
+        }
+    }
+}
+
+test "match_string" {
+    assert(match_string("hello") == 1)
+    assert(match_string("world") == 2)
+    assert(match_string("other") == 0)
 }

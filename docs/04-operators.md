@@ -77,12 +77,12 @@ var a: []i32 = [1, 2] ++ [3, 4]       // array concatenation, types must match
 ```
 
 ## No Implicit Numeric Casts
-Mixing numeric types in expressions is a compile error. All conversions must be explicit via `@cast(T, x)`.
+Mixing numeric types in expressions is a compile error. All conversions must be explicit via `cast(T, x)`.
 ```
 var x: i32 = 42
 var f: f32 = 3.14
 var z = x + f                // ERROR — i32 + f32, types don't match
-var z = @cast(f32, x) + f    // OK — explicit cast
+var z = cast(f32, x) + f    // OK — explicit cast
 ```
 
 ---
@@ -100,7 +100,7 @@ sat(a + b)         // saturating arithmetic, clamps to max/min value, always suc
 ```
 // overflow — returns union, must be handled
 var result = overflow(a + b)
-if(@type(result) == Error) {
+if(result is Error) {
     console.print("overflow occurred")
     return
 }

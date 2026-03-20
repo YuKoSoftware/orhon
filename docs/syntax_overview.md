@@ -108,7 +108,9 @@ struct Player {
     func destroy(self: Player) void { }
 }
 
-var p: Player = Player(name: "hero", health: 50.0)
+// instantiation — only pub fields settable from outside
+var p: Player = Player(name: "hero")
+// static method — can set private fields internally
 var p2: Player = Player.create("hero")
 
 // ── Enums ───────────────────────────────────────────────────

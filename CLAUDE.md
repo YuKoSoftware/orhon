@@ -117,7 +117,7 @@ A project can have multiple modules with `#build` declarations. Each produces it
 Folder structure is for the developer's convenience — the compiler only sees modules:
 ```
 src/
-    main.kodr              ← module main, build.exe (root)
+    main.kodr              ← module main, #build = exe (root)
     math/math.kodr         ← module math, build.static (anchor)
     math/vectors.kodr      ← module math (additional file)
     network/network.kodr   ← module network, build.dynamic (anchor)
@@ -275,7 +275,7 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 
 ## Current Status
 
-**Phase 2** — full pipeline working end-to-end. 118 tests passing.
+**Phase 2** — full pipeline working end-to-end. 137 tests passing.
 
 **Working:**
 - `kodr init <n>`, `kodr build`, `kodr run`, `kodr test`, `kodr initstd`, `kodr debug`

@@ -8,9 +8,10 @@ module main
 #build   = exe
 #version = Version(1, 0, 0)
 #name    = "example"
+#bitsize = 32
 
 import std::console
-import std::mem
+import std::fs
 
 // --- NUMERIC LITERALS ---
 const HEX_COLOR: u32 = 0xFF_AA_00
@@ -134,13 +135,12 @@ func main() void {
 
     // --- VARIABLES ---
     var x: i32 = 42
-    var name = "hello\nworld"
-    var flag = true
+    const name: String = "hello\nworld"
+    const flag: bool = true
     const pi: f32 = 3.141_592
-    const SIZE: usize = 1_024
 
     // --- STRUCT USAGE ---
-    var p = Player.create("hero")
+    var p: Player = Player.create("hero")
     p.takeDamage(10.0)
 
     if(p.isAlive()) {
@@ -148,7 +148,7 @@ func main() void {
     }
 
     // --- ENUM USAGE ---
-    var d: Direction = North
+    const d: Direction = North
     match d {
         North => { console.println("going north") }
         South => { console.println("going south") }
@@ -163,26 +163,19 @@ func main() void {
     perms.toggle(Execute)
 
     // --- DATA CARRYING ENUM ---
-    var s: Shape = Circle(radius: 5.0)
+    const s: Shape = Circle(radius: 5.0)
     console.println(s.area())
 
-    // is / is not — type comparison
-    if(s is Circle) {
-        console.println("its a circle")
-    }
-
     // --- ERROR HANDLING ---
-    var result = divide(10, 2)
+    const result = divide(10, 2)
     if(result is Error) {
-        if(result.Error == ErrDivByZero) {
-            console.println("division by zero")
-        }
+        console.println("division by zero")
         return
     }
     console.println(result.i32)
 
     // --- NULL HANDLING ---
-    var found = findPlayer(1)
+    const found: (null | Player) = findPlayer(1)
     if(found is null) {
         console.println("not found")
         return
@@ -190,12 +183,12 @@ func main() void {
     console.println(found.Player.name)
 
     // --- TUPLES ---
-    var min, max = findMinMax([3, 1, 4, 1, 5, 9, 2, 6])
+    const min, max = findMinMax([3, 1, 4, 1, 5, 9, 2, 6])
     console.println(min)
     console.println(max)
 
     // --- COMPT PAIR TYPE ---
-    var pair: Pair(i32, String) = Pair(i32, String)(first: 42, second: "hello")
+    const pair: Pair(i32, String) = Pair(i32, String)(first: 42, second: "hello")
     console.println(pair.first)
 
     // --- LOOPS ---
@@ -228,37 +221,69 @@ func main() void {
 
     // --- POINTERS ---
     var val: i32 = 10
-    var ptr = Ptr(i32, &val)
+    const ptr: Ptr(i32) = Ptr(i32, &val)
     console.println(ptr.value)
 
+    // --- COLLECTIONS ---
+    var items: List(i32) = List(i32)
+    defer { items.free() }
+    items.add(10)
+    items.add(20)
+    console.println(items.get(0))
+
+    var scores: Map(String, i32) = Map(String, i32)
+    defer { scores.free() }
+    scores.put("alice", 42)
+    if(scores.has("alice")) {
+        console.println(scores.get("alice"))
+    }
+
+    // --- STRING OPERATIONS ---
+    const greeting: String = "  hello world  "
+    console.println(greeting.trim())
+    if(greeting.contains("world")) {
+        console.println("found it")
+    }
+    const before, after = greeting.trim().split(" ")
+    console.println(before)
+    console.println(after)
+
     // --- MEMORY ALLOCATION ---
-    var a = mem.DebugAllocator()
-    var box = a.allocOne(i32, 42)
+    const a = mem.DebugAllocator()
+    const box: i32 = a.allocOne(i32, 42)
     console.println(box)
     a.free(box)
 
     var buf: []i32 = a.alloc(i32, 10)
     a.free(buf)
 
+    // --- FILE I/O ---
+    const f: File = File("output.txt")
+    const w = f.write("hello from kodr")
+    if(w is Error) { return }
+    if(f.exists()) {
+        console.println("file written")
+    }
+    fs.delete("output.txt")
+
     // --- DEFER ---
     defer { console.println("cleanup") }
     console.println("before cleanup")
 }
 
-test"player takes damage correctly" {
-    var p = Player.create("test")
+test "player takes damage correctly" {
+    var p: Player = Player.create("test")
     p.takeDamage(50.0)
     assert(p.health == 50.0)
     assert(p.isAlive())
 }
 
-test"divide returns error on zero" {
-    var result = divide(10, 0)
+test "divide returns error on zero" {
+    const result = divide(10, 0)
     assert(result is Error)
-    assert(result.Error == ErrDivByZero)
 }
 
-test"fibonacci is correct" {
+test "fibonacci is correct" {
     assert(fibonacci(0) == 0)
     assert(fibonacci(1) == 1)
     assert(fibonacci(10) == 55)

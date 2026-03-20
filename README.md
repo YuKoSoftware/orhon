@@ -22,10 +22,12 @@ Kodr is a compiled, memory-safe programming language that transpiles to Zig. It 
 ```
 module main
 
-main.build = build.exe
+#name    = "myproject"
+#version = Version(1, 0, 0)
+#build   = exe
+#bitsize = 32
 
 import std::console
-import std::mem
 
 // Structs with methods
 struct Player {
@@ -49,7 +51,7 @@ func divide(a: i32, b: i32) (Error | i32) {
 
 func main() void {
     // Ownership — values move, borrows are checked
-    var p = Player(name: "hero")
+    var p: Player = Player(name: "hero")
     p.takeDamage(30.0)
 
     if(p.isAlive()) {
@@ -57,28 +59,27 @@ func main() void {
     }
 
     // Error handling — is/is not for type checks
-    var result = divide(10, 2)
+    const result = divide(10, 2)
     if(result is Error) {
         console.println("error!")
         return
     }
     console.println(result.i32)
 
-    // Explicit allocation — no default allocator
-    var a = mem.DebugAllocator()
-    var data: []i32 = a.alloc(i32, 64)
-    defer a.free(data)
+    // String operations — methods directly on the type
+    const greeting: String = "hello world"
+    if(greeting.contains("world")) {
+        console.println(greeting.trim())
+    }
 
-    // Threads with move semantics — no shared mutable state
-    var left, right = data.splitAt(32)
-    Thread([]i32) t1 { return left }
-    Thread([]i32) t2 { return right }
-    var l = t1.value
-    var r = t2.value
+    // File I/O — builtin type, no import needed
+    const f: File = File("output.txt")
+    f.write("hello from kodr")
+    f.close()
 }
 
-test"damage reduces health" {
-    var p = Player(name: "test")
+test "damage reduces health" {
+    var p: Player = Player(name: "test")
     p.takeDamage(50.0)
     assert(p.health == 50.0)
     assert(p.isAlive())
@@ -90,12 +91,15 @@ test"damage reduces health" {
 ## Key Features
 
 - **Ownership & borrow checking** — compile-time memory safety, no GC
-- **Explicit allocators** — `mem.DebugAllocator()`, `mem.Arena()`, `mem.Temp(n)`, `mem.Page()`
+- **Explicit allocators** — `mem.SMP()`, `mem.DebugAllocator()`, `mem.Arena()`, `mem.Temp(n)`, `mem.Page()`
 - **Error & null as types** — `(Error | T)` and `(null | T)` unions, handled explicitly
 - **`is` / `is not`** — clean type comparisons at the call site
-- **Structs & enums** — methods, data-carrying variants, bitfield enums
-- **Threads & async** — move semantics enforced, no accidental sharing
-- **`compt`** — compile-time variables, functions, and loop unrolling
+- **Structs & enums** — methods, default fields, data-carrying variants
+- **Bitfields** — named bit flags with `.has()`, `.set()`, `.clear()`, `.toggle()`
+- **Collections** — `List(T)`, `Map(K,V)`, `Set(T)` with owned or shared allocators
+- **String operations** — `.contains()`, `.startsWith()`, `.trim()`, `.split()`, `.indexOf()` and more
+- **File I/O** — `File("path")` and `Dir("path")` builtin types, `std::fs` module
+- **`compt`** — compile-time functions and generics via `any`
 - **Zig bridge** — `extern func` + paired `.zig` for C interop, no C in Kodr
 - **No build files** — `kodr build`, `kodr run`, `kodr test` — fully integrated
 - **One module = one generated `.zig` file** — readable output, transparent codegen
@@ -128,7 +132,7 @@ test"damage reduces health" {
 
 ## Status
 
-**Phase 2** — full pipeline working end-to-end. 118 tests passing.
+**Phase 2** — full pipeline working end-to-end. 137 tests passing.
 
 Transpiles to Zig 0.15.x. No bundled binary — Zig installed globally.
 

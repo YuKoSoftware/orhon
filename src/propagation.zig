@@ -7,6 +7,7 @@ const parser = @import("parser.zig");
 const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const K = @import("constants.zig");
+const types = @import("types.zig");
 
 /// A tracked union variable — needs handling before scope exit
 pub const UnionVar = struct {
@@ -149,11 +150,12 @@ pub const PropChecker = struct {
             },
 
             .if_stmt => |i| {
-                // Check if condition is a type check that handles a union (via `is`)
+                // Check if condition is a type check that handles a union (via `is` / `is not`)
+                // `x is Error` desugars to `@type(x) == Error`
+                // `x is not null` desugars to `@type(x) != null`
                 if (i.condition.* == .binary_expr) {
                     const be = i.condition.binary_expr;
-                    if (std.mem.eql(u8, be.op, "==")) {
-                        // `x is Error` or `x is null`
+                    if (std.mem.eql(u8, be.op, "==") or std.mem.eql(u8, be.op, "!=")) {
                         if (be.left.* == .compiler_func and std.mem.eql(u8, be.left.compiler_func.name, K.Type.TYPE)) {
                             if (be.left.compiler_func.args.len > 0) {
                                 const checked_var = be.left.compiler_func.args[0];
@@ -197,7 +199,6 @@ pub const PropChecker = struct {
     fn exprReturnsUnion(self: *PropChecker, node: *parser.Node) anyerror!?bool {
         switch (node.*) {
             .call_expr => |c| {
-                // Look up function return type from declaration table
                 if (self.decls) |decls| {
                     const func_name = if (c.callee.* == .identifier)
                         c.callee.identifier
@@ -206,9 +207,10 @@ pub const PropChecker = struct {
                     else
                         null;
 
-                    if (func_name) |name| {
-                        if (decls.funcs.get(name)) |sig| {
-                            return returnTypeIsUnion(sig.return_type);
+                    if (func_name) |fname| {
+                        if (decls.funcs.get(fname)) |sig| {
+                            if (sig.return_type.isErrorUnion()) return true;
+                            if (sig.return_type.isNullUnion()) return false;
                         }
                     }
                 }
@@ -218,14 +220,6 @@ pub const PropChecker = struct {
             .null_literal => return false,
             else => return null,
         }
-    }
-
-    /// Check if a return type string represents an Error or null union
-    fn returnTypeIsUnion(ret: []const u8) ?bool {
-        // Return type strings look like "(Error | i32)" or "(null | User)"
-        if (std.mem.indexOf(u8, ret, K.Type.ERROR)) |_| return true;
-        if (std.mem.indexOf(u8, ret, K.Type.NULL)) |_| return false;
-        return null;
     }
 
     /// Check scope exit — unhandled unions either propagate or error
@@ -319,14 +313,27 @@ test "propagation - unhandled in non-propagating function" {
     try std.testing.expect(reporter.hasErrors());
 }
 
-test "propagation - returnTypeIsUnion detects Error and null" {
+test "propagation - ResolvedType detects Error and null unions" {
+    const alloc = std.testing.allocator;
+
     // Error union
-    try std.testing.expect(PropChecker.returnTypeIsUnion("(Error | i32)").? == true);
-    // null union
-    try std.testing.expect(PropChecker.returnTypeIsUnion("(null | User)").? == false);
-    // plain type — not a union
-    try std.testing.expect(PropChecker.returnTypeIsUnion("i32") == null);
-    try std.testing.expect(PropChecker.returnTypeIsUnion("void") == null);
+    const inner = try alloc.create(types.ResolvedType);
+    defer alloc.destroy(inner);
+    inner.* = .{ .primitive = "i32" };
+    const err_union = types.ResolvedType{ .error_union = inner };
+    try std.testing.expect(err_union.isErrorUnion());
+    try std.testing.expect(!err_union.isNullUnion());
+
+    // Null union
+    const null_union = types.ResolvedType{ .null_union = inner };
+    try std.testing.expect(null_union.isNullUnion());
+    try std.testing.expect(!null_union.isErrorUnion());
+
+    // Plain type — not a union
+    const plain = types.ResolvedType{ .primitive = "i32" };
+    try std.testing.expect(!plain.isUnion());
+    const void_t = types.ResolvedType{ .primitive = "void" };
+    try std.testing.expect(!void_t.isUnion());
 }
 
 test "propagation - typeNodeIsUnion detects union AST nodes" {
@@ -369,11 +376,24 @@ test "propagation - call expr resolved via decl table" {
     var decl_table = declarations.DeclTable.init(alloc);
     defer decl_table.deinit();
 
+    // Build an error_union ResolvedType: (Error | i32)
+    const inner = try alloc.create(types.ResolvedType);
+    defer alloc.destroy(inner);
+    inner.* = .{ .primitive = "i32" };
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const ret_node = try a.create(parser.Node);
+    ret_node.* = .{ .type_named = "i32" };
+
     const params = try alloc.alloc(declarations.ParamSig, 0);
     try decl_table.funcs.put("divide", .{
         .name = "divide",
         .params = params,
-        .return_type = "(Error | i32)",
+        .return_type = .{ .error_union = inner },
+        .return_type_node = ret_node,
         .is_compt = false,
         .is_pub = false,
     });
@@ -392,4 +412,38 @@ test "propagation - call expr resolved via decl table" {
     const result = try checker.exprReturnsUnion(&call_node);
     try std.testing.expect(result != null);
     try std.testing.expect(result.? == true); // Error union
+}
+
+test "propagation - is not check marks union as handled" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var checker = PropChecker.init(alloc, &reporter, null);
+
+    // Function that returns void — cannot propagate
+    var scope = PropScope.init(alloc, null, false);
+    defer scope.deinit();
+
+    // Define a null union variable
+    try scope.define("result", false, 1, 1);
+
+    // Build: if(@type(result) != null) — desugared from `if(result is not null)`
+    var result_id = parser.Node{ .identifier = "result" };
+    var type_args_arr = [_]*parser.Node{&result_id};
+    var type_call = parser.Node{ .compiler_func = .{ .name = K.Type.TYPE, .args = &type_args_arr } };
+    var null_node = parser.Node{ .type_named = K.Type.NULL };
+    var condition = parser.Node{ .binary_expr = .{ .left = &type_call, .op = "!=", .right = &null_node } };
+    var empty_block = parser.Node{ .block = .{ .statements = &.{} } };
+    var if_stmt = parser.Node{ .if_stmt = .{
+        .condition = &condition,
+        .then_block = &empty_block,
+        .else_block = null,
+    } };
+
+    try checker.checkStatement(&if_stmt, &scope);
+
+    // result should be marked as handled
+    const uvar = scope.vars.get("result").?;
+    try std.testing.expect(uvar.handled);
 }

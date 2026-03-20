@@ -6,19 +6,21 @@ const std = @import("std");
 const parser = @import("parser.zig");
 const errors = @import("errors.zig");
 const builtins = @import("builtins.zig");
+const types = @import("types.zig");
 
 /// A function signature
 pub const FuncSig = struct {
     name: []const u8,
     params: []ParamSig,
-    return_type: []const u8, // simplified type string
+    return_type: types.ResolvedType,
+    return_type_node: *parser.Node, // original AST node (used by codegen)
     is_compt: bool,
     is_pub: bool,
 };
 
 pub const ParamSig = struct {
     name: []const u8,
-    type_str: []const u8,
+    type_: types.ResolvedType,
 };
 
 /// A struct declaration summary
@@ -30,7 +32,7 @@ pub const StructSig = struct {
 
 pub const FieldSig = struct {
     name: []const u8,
-    type_str: []const u8,
+    type_: types.ResolvedType,
     has_default: bool,
     is_pub: bool,
 };
@@ -38,7 +40,7 @@ pub const FieldSig = struct {
 /// An enum declaration summary
 pub const EnumSig = struct {
     name: []const u8,
-    backing_type: []const u8,
+    backing_type: types.ResolvedType,
     variants: [][]const u8,
     is_pub: bool,
 };
@@ -46,7 +48,7 @@ pub const EnumSig = struct {
 /// A bitfield declaration summary
 pub const BitfieldSig = struct {
     name: []const u8,
-    backing_type: []const u8,
+    backing_type: types.ResolvedType,
     flags: [][]const u8,
     is_pub: bool,
 };
@@ -54,7 +56,7 @@ pub const BitfieldSig = struct {
 /// A variable/constant declaration
 pub const VarSig = struct {
     name: []const u8,
-    type_str: ?[]const u8,
+    type_: ?types.ResolvedType,
     is_const: bool,
     is_compt: bool,
     is_pub: bool,
@@ -69,6 +71,12 @@ pub const DeclTable = struct {
     vars: std.StringHashMap(VarSig),
     types: std.StringHashMap([]const u8), // type aliases and compt types
     allocator: std.mem.Allocator,
+    type_arena: std.heap.ArenaAllocator, // owns all ResolvedType inner allocations
+
+    /// Allocator for ResolvedType inner pointers — freed when DeclTable is deinitialized
+    pub fn typeAllocator(self: *DeclTable) std.mem.Allocator {
+        return self.type_arena.allocator();
+    }
 
     pub fn init(allocator: std.mem.Allocator) DeclTable {
         return .{
@@ -79,10 +87,13 @@ pub const DeclTable = struct {
             .vars = std.StringHashMap(VarSig).init(allocator),
             .types = std.StringHashMap([]const u8).init(allocator),
             .allocator = allocator,
+            .type_arena = std.heap.ArenaAllocator.init(allocator),
         };
     }
 
     pub fn deinit(self: *DeclTable) void {
+        // Free the type arena (all ResolvedType inner pointers)
+        self.type_arena.deinit();
         // Free owned slices stored in FuncSig values
         var func_it = self.funcs.iterator();
         while (func_it.next()) |entry| {
@@ -180,7 +191,7 @@ pub const DeclCollector = struct {
             if (param.* == .param) {
                 try params.append(self.allocator, .{
                     .name = param.param.name,
-                    .type_str = self.typeNodeToStr(param.param.type_annotation),
+                    .type_ = try types.resolveTypeNode(self.table.typeAllocator(), param.param.type_annotation),
                 });
             }
         }
@@ -188,7 +199,8 @@ pub const DeclCollector = struct {
         const sig = FuncSig{
             .name = f.name,
             .params = try params.toOwnedSlice(self.allocator),
-            .return_type = self.typeNodeToStr(f.return_type),
+            .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
+            .return_type_node = f.return_type,
             .is_compt = f.is_compt,
             .is_pub = f.is_pub,
         };
@@ -211,7 +223,7 @@ pub const DeclCollector = struct {
                 const f = member.field_decl;
                 try fields.append(self.allocator, .{
                     .name = f.name,
-                    .type_str = self.typeNodeToStr(f.type_annotation),
+                    .type_ = try types.resolveTypeNode(self.table.typeAllocator(), f.type_annotation),
                     .has_default = f.default_value != null,
                     .is_pub = f.is_pub,
                 });
@@ -255,7 +267,7 @@ pub const DeclCollector = struct {
 
         const sig = EnumSig{
             .name = e.name,
-            .backing_type = self.typeNodeToStr(e.backing_type),
+            .backing_type = try types.resolveTypeNode(self.table.typeAllocator(), e.backing_type),
             .variants = try variants.toOwnedSlice(self.allocator),
             .is_pub = e.is_pub,
         };
@@ -279,7 +291,7 @@ pub const DeclCollector = struct {
         }
         const sig = BitfieldSig{
             .name = b.name,
-            .backing_type = self.typeNodeToStr(b.backing_type),
+            .backing_type = try types.resolveTypeNode(self.table.typeAllocator(), b.backing_type),
             .flags = try flags.toOwnedSlice(self.allocator),
             .is_pub = b.is_pub,
         };
@@ -289,7 +301,7 @@ pub const DeclCollector = struct {
     fn collectVar(self: *DeclCollector, v: parser.VarDecl, is_const: bool, is_compt: bool, loc: ?errors.SourceLoc) anyerror!void {
         const sig = VarSig{
             .name = v.name,
-            .type_str = if (v.type_annotation) |t| self.typeNodeToStr(t) else null,
+            .type_ = if (v.type_annotation) |t| try types.resolveTypeNode(self.table.typeAllocator(), t) else null,
             .is_const = is_const,
             .is_compt = is_compt,
             .is_pub = v.is_pub,
@@ -306,23 +318,6 @@ pub const DeclCollector = struct {
         try self.table.vars.put(v.name, sig);
     }
 
-    /// Convert a type AST node to a string representation
-    fn typeNodeToStr(self: *DeclCollector, node: *parser.Node) []const u8 {
-        _ = self;
-        return switch (node.*) {
-            .type_named => |n| n,
-            .type_primitive => |p| p,
-            .type_slice => "[]T",
-            .type_array => "[n]T",
-            .type_union => "(union)",
-            .type_tuple_named => "(tuple)",
-            .type_tuple_anon => "(tuple)",
-            .type_func => "func",
-            .type_generic => |g| g.name,
-            .type_ptr => |p| p.kind,
-            else => "unknown",
-        };
-    }
 };
 
 test "declaration collector - func" {
@@ -545,16 +540,7 @@ test "declaration collector - extern func is registered" {
 /// Check if a name conflicts with a primitive or builtin type name.
 /// Used to prevent field names like `String`, `i32`, `File` etc.
 fn isReservedTypeName(name: []const u8) bool {
-    const primitives = [_][]const u8{
-        "i8", "i16", "i32", "i64", "i128",
-        "u8", "u16", "u32", "u64", "u128",
-        "isize", "usize",
-        "f16", "bf16", "f32", "f64", "f128",
-        "bool", "String", "void",
-        "Error",
-    };
-    for (primitives) |p| {
-        if (std.mem.eql(u8, name, p)) return true;
-    }
+    if (types.isPrimitiveName(name)) return true;
+    if (std.mem.eql(u8, name, "Error")) return true;
     return builtins.isBuiltinType(name);
 }

@@ -97,13 +97,40 @@ pub const OwnershipChecker = struct {
             if (decls.structs.get(var_state.type_name)) |sig| {
                 for (sig.fields) |f| {
                     if (std.mem.eql(u8, f.name, field_name)) {
-                        return isPrimitiveName(f.type_str);
+                        return f.type_.isPrimitive();
                     }
                 }
             }
         }
 
         return null;
+    }
+
+    /// Infer whether for-loop captures are primitive based on the iterable.
+    /// Returns true for ranges, primitive arrays/slices; false (conservative) otherwise.
+    fn inferIterableElemPrimitive(_: *const OwnershipChecker, iterable: *parser.Node, scope: *OwnershipScope) bool {
+        switch (iterable.*) {
+            // Range expressions (0..10) always produce integer captures
+            .range_expr => return true,
+            // Array literals — check the first element
+            .array_literal => |elems| {
+                if (elems.len > 0) {
+                    return switch (elems[0].*) {
+                        .int_literal, .float_literal, .bool_literal, .string_literal => true,
+                        else => false,
+                    };
+                }
+                return false;
+            },
+            // Variable — check its type via scope + DeclTable
+            .identifier => |id_name| {
+                if (scope.getState(id_name)) |state| {
+                    return state.is_primitive;
+                }
+                return false;
+            },
+            else => return false,
+        }
     }
 
     fn nodeLoc(self: *const OwnershipChecker, node: *parser.Node) ?errors.SourceLoc {
@@ -135,7 +162,8 @@ pub const OwnershipChecker = struct {
 
                 for (f.params) |param| {
                     if (param.* == .param) {
-                        const is_prim = isPrimitiveName(typeNodeStr(param.param.type_annotation));
+                        const type_name = typeNodeName(param.param.type_annotation);
+                        const is_prim = types.isPrimitiveName(type_name);
                         try func_scope.define(param.param.name, is_prim);
                     }
                 }
@@ -173,9 +201,9 @@ pub const OwnershipChecker = struct {
                 // Check the value expression for use-after-move
                 try self.checkExpr(v.value, scope, false);
                 // Define the new variable as owned, with type name for field lookup
-                const type_str = if (v.type_annotation) |t| typeNodeStr(t) else "";
-                const is_prim = if (type_str.len > 0) isPrimitiveName(type_str) else false;
-                try scope.defineTyped(v.name, is_prim, type_str);
+                const type_name = if (v.type_annotation) |t| typeNodeName(t) else "";
+                const is_prim = if (type_name.len > 0) types.isPrimitiveName(type_name) else false;
+                try scope.defineTyped(v.name, is_prim, type_name);
             },
 
             .destruct_decl => |d| {
@@ -253,8 +281,11 @@ pub const OwnershipChecker = struct {
                 try self.checkExpr(f.iterable, scope, true);
                 var for_scope = OwnershipScope.init(self.allocator, scope);
                 defer for_scope.deinit();
-                for (f.captures) |v| try for_scope.define(v, false);
-                if (f.index_var) |idx| try for_scope.define(idx, false);
+                // Determine if captures are primitive from the iterable type
+                const elem_is_prim = self.inferIterableElemPrimitive(f.iterable, scope);
+                for (f.captures) |v| try for_scope.define(v, elem_is_prim);
+                // Index variable is always usize (primitive)
+                if (f.index_var) |idx| try for_scope.define(idx, true);
                 try self.checkNode(f.body, &for_scope);
             },
 
@@ -433,24 +464,12 @@ pub const OwnershipChecker = struct {
     }
 };
 
-fn isPrimitiveName(name: []const u8) bool {
-    const primitives = [_][]const u8{
-        "i8", "i16", "i32", "i64", "i128",
-        "u8", "u16", "u32", "u64", "u128",
-        "isize", "usize",
-        "f16", "bf16", "f32", "f64", "f128",
-        "bool", "String", "void",
-    };
-    for (primitives) |p| {
-        if (std.mem.eql(u8, name, p)) return true;
-    }
-    return false;
-}
-
-fn typeNodeStr(node: *parser.Node) []const u8 {
+/// Extract the type name string from an AST type node (for DeclTable lookups)
+fn typeNodeName(node: *parser.Node) []const u8 {
     return switch (node.*) {
         .type_named => |n| n,
-        else => "unknown",
+        .type_generic => |g| g.name,
+        else => "",
     };
 }
 
@@ -513,7 +532,7 @@ test "ownership - string is copy type" {
     defer scope.deinit();
 
     // Define 'name' as string (primitive — copies, never moves)
-    try scope.define("name", isPrimitiveName("String"));
+    try scope.define("name", types.isPrimitiveName("String"));
 
     var id1 = parser.Node{ .identifier = "name" };
     try checker.checkExpr(&id1, &scope, false);
@@ -585,8 +604,8 @@ test "ownership - primitive field access allowed" {
     defer decl_table.deinit();
 
     const fields = try alloc.alloc(declarations.FieldSig, 2);
-    fields[0] = .{ .name = "x", .type_str = "f32", .has_default = false, .is_pub = true };
-    fields[1] = .{ .name = "y", .type_str = "f32", .has_default = false, .is_pub = true };
+    fields[0] = .{ .name = "x", .type_ = .{ .primitive = "f32" }, .has_default = false, .is_pub = true };
+    fields[1] = .{ .name = "y", .type_ = .{ .primitive = "f32" }, .has_default = false, .is_pub = true };
     try decl_table.structs.put("Vec2", .{ .name = "Vec2", .fields = fields, .is_pub = true });
 
     var checker = OwnershipChecker.init(alloc, &reporter);
@@ -619,7 +638,7 @@ test "ownership - non-primitive field move rejected" {
     defer decl_table.deinit();
 
     const fields = try alloc.alloc(declarations.FieldSig, 1);
-    fields[0] = .{ .name = "inner", .type_str = "Other", .has_default = false, .is_pub = false };
+    fields[0] = .{ .name = "inner", .type_ = .{ .named = "Other" }, .has_default = false, .is_pub = false };
     try decl_table.structs.put("Container", .{ .name = "Container", .fields = fields, .is_pub = false });
 
     var checker = OwnershipChecker.init(alloc, &reporter);

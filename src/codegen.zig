@@ -491,8 +491,8 @@ pub const CodeGen = struct {
     fn isErrorConstant(self: *const CodeGen, name: []const u8) bool {
         if (self.decls) |decls| {
             if (decls.vars.get(name)) |v| {
-                if (v.type_str) |ts| {
-                    return std.mem.eql(u8, ts, K.Type.ERROR);
+                if (v.type_) |t| {
+                    return t == .err;
                 }
             }
         }
@@ -3110,7 +3110,7 @@ fn nodeContainsErrorUnion(node: *parser.Node) bool {
         .error_literal => return true,
         .const_decl => |v| {
             if (v.type_annotation) |ta| {
-                if (ta.* == .type_named and std.mem.eql(u8, ta.type_named, "Error")) return true;
+                if (ta.* == .type_named and std.mem.eql(u8, ta.type_named, K.Type.ERROR)) return true;
             }
             return v.value.* == .error_literal;
         },

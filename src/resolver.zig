@@ -9,22 +9,25 @@ const declarations = @import("declarations.zig");
 const builtins = @import("builtins.zig");
 const errors = @import("errors.zig");
 const K = @import("constants.zig");
+const types = @import("types.zig");
+
+const RT = types.ResolvedType;
 
 /// A resolved type binding — maps expression nodes to their resolved types
 pub const TypeBinding = struct {
     node: *parser.Node,
-    resolved_type: []const u8, // simplified type string for now
+    resolved_type: RT,
 };
 
 /// Scope for variable type tracking
 pub const Scope = struct {
-    vars: std.StringHashMap([]const u8), // name → type string
+    vars: std.StringHashMap(RT),
     parent: ?*Scope,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, parent: ?*Scope) Scope {
         return .{
-            .vars = std.StringHashMap([]const u8).init(allocator),
+            .vars = std.StringHashMap(RT).init(allocator),
             .parent = parent,
             .allocator = allocator,
         };
@@ -34,14 +37,14 @@ pub const Scope = struct {
         self.vars.deinit();
     }
 
-    pub fn lookup(self: *const Scope, name: []const u8) ?[]const u8 {
-        if (self.vars.get(name)) |t| return t;
-        if (self.parent) |p| return p.lookup(name);
+    pub fn lookup(self: *const Scope, name_str: []const u8) ?RT {
+        if (self.vars.get(name_str)) |t| return t;
+        if (self.parent) |p| return p.lookup(name_str);
         return null;
     }
 
-    pub fn define(self: *Scope, name: []const u8, type_str: []const u8) !void {
-        try self.vars.put(name, type_str);
+    pub fn define(self: *Scope, name_str: []const u8, t: RT) !void {
+        try self.vars.put(name_str, t);
     }
 };
 
@@ -119,40 +122,46 @@ pub const TypeResolver = struct {
     fn registerDecl(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
         switch (node.*) {
             .func_decl => |f| {
-                // Register with return type so call sites can resolve
-                const ret_type = self.typeNodeStr(f.return_type);
+                const ret_type = try types.resolveTypeNode(self.decls.typeAllocator(), f.return_type);
                 try scope.define(f.name, ret_type);
             },
             .struct_decl => |s| {
-                try scope.define(s.name, s.name);
+                try scope.define(s.name, RT{ .named = s.name });
             },
             .enum_decl => |e| {
-                try scope.define(e.name, "enum");
-                // Register enum variants in scope
+                try scope.define(e.name, RT{ .named = e.name });
                 for (e.members) |member| {
                     if (member.* == .enum_variant) {
-                        try scope.define(member.enum_variant.name, e.name);
+                        try scope.define(member.enum_variant.name, RT{ .named = e.name });
                     }
                 }
             },
             .bitfield_decl => |b| {
-                try scope.define(b.name, b.name);
-                // Register flag names in scope so the resolver doesn't error on them
+                try scope.define(b.name, RT{ .named = b.name });
                 for (b.members) |flag_name| {
-                    try scope.define(flag_name, b.name);
+                    try scope.define(flag_name, RT{ .named = b.name });
                 }
             },
             .const_decl => |v| {
-                const type_str = if (v.type_annotation) |t| self.typeNodeStr(t) else "inferred";
-                try scope.define(v.name, type_str);
+                const t = if (v.type_annotation) |ta|
+                    try types.resolveTypeNode(self.decls.typeAllocator(), ta)
+                else
+                    RT.inferred;
+                try scope.define(v.name, t);
             },
             .var_decl => |v| {
-                const type_str = if (v.type_annotation) |t| self.typeNodeStr(t) else "inferred";
-                try scope.define(v.name, type_str);
+                const t = if (v.type_annotation) |ta|
+                    try types.resolveTypeNode(self.decls.typeAllocator(), ta)
+                else
+                    RT.inferred;
+                try scope.define(v.name, t);
             },
             .compt_decl => |v| {
-                const type_str = if (v.type_annotation) |t| self.typeNodeStr(t) else "inferred";
-                try scope.define(v.name, type_str);
+                const t = if (v.type_annotation) |ta|
+                    try types.resolveTypeNode(self.decls.typeAllocator(), ta)
+                else
+                    RT.inferred;
+                try scope.define(v.name, t);
             },
             else => {},
         }
@@ -164,11 +173,10 @@ pub const TypeResolver = struct {
                 var func_scope = Scope.init(self.allocator, scope);
                 defer func_scope.deinit();
 
-                // Register params in function scope
                 for (f.params) |param| {
                     if (param.* == .param) {
-                        const type_str = self.typeNodeStr(param.param.type_annotation);
-                        try func_scope.define(param.param.name, type_str);
+                        const t = try types.resolveTypeNode(self.decls.typeAllocator(), param.param.type_annotation);
+                        try func_scope.define(param.param.name, t);
                     }
                 }
 
@@ -189,18 +197,18 @@ pub const TypeResolver = struct {
                 }
             },
             .var_decl => |v| {
-                // Validate type annotation
                 if (v.type_annotation) |t| {
                     try self.validateType(t, scope);
                 }
-                // Resolve value expression
                 const val_type = try self.resolveExpr(v.value, scope);
-                // Prefer explicit type annotation over inferred
-                const resolved = if (v.type_annotation) |t| self.typeNodeStr(t) else val_type;
-                // If no annotation, check the value is unambiguous
+                const resolved = if (v.type_annotation) |t|
+                    try types.resolveTypeNode(self.decls.typeAllocator(), t)
+                else
+                    val_type;
                 if (v.type_annotation == null) {
-                    if (std.mem.eql(u8, val_type, "numeric_literal") or
-                        std.mem.eql(u8, val_type, "float_literal"))
+                    if (val_type == .primitive and
+                        (std.mem.eql(u8, val_type.primitive, "numeric_literal") or
+                        std.mem.eql(u8, val_type.primitive, "float_literal")))
                     {
                         try self.reporter.report(.{
                             .message = "numeric literal requires explicit type or #bitsize",
@@ -215,10 +223,14 @@ pub const TypeResolver = struct {
                     try self.validateType(t, scope);
                 }
                 const val_type = try self.resolveExpr(v.value, scope);
-                const resolved = if (v.type_annotation) |t| self.typeNodeStr(t) else val_type;
+                const resolved = if (v.type_annotation) |t|
+                    try types.resolveTypeNode(self.decls.typeAllocator(), t)
+                else
+                    val_type;
                 if (v.type_annotation == null) {
-                    if (std.mem.eql(u8, val_type, "numeric_literal") or
-                        std.mem.eql(u8, val_type, "float_literal"))
+                    if (val_type == .primitive and
+                        (std.mem.eql(u8, val_type.primitive, "numeric_literal") or
+                        std.mem.eql(u8, val_type.primitive, "float_literal")))
                     {
                         try self.reporter.report(.{
                             .message = "numeric literal requires explicit type or #bitsize",
@@ -252,8 +264,8 @@ pub const TypeResolver = struct {
                 _ = try self.resolveExpr(f.iterable, scope);
                 var for_scope = Scope.init(self.allocator, scope);
                 defer for_scope.deinit();
-                for (f.captures) |v| try for_scope.define(v, "inferred");
-                if (f.index_var) |idx| try for_scope.define(idx, "inferred");
+                for (f.captures) |v| try for_scope.define(v, RT.inferred);
+                if (f.index_var) |idx| try for_scope.define(idx, RT.inferred);
                 try self.resolveNode(f.body, &for_scope);
             },
             .match_stmt => |m| {
@@ -274,43 +286,38 @@ pub const TypeResolver = struct {
         }
     }
 
-    /// Resolve an expression and return its type string
-    fn resolveExpr(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror![]const u8 {
+    /// Resolve an expression and return its ResolvedType
+    fn resolveExpr(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!RT {
         return switch (node.*) {
             .int_literal => if (self.bitsize) |bs| switch (bs) {
-                32 => "i32",
-                64 => "i64",
-                else => "numeric_literal",
-            } else "numeric_literal",
+                32 => RT{ .primitive = "i32" },
+                64 => RT{ .primitive = "i64" },
+                else => RT{ .primitive = "numeric_literal" },
+            } else RT{ .primitive = "numeric_literal" },
             .float_literal => if (self.bitsize) |bs| switch (bs) {
-                32 => "f32",
-                64 => "f64",
-                else => "float_literal",
-            } else "float_literal",
-            .string_literal => K.Type.STRING,
-            .bool_literal => "bool",
-            .null_literal => K.Type.NULL,
-            .error_literal => K.Type.ERROR,
+                32 => RT{ .primitive = "f32" },
+                64 => RT{ .primitive = "f64" },
+                else => RT{ .primitive = "float_literal" },
+            } else RT{ .primitive = "float_literal" },
+            .string_literal => RT{ .primitive = K.Type.STRING },
+            .bool_literal => RT{ .primitive = "bool" },
+            .null_literal => RT.null_type,
+            .error_literal => RT.err,
 
-            .identifier => |name| {
-                // Check scope first (has most precise info)
-                if (scope.lookup(name)) |t| return t;
-                // Check declarations
-                if (self.decls.funcs.get(name)) |sig| return sig.return_type;
-                if (self.decls.structs.contains(name)) return name;
-                if (self.decls.enums.contains(name)) return name;
-                if (self.decls.vars.get(name)) |v| return v.type_str orelse "unknown";
-                // Check builtins
-                if (builtins.isBuiltinType(name)) return name;
-                if (builtins.isBuiltinValue(name)) return name;
-                // Unknown identifier — may be from another module
-                return "unknown";
+            .identifier => |id_name| {
+                if (scope.lookup(id_name)) |t| return t;
+                if (self.decls.funcs.get(id_name)) |sig| return sig.return_type;
+                if (self.decls.structs.contains(id_name)) return RT{ .named = id_name };
+                if (self.decls.enums.contains(id_name)) return RT{ .named = id_name };
+                if (self.decls.vars.get(id_name)) |v| return v.type_ orelse RT.unknown;
+                if (builtins.isBuiltinType(id_name)) return RT{ .named = id_name };
+                if (builtins.isBuiltinValue(id_name)) return RT{ .named = id_name };
+                return RT.unknown;
             },
 
             .binary_expr => |b| {
                 const left = try self.resolveExpr(b.left, scope);
                 _ = try self.resolveExpr(b.right, scope);
-                // Boolean operators return bool
                 if (std.mem.eql(u8, b.op, "and") or
                     std.mem.eql(u8, b.op, "or") or
                     std.mem.eql(u8, b.op, "==") or
@@ -318,10 +325,9 @@ pub const TypeResolver = struct {
                     std.mem.eql(u8, b.op, "<") or
                     std.mem.eql(u8, b.op, ">") or
                     std.mem.eql(u8, b.op, "<=") or
-                    std.mem.eql(u8, b.op, ">=")) return "bool";
-                // String/array concat returns same type
+                    std.mem.eql(u8, b.op, ">=")) return RT{ .primitive = "bool" };
                 if (std.mem.eql(u8, b.op, "++")) return left;
-                return left; // arithmetic preserves type
+                return left;
             },
 
             .unary_expr => |u| try self.resolveExpr(u.operand, scope),
@@ -331,23 +337,17 @@ pub const TypeResolver = struct {
                 const callee_type = try self.resolveExpr(c.callee, scope);
                 for (c.args) |arg| _ = try self.resolveExpr(arg, scope);
 
-                // If callee is an identifier, look up its return type
                 if (c.callee.* == .identifier) {
-                    // Scope stores the return type for functions
                     if (scope.lookup(c.callee.identifier)) |t| {
-                        // If it's not a generic "func", it's the return type
-                        if (!std.mem.eql(u8, t, "func")) return t;
+                        if (t != .func_ptr) return t;
                     }
-                    // Check declaration table
                     if (self.decls.funcs.get(c.callee.identifier)) |sig| {
                         return sig.return_type;
                     }
                 }
-                // Module-qualified call: module.func()
                 if (c.callee.* == .field_expr) {
                     const fe = c.callee.field_expr;
                     if (fe.object.* == .identifier) {
-                        // Look up func_name in declarations
                         if (self.decls.funcs.get(fe.field)) |sig| {
                             return sig.return_type;
                         }
@@ -358,62 +358,60 @@ pub const TypeResolver = struct {
 
             .field_expr => |f| {
                 const obj_type = try self.resolveExpr(f.object, scope);
-                // Look up struct field type
-                if (self.decls.structs.get(obj_type)) |sig| {
+                const obj_name = obj_type.name();
+                if (self.decls.structs.get(obj_name)) |sig| {
                     for (sig.fields) |field| {
                         if (std.mem.eql(u8, field.name, f.field)) {
-                            return field.type_str;
+                            return field.type_;
                         }
                     }
                 }
-                return "inferred";
+                return RT.inferred;
             },
 
             .index_expr => |i| {
                 _ = try self.resolveExpr(i.object, scope);
                 _ = try self.resolveExpr(i.index, scope);
-                return "inferred";
+                return RT.inferred;
             },
 
             .slice_expr => |s| {
                 _ = try self.resolveExpr(s.object, scope);
                 _ = try self.resolveExpr(s.low, scope);
                 _ = try self.resolveExpr(s.high, scope);
-                return "inferred";
+                return RT.inferred;
             },
 
             .compiler_func => |cf| {
                 for (cf.args) |arg| _ = try self.resolveExpr(arg, scope);
-                // size/align return usize, typeid returns usize, typename returns String
-                if (std.mem.eql(u8, cf.name, "size") or std.mem.eql(u8, cf.name, "align")) return "usize";
-                if (std.mem.eql(u8, cf.name, "typeid")) return "usize";
-                if (std.mem.eql(u8, cf.name, "typename")) return K.Type.STRING;
-                return "unknown";
+                if (std.mem.eql(u8, cf.name, "size") or std.mem.eql(u8, cf.name, "align")) return RT{ .primitive = "usize" };
+                if (std.mem.eql(u8, cf.name, "typeid")) return RT{ .primitive = "usize" };
+                if (std.mem.eql(u8, cf.name, "typename")) return RT{ .primitive = K.Type.STRING };
+                return RT.unknown;
             },
 
-            .array_literal => "[]inferred",
+            .array_literal => RT.inferred,
 
-            else => "unknown",
+            else => RT.unknown,
         };
     }
 
     fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
         switch (node.*) {
-            .type_named => |name| {
-                // Check it's a known type
-                const is_primitive = isPrimitive(name);
+            .type_named => |type_name| {
+                const is_primitive = types.isPrimitiveName(type_name);
                 const is_known = is_primitive or
-                    self.decls.structs.contains(name) or
-                    self.decls.enums.contains(name) or
-                    builtins.isBuiltinType(name) or
-                    std.mem.eql(u8, name, K.Type.ANY) or
-                    std.mem.eql(u8, name, K.Type.VOID) or
-                    std.mem.eql(u8, name, K.Type.NULL) or
-                    scope.lookup(name) != null;
+                    self.decls.structs.contains(type_name) or
+                    self.decls.enums.contains(type_name) or
+                    builtins.isBuiltinType(type_name) or
+                    std.mem.eql(u8, type_name, K.Type.ANY) or
+                    std.mem.eql(u8, type_name, K.Type.VOID) or
+                    std.mem.eql(u8, type_name, K.Type.NULL) or
+                    scope.lookup(type_name) != null;
 
                 if (!is_known) {
                     const msg = try std.fmt.allocPrint(self.allocator,
-                        "unknown type '{s}'", .{name});
+                        "unknown type '{s}'", .{type_name});
                     defer self.allocator.free(msg);
                     try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
                 }
@@ -426,43 +424,7 @@ pub const TypeResolver = struct {
             else => {},
         }
     }
-
-    fn typeNodeStr(self: *TypeResolver, node: *parser.Node) []const u8 {
-        _ = self;
-        return switch (node.*) {
-            .type_named => |n| n,
-            .type_slice => "slice",
-            .type_array => "array",
-            .type_union => "union",
-            .type_tuple_named, .type_tuple_anon => "tuple",
-            .type_func => "func",
-            .type_generic => |g| g.name,
-            .type_ptr => |p| p.kind,
-            else => "unknown",
-        };
-    }
 };
-
-fn isPrimitive(name: []const u8) bool {
-    const primitives = [_][]const u8{
-        "i8", "i16", "i32", "i64", "i128",
-        "u8", "u16", "u32", "u64", "u128",
-        "isize", "usize",
-        "f16", "bf16", "f32", "f64", "f128",
-        "bool", K.Type.STRING,
-    };
-    for (primitives) |p| {
-        if (std.mem.eql(u8, name, p)) return true;
-    }
-    return false;
-}
-
-test "resolver - primitive check" {
-    try std.testing.expect(isPrimitive("i32"));
-    try std.testing.expect(isPrimitive("String"));
-    try std.testing.expect(!isPrimitive("Player"));
-    try std.testing.expect(!isPrimitive("MyStruct"));
-}
 
 test "resolver init" {
     var decl_table = declarations.DeclTable.init(std.testing.allocator);
@@ -483,13 +445,11 @@ test "resolver - bitsize resolves numeric literals" {
     defer arena.deinit();
     const a = arena.allocator();
 
-    // Build metadata: #bitsize = 32
     const bitsize_val = try a.create(parser.Node);
     bitsize_val.* = .{ .int_literal = "32" };
     const meta_node = try a.create(parser.Node);
     meta_node.* = .{ .metadata = .{ .field = "bitsize", .value = bitsize_val } };
 
-    // Build: var x = 42 (no type annotation)
     const int_lit = try a.create(parser.Node);
     int_lit.* = .{ .int_literal = "42" };
     const var_decl = try a.create(parser.Node);
@@ -500,7 +460,6 @@ test "resolver - bitsize resolves numeric literals" {
         .is_pub = false,
     } };
 
-    // Build: var f = 3.14 (no type annotation)
     const float_lit = try a.create(parser.Node);
     float_lit.* = .{ .float_literal = "3.14" };
     const float_decl = try a.create(parser.Node);
@@ -511,14 +470,12 @@ test "resolver - bitsize resolves numeric literals" {
         .is_pub = false,
     } };
 
-    // Wrap in a block (func body)
     const body = try a.create(parser.Node);
     const stmts = try a.alloc(*parser.Node, 2);
     stmts[0] = var_decl;
     stmts[1] = float_decl;
     body.* = .{ .block = .{ .statements = stmts } };
 
-    // Build func main
     const ret_type = try a.create(parser.Node);
     ret_type.* = .{ .type_named = "void" };
     const func_node = try a.create(parser.Node);
@@ -532,7 +489,6 @@ test "resolver - bitsize resolves numeric literals" {
         .is_compt = false,
     } };
 
-    // Build program
     const module_node = try a.create(parser.Node);
     module_node.* = .{ .module_decl = .{ .name = "main" } };
     const meta_slice = try a.alloc(*parser.Node, 1);
@@ -558,7 +514,6 @@ test "resolver - bitsize resolves numeric literals" {
 
     try type_resolver.resolve(program);
 
-    // With bitsize=32, no errors for untyped numeric literals
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expectEqual(@as(u16, 32), type_resolver.bitsize.?);
 }
@@ -569,7 +524,6 @@ test "resolver - no bitsize errors on untyped literal" {
     defer arena.deinit();
     const a = arena.allocator();
 
-    // No metadata — no bitsize
     const int_lit = try a.create(parser.Node);
     int_lit.* = .{ .int_literal = "42" };
     const var_decl = try a.create(parser.Node);
@@ -621,7 +575,6 @@ test "resolver - no bitsize errors on untyped literal" {
 
     try type_resolver.resolve(program);
 
-    // Without bitsize, untyped numeric literal should produce an error
     try std.testing.expect(reporter.hasErrors());
     try std.testing.expect(type_resolver.bitsize == null);
 }
@@ -631,11 +584,18 @@ test "resolver - function return type resolves" {
     var decl_table = declarations.DeclTable.init(alloc);
     defer decl_table.deinit();
 
-    // Register a function: add(i32, i32) -> i32
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const ret_node = try a.create(parser.Node);
+    ret_node.* = .{ .type_named = "i32" };
+
     try decl_table.funcs.put("add", .{
         .name = "add",
         .params = &.{},
-        .return_type = "i32",
+        .return_type = .{ .primitive = "i32" },
+        .return_type_node = ret_node,
         .is_compt = false,
         .is_pub = false,
     });
@@ -648,11 +608,6 @@ test "resolver - function return type resolves" {
 
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
-
-    // Simulate: add(1, 2)
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const a = arena.allocator();
 
     const callee = try a.create(parser.Node);
     callee.* = .{ .identifier = "add" };
@@ -667,7 +622,7 @@ test "resolver - function return type resolves" {
     call.* = .{ .call_expr = .{ .callee = callee, .args = args, .arg_names = &.{} } };
 
     const result = try resolver.resolveExpr(call, &scope);
-    try std.testing.expectEqualStrings("i32", result);
+    try std.testing.expectEqualStrings("i32", result.name());
 }
 
 test "resolver - struct field type resolves" {
@@ -675,11 +630,9 @@ test "resolver - struct field type resolves" {
     var decl_table = declarations.DeclTable.init(alloc);
     defer decl_table.deinit();
 
-    // Register struct: Point { x: f32, y: f32 }
-    // Use the decl_table's allocator since deinit frees these
     const fields = try alloc.alloc(declarations.FieldSig, 2);
-    fields[0] = .{ .name = "x", .type_str = "f32", .has_default = false, .is_pub = true };
-    fields[1] = .{ .name = "y", .type_str = "f32", .has_default = false, .is_pub = true };
+    fields[0] = .{ .name = "x", .type_ = .{ .primitive = "f32" }, .has_default = false, .is_pub = true };
+    fields[1] = .{ .name = "y", .type_ = .{ .primitive = "f32" }, .has_default = false, .is_pub = true };
     try decl_table.structs.put("Point", .{
         .name = "Point",
         .fields = fields,
@@ -694,9 +647,8 @@ test "resolver - struct field type resolves" {
 
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
-    try scope.define("p", "Point");
+    try scope.define("p", RT{ .named = "Point" });
 
-    // Simulate: p.x
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
     const a = arena.allocator();
@@ -707,7 +659,7 @@ test "resolver - struct field type resolves" {
     field_node.* = .{ .field_expr = .{ .object = obj, .field = "x" } };
 
     const result = try resolver.resolveExpr(field_node, &scope);
-    try std.testing.expectEqualStrings("f32", result);
+    try std.testing.expectEqualStrings("f32", result.name());
 }
 
 test "resolver - explicit type annotation preferred" {
@@ -725,7 +677,6 @@ test "resolver - explicit type annotation preferred" {
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
 
-    // Simulate: var x: i64 = 42  (annotation should override bitsize default)
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
     const a = arena.allocator();
@@ -745,7 +696,6 @@ test "resolver - explicit type annotation preferred" {
     try resolver.resolveNode(decl, &scope);
     try std.testing.expect(!reporter.hasErrors());
 
-    // x should be i64 (from annotation), not i32 (from bitsize)
     const x_type = scope.lookup("x").?;
-    try std.testing.expectEqualStrings("i64", x_type);
+    try std.testing.expectEqualStrings("i64", x_type.name());
 }

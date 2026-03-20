@@ -138,6 +138,12 @@ Keep the project structure clean and organized. Remove unnecessary files, stale
 logs, and unused artifacts. No orphan files lingering in the root. If something
 is no longer used, delete it — don't leave it around "just in case."
 
+### Documentation rule
+Each doc file has one specific purpose — no overlap between files. If information
+belongs in an existing file, update it there instead of writing it somewhere else.
+Before creating a new doc, check that no existing file already covers the topic.
+README is an introduction only — no syntax, no feature lists, no details that go stale.
+
 ### When fixing bugs
 1. Read `test_log.txt` first
 2. Fix all errors before packaging

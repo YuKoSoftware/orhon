@@ -4,109 +4,31 @@
 
 Kodr is a compiled, memory-safe programming language that transpiles to Zig. It draws the best from Rust, Go, Swift, Zig, and Python — and discards the complexity.
 
----
+You get ownership and borrow checking without lifetime annotations. Explicit error handling without exceptions. Compile-time generics without a type-level language. Zero-cost abstractions without a garbage collector.
 
-## Why Kodr?
-
-| | |
-|---|---|
-| **Safe** | Memory safety at compile time. Ownership, borrow checking, no use-after-free, no null dereference. No runtime overhead. |
-| **Simple** | Minimal keywords. Minimal special cases. Learnable in a weekend. No fighting the type system. |
-| **Fast** | Zero-cost abstractions. No GC pauses. Cross-compiles anywhere. Zig handles the ABI. |
-| **Explicit** | No hidden control flow. No default allocator. No magic. Every allocation is intentional. |
+The compiler catches memory bugs, null dereference, and use-after-move at compile time. What it generates is readable Zig — one module, one `.zig` file, fully transparent.
 
 ---
 
-## A Taste of Kodr
+## Getting Started
 
-```
-module main
-
-#name    = "myproject"
-#version = Version(1, 0, 0)
-#build   = exe
-#bitsize = 32
-
-import std::console
-
-// Structs with methods
-struct Player {
-    pub name: String
-    health: f32 = 100.0
-
-    func isAlive(self: const &Player) bool {
-        return self.health > 0.0
-    }
-
-    func takeDamage(self: var &Player, amount: f32) void {
-        self.health = self.health - amount
-    }
-}
-
-// Error handling — explicit unions, no exceptions
-func divide(a: i32, b: i32) (Error | i32) {
-    if(b == 0) { return Error("division by zero") }
-    return a / b
-}
-
-func main() void {
-    // Ownership — values move, borrows are checked
-    var p: Player = Player(name: "hero")
-    p.takeDamage(30.0)
-
-    if(p.isAlive()) {
-        console.println(p.name)
-    }
-
-    // Error handling — is/is not for type checks
-    const result = divide(10, 2)
-    if(result is Error) {
-        console.println("error!")
-        return
-    }
-    console.println(result.i32)
-
-    // String operations — methods directly on the type
-    const greeting: String = "hello world"
-    if(greeting.contains("world")) {
-        console.println(greeting.trim())
-    }
-
-    // File I/O — builtin type, no import needed
-    const f: File = File("output.txt")
-    f.write("hello from kodr")
-    f.close()
-}
-
-test "damage reduces health" {
-    var p: Player = Player(name: "test")
-    p.takeDamage(50.0)
-    assert(p.health == 50.0)
-    assert(p.isAlive())
-}
+```bash
+kodr init myproject    # create a new project
+cd myproject
+kodr build             # compile
+kodr run               # build and run
+kodr test              # run all test blocks
 ```
 
----
+Every new project includes an example module that covers the entire language. Read it, modify it, break it — that's the tutorial.
 
-## Key Features
-
-- **Ownership & borrow checking** — compile-time memory safety, no GC
-- **Explicit allocators** — `mem.SMP()`, `mem.DebugAllocator()`, `mem.Arena()`, `mem.Temp(n)`, `mem.Page()`
-- **Error & null as types** — `(Error | T)` and `(null | T)` unions, handled explicitly
-- **`is` / `is not`** — clean type comparisons at the call site
-- **Structs & enums** — methods, default fields, data-carrying variants
-- **Bitfields** — named bit flags with `.has()`, `.set()`, `.clear()`, `.toggle()`
-- **Collections** — `List(T)`, `Map(K,V)`, `Set(T)` with owned or shared allocators
-- **String operations** — `.contains()`, `.startsWith()`, `.trim()`, `.split()`, `.indexOf()` and more
-- **File I/O** — `File("path")` and `Dir("path")` builtin types, `std::fs` module
-- **`compt`** — compile-time functions and generics via `any`
-- **Zig bridge** — `extern func` + paired `.zig` for C interop, no C in Kodr
-- **No build files** — `kodr build`, `kodr run`, `kodr test` — fully integrated
-- **One module = one generated `.zig` file** — readable output, transparent codegen
+Requires Zig 0.15.x installed globally.
 
 ---
 
-## Language Documentation
+## Documentation
+
+The full language spec lives in [`docs/`](docs/):
 
 | File | Topic |
 |------|-------|
@@ -125,23 +47,6 @@ test "damage reduces health" {
 | [13-build-cli.md](docs/13-build-cli.md) | Build system, CLI, generated Zig output |
 | [14-zig-bridge.md](docs/14-zig-bridge.md) | extern func, C interop, naming conventions |
 | [15-testing.md](docs/15-testing.md) | Testing |
-| [16-style.md](docs/16-style.md) | Style guide |
-| [17-example.md](docs/17-example.md) | Complete language example |
-
----
-
-## Status
-
-**Phase 2** — full pipeline working end-to-end. 143 tests passing.
-
-Transpiles to Zig 0.15.x. No bundled binary — Zig installed globally.
-
-```bash
-kodr init myproject    # create a new project
-kodr build             # compile
-kodr run               # build and run
-kodr test              # run all test blocks
-```
 
 ---
 

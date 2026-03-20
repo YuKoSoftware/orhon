@@ -8,120 +8,7 @@ One-sentence pitch: *"A simple yet powerful language that is safe."*
 **Full language spec:** `docs/` folder — read relevant files before making any decisions about
 language behavior, syntax, or semantics. Do not rely on memory or assumptions — check the spec.
 
-**Other docs:** `docs/COMPILER.md` — compiler architecture. `docs/STDLIB.md` — stdlib roadmap. `docs/FUTURE.md` — uncommitted ideas. `docs/TODO.md` — prioritized next steps.
-
----
-
-## Project Structure
-
-```
-kodr/
-    build.zig
-    build.zig.zon
-    README.md               — full language spec
-    COMPILER.md             — compiler architecture + project structure
-    STDLIB.md               — standard library roadmap
-    FUTURE.md               — uncommitted ideas
-    kodr_grammar.peg        — formal grammar
-    src/
-        main.zig            — CLI + pipeline orchestration
-        lexer.zig           — pass 1:  tokenizer
-        parser.zig          — pass 2:  parser + AST types
-        module.zig          — pass 3:  module resolution
-        declarations.zig    — pass 4:  collect type names + signatures
-        resolver.zig        — pass 5:  compt + type resolution
-        ownership.zig       — pass 6:  ownership + move analysis
-        borrow.zig          — pass 7:  borrow checking
-        thread_safety.zig   — pass 8:  thread safety analysis
-        propagation.zig     — pass 9:  error + null propagation
-        mir.zig             — pass 10: MIR types + generation (stub)
-        codegen.zig         — pass 11: Zig source generation
-        zig_runner.zig      — pass 12: invoke Zig compiler
-        types.zig           — shared: Kodr type system
-        errors.zig          — shared: error formatting
-        builtins.zig        — shared: builtin types + Zig equivalents
-        cache.zig           — shared: incremental cache
-        templates/
-            main.kodr       — @embedFile, written by kodr init
-            example.kodr    — @embedFile, language manual anchor (see below)
-            *.kodr          — @embedFile, additional manual files (module example)
-        std/
-            console.kodr    — @embedFile, extracted by kodr initstd
-            console.zig     — std::console implementation
-    test/
-        helpers.sh          — shared test utilities
-        01_unit.sh .. 11_errors.sh — individual test stages
-        fixtures/           — .kodr test files (tester, fail cases)
-```
-
----
-
-## Compiler Pipeline (12 passes)
-
-```
-Source (.kodr)
-    ↓  1. Lexer           — raw text → tokens
-    ↓  2. Parser          — tokens → AST
-    ↓  3. Module Res.     — group files, detect circular imports, check cache
-    ↓  4. Declarations    — collect all type names + function signatures
-    ↓  5. Type Resolution — resolve compt + generics (any → concrete types)
-    ↓  6. Ownership       — track moves, catch use-after-move
-    ↓  7. Borrow Check    — validate &T borrows, lexical lifetimes
-    ↓  8. Thread Safety   — values moved into threads not used after spawn
-    ↓  9. Propagation     — (Error|T) and (null|T) unions handled or propagated
-    ↓ 10. MIR             — SSA-based intermediate representation
-    ↓ 11. Codegen         — emit readable Zig source to .kodr-cache/generated/
-    ↓ 12. Zig Compiler    — produce final binary to bin/<project_name>
-```
-
-Each pass runs only if the previous succeeded. First error stops compilation.
-Passes 1–9, 11–12 are working. Pass 10 (MIR) is a skeleton stub (skipped — codegen works directly).
-
----
-
-## Compt (compile-time)
-
-`compt` is the only compile-time keyword. It goes in front of declarations and
-statements — never inline on arbitrary expressions. No `inline` keyword exists.
-
-- `compt X: i32 = 1024` — compile-time variable
-- `compt func hash() u64 { ... }` — compile-time function (entire body is comptime)
-- `compt for(items) |item| { ... }` — compile-time loop unrolling
-
-That's it. If you need a compile-time value inside a runtime function, extract it
-into a `compt func` and call it. No sprinkling `compt` on random expressions.
-
----
-
-## Module System Rules
-
-- The compiler groups files by their `module` declaration, not by file name or folder
-- Every module needs an **anchor file** — one file whose name matches the module
-  (e.g., `math.kodr` for `module math`). Other files in the module can be named anything.
-- Only the anchor file can contain metadata (`#build`, `#name`, `#version`, `#bitsize`, `#dep`, etc.)
-- Module names are globally unique within a project
-- Modules without a `#build` declaration are regular modules — compiled into whatever
-  imports them. Modules that are never imported are dead code and skipped entirely.
-
-### Build types
-Every project root is `main.kodr` / `module main`. The build type is set via `#build`:
-- `#build = exe` — executable (requires `func main()`)
-- `#build = static` — static library
-- `#build = dynamic` — dynamic/shared library
-
-Metadata uses `#key = value` syntax. Only the anchor file of each module can declare metadata.
-
-### Multiple build targets in one project
-A project can have multiple modules with `#build` declarations. Each produces its own artifact.
-`kodr build` builds all of them. `kodr run` executes the exe target (if one exists).
-Folder structure is for the developer's convenience — the compiler only sees modules:
-```
-src/
-    main.kodr              ← module main, #build = exe (root)
-    math/math.kodr         ← module math, build.static (anchor)
-    math/vectors.kodr      ← module math (additional file)
-    network/network.kodr   ← module network, build.dynamic (anchor)
-```
+**Other docs:** `docs/COMPILER.md` — compiler architecture + project structure. `docs/STDLIB.md` — stdlib roadmap. `docs/FUTURE.md` — future ideas + next steps.
 
 ---
 
@@ -130,10 +17,8 @@ src/
 ```bash
 ./testall.sh             # full test suite: all test stages in pipeline order
 bash test/03_cli.sh      # run a single test stage independently
-./build.sh               # debug build
-./build.sh -release      # release build
-./build.sh -x64          # cross-compile for x64
-./build.sh -wasm         # WebAssembly
+zig build                # debug build
+zig build -Doptimize=ReleaseFast  # release build
 ```
 
 Always run `./testall.sh` after changes. Test files live in `test/`, each independently
@@ -254,7 +139,7 @@ logs, and unused artifacts. No orphan files lingering in the root. If something
 is no longer used, delete it — don't leave it around "just in case."
 
 ### When fixing bugs
-1. Read `test_log.txt` or `build_log.txt` first
+1. Read `test_log.txt` first
 2. Fix all errors before packaging
 3. Diff to confirm only intended lines changed
 
@@ -273,48 +158,8 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 
 ---
 
-## Current Status
+## Priority Rule
 
-**Phase 2** — full pipeline working end-to-end. 137 tests passing.
-
-**Working:**
-- `kodr init <n>`, `kodr build`, `kodr run`, `kodr test`, `kodr initstd`, `kodr debug`
-- Import system with `::` scope operator, missing module errors reported cleanly
-- `extern func` — Kodr interface for paired `.zig` sidecar implementation
-- `import std::console` — terminal I/O stdlib module, `kodr initstd` installs it
-- `++` concatenation (strings and arrays), `#bitsize` numeric literal defaults
-- Structs — instantiation, methods (static/const/var), default field values
-- Enums — instantiation, matching, methods
-- Bitfields — `bitfield Name(T) { Flag }`, constructor, `.has()/.set()/.clear()/.toggle()`
-- Named tuples — `(min: i32, max: i32)`, destructuring `const min, max = expr`
-- Fixed-size arrays `[N]T`, slices `[]T`, `arr[a..b]` slice expressions
-- For loops — arrays, slices, ranges, Lists, Maps `|(key, value)|`, Sets `|key|`, optional index as last capture
-- `@cast` — int/float/int-to-float/float-to-int
-- Function pointers — `func(T) R` type syntax
-- Error handling — `Error("msg")`, `(Error | T)`, error is a distinct `String` type
-- Null handling — `(null | T)` unions
-- `match` on union types — `Error =>` / `null =>` / value type arms, `else` as catch-all
-- `is` / `is not` — type comparison keywords (`result is Error`, `result is not null`)
-- `@type`, `@typename`, `@typeid`, `@cast`, `@copy`, `@move`, `@assert`, `@size`, `@align`
-- Error location in messages — file:line:col with source line preview and caret
-- Pass 9 propagation — `(Error|T)` and `(null|T)` detection
-- Collections — `List(T)`, `Map(K,V)`, `Set(T)` as builtin types, owned/shared allocator patterns
-- Allocators — `mem.SMP()` (default), `mem.DebugAllocator()`, `mem.Arena()`, `mem.Temp(n)`, `mem.Page()`
-- `#dep "path" Version?` — external dependencies: scans dep dirs, version check (error if older, warn if newer)
-- `#key = value` metadata syntax — `#build`, `#name`, `#version`, `#bitsize`, `#dep`
-- Warning infrastructure — `reporter.warn()`, `hasWarnings()`, `WARNING:` prefix + location + summary line
-- `var` → `const` warning + promotion — Kodr warns when a `var` is never reassigned; emitted as `const` in Zig; method-call receivers correctly treated as mutated
-
-- Interface file generation — `bin/<name>.kodr` emitted alongside static/dynamic lib builds; pub-only signatures, no bodies, valid Kodr source
-- Multiple build targets — a project can have multiple `#build` modules; `kodr build` builds all of them
-- String operations — non-allocating methods on String: `.contains()`, `.startsWith()`, `.endsWith()`, `.trim()`, `.trimLeft()`, `.trimRight()`, `.indexOf()`, `.lastIndexOf()`, `.count()`, `.split()` (destructuring). Works on variables and string literals.
-- `File` type — builtin type, `File("path")` constructor (stateless handle, path + allocator). Methods: `.read()`, `.write()`, `.append()`, `.close()`, `.size()`, `.exists()`. Default allocator or shared: `File("path", alloc)`
-- `Dir` type — builtin type, `Dir("path")` constructor. Methods: `.list()`, `.close()`, `.exists()`
-- `import std::fs` — module-level functions: `fs.exists()`, `fs.delete()`, `fs.rename()`, `fs.createDir()`, `fs.deleteDir()`
-- `import std::math` — `math.pow()`, `math.sqrt()`, `math.abs()`, `math.min()`, `math.max()`, `math.floor()`, `math.ceil()`, `math.sin()`, `math.cos()`, `math.tan()`, `math.ln()`, `math.log2()`, `math.PI()`, `math.E()`. All use `any` — type determined by arguments.
-- `Format` type — `Format(i32, String)` creates a formatter for those types. Call as `fmt("{} scored {}", "alice", 42)`. Returns owned String. Optional allocator: `Format(i32, alloc)`. `{}` placeholders auto-mapped to correct Zig format specifiers.
-- `thread(T) name { body }` — OS threads with move semantics, implicit captures. `.value` (blocks + returns, move), `.finished` (bool), `.wait()`, `.cancel()` (cooperative). Pass 8 enforces use-after-move into threads.
-
-**Priority rule:** Focus on getting the core language working. Don't flesh out std,
+Focus on getting the core language working. Don't flesh out std,
 don't add new language features, don't chase edge cases in analysis passes.
 Implement the common/core paths first. Stdlib and full blueprint come later.

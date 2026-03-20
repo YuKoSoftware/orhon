@@ -4,6 +4,29 @@ Ideas and language decisions that are not yet committed. These may make it into 
 
 ---
 
+## Next Steps
+
+### Intra-project library linking
+When a project has multiple `#build` targets (e.g. an exe + a dynamic lib), the exe
+currently compiles the lib's Kodr source inline — it does NOT link against the built
+`.so`/`.a`. The artifacts are produced as standalone files but not wired together.
+
+What's needed:
+- In `zig_runner.buildZigContent`, when building the exe, detect which sibling modules
+  are lib targets and emit `exe.linkLibrary(lib)` / `b.installArtifact(lib)` calls so
+  Zig links them properly.
+- A single `build.zig` that builds all targets in one `zig build` invocation (instead
+  of N sequential invocations) would be cleaner and avoid redundant compilation.
+- The module system needs to distinguish "import as source" vs "link as library" —
+  when a module has `#build = dynamic`, importing it from the exe should mean linking,
+  not inlining the source.
+
+Until this is implemented: within a single project, share code via regular modules
+(no `#build`). Use `#build` only for artifacts meant to be distributed to other
+projects via `#dep`.
+
+---
+
 ## Missing Core Language Features
 
 ### Interfaces / Traits
@@ -37,11 +60,6 @@ Still missing (allocating — need design decision on allocator passing):
 `toUpper`, `toLower`, `replace`, `repeat`, `join`, `parseInt`, `parseFloat`, `toString`.
 
 **Priority: medium** — non-allocating ops done, allocating ones need allocator design.
-
-### String Formatting — DONE
-`Format(Types...)` builtin type. `const fmt = Format(i32, String)` then `fmt("{} scored {}", 42, "alice")`.
-Returns owned String via `std.fmt.allocPrint`. Default SMP allocator, optional shared allocator.
-`{}` placeholders auto-mapped to Zig format specifiers based on declared types.
 
 ### Variadic Functions
 No `func log(args: ...)` equivalent. Blocks building any API that takes variable numbers of arguments — including making `console.print` accept mixed types natively without overloads.

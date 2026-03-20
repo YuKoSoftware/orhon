@@ -824,3 +824,67 @@ pub func test_overflow_ok() i32 {
     if(result is Error) { return 0 }
     return result.i32
 }
+
+// ─── Allocators ─────────────────────────────────────────────
+
+// Default allocator (SMP) — collections use it implicitly
+pub func test_alloc_default() i32 {
+    var items: List(i32) = List(i32)
+    defer { items.free() }
+    items.add(100)
+    items.add(200)
+    return items.get(0) + items.get(1)
+}
+
+// DebugAllocator — leak detection, shared across collections
+pub func test_alloc_debug() i32 {
+    const alloc = mem.DebugAllocator()
+    var a: List(i32) = List(i32, alloc)
+    defer { a.free() }
+    var b: List(i32) = List(i32, alloc)
+    defer { b.free() }
+    a.add(10)
+    b.add(20)
+    return a.get(0) + b.get(0)
+}
+
+// Arena — batch allocation, freeAll at once
+pub func test_alloc_arena() i32 {
+    const alloc = mem.Arena()
+    var items: List(i32) = List(i32, alloc)
+    items.add(7)
+    items.add(8)
+    const result: i32 = items.get(0) + items.get(1)
+    alloc.freeAll()
+    return result
+}
+
+// Page allocator — OS page-sized chunks
+pub func test_alloc_page() i32 {
+    const alloc = mem.Page()
+    var items: List(i32) = List(i32, alloc)
+    defer { items.free() }
+    items.add(50)
+    return items.get(0)
+}
+
+// Direct heap allocation — allocOne + free
+pub func test_alloc_one() i32 {
+    const alloc = mem.DebugAllocator()
+    const val: i32 = alloc.allocOne(i32, 42)
+    const result: i32 = val
+    alloc.free(val)
+    return result
+}
+
+// Direct heap allocation — alloc slice + free
+pub func test_alloc_slice() i32 {
+    const alloc = mem.DebugAllocator()
+    var buf: []i32 = alloc.alloc(i32, 3)
+    buf[0] = 10
+    buf[1] = 20
+    buf[2] = 30
+    const result: i32 = buf[0] + buf[1] + buf[2]
+    alloc.free(buf)
+    return result
+}

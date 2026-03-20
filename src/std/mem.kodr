@@ -1,0 +1,20 @@
+module mem
+
+// mem — memory allocators for Kodr programs
+// Import with: import std::mem
+//
+// Allocator constructors:
+//   mem.SMP()              — fastest, per-thread freelist, global singleton
+//   mem.DebugAllocator()   — leak detection, double-free checks
+//   mem.Arena()            — batch allocation, freeAll() at once
+//   mem.Temp(n)            — stack-backed scratch buffer, n bytes
+//   mem.Page()             — OS page-sized chunks
+//
+// Methods on allocator variables:
+//   a.alloc(T, count)      — allocate a slice of T
+//   a.allocOne(T, value)   — allocate a single value
+//   a.free(x)              — free a slice or single value
+//   a.freeAll()            — free everything (Arena only)
+//
+// Collections accept allocators: List(i32, a), Map(K, V, a), Set(T, a)
+// Default (no allocator arg) uses mem.SMP() internally.

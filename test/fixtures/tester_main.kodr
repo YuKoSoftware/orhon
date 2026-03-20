@@ -325,5 +325,41 @@ func main() void {
         console.print("FAIL overflow\n")
     }
 
+    if(tester.test_alloc_default() == 300) {
+        console.print("PASS alloc_default\n")
+    } else {
+        console.print("FAIL alloc_default\n")
+    }
+
+    if(tester.test_alloc_debug() == 30) {
+        console.print("PASS alloc_debug\n")
+    } else {
+        console.print("FAIL alloc_debug\n")
+    }
+
+    if(tester.test_alloc_arena() == 15) {
+        console.print("PASS alloc_arena\n")
+    } else {
+        console.print("FAIL alloc_arena\n")
+    }
+
+    if(tester.test_alloc_page() == 50) {
+        console.print("PASS alloc_page\n")
+    } else {
+        console.print("FAIL alloc_page\n")
+    }
+
+    if(tester.test_alloc_one() == 42) {
+        console.print("PASS alloc_one\n")
+    } else {
+        console.print("FAIL alloc_one\n")
+    }
+
+    if(tester.test_alloc_slice() == 60) {
+        console.print("PASS alloc_slice\n")
+    } else {
+        console.print("FAIL alloc_slice\n")
+    }
+
     console.print("TESTER:DONE\n")
 }

@@ -246,10 +246,12 @@ pub const WhileStmt = struct {
 };
 
 pub const ForStmt = struct {
-    iterables: []*Node,
-    variables: [][]const u8,
+    iterable: *Node,
+    captures: [][]const u8,
+    index_var: ?[]const u8,
     body: *Node,
     is_compt: bool,
+    is_tuple_capture: bool,
 };
 
 pub const DeferStmt = struct {
@@ -1163,31 +1165,52 @@ pub const Parser = struct {
         _ = try self.expect(.kw_for);
         _ = try self.expect(.lparen);
 
-        var iterables: std.ArrayListUnmanaged(*Node) = .{};
-        try iterables.append(self.alloc(), try self.parseExpr());
-        while (self.check(.comma)) {
-            _ = self.advance();
-            try iterables.append(self.alloc(), try self.parseExpr());
-        }
+        const iterable = try self.parseExpr();
         _ = try self.expect(.rparen);
 
         _ = try self.expect(.pipe);
-        var variables: std.ArrayListUnmanaged([]const u8) = .{};
-        const v1 = try self.expect(.identifier);
-        try variables.append(self.alloc(), v1.text);
-        while (self.check(.comma)) {
+        var captures: std.ArrayListUnmanaged([]const u8) = .{};
+        var is_tuple_capture = false;
+        var index_var: ?[]const u8 = null;
+
+        if (self.check(.lparen)) {
+            // Tuple capture: |(key, value)|
             _ = self.advance();
-            const v = try self.expect(.identifier);
-            try variables.append(self.alloc(), v.text);
+            is_tuple_capture = true;
+            const v1 = try self.expect(.identifier);
+            try captures.append(self.alloc(), v1.text);
+            while (self.check(.comma)) {
+                _ = self.advance();
+                const v = try self.expect(.identifier);
+                try captures.append(self.alloc(), v.text);
+            }
+            _ = try self.expect(.rparen);
+            // Optional index after tuple: |(key, value), index|
+            if (self.check(.comma)) {
+                _ = self.advance();
+                const idx = try self.expect(.identifier);
+                index_var = idx.text;
+            }
+        } else {
+            // Regular capture: |val| or |val, index|
+            const v1 = try self.expect(.identifier);
+            try captures.append(self.alloc(), v1.text);
+            if (self.check(.comma)) {
+                _ = self.advance();
+                const idx = try self.expect(.identifier);
+                index_var = idx.text;
+            }
         }
         _ = try self.expect(.pipe);
 
         const body = try self.parseBlock();
         return self.newNode(.{ .for_stmt = .{
-            .iterables = try iterables.toOwnedSlice(self.alloc()),
-            .variables = try variables.toOwnedSlice(self.alloc()),
+            .iterable = iterable,
+            .captures = try captures.toOwnedSlice(self.alloc()),
+            .index_var = index_var,
             .body = body,
             .is_compt = false,
+            .is_tuple_capture = is_tuple_capture,
         }});
     }
 
@@ -1381,11 +1404,6 @@ pub const Parser = struct {
         const left = try self.parseOrExpr();
         if (self.check(.dotdot)) {
             _ = self.advance();
-            // Open-ended range: 0.. — next token is ) or | (no right side)
-            if (self.check(.rparen) or self.check(.pipe)) {
-                const sentinel = try self.newNode(.{ .null_literal = {} });
-                return self.newNode(.{ .range_expr = .{ .op = "..", .left = left, .right = sentinel } });
-            }
             const right = try self.parseOrExpr();
             return self.newNode(.{ .range_expr = .{ .op = "..", .left = left, .right = right } });
         }
@@ -2372,8 +2390,8 @@ test "parser - for with range" {
     const body = prog.program.top_level[0].func_decl.body;
     const for_node = body.block.statements[0];
     try std.testing.expect(for_node.* == .for_stmt);
-    try std.testing.expect(for_node.for_stmt.iterables[0].* == .range_expr);
-    try std.testing.expectEqualStrings("i", for_node.for_stmt.variables[0]);
+    try std.testing.expect(for_node.for_stmt.iterable.* == .range_expr);
+    try std.testing.expectEqualStrings("i", for_node.for_stmt.captures[0]);
 }
 
 test "parser - while loop" {

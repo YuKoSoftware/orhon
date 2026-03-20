@@ -301,6 +301,30 @@ func main() void {
         console.print("FAIL set\n")
     }
 
+    if(tester.test_map_iter() == 33) {
+        console.print("PASS map_iter\n")
+    } else {
+        console.print("FAIL map_iter\n")
+    }
+
+    if(tester.test_set_iter() == 10) {
+        console.print("PASS set_iter\n")
+    } else {
+        console.print("FAIL set_iter\n")
+    }
+
+    if(tester.test_thread_value() == 42) {
+        console.print("PASS thread_value\n")
+    } else {
+        console.print("FAIL thread_value\n")
+    }
+
+    if(tester.test_thread_wait() == 1) {
+        console.print("PASS thread_wait\n")
+    } else {
+        console.print("FAIL thread_wait\n")
+    }
+
     if(tester.test_bitfield() == 1) {
         console.print("PASS bitfield\n")
     } else {

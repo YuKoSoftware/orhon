@@ -196,7 +196,7 @@ func main() void {
         console.println(i)
     }
 
-    for([1, 2, 3, 4, 5], 0..) |val, idx| {
+    for([1, 2, 3, 4, 5]) |val, idx| {
         console.println(val)
         console.println(idx)
     }

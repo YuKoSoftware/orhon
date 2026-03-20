@@ -126,7 +126,7 @@ pub const BorrowChecker = struct {
                 try self.checkNode(w.body);
             },
             .for_stmt => |f| {
-                for (f.iterables) |it| try self.checkExpr(it);
+                try self.checkExpr(f.iterable);
                 try self.checkNode(f.body);
             },
             .match_stmt => |m| {

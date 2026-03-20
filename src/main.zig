@@ -469,7 +469,7 @@ pub fn main() !void {
     }
 
     if (cli.command == .version) {
-        std.debug.print("kodr 0.1.7\n", .{});
+        std.debug.print("kodr 0.1.8\n", .{});
         return;
     }
 

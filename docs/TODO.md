@@ -4,14 +4,20 @@ Prioritized list of best next moves as of 2026-03-20.
 
 ---
 
-## Open Decisions
-
-### D6. `splitAt()` — atomic slice split
-Tied to Thread/Async. Defer until concurrency is designed.
-
----
-
 ## Missing Features
+
+### F5. Pass 8: Thread safety + `Thread(T)` implementation
+Concurrency design is finalized (see `docs/12-concurrency.md`). Implementation needed:
+1. Parse `Thread(T) name { body }` syntax
+2. Codegen to `std.Thread.spawn` + wrapper struct
+3. Pass 8 — enforce moved captures not used after thread spawn, unjoined threads are errors
+4. `.value` (move), `.finished`, `.wait()`, `.cancel()` (cooperative)
+5. `splitAt` for safe data sharing across threads
+
+### F6. `splitAt()` — atomic split
+Design settled: consumes the original, produces two non-overlapping pieces.
+Works on slices, Lists, and any collection where splitting is meaningful.
+Implement alongside Thread.
 
 ### F4. Intra-project library linking
 When a project has multiple `#build` targets (e.g. an exe + a dynamic lib), the exe
@@ -32,14 +38,11 @@ Until this is implemented: within a single project, share code via regular modul
 (no `#build`). Use `#build` only for artifacts meant to be distributed to other
 projects via `#dep`.
 
-### F3. Pass 8: Thread safety
-100-line stub. Blocked on `splitAt` (D6) and concurrency design.
-`Thread(T)` and `Async(T)` emit a compiler error.
-
 ---
 
 ## Done
 
+- Map/Set iteration — `for(map) |(key, value)|`, `for(set) |key|`, optional index as last capture, removed `0..` counter syntax
 - `#dep "path" Version?` — external dependency support: scan dep dirs, parse modules, version check (error if older, warn if newer)
 - `#key = value` metadata syntax — replaced old `main.field = value` with `#` prefix throughout compiler + docs
 - Warning infrastructure — `reporter.warn()`, `hasWarnings()`, warnings printed before errors with `WARNING:` prefix + source location + summary line

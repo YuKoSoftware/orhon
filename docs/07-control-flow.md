@@ -5,10 +5,13 @@
 Used for iterating over collections and ranges. `for` is the only loop for iteration — never used for conditions.
 
 ```
-for(my_array, 0..) |value, index| { }    // value and index
 for(my_array) |value| { }                // value only
+for(my_array) |value, index| { }         // value and index
 for(0..10) |i| { }                       // range
-for(array_a, array_b) |a, b| { }        // two arrays simultaneously
+for(my_map) |(key, value)| { }           // Map yields tuples
+for(my_map) |(key, value), index| { }    // Map with index
+for(my_set) |key| { }                    // Set yields keys
+for(my_set) |key, index| { }             // Set with index
 ```
 
 ## `while` — Condition Based

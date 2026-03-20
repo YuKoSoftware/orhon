@@ -234,10 +234,11 @@ pub const OwnershipChecker = struct {
             },
 
             .for_stmt => |f| {
-                for (f.iterables) |it| try self.checkExpr(it, scope, true);
+                try self.checkExpr(f.iterable, scope, true);
                 var for_scope = OwnershipScope.init(self.allocator, scope);
                 defer for_scope.deinit();
-                for (f.variables) |v| try for_scope.define(v, false);
+                for (f.captures) |v| try for_scope.define(v, false);
+                if (f.index_var) |idx| try for_scope.define(idx, false);
                 try self.checkNode(f.body, &for_scope);
             },
 

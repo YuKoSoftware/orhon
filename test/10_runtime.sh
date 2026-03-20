@@ -36,7 +36,8 @@ for TEST_NAME in \
     tuple tuple_destruct slice_for for_index for_range while_continue \
     cast_int cast_float cast_float_to_int func_ptr func_ptr_var \
     fixed_array array_index slice_expr raw_ptr safe_ptr typeid_same \
-    typeid_diff match_range match_string list list_len map set \
+    typeid_diff match_range match_string list list_len map set map_iter set_iter \
+    thread_value thread_wait \
     bitfield wrap sat overflow alloc_default alloc_debug alloc_arena \
     alloc_page alloc_one alloc_slice; do
     if echo "$BINOUT" | grep -q "PASS $TEST_NAME"; then pass "runtime: $TEST_NAME"

@@ -105,7 +105,7 @@ pub const ThreadSafetyChecker = struct {
             },
 
             .for_stmt => |f| {
-                for (f.iterables) |it| try self.checkExprForThreadMoves(it);
+                try self.checkExprForThreadMoves(f.iterable);
                 try self.checkNode(f.body);
             },
 

@@ -25,6 +25,11 @@ const FormatInfo = struct {
     type_specs: []const u8, // Zig format specifiers derived from tuple types
 };
 
+/// Info tracked per Thread variable
+const ThreadInfo = struct {
+    result_type: []const u8, // Zig type string for the result
+};
+
 /// The Zig code generator
 pub const CodeGen = struct {
     reporter: *errors.Reporter,
@@ -52,11 +57,15 @@ pub const CodeGen = struct {
     bitfield_vars: std.StringHashMapUnmanaged([]const u8), // var name → bitfield type name
     string_vars: std.StringHashMapUnmanaged(void),        // variables holding String values
     format_vars: std.StringHashMapUnmanaged(FormatInfo),  // variables holding Format instances
+    thread_vars: std.StringHashMapUnmanaged(ThreadInfo),  // variables holding Thread instances
     type_ctx: ?*parser.Node, // expected type from enclosing decl (for overflow codegen)
     locs: ?*const parser.LocMap, // AST node → source location (set by main.zig)
     source_file: []const u8,     // anchor file path for location reporting
     uses_fs: bool,               // module uses File or Dir types
     uses_mem: bool,              // module uses allocator wrappers (Debug/Arena/Temp)
+    in_thread_block: bool,       // inside a Thread body — return → result assignment
+    current_thread_name: []const u8, // name of the thread being generated
+    thread_capture_renames: std.StringHashMapUnmanaged([]const u8), // original name → _cap_name
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter, is_debug: bool) CodeGen {
         return .{
@@ -85,11 +94,15 @@ pub const CodeGen = struct {
             .bitfield_vars = .{},
             .string_vars = .{},
             .format_vars = .{},
+            .thread_vars = .{},
             .type_ctx = null,
             .locs = null,
             .source_file = "",
             .uses_fs = false,
             .uses_mem = false,
+            .in_thread_block = false,
+            .current_thread_name = "",
+            .thread_capture_renames = .{},
         };
     }
 
@@ -151,6 +164,11 @@ pub const CodeGen = struct {
             }
         }
         self.format_vars.deinit(self.allocator);
+        {
+            var ti = self.thread_vars.valueIterator();
+            while (ti.next()) |v| self.allocator.free(v.result_type);
+        }
+        self.thread_vars.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -315,6 +333,9 @@ pub const CodeGen = struct {
     }
     fn isSetVar(self: *const CodeGen, name: []const u8) bool {
         return self.set_vars.contains(name);
+    }
+    fn isThreadVar(self: *const CodeGen, name: []const u8) bool {
+        return self.thread_vars.contains(name);
     }
 
     /// Return the allocator expression for a collection object node (used in unmanaged API calls).
@@ -601,6 +622,7 @@ pub const CodeGen = struct {
         const prev_assigned_vars = self.assigned_vars;
         const prev_string_vars = self.string_vars;
         const prev_format_vars = self.format_vars;
+        const prev_thread_vars = self.thread_vars;
         self.null_vars = .{};
         self.rawptr_vars = .{};
         self.ptr_vars = .{};
@@ -612,6 +634,7 @@ pub const CodeGen = struct {
         self.assigned_vars = .{};
         self.string_vars = .{};
         self.format_vars = .{};
+        self.thread_vars = .{};
         self.in_error_union_func = false;
         self.in_null_union_func = false;
         try collectAssigned(f.body, &self.assigned_vars, self.allocator);
@@ -660,6 +683,9 @@ pub const CodeGen = struct {
             }
             self.format_vars.deinit(self.allocator);
             self.format_vars = prev_format_vars;
+            { var _ti = self.thread_vars.valueIterator(); while (_ti.next()) |v| self.allocator.free(v.result_type); }
+            self.thread_vars.deinit(self.allocator);
+            self.thread_vars = prev_thread_vars;
         }
 
         // pub modifier — always pub for main (Zig requires pub fn main for exe entry)
@@ -1227,6 +1253,16 @@ pub const CodeGen = struct {
                 try self.write(";");
             },
             .return_stmt => |r| {
+                if (self.in_thread_block) {
+                    // Thread body: return expr → _kodr_rp.* = expr; return;
+                    if (r.value) |v| {
+                        try self.write("_kodr_rp.* = ");
+                        try self.generateExpr(v);
+                        try self.write("; return;");
+                    } else {
+                        try self.write("return;");
+                    }
+                } else {
                 try self.write("return");
                 if (r.value) |v| {
                     try self.write(" ");
@@ -1258,6 +1294,7 @@ pub const CodeGen = struct {
                     }
                 }
                 try self.write(";");
+                } // end else (not in_thread_block)
             },
             .if_stmt => |i| {
                 try self.write("if (");
@@ -1282,66 +1319,63 @@ pub const CodeGen = struct {
                 try self.generateBlock(w.body);
             },
             .for_stmt => |f| {
-                // Kodr for(arr, 0..) |val, idx| → Zig for (arr, 0..) |val, idx|
-                // compt for → inline for
-                //
-                // Range iterables: Zig range-for produces usize loop vars.
-                // Only variables paired with a range_expr iterable need renaming
-                // and i32 casting — slice/array variables are used directly.
-                const needs_cast = try self.allocator.alloc(bool, f.variables.len);
-                defer self.allocator.free(needs_cast);
-                for (needs_cast) |*nc| nc.* = false;
-                var has_cast = false;
-                for (f.iterables, 0..) |it, idx| {
-                    if (idx < needs_cast.len and it.* == .range_expr) {
-                        needs_cast[idx] = true;
-                        has_cast = true;
-                    }
-                }
+                const is_range = f.iterable.* == .range_expr;
+                const iter_name = if (f.iterable.* == .identifier) f.iterable.identifier else null;
+                const is_map = if (iter_name) |n| self.isMapVar(n) else false;
+                const is_set = if (iter_name) |n| self.isSetVar(n) else false;
+                const is_list = if (iter_name) |n| self.isListVar(n) else false;
 
-                if (f.is_compt) try self.write("inline ");
-                try self.write("for (");
-                for (f.iterables, 0..) |it, i| {
-                    if (i > 0) try self.write(", ");
-                    if (it.* == .range_expr) {
-                        try self.writeRangeExpr(it.range_expr);
-                    } else if (it.* == .identifier and self.isListVar(it.identifier)) {
-                        // for(list) → for(list.items)
-                        try self.writeFmt("{s}.items", .{it.identifier});
-                    } else {
-                        try self.generateExpr(it);
-                    }
-                }
-                try self.write(") |");
-                for (f.variables, 0..) |v, vi| {
-                    if (vi > 0) try self.write(", ");
-                    if (vi < needs_cast.len and needs_cast[vi]) {
-                        try self.writeFmt("_kodr_{s}", .{v});
-                    } else {
-                        try self.write(v);
-                    }
-                }
-                if (has_cast) {
-                    // Open block manually, inject i32 casts only for range vars
-                    try self.write("| {\n");
-                    self.indent += 1;
-                    for (f.variables, 0..) |v, vi| {
-                        if (vi < needs_cast.len and needs_cast[vi]) {
-                            try self.writeIndent();
-                            try self.writeFmt("const {s}: i32 = @intCast(_kodr_{s});\n", .{ v, v });
-                        }
-                    }
-                    for (f.body.block.statements) |stmt| {
-                        try self.writeIndent();
-                        try self.generateStatement(stmt);
-                        try self.write("\n");
-                    }
-                    self.indent -= 1;
-                    try self.writeIndent();
-                    try self.write("}");
+                if (is_map or is_set) {
+                    // Map/Set → Zig iterator while-loop
+                    try self.generateMapSetFor(f, iter_name.?, is_map);
                 } else {
-                    try self.write("| ");
-                    try self.generateBlock(f.body);
+                    // Array, slice, list, or range → Zig for
+                    const needs_cast = is_range or f.index_var != null;
+                    if (f.is_compt) try self.write("inline ");
+                    try self.write("for (");
+                    if (is_range) {
+                        try self.writeRangeExpr(f.iterable.range_expr);
+                    } else if (is_list) {
+                        try self.writeFmt("{s}.items", .{iter_name.?});
+                    } else {
+                        try self.generateExpr(f.iterable);
+                    }
+                    // Inject 0.. counter when index variable is requested
+                    if (f.index_var != null) try self.write(", 0..");
+                    try self.write(") |");
+                    if (is_range) {
+                        // Range produces usize — rename and cast to i32
+                        try self.writeFmt("_kodr_{s}", .{f.captures[0]});
+                    } else {
+                        try self.write(f.captures[0]);
+                    }
+                    if (f.index_var) |idx| {
+                        // Index from 0.. is usize — rename and cast to i32
+                        try self.writeFmt(", _kodr_{s}", .{idx});
+                    }
+                    if (needs_cast) {
+                        try self.write("| {\n");
+                        self.indent += 1;
+                        if (is_range) {
+                            try self.writeIndent();
+                            try self.writeFmt("const {s}: i32 = @intCast(_kodr_{s});\n", .{ f.captures[0], f.captures[0] });
+                        }
+                        if (f.index_var) |idx| {
+                            try self.writeIndent();
+                            try self.writeFmt("const {s}: i32 = @intCast(_kodr_{s});\n", .{ idx, idx });
+                        }
+                        for (f.body.block.statements) |stmt| {
+                            try self.writeIndent();
+                            try self.generateStatement(stmt);
+                            try self.write("\n");
+                        }
+                        self.indent -= 1;
+                        try self.writeIndent();
+                        try self.write("}");
+                    } else {
+                        try self.write("| ");
+                        try self.generateBlock(f.body);
+                    }
                 }
             },
             .defer_stmt => |d| {
@@ -1469,10 +1503,8 @@ pub const CodeGen = struct {
                     try self.write(";");
                 }
             },
-            .thread_block => {
-                const msg = try std.fmt.allocPrint(self.allocator, "Thread is not yet implemented", .{});
-                defer self.allocator.free(msg);
-                try self.reporter.report(.{ .message = msg });
+            .thread_block => |t| {
+                try self.generateThreadBlock(t);
             },
             .async_block => {
                 const msg = try std.fmt.allocPrint(self.allocator, "Async is not yet implemented", .{});
@@ -1511,6 +1543,12 @@ pub const CodeGen = struct {
                 }
             },
             .identifier => |name| {
+                if (self.in_thread_block) {
+                    if (self.thread_capture_renames.get(name)) |renamed| {
+                        try self.write(renamed);
+                        return;
+                    }
+                }
                 if (self.isEnumVariant(name)) {
                     try self.writeFmt(".{s}", .{name});
                 } else if (self.heap_single_vars.contains(name)) {
@@ -1644,6 +1682,10 @@ pub const CodeGen = struct {
                         }
                         if (self.isSetVar(obj)) {
                             try self.generateSetMethod(fe.object, fe.field, c.args);
+                            return;
+                        }
+                        if (self.isThreadVar(obj)) {
+                            try self.generateThreadMethod(obj, fe.field);
                             return;
                         }
                     }
@@ -1861,6 +1903,19 @@ pub const CodeGen = struct {
                         try self.generateExpr(f.object);
                         try self.write(".ok");
                     }
+                } else if (f.object.* == .identifier and self.isThreadVar(f.object.identifier)) {
+                    // Thread field access
+                    const tname = f.object.identifier;
+                    if (std.mem.eql(u8, f.field, "value")) {
+                        // worker.value → join + unwrap result (generates a block expression)
+                        try self.writeFmt("blk: {{ _kodr_{s}_handle.join(); break :blk _kodr_{s}_result.?; }}", .{ tname, tname });
+                    } else if (std.mem.eql(u8, f.field, "finished")) {
+                        // worker.finished → result != null
+                        try self.writeFmt("(_kodr_{s}_result != null)", .{tname});
+                    } else {
+                        try self.generateExpr(f.object);
+                        try self.writeFmt(".{s}", .{f.field});
+                    }
                 } else {
                     try self.generateExpr(f.object);
                     try self.writeFmt(".{s}", .{f.field});
@@ -1973,8 +2028,6 @@ pub const CodeGen = struct {
             try self.write(")");
         }
         try self.write("..");
-        // Open-ended range (0..) — null_literal sentinel means no right side
-        if (r.right.* == .null_literal) return;
         const right_is_literal = r.right.* == .int_literal;
         if (right_is_literal) {
             try self.generateExpr(r.right);
@@ -1982,6 +2035,231 @@ pub const CodeGen = struct {
             try self.write("@intCast(");
             try self.generateExpr(r.right);
             try self.write(")");
+        }
+    }
+
+    /// Generate a while-loop for Map/Set iteration.
+    /// Map: for(m) |(key, value)| → var _it = m.iterator(); while (_it.next()) |entry| { const key = entry.key_ptr.*; ... }
+    /// Set: for(s) |key| → var _it = s.iterator(); while (_it.next()) |entry| { const key = entry.key_ptr.*; ... }
+    fn generateMapSetFor(self: *CodeGen, f: parser.ForStmt, name: []const u8, is_map: bool) anyerror!void {
+        // var _kodr_it = name.iterator();
+        try self.write("{\n");
+        self.indent += 1;
+        try self.writeIndent();
+        try self.writeFmt("var _kodr_it = {s}.iterator();\n", .{name});
+        // Optional index counter
+        if (f.index_var) |_| {
+            try self.writeIndent();
+            try self.write("var _kodr_idx: usize = 0;\n");
+        }
+        try self.writeIndent();
+        try self.write("while (_kodr_it.next()) |_kodr_entry| {\n");
+        self.indent += 1;
+        // Extract key
+        try self.writeIndent();
+        try self.writeFmt("const {s} = _kodr_entry.key_ptr.*;\n", .{f.captures[0]});
+        // Extract value for Map
+        if (is_map and f.captures.len > 1) {
+            try self.writeIndent();
+            try self.writeFmt("const {s} = _kodr_entry.value_ptr.*;\n", .{f.captures[1]});
+        }
+        // Extract index
+        if (f.index_var) |idx| {
+            try self.writeIndent();
+            try self.writeFmt("const {s}: i32 = @intCast(_kodr_idx);\n", .{idx});
+        }
+        // Body statements
+        for (f.body.block.statements) |stmt| {
+            try self.writeIndent();
+            try self.generateStatement(stmt);
+            try self.write("\n");
+        }
+        // Increment index counter
+        if (f.index_var) |_| {
+            try self.writeIndent();
+            try self.write("_kodr_idx += 1;\n");
+        }
+        self.indent -= 1;
+        try self.writeIndent();
+        try self.write("}\n");
+        self.indent -= 1;
+        try self.writeIndent();
+        try self.write("}");
+    }
+
+    /// Generate Zig code for Thread(T) name { body }
+    /// Emits: result var, cancel flag, std.Thread.spawn with captures
+    fn generateThreadBlock(self: *CodeGen, t: parser.ConcurrencyBlock) anyerror!void {
+        const name = t.name;
+        const result_type = try self.typeToZig(t.result_type);
+        const result_type_dupe = try self.allocator.dupe(u8, result_type);
+
+        // Track this thread variable
+        try self.thread_vars.put(self.allocator, name, .{ .result_type = result_type_dupe });
+
+        // Collect captured variables from body
+        var captures = std.StringHashMap(void).init(self.allocator);
+        defer captures.deinit();
+        try collectCapturedVars(t.body, &captures);
+
+        // Remove locally declared variables — they are not captures
+        var local_decls = std.StringHashMap(void).init(self.allocator);
+        defer local_decls.deinit();
+        try collectLocalDecls(t.body, &local_decls);
+        var decl_it = local_decls.iterator();
+        while (decl_it.next()) |entry| _ = captures.remove(entry.key_ptr.*);
+
+        // Collect capture names into a sorted slice for deterministic output
+        var cap_names = std.ArrayListUnmanaged([]const u8){};
+        defer cap_names.deinit(self.allocator);
+        var cap_it = captures.iterator();
+        while (cap_it.next()) |entry| try cap_names.append(self.allocator, entry.key_ptr.*);
+        std.mem.sort([]const u8, cap_names.items, {}, struct {
+            fn cmp(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.order(u8, a, b) == .lt;
+            }
+        }.cmp);
+
+        // var _kodr_<name>_result: ?<T> = null;
+        try self.writeFmt("var _kodr_{s}_result: ?{s} = null;\n", .{ name, result_type });
+        try self.writeIndent();
+
+        // var _kodr_<name>_cancel = std.atomic.Value(bool).init(false);
+        try self.writeFmt("var _kodr_{s}_cancel = std.atomic.Value(bool).init(false);\n", .{name});
+        try self.writeIndent();
+
+        // const _kodr_<name>_handle = std.Thread.spawn(.{}, struct { fn run(...) void { ... } }.run, .{...}) catch unreachable;
+        try self.writeFmt("const _kodr_{s}_handle = std.Thread.spawn(.{{}}, struct {{\n", .{name});
+        self.indent += 1;
+        try self.writeIndent();
+
+        // fn run(result_ptr: *?T, _cancel: *std.atomic.Value(bool), _cap_x: @TypeOf(x), ...) void {
+        try self.writeFmt("fn run(_kodr_rp: *?{s}, _kodr_cancel: *std.atomic.Value(bool)", .{result_type});
+        for (cap_names.items) |cap| {
+            try self.writeFmt(", _cap_{s}: @TypeOf({s})", .{ cap, cap });
+        }
+        try self.write(") void {\n");
+        self.indent += 1;
+
+        // _ = _kodr_cancel; (suppress unused warning — available for cooperative cancellation)
+        try self.writeIndent();
+        try self.write("_ = _kodr_cancel;\n");
+
+        // Generate body statements — transform return into result assignment
+        // Set up capture renames so identifiers emit as _cap_name
+        const prev_in_thread = self.in_thread_block;
+        const prev_thread_name = self.current_thread_name;
+        const prev_renames = self.thread_capture_renames;
+        self.in_thread_block = true;
+        self.current_thread_name = name;
+        self.thread_capture_renames = .{};
+        for (cap_names.items) |cap| {
+            const renamed = try std.fmt.allocPrint(self.allocator, "_cap_{s}", .{cap});
+            try self.thread_capture_renames.put(self.allocator, cap, renamed);
+        }
+        defer {
+            var ri = self.thread_capture_renames.valueIterator();
+            while (ri.next()) |v| self.allocator.free(v.*);
+            self.thread_capture_renames.deinit(self.allocator);
+            self.in_thread_block = prev_in_thread;
+            self.current_thread_name = prev_thread_name;
+            self.thread_capture_renames = prev_renames;
+        }
+
+        for (t.body.block.statements) |stmt| {
+            try self.writeIndent();
+            try self.generateStatement(stmt);
+            try self.write("\n");
+        }
+
+        self.indent -= 1;
+        try self.writeIndent();
+        try self.write("}\n");
+        self.indent -= 1;
+        try self.writeIndent();
+
+        // }.run, .{ &result, &cancel, cap1, cap2, ... }) catch unreachable;
+        try self.writeFmt("}}.run, .{{ &_kodr_{s}_result, &_kodr_{s}_cancel", .{ name, name });
+        for (cap_names.items) |cap| {
+            try self.writeFmt(", {s}", .{cap});
+        }
+        try self.write(" }) catch unreachable;");
+    }
+
+    /// Generate Zig code for thread method calls: worker.wait(), worker.cancel()
+    fn generateThreadMethod(self: *CodeGen, name: []const u8, method: []const u8) anyerror!void {
+        if (std.mem.eql(u8, method, "wait")) {
+            try self.writeFmt("_kodr_{s}_handle.join()", .{name});
+        } else if (std.mem.eql(u8, method, "cancel")) {
+            try self.writeFmt("_kodr_{s}_cancel.store(true, .seq_cst)", .{name});
+        }
+    }
+
+    /// Collect all identifiers referenced in a node tree
+    fn collectCapturedVars(node: *parser.Node, vars: *std.StringHashMap(void)) anyerror!void {
+        switch (node.*) {
+            .identifier => |name| try vars.put(name, {}),
+            .block => |b| {
+                for (b.statements) |stmt| try collectCapturedVars(stmt, vars);
+            },
+            .binary_expr => |b| {
+                try collectCapturedVars(b.left, vars);
+                try collectCapturedVars(b.right, vars);
+            },
+            .call_expr => |c| {
+                // Only capture callee if it's a method call (field_expr), not a plain function name
+                if (c.callee.* == .field_expr) try collectCapturedVars(c.callee, vars);
+                for (c.args) |arg| try collectCapturedVars(arg, vars);
+            },
+            .return_stmt => |r| {
+                if (r.value) |v| try collectCapturedVars(v, vars);
+            },
+            .var_decl => |v| try collectCapturedVars(v.value, vars),
+            .field_expr => |f| try collectCapturedVars(f.object, vars),
+            .assignment => |a| {
+                try collectCapturedVars(a.left, vars);
+                try collectCapturedVars(a.right, vars);
+            },
+            .if_stmt => |i| {
+                try collectCapturedVars(i.condition, vars);
+                try collectCapturedVars(i.then_block, vars);
+                if (i.else_block) |e| try collectCapturedVars(e, vars);
+            },
+            .while_stmt => |w| {
+                try collectCapturedVars(w.condition, vars);
+                try collectCapturedVars(w.body, vars);
+            },
+            .for_stmt => |f| {
+                try collectCapturedVars(f.iterable, vars);
+                try collectCapturedVars(f.body, vars);
+            },
+            .index_expr => |i| {
+                try collectCapturedVars(i.object, vars);
+                try collectCapturedVars(i.index, vars);
+            },
+            .unary_expr => |u| try collectCapturedVars(u.operand, vars),
+            else => {},
+        }
+    }
+
+    /// Collect locally declared variable names in a body
+    fn collectLocalDecls(node: *parser.Node, decls: *std.StringHashMap(void)) anyerror!void {
+        switch (node.*) {
+            .block => |b| {
+                for (b.statements) |stmt| try collectLocalDecls(stmt, decls);
+            },
+            .var_decl => |v| try decls.put(v.name, {}),
+            .if_stmt => |i| {
+                try collectLocalDecls(i.then_block, decls);
+                if (i.else_block) |e| try collectLocalDecls(e, decls);
+            },
+            .while_stmt => |w| try collectLocalDecls(w.body, decls),
+            .for_stmt => |f| {
+                for (f.captures) |cap| try decls.put(cap, {});
+                if (f.index_var) |idx| try decls.put(idx, {});
+                try collectLocalDecls(f.body, decls);
+            },
+            else => {},
         }
     }
 
@@ -2638,8 +2916,10 @@ pub const CodeGen = struct {
                     .{ params_str.items, ret });
             },
             .type_generic => |g| blk: {
-                if (std.mem.eql(u8, g.name, "Thread") or std.mem.eql(u8, g.name, "Async")) {
-                    break :blk "void"; // not yet implemented — codegen emits error at thread_block/async_block
+                if (std.mem.eql(u8, g.name, "Thread")) {
+                    break :blk "std.Thread"; // Thread handle type
+                } else if (std.mem.eql(u8, g.name, "Async")) {
+                    break :blk "void"; // Async not yet implemented
                 } else if (std.mem.eql(u8, g.name, "Ptr")) {
                     // Ptr(T) → *const T
                     if (g.args.len > 0) {

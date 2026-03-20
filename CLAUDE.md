@@ -32,7 +32,7 @@ kodr/
         resolver.zig        — pass 5:  compt + type resolution
         ownership.zig       — pass 6:  ownership + move analysis
         borrow.zig          — pass 7:  borrow checking
-        thread_safety.zig   — pass 8:  thread safety analysis (stub)
+        thread_safety.zig   — pass 8:  thread safety analysis
         propagation.zig     — pass 9:  error + null propagation
         mir.zig             — pass 10: MIR types + generation (stub)
         codegen.zig         — pass 11: Zig source generation
@@ -75,7 +75,7 @@ Source (.kodr)
 ```
 
 Each pass runs only if the previous succeeded. First error stops compilation.
-Passes 1–7, 9, 11–12 are working. Pass 8 (thread safety) is a stub. Pass 10 (MIR) is a skeleton stub.
+Passes 1–9, 11–12 are working. Pass 10 (MIR) is a skeleton stub (skipped — codegen works directly).
 
 ---
 
@@ -288,7 +288,7 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 - Bitfields — `bitfield Name(T) { Flag }`, constructor, `.has()/.set()/.clear()/.toggle()`
 - Named tuples — `(min: i32, max: i32)`, destructuring `const min, max = expr`
 - Fixed-size arrays `[N]T`, slices `[]T`, `arr[a..b]` slice expressions
-- For/index/range loops, while with continue
+- For loops — arrays, slices, ranges, Lists, Maps `|(key, value)|`, Sets `|key|`, optional index as last capture
 - `@cast` — int/float/int-to-float/float-to-int
 - Function pointers — `func(T) R` type syntax
 - Error handling — `Error("msg")`, `(Error | T)`, error is a distinct `String` type
@@ -313,9 +313,8 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 - `import std::fs` — module-level functions: `fs.exists()`, `fs.delete()`, `fs.rename()`, `fs.createDir()`, `fs.deleteDir()`
 - `import std::math` — `math.pow()`, `math.sqrt()`, `math.abs()`, `math.min()`, `math.max()`, `math.floor()`, `math.ceil()`, `math.sin()`, `math.cos()`, `math.tan()`, `math.ln()`, `math.log2()`, `math.PI()`, `math.E()`. All use `any` — type determined by arguments.
 - `Format` type — `Format(i32, String)` creates a formatter for those types. Call as `fmt("{} scored {}", "alice", 42)`. Returns owned String. Optional allocator: `Format(i32, alloc)`. `{}` placeholders auto-mapped to correct Zig format specifiers.
+- `thread(T) name { body }` — OS threads with move semantics, implicit captures. `.value` (blocks + returns, move), `.finished` (bool), `.wait()`, `.cancel()` (cooperative). Pass 8 enforces use-after-move into threads.
 
-**Next:**
-- Pass 8 (thread safety) — sendability checks
 **Priority rule:** Focus on getting the core language working. Don't flesh out std,
 don't add new language features, don't chase edge cases in analysis passes.
 Implement the common/core paths first. Stdlib and full blueprint come later.

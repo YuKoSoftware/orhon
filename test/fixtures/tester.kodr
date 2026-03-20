@@ -275,7 +275,7 @@ pub func sum_slice_test() i32 {
 pub func indexed_sum() i32 {
     const arr: [3]i32 = [10, 20, 30]
     var total: i32 = 0
-    for(arr, 0..) |val, i| {
+    for(arr) |val, i| {
         total += val + i
     }
     return total
@@ -785,6 +785,55 @@ pub func test_set() i32 {
         return 1
     }
     return 0
+}
+
+// ─── Map/Set iteration ──────────────────────────────────────
+
+// for over Map yields (key, value) tuples
+pub func test_map_iter() i32 {
+    var m: Map(i32, i32) = Map(i32, i32)
+    defer { m.free() }
+    m.put(1, 10)
+    m.put(2, 20)
+    var total: i32 = 0
+    for(m) |(key, value)| {
+        total += key + value
+    }
+    return total
+}
+
+// for over Set yields keys
+pub func test_set_iter() i32 {
+    var seen: Set(i32) = Set(i32)
+    defer { seen.free() }
+    seen.add(3)
+    seen.add(7)
+    var total: i32 = 0
+    for(seen) |key| {
+        total += key
+    }
+    return total
+}
+
+// ─── Thread ─────────────────────────────────────────────────
+
+// thread spawns OS thread, captures move in, .value returns result
+pub func test_thread_value() i32 {
+    const x: i32 = 21
+    thread(i32) worker {
+        return x * 2
+    }
+    const result: i32 = worker.value
+    return result
+}
+
+// thread with .wait() — join without getting value
+pub func test_thread_wait() i32 {
+    thread(i32) bg {
+        return 1
+    }
+    bg.wait()
+    return 1
 }
 
 // ─── Bitfield ───────────────────────────────────────────────

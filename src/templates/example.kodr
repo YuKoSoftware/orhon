@@ -474,6 +474,41 @@ func list_sum() i32 {
     return total
 }
 
+// for loop over a Map — yields (key, value) tuples
+func map_sum() i32 {
+    var m: Map(i32, i32) = Map(i32, i32)
+    defer { m.free() }
+    m.put(1, 10)
+    m.put(2, 20)
+    var total: i32 = 0
+    for(m) |(key, value)| {
+        total += key + value
+    }
+    return total
+}
+
+// for loop over a Set — yields keys
+func set_sum() i32 {
+    var s: Set(i32) = Set(i32)
+    defer { s.free() }
+    s.add(3)
+    s.add(7)
+    var total: i32 = 0
+    for(s) |key| {
+        total += key
+    }
+    return total
+}
+
+// for loop with index — index is always the last capture
+func indexed_sum(arr: []i32) i32 {
+    var total: i32 = 0
+    for(arr) |val, i| {
+        total += val + i
+    }
+    return total
+}
+
 // explicit allocator — shared across multiple collections
 func shared_alloc_demo() i32 {
     const alloc = mem.DebugAllocator()

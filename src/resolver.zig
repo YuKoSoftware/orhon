@@ -249,10 +249,11 @@ pub const TypeResolver = struct {
                 try self.resolveNode(w.body, scope);
             },
             .for_stmt => |f| {
-                for (f.iterables) |it| _ = try self.resolveExpr(it, scope);
+                _ = try self.resolveExpr(f.iterable, scope);
                 var for_scope = Scope.init(self.allocator, scope);
                 defer for_scope.deinit();
-                for (f.variables) |v| try for_scope.define(v, "inferred");
+                for (f.captures) |v| try for_scope.define(v, "inferred");
+                if (f.index_var) |idx| try for_scope.define(idx, "inferred");
                 try self.resolveNode(f.body, &for_scope);
             },
             .match_stmt => |m| {

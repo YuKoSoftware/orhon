@@ -16,13 +16,12 @@ Design options to evaluate:
 
 **Priority: high** — blocks real-world design patterns.
 
-### Iterator Protocol
-`for` only works on arrays, slices, and integer ranges. Custom structs cannot be made iterable. No lazy sequences, no generators, no pipeline-style data processing. Also means `Map` and `Set` key-value iteration is not possible today.
+### Iterator Protocol — PARTIALLY DONE
+`for` works on arrays, slices, integer ranges, Lists, Maps `|(key, value)|`, and Sets `|key|`. Optional index as last capture: `for(arr) |val, i|`.
 
-Needs a protocol that structs can implement — likely tied to the interfaces design above.
-Something like: a struct with `func next(self: var &Self) (null | T)` becomes iterable.
+Custom structs cannot yet be made iterable. No lazy sequences, no generators. Needs a protocol — likely tied to the interfaces design above. Something like: a struct with `func next(self: var &Self) (null | T)` becomes iterable.
 
-**Priority: high** — blocks usable collections.
+**Priority: medium** — builtin collection iteration done, custom iteration needs interfaces.
 
 ### Arbitrary Unions
 The spec documents `const MyUnion = (i32 | f32)` but only `(Error | T)` and `(null | T)` are confirmed working end-to-end. General-purpose unions beyond those two need to be verified and fully implemented in codegen + all analysis passes.

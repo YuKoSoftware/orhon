@@ -277,5 +277,53 @@ func main() void {
         console.print("FAIL match_string\n")
     }
 
+    if(tester.test_list() == 20) {
+        console.print("PASS list\n")
+    } else {
+        console.print("FAIL list\n")
+    }
+
+    if(tester.test_list_len() == 40) {
+        console.print("PASS list_len\n")
+    } else {
+        console.print("FAIL list_len\n")
+    }
+
+    if(tester.test_map() == 42) {
+        console.print("PASS map\n")
+    } else {
+        console.print("FAIL map\n")
+    }
+
+    if(tester.test_set() == 1) {
+        console.print("PASS set\n")
+    } else {
+        console.print("FAIL set\n")
+    }
+
+    if(tester.test_bitfield() == 1) {
+        console.print("PASS bitfield\n")
+    } else {
+        console.print("FAIL bitfield\n")
+    }
+
+    if(tester.test_wrap() == 5) {
+        console.print("PASS wrap\n")
+    } else {
+        console.print("FAIL wrap\n")
+    }
+
+    if(tester.test_sat() == 15) {
+        console.print("PASS sat\n")
+    } else {
+        console.print("FAIL sat\n")
+    }
+
+    if(tester.test_overflow_ok() == 8) {
+        console.print("PASS overflow\n")
+    } else {
+        console.print("FAIL overflow\n")
+    }
+
     console.print("TESTER:DONE\n")
 }

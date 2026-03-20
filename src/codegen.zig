@@ -42,6 +42,10 @@ pub const CodeGen = struct {
     warned_rawptr: bool,     // RawPtr/VolatilePtr warning printed once per module
     module_name: []const u8, // current module name — used for extern re-exports
     assigned_vars: std.StringHashMapUnmanaged(void), // vars assigned after declaration in current func
+    bitfield_vars: std.StringHashMapUnmanaged([]const u8), // var name → bitfield type name
+    type_ctx: ?*parser.Node, // expected type from enclosing decl (for overflow codegen)
+    locs: ?*const parser.LocMap, // AST node → source location (set by main.zig)
+    source_file: []const u8,     // anchor file path for location reporting
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter, is_debug: bool) CodeGen {
         return .{
@@ -67,7 +71,20 @@ pub const CodeGen = struct {
             .warned_rawptr = false,
             .module_name = "",
             .assigned_vars = .{},
+            .bitfield_vars = .{},
+            .type_ctx = null,
+            .locs = null,
+            .source_file = "",
         };
+    }
+
+    fn nodeLoc(self: *const CodeGen, node: *parser.Node) ?errors.SourceLoc {
+        if (self.locs) |l| {
+            if (l.get(node)) |loc| {
+                return .{ .file = self.source_file, .line = loc.line, .col = loc.col };
+            }
+        }
+        return null;
     }
 
     /// Check if a name is an enum variant in any declared enum
@@ -108,6 +125,8 @@ pub const CodeGen = struct {
         while (hs_it.next()) |e| self.allocator.free(e.value_ptr.*);
         self.heap_single_vars.deinit(self.allocator);
         self.assigned_vars.deinit(self.allocator);
+        { var bv_it = self.bitfield_vars.valueIterator(); while (bv_it.next()) |v| self.allocator.free(v.*); }
+        self.bitfield_vars.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -192,6 +211,19 @@ pub const CodeGen = struct {
             if (nodeContainsNullUnion(node)) return true;
         }
         return false;
+    }
+
+    /// Extract the value type from a (Error | T) or (null | T) union type annotation.
+    /// Returns null if not a recognized union or no non-Error/non-null type found.
+    fn extractValueType(node: *parser.Node) ?*parser.Node {
+        if (node.* != .type_union) return null;
+        for (node.type_union) |t| {
+            if (t.* == .type_named and
+                (std.mem.eql(u8, t.type_named, "Error") or std.mem.eql(u8, t.type_named, "null")))
+                continue;
+            return t;
+        }
+        return null;
     }
 
     /// Check if a type annotation AST node is a (null | T) union
@@ -358,6 +390,16 @@ pub const CodeGen = struct {
                 if (getRootIdent(a.left)) |name| try set.put(alloc, name, {});
                 try collectAssigned(a.right, set, alloc);
             },
+            .call_expr => |c| {
+                // Method call on a receiver: foo.method(args) — treat the receiver as
+                // potentially mutated so we don't promote it to const incorrectly.
+                if (c.callee.* == .field_expr) {
+                    if (getRootIdent(c.callee.field_expr.object)) |name| {
+                        try set.put(alloc, name, {});
+                    }
+                }
+                for (c.args) |arg| try collectAssigned(arg, set, alloc);
+            },
             .block => |b| {
                 for (b.statements) |s| try collectAssigned(s, set, alloc);
             },
@@ -373,6 +415,15 @@ pub const CodeGen = struct {
                 try collectAssigned(w.body, set, alloc);
             },
             .for_stmt => |f| try collectAssigned(f.body, set, alloc),
+            .slice_expr => |s| {
+                // Slice base must stay `var` so the slice type is []T not *const [N]T
+                if (s.object.* == .identifier)
+                    try set.put(alloc, s.object.identifier, {});
+                try collectAssigned(s.low, set, alloc);
+                try collectAssigned(s.high, set, alloc);
+            },
+            .var_decl => |v| try collectAssigned(v.value, set, alloc),
+            .const_decl => |v| try collectAssigned(v.value, set, alloc),
             .match_stmt => |m| {
                 for (m.arms) |arm| {
                     if (arm.* == .match_arm) try collectAssigned(arm.match_arm.body, set, alloc);
@@ -458,6 +509,9 @@ pub const CodeGen = struct {
             self.heap_single_vars = prev_heap_single_vars;
             self.assigned_vars.deinit(self.allocator);
             self.assigned_vars = prev_assigned_vars;
+            { var _bv = self.bitfield_vars.valueIterator(); while (_bv.next()) |v| self.allocator.free(v.*); }
+            self.bitfield_vars.deinit(self.allocator);
+            self.bitfield_vars = .{};
         }
 
         // pub modifier — always pub for main (Zig requires pub fn main for exe entry)
@@ -778,6 +832,10 @@ pub const CodeGen = struct {
             if (isCollExpr(v.value, "List")) try self.list_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
             if (isCollExpr(v.value, "Map")) try self.map_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
             if (isCollExpr(v.value, "Set")) try self.set_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
+            if (v.type_annotation) |t| {
+                if (t.* == .type_named and self.isBitfieldType(t.type_named))
+                    try self.bitfield_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, t.type_named));
+            }
             try self.generateExpr(v.value);
         }
         try self.write(";\n");
@@ -811,6 +869,10 @@ pub const CodeGen = struct {
             if (isCollExpr(v.value, "List")) try self.list_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
             if (isCollExpr(v.value, "Map")) try self.map_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
             if (isCollExpr(v.value, "Set")) try self.set_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
+            if (v.type_annotation) |t| {
+                if (t.* == .type_named and self.isBitfieldType(t.type_named))
+                    try self.bitfield_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, t.type_named));
+            }
             try self.generateExpr(v.value);
         }
         try self.write(";\n");
@@ -906,7 +968,15 @@ pub const CodeGen = struct {
                     return self.generateAllocOneDecl(v.name, ac.alloc_name, ac.type_arg, ac.val_arg);
                 }
                 const is_null_union = if (v.type_annotation) |t| isNullUnionType(t) else false;
-                const kw: []const u8 = if (self.assigned_vars.contains(v.name)) "var" else "const";
+                const is_mutated = self.assigned_vars.contains(v.name);
+                const kw: []const u8 = if (is_mutated) "var" else "const";
+                if (!is_mutated) {
+                    // User wrote `var` but never reassigns — emit a warning
+                    const msg = try std.fmt.allocPrint(self.allocator,
+                        "'{s}' is declared as var but never reassigned — use const", .{v.name});
+                    defer self.allocator.free(msg);
+                    try self.reporter.warn(.{ .message = msg, .loc = self.nodeLoc(node) });
+                }
                 try self.writeFmt("{s} {s}", .{ kw, v.name });
                 if (v.type_annotation) |t| try self.writeFmt(": {s}", .{try self.typeToZig(t)});
                 try self.write(" = ");
@@ -919,7 +989,14 @@ pub const CodeGen = struct {
                     if (isCollExpr(v.value, "List")) try self.list_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
                     if (isCollExpr(v.value, "Map")) try self.map_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
                     if (isCollExpr(v.value, "Set")) try self.set_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
+                    if (v.type_annotation) |t| {
+                        if (t.* == .type_named and self.isBitfieldType(t.type_named))
+                            try self.bitfield_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, t.type_named));
+                    }
+                    const prev_ctx = self.type_ctx;
+                    self.type_ctx = v.type_annotation;
                     try self.generateExpr(v.value);
+                    self.type_ctx = prev_ctx;
                 }
                 try self.write(";");
             },
@@ -945,7 +1022,14 @@ pub const CodeGen = struct {
                     if (isCollExpr(v.value, "List")) try self.list_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
                     if (isCollExpr(v.value, "Map")) try self.map_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
                     if (isCollExpr(v.value, "Set")) try self.set_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, sharedCollAllocName(v.value.coll_expr)));
+                    if (v.type_annotation) |t| {
+                        if (t.* == .type_named and self.isBitfieldType(t.type_named))
+                            try self.bitfield_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, t.type_named));
+                    }
+                    const prev_ctx = self.type_ctx;
+                    self.type_ctx = v.type_annotation;
                     try self.generateExpr(v.value);
+                    self.type_ctx = prev_ctx;
                 }
                 try self.write(";");
             },
@@ -1393,6 +1477,27 @@ pub const CodeGen = struct {
                         }
                     }
                 }
+                // Bitfield method calls: mode.has(Flag), mode.set(Flag), etc.
+                // Flag identifiers must be qualified: Perms.Flag
+                if (c.callee.* == .field_expr) {
+                    const fe = c.callee.field_expr;
+                    if (fe.object.* == .identifier) {
+                        if (self.bitfield_vars.get(fe.object.identifier)) |type_name| {
+                            try self.generateExpr(fe.object);
+                            try self.writeFmt(".{s}(", .{fe.field});
+                            for (c.args, 0..) |arg, i| {
+                                if (i > 0) try self.write(", ");
+                                if (arg.* == .identifier) {
+                                    try self.writeFmt("{s}.{s}", .{ type_name, arg.identifier });
+                                } else {
+                                    try self.generateExpr(arg);
+                                }
+                            }
+                            try self.write(")");
+                            return;
+                        }
+                    }
+                }
                 // Allocator method calls: a.alloc(), a.free(), a.freeAll()
                 if (c.callee.* == .field_expr) {
                     const fe = c.callee.field_expr;
@@ -1750,16 +1855,40 @@ pub const CodeGen = struct {
                 // overflow(a + b) → (blk: { const _ov = @addWithOverflow(a, b);
                 //   if (_ov[1] != 0) break :blk KodrResult(@TypeOf(a)){ .err = .{ .message = "overflow" } }
                 //   else break :blk KodrResult(@TypeOf(a)){ .ok = _ov[0] }; })
+                // When operands are literals, @TypeOf gives comptime_int which Zig rejects.
+                // Use the concrete type from the enclosing decl's type_ctx if available.
+                const left_is_literal = b.left.* == .int_literal or b.left.* == .float_literal;
+                const type_str: ?[]const u8 = if (left_is_literal) blk: {
+                    if (self.type_ctx) |ctx| {
+                        if (extractValueType(ctx)) |vt| break :blk try self.typeToZig(vt);
+                    }
+                    break :blk null;
+                } else null;
+
                 try self.write("(blk: { const _ov = ");
                 try self.writeFmt("{s}(", .{builtin});
-                try self.generateExpr(b.left);
+                if (type_str) |ts| {
+                    try self.writeFmt("@as({s}, ", .{ts});
+                    try self.generateExpr(b.left);
+                    try self.write(")");
+                } else {
+                    try self.generateExpr(b.left);
+                }
                 try self.write(", ");
                 try self.generateExpr(b.right);
-                try self.write("); if (_ov[1] != 0) break :blk KodrResult(@TypeOf(");
-                try self.generateExpr(b.left);
-                try self.write(")){ .err = .{ .message = \"overflow\" } } else break :blk KodrResult(@TypeOf(");
-                try self.generateExpr(b.left);
-                try self.write(")){ .ok = _ov[0] }; })");
+                if (type_str) |ts| {
+                    try self.write("); if (_ov[1] != 0) break :blk KodrResult(");
+                    try self.write(ts);
+                    try self.write("){ .err = .{ .message = \"overflow\" } } else break :blk KodrResult(");
+                    try self.write(ts);
+                    try self.write("){ .ok = _ov[0] }; })");
+                } else {
+                    try self.write("); if (_ov[1] != 0) break :blk KodrResult(@TypeOf(");
+                    try self.generateExpr(b.left);
+                    try self.write(")){ .err = .{ .message = \"overflow\" } } else break :blk KodrResult(@TypeOf(");
+                    try self.generateExpr(b.left);
+                    try self.write(")){ .ok = _ov[0] }; })");
+                }
                 return;
             }
         }

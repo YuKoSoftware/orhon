@@ -10,6 +10,7 @@ module main
 #name    = "example"
 
 import std::console
+import std::mem
 
 // --- NUMERIC LITERALS ---
 const HEX_COLOR: u32 = 0xFF_AA_00
@@ -136,7 +137,7 @@ func main() void {
     var name = "hello\nworld"
     var flag = true
     const pi: f32 = 3.141_592
-    compt SIZE: usize = 1_024
+    const SIZE: usize = 1_024
 
     // --- STRUCT USAGE ---
     var p = Player.create("hero")
@@ -220,10 +221,10 @@ func main() void {
     console.println(fibonacci(10))
 
     // --- COMPILER FUNCTIONS ---
-    console.println(size(Player))
-    console.println(align(f64))
-    console.println(typename(p))
-    console.println(typeid(p))
+    console.println(@size(Player))
+    console.println(@align(f64))
+    console.println(@typename(p))
+    console.println(@typeid(p))
 
     // --- POINTERS ---
     var val: i32 = 10
@@ -231,8 +232,6 @@ func main() void {
     console.println(ptr.value)
 
     // --- MEMORY ALLOCATION ---
-    import std::mem
-
     var a = mem.DebugAllocator()
     var box = a.allocOne(i32, 42)
     console.println(box)

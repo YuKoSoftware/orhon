@@ -262,7 +262,7 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 - Import system with `::` scope operator, missing module errors reported cleanly
 - `extern func` — Kodr interface for paired `.zig` sidecar implementation
 - `import std::console` — terminal I/O stdlib module, `kodr initstd` installs it
-- `++` concatenation (strings and arrays), `main.bitsize` numeric literal defaults
+- `++` concatenation (strings and arrays), `#bitsize` numeric literal defaults
 - Structs — instantiation, methods (static/const/var), default field values
 - Enums — instantiation, matching, methods
 - Bitfields — `bitfield Name(T) { Flag }`, constructor, `.has()/.set()/.clear()/.toggle()`
@@ -280,11 +280,16 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 - Pass 9 propagation — `(Error|T)` and `(null|T)` detection
 - Collections — `List(T)`, `Map(K,V)`, `Set(T)` as builtin types, owned/shared allocator patterns
 - Allocators — `mem.SMP()` (default), `mem.DebugAllocator()`, `mem.Arena()`, `mem.Temp(n)`, `mem.Page()`
+- `#dep "path" Version?` — external dependencies: scans dep dirs, version check (error if older, warn if newer)
+- `#key = value` metadata syntax — `#build`, `#name`, `#version`, `#bitsize`, `#dep`
+- Warning infrastructure — `reporter.warn()`, `hasWarnings()`, `WARNING:` prefix + location + summary line
+- `var` → `const` warning + promotion — Kodr warns when a `var` is never reassigned; emitted as `const` in Zig; method-call receivers correctly treated as mutated
+
+- Interface file generation — `bin/<name>.kodr` emitted alongside static/dynamic lib builds; pub-only signatures, no bodies, valid Kodr source
 
 **Next:**
-- Overflow helpers — `overflow()`, `wrap()`, `sat()`
-- Extern func sidecar validation (clear errors for missing `.zig` files)
 - Pass 8 (thread safety) — sendability checks
+- `kodr eject` — export generated Zig as a self-contained project
 
 **Priority rule:** Focus on getting the core language working. Don't flesh out std,
 don't add new language features, don't chase edge cases in analysis passes.

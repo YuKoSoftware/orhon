@@ -30,27 +30,6 @@ Priority: low — implement after core language is stable.
 
 ---
 
-## External dependency management — `#dep`
+## `#gpu` metadata — GPU/concurrency
 
-Designed, not yet implemented. See `docs/11-modules.md` for the full spec.
-`main.gpu` deferred until GPU/concurrency design is settled.
-
----
-
-## Enforce `const` for never-reassigned variables
-
-Currently Kodr allows `var x: i32 = 5` even if `x` is never reassigned. Zig already enforces this and errors when a `var` is never mutated.
-
-The idea: Kodr itself (in an analysis pass, likely Pass 6 — ownership) emits a proper Kodr error like:
-
-```
-error: 'x' is never reassigned — use const
-  var x: i32 = 5
-      ^
-```
-
-**Arguments for:** catches mistakes early, enforces intentionality about mutability, fits the "safe language" philosophy, unnecessary mutability is a code smell.
-
-**Arguments against:** non-trivial to implement correctly (need to track all assignments per variable across scopes), may be annoying for beginners.
-
-**Status:** not started, low priority for now.
+`#gpu` is reserved for future GPU/concurrency design. Deferred until `Thread`/`Async` semantics are settled.

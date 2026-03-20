@@ -21,6 +21,10 @@ Tied to Thread/Async. Defer until concurrency is designed.
 
 ## Done
 
+- `#dep "path" Version?` — external dependency support: scan dep dirs, parse modules, version check (error if older, warn if newer)
+- `#key = value` metadata syntax — replaced old `main.field = value` with `#` prefix throughout compiler + docs
+- Warning infrastructure — `reporter.warn()`, `hasWarnings()`, warnings printed before errors with `WARNING:` prefix + source location + summary line
+- `var` → `const` promotion + Kodr warning — unmutated vars: warning fired at Kodr level, emitted as `const` in Zig; method-call receivers correctly excluded
 - `extern func` is always implicitly public — `pub extern func` is a compiler error
 - `mem.Allocator` as parameter type — scoped type parsed + mapped to `std.mem.Allocator`
 - `compt` generics — `any` params/returns, `is`/`is not` type checks, `return struct { ... }` type generation

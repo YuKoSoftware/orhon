@@ -163,6 +163,7 @@ pub const ImportDecl = struct {
 pub const Metadata = struct {
     field: []const u8,
     value: *Node,
+    extra: ?*Node = null, // version node for #dep, null otherwise
 };
 
 pub const FuncDecl = struct {
@@ -569,12 +570,12 @@ pub const Parser = struct {
         if (std.mem.eql(u8, field_tok.text, "dep")) {
             // #dep "path" Version?
             const path = try self.parseExpr(); // string literal path
-            // Optionally consume version expression — parsed but not yet used
+            var version_node: ?*Node = null;
             if (!self.check(.newline) and !self.check(.eof)) {
-                _ = try self.parseExpr();
+                version_node = try self.parseExpr();
             }
             try self.expectNewlineOrEof();
-            return self.newNode(.{ .metadata = .{ .field = "dep", .value = path } });
+            return self.newNode(.{ .metadata = .{ .field = "dep", .value = path, .extra = version_node } });
         }
 
         _ = try self.expect(.assign);
@@ -2373,4 +2374,165 @@ test "parser - for with range" {
     try std.testing.expect(for_node.* == .for_stmt);
     try std.testing.expect(for_node.for_stmt.iterables[0].* == .range_expr);
     try std.testing.expectEqualStrings("i", for_node.for_stmt.variables[0]);
+}
+
+test "parser - while loop" {
+    const alloc = std.testing.allocator;
+    var lex = lexer.Lexer.init((
+        \\module main
+        \\func test_fn() void {
+        \\var x: i32 = 0
+        \\while (x < 10) {
+        \\x = x + 1
+        \\}
+        \\}
+        \\
+    ));
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var p = Parser.init(tokens.items, alloc, &reporter);
+    defer p.deinit();
+    const prog = try p.parseProgram();
+    try std.testing.expect(!reporter.hasErrors());
+    const body = prog.program.top_level[0].func_decl.body;
+    const while_node = body.block.statements[1];
+    try std.testing.expect(while_node.* == .while_stmt);
+}
+
+test "parser - match on value" {
+    const alloc = std.testing.allocator;
+    var lex = lexer.Lexer.init((
+        \\module main
+        \\func test_fn(x: i32) void {
+        \\match x {
+        \\1 => {}
+        \\2 => {}
+        \\else => {}
+        \\}
+        \\}
+        \\
+    ));
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var p = Parser.init(tokens.items, alloc, &reporter);
+    defer p.deinit();
+    const prog = try p.parseProgram();
+    try std.testing.expect(!reporter.hasErrors());
+    const body = prog.program.top_level[0].func_decl.body;
+    const match_node = body.block.statements[0];
+    try std.testing.expect(match_node.* == .match_stmt);
+    try std.testing.expect(match_node.match_stmt.arms.len == 3);
+}
+
+test "parser - metadata #build and #version" {
+    const alloc = std.testing.allocator;
+    var lex = lexer.Lexer.init((
+        \\module main
+        \\#build = exe
+        \\#version = Version(1, 2, 3)
+        \\
+    ));
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var p = Parser.init(tokens.items, alloc, &reporter);
+    defer p.deinit();
+    const prog = try p.parseProgram();
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expect(prog.program.metadata.len == 2);
+    try std.testing.expectEqualStrings("build", prog.program.metadata[0].metadata.field);
+    try std.testing.expectEqualStrings("version", prog.program.metadata[1].metadata.field);
+}
+
+test "parser - metadata #dep with version" {
+    const alloc = std.testing.allocator;
+    var lex = lexer.Lexer.init((
+        \\module main
+        \\#dep "../mylib" Version(1, 0, 0)
+        \\
+    ));
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var p = Parser.init(tokens.items, alloc, &reporter);
+    defer p.deinit();
+    const prog = try p.parseProgram();
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expect(prog.program.metadata.len == 1);
+    try std.testing.expectEqualStrings("dep", prog.program.metadata[0].metadata.field);
+    try std.testing.expect(prog.program.metadata[0].metadata.extra != null);
+}
+
+test "parser - bitfield declaration" {
+    const alloc = std.testing.allocator;
+    var lex = lexer.Lexer.init((
+        \\module main
+        \\bitfield Perms(u8) {
+        \\Read
+        \\Write
+        \\Execute
+        \\}
+        \\
+    ));
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var p = Parser.init(tokens.items, alloc, &reporter);
+    defer p.deinit();
+    const prog = try p.parseProgram();
+    try std.testing.expect(!reporter.hasErrors());
+    const bf = prog.program.top_level[0];
+    try std.testing.expect(bf.* == .bitfield_decl);
+    try std.testing.expectEqualStrings("Perms", bf.bitfield_decl.name);
+    try std.testing.expect(bf.bitfield_decl.members.len == 3);
+}
+
+test "parser - tuple type" {
+    const alloc = std.testing.allocator;
+    var lex = lexer.Lexer.init((
+        \\module main
+        \\func bounds() (min: i32, max: i32) {
+        \\return (min: 0, max: 100)
+        \\}
+        \\
+    ));
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var p = Parser.init(tokens.items, alloc, &reporter);
+    defer p.deinit();
+    const prog = try p.parseProgram();
+    try std.testing.expect(!reporter.hasErrors());
+    const func = prog.program.top_level[0];
+    try std.testing.expect(func.func_decl.return_type.* == .type_tuple_named);
+}
+
+test "parser - function pointer type" {
+    const alloc = std.testing.allocator;
+    var lex = lexer.Lexer.init((
+        \\module main
+        \\func apply(f: func(i32) i32, x: i32) i32 {
+        \\return f(x)
+        \\}
+        \\
+    ));
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var p = Parser.init(tokens.items, alloc, &reporter);
+    defer p.deinit();
+    const prog = try p.parseProgram();
+    try std.testing.expect(!reporter.hasErrors());
+    const func = prog.program.top_level[0];
+    const param_type = func.func_decl.params[0].param.type_annotation;
+    try std.testing.expect(param_type.* == .type_func);
 }

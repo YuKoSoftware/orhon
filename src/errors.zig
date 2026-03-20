@@ -27,12 +27,14 @@ pub const KodrError = struct {
 pub const Reporter = struct {
     mode: BuildMode,
     errors: std.ArrayListUnmanaged(KodrError),
+    warnings: std.ArrayListUnmanaged(KodrError),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, mode: BuildMode) Reporter {
         return .{
             .mode = mode,
             .errors = .{},
+            .warnings = .{},
             .allocator = allocator,
         };
     }
@@ -45,69 +47,105 @@ pub const Reporter = struct {
             }
         }
         self.errors.deinit(self.allocator);
+        for (self.warnings.items) |w| {
+            self.allocator.free(w.message);
+            if (w.loc) |loc| {
+                if (loc.file.len > 0) self.allocator.free(loc.file);
+            }
+        }
+        self.warnings.deinit(self.allocator);
     }
 
-    pub fn report(self: *Reporter, err: KodrError) !void {
-        const owned_msg = try self.allocator.dupe(u8, err.message);
-        // Dupe the file path so it survives past the module resolver's lifetime
-        const owned_loc: ?SourceLoc = if (err.loc) |loc| .{
+    fn storeOwned(self: *Reporter, diag: KodrError, list: *std.ArrayListUnmanaged(KodrError)) !void {
+        const owned_msg = try self.allocator.dupe(u8, diag.message);
+        const owned_loc: ?SourceLoc = if (diag.loc) |loc| .{
             .file = if (loc.file.len > 0) (self.allocator.dupe(u8, loc.file) catch "") else "",
             .line = loc.line,
             .col = loc.col,
         } else null;
-        try self.errors.append(self.allocator, .{
+        try list.append(self.allocator, .{
             .message = owned_msg,
             .loc = owned_loc,
-            .notes = err.notes,
+            .notes = diag.notes,
         });
+    }
+
+    pub fn report(self: *Reporter, err: KodrError) !void {
+        try self.storeOwned(err, &self.errors);
+    }
+
+    /// Record a non-fatal warning. Compilation continues after warnings.
+    pub fn warn(self: *Reporter, w: KodrError) !void {
+        try self.storeOwned(w, &self.warnings);
     }
 
     pub fn hasErrors(self: *const Reporter) bool {
         return self.errors.items.len > 0;
     }
 
-    /// Print all errors to stderr
+    pub fn hasWarnings(self: *const Reporter) bool {
+        return self.warnings.items.len > 0;
+    }
+
+    /// Print all diagnostics to stderr: warnings first, then errors.
     pub fn flush(self: *const Reporter) !void {
         var buf: [4096]u8 = undefined;
         var w = std.fs.File.stderr().writer(&buf);
         const stderr = &w.interface;
 
-        for (self.errors.items) |err| {
-            if (err.loc) |loc| {
-                if (self.mode == .debug) {
-                    try stderr.print("ERROR: {s}\n", .{err.message});
-                    if (loc.line > 0 and loc.file.len > 0) {
-                        try stderr.print("  --> {s}:{d}:{d}\n", .{ loc.file, loc.line, loc.col });
-                    } else if (loc.line > 0) {
-                        try stderr.print("  at line {d}:{d}\n", .{ loc.line, loc.col });
-                    }
-                    // Show the source line with caret
-                    if (loc.file.len > 0 and loc.line > 0) {
-                        if (readSourceLine(loc.file, loc.line)) |line| {
-                            try stderr.print("   |\n", .{});
-                            try stderr.print("{d: >3}|  {s}\n", .{ loc.line, line });
-                            try stderr.print("   |  ", .{});
-                            var c: usize = 1;
-                            while (c < loc.col) : (c += 1) {
-                                try stderr.print(" ", .{});
-                            }
-                            try stderr.print("^\n", .{});
-                        }
-                    }
-                    for (err.notes) |note| {
-                        try stderr.print("  note: {s}\n", .{note});
-                    }
-                } else {
-                    try stderr.print("ERROR: {s}\n", .{err.message});
-                }
-            } else {
-                try stderr.print("ERROR: {s}\n", .{err.message});
-            }
+        for (self.warnings.items) |diag| {
+            try printDiagnostic(stderr, &diag, "WARNING", self.mode);
+        }
+        for (self.errors.items) |diag| {
+            try printDiagnostic(stderr, &diag, "ERROR", self.mode);
+        }
+
+        // Summary line when there are both warnings and errors, or multiple of either
+        const wc = self.warnings.items.len;
+        const ec = self.errors.items.len;
+        if (wc > 0 and ec > 0) {
+            try stderr.print("{d} warning(s), {d} error(s)\n", .{ wc, ec });
+        } else if (wc > 1) {
+            try stderr.print("{d} warning(s)\n", .{wc});
+        } else if (ec > 1) {
+            try stderr.print("{d} error(s)\n", .{ec});
         }
 
         try stderr.flush();
     }
 };
+
+fn printDiagnostic(stderr: anytype, diag: *const KodrError, label: []const u8, mode: BuildMode) !void {
+    if (diag.loc) |loc| {
+        if (mode == .debug) {
+            try stderr.print("{s}: {s}\n", .{ label, diag.message });
+            if (loc.line > 0 and loc.file.len > 0) {
+                try stderr.print("  --> {s}:{d}:{d}\n", .{ loc.file, loc.line, loc.col });
+            } else if (loc.line > 0) {
+                try stderr.print("  at line {d}:{d}\n", .{ loc.line, loc.col });
+            }
+            if (loc.file.len > 0 and loc.line > 0) {
+                if (readSourceLine(loc.file, loc.line)) |line| {
+                    try stderr.print("   |\n", .{});
+                    try stderr.print("{d: >3}|  {s}\n", .{ loc.line, line });
+                    try stderr.print("   |  ", .{});
+                    var c: usize = 1;
+                    while (c < loc.col) : (c += 1) {
+                        try stderr.print(" ", .{});
+                    }
+                    try stderr.print("^\n", .{});
+                }
+            }
+            for (diag.notes) |note| {
+                try stderr.print("  note: {s}\n", .{note});
+            }
+        } else {
+            try stderr.print("{s}: {s}\n", .{ label, diag.message });
+        }
+    } else {
+        try stderr.print("{s}: {s}\n", .{ label, diag.message });
+    }
+}
 
 /// Read a specific line from a source file, returns null on failure
 fn readSourceLine(file_path: []const u8, target_line: usize) ?[]const u8 {
@@ -157,4 +195,23 @@ test "reporter release mode" {
     var reporter = Reporter.init(std.testing.allocator, .release);
     defer reporter.deinit();
     try std.testing.expect(!reporter.hasErrors());
+}
+
+test "reporter collects warnings" {
+    var reporter = Reporter.init(std.testing.allocator, .debug);
+    defer reporter.deinit();
+
+    try reporter.warn(.{ .message = "test warning" });
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expect(reporter.hasWarnings());
+    try std.testing.expectEqual(@as(usize, 1), reporter.warnings.items.len);
+    try std.testing.expectEqualStrings("test warning", reporter.warnings.items[0].message);
+}
+
+test "reporter warnings don't block compilation" {
+    var reporter = Reporter.init(std.testing.allocator, .debug);
+    defer reporter.deinit();
+
+    try reporter.warn(.{ .message = "unused var" });
+    try std.testing.expect(!reporter.hasErrors()); // warnings don't count as errors
 }

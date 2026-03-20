@@ -156,8 +156,13 @@ pub const Cache = struct {
     /// Update the timestamp for a file
     pub fn updateTimestamp(self: *Cache, path: []const u8) !void {
         const stat = try std.fs.cwd().statFile(path);
-        const path_copy = try self.allocator.dupe(u8, path);
-        try self.timestamps.put(path_copy, stat.mtime);
+        const result = try self.timestamps.getOrPut(path);
+        if (result.found_existing) {
+            result.value_ptr.* = stat.mtime;
+        } else {
+            result.key_ptr.* = try self.allocator.dupe(u8, path);
+            result.value_ptr.* = stat.mtime;
+        }
     }
 
     /// Check if a module needs recompilation (any file changed or dependency changed)

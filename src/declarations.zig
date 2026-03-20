@@ -451,3 +451,82 @@ test "declaration collector - duplicate func error" {
     // second "foo" should trigger a duplicate error
     try std.testing.expect(reporter.hasErrors());
 }
+
+test "declaration collector - enum" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const variant = try a.create(parser.Node);
+    variant.* = .{ .enum_variant = .{ .name = "Red", .fields = &.{} } };
+    const members = try a.alloc(*parser.Node, 1);
+    members[0] = variant;
+
+    const backing = try a.create(parser.Node);
+    backing.* = .{ .type_named = "u32" };
+
+    const enum_node = try a.create(parser.Node);
+    enum_node.* = .{ .enum_decl = .{ .name = "Color", .backing_type = backing, .members = members, .is_pub = false } };
+
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = enum_node;
+
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "main" } };
+
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{ .module = module_node,
+        .metadata = &.{}, .imports = &.{}, .top_level = top_level } };
+
+    var collector = DeclCollector.init(alloc, &reporter);
+    defer collector.deinit();
+
+    try collector.collect(prog);
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expect(collector.table.enums.contains("Color"));
+}
+
+test "declaration collector - extern func is registered" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const ret_type = try a.create(parser.Node);
+    ret_type.* = .{ .type_named = "void" };
+
+    const func_node = try a.create(parser.Node);
+    func_node.* = .{ .func_decl = .{
+        .name = "print",
+        .params = &.{},
+        .return_type = ret_type,
+        .body = undefined,
+        .is_compt = false,
+        .is_pub = true,
+        .is_extern = true,
+    }};
+
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = func_node;
+
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "main" } };
+
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{ .module = module_node,
+        .metadata = &.{}, .imports = &.{}, .top_level = top_level } };
+
+    var collector = DeclCollector.init(alloc, &reporter);
+    defer collector.deinit();
+
+    try collector.collect(prog);
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expect(collector.table.funcs.contains("print"));
+}

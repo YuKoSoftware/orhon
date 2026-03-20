@@ -743,3 +743,84 @@ test "match_string" {
     assert(match_string("world") == 2)
     assert(match_string("other") == 0)
 }
+
+// ─── Collections ────────────────────────────────────────────
+
+pub func test_list() i32 {
+    var items: List(i32) = List(i32)
+    defer { items.free() }
+    items.add(10)
+    items.add(20)
+    items.add(30)
+    return items.get(1)
+}
+
+pub func test_list_len() i32 {
+    var items: List(i32) = List(i32)
+    defer { items.free() }
+    items.add(10)
+    items.add(20)
+    items.add(30)
+    return items.get(0) + items.get(2)
+}
+
+pub func test_map() i32 {
+    var scores: Map(String, i32) = Map(String, i32)
+    defer { scores.free() }
+    scores.put("alice", 42)
+    scores.put("bob", 99)
+    if(scores.has("alice")) {
+        return scores.get("alice")
+    }
+    return 0
+}
+
+pub func test_set() i32 {
+    var seen: Set(i32) = Set(i32)
+    defer { seen.free() }
+    seen.add(5)
+    seen.add(5)
+    seen.add(6)
+    if(seen.has(5) and seen.has(6)) {
+        return 1
+    }
+    return 0
+}
+
+// ─── Bitfield ───────────────────────────────────────────────
+
+bitfield Perms(u8) {
+    Read
+    Write
+    Execute
+}
+
+pub func test_bitfield() i32 {
+    var mode: Perms = Perms(Read, Write)
+    if(not mode.has(Read)) { return 0 }
+    if(not mode.has(Write)) { return 0 }
+    if(mode.has(Execute)) { return 0 }
+    mode.set(Execute)
+    mode.clear(Write)
+    if(not mode.has(Execute)) { return 0 }
+    if(mode.has(Write)) { return 0 }
+    return 1
+}
+
+// ─── Overflow helpers ───────────────────────────────────────
+
+pub func test_wrap() i32 {
+    return wrap(2 + 3)
+}
+
+pub func test_sat() i32 {
+    return sat(10 + 5)
+}
+
+pub func test_overflow_ok() i32 {
+    const a: i32 = 5
+    const b: i32 = 3
+    const result = overflow(a + b)
+    if(result is Error) { return 0 }
+    return result.i32
+}

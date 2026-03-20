@@ -39,12 +39,10 @@ Still missing (allocating — need design decision on allocator passing):
 
 **Priority: medium** — non-allocating ops done, allocating ones need allocator design.
 
-### String Formatting
-No `format("hello {}", name)` or string interpolation. `console.println` can print a single value but composing strings from mixed types has no solution in the language today.
-
-Options: a `format(template, args...)` builtin, or `str.format(...)` in stdlib, or string interpolation syntax.
-
-**Priority: high** — needed everywhere.
+### String Formatting — DONE
+`Format(Types...)` builtin type. `const fmt = Format(i32, String)` then `fmt("{} scored {}", 42, "alice")`.
+Returns owned String via `std.fmt.allocPrint`. Default SMP allocator, optional shared allocator.
+`{}` placeholders auto-mapped to Zig format specifiers based on declared types.
 
 ### Variadic Functions
 No `func log(args: ...)` equivalent. Blocks building any API that takes variable numbers of arguments — including making `console.print` accept mixed types natively without overloads.
@@ -83,9 +81,6 @@ No editor integration. Blocks adoption — most developers expect go-to-definiti
 
 ### Formatter (`kodr fmt`)
 No canonical formatter. Needed for consistent codebases and CI pipelines. Should be opinionated with no configuration — one style, always.
-
-### `kodr eject`
-Export the generated Zig as a self-contained project: copies `.kodr-cache/generated/` to a clean directory with a proper `build.zig`, removes the Kodr dependency entirely. Useful for publishing libraries or handing off to Zig developers.
 
 ### Remote Package Registry
 `#dep` currently only supports local paths. No way to pull a published library by name/version. Needs a registry design and a resolution/download step in the compiler.

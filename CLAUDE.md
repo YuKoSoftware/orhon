@@ -312,11 +312,10 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 - `Dir` type — builtin type, `Dir("path")` constructor. Methods: `.list()`, `.close()`, `.exists()`
 - `import std::fs` — module-level functions: `fs.exists()`, `fs.delete()`, `fs.rename()`, `fs.createDir()`, `fs.deleteDir()`
 - `import std::math` — `math.pow()`, `math.sqrt()`, `math.abs()`, `math.min()`, `math.max()`, `math.floor()`, `math.ceil()`, `math.sin()`, `math.cos()`, `math.tan()`, `math.ln()`, `math.log2()`, `math.PI()`, `math.E()`. All use `any` — type determined by arguments.
+- `Format` type — `Format(i32, String)` creates a formatter for those types. Call as `fmt("{} scored {}", "alice", 42)`. Returns owned String. Optional allocator: `Format(i32, alloc)`. `{}` placeholders auto-mapped to correct Zig format specifiers.
 
 **Next:**
 - Pass 8 (thread safety) — sendability checks
-- `kodr eject` — export generated Zig as a self-contained project
-
 **Priority rule:** Focus on getting the core language working. Don't flesh out std,
 don't add new language features, don't chase edge cases in analysis passes.
 Implement the common/core paths first. Stdlib and full blueprint come later.

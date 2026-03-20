@@ -19,6 +19,12 @@ const AllocInfo = struct {
     impl_name: []const u8, // backing Zig var name, e.g. "_a_impl"
 };
 
+/// Info tracked per Format variable
+const FormatInfo = struct {
+    alloc_expr: []const u8, // allocator expression for allocPrint
+    type_specs: []const u8, // Zig format specifiers derived from tuple types
+};
+
 /// The Zig code generator
 pub const CodeGen = struct {
     reporter: *errors.Reporter,
@@ -45,6 +51,7 @@ pub const CodeGen = struct {
     assigned_vars: std.StringHashMapUnmanaged(void), // vars assigned after declaration in current func
     bitfield_vars: std.StringHashMapUnmanaged([]const u8), // var name → bitfield type name
     string_vars: std.StringHashMapUnmanaged(void),        // variables holding String values
+    format_vars: std.StringHashMapUnmanaged(FormatInfo),  // variables holding Format instances
     type_ctx: ?*parser.Node, // expected type from enclosing decl (for overflow codegen)
     locs: ?*const parser.LocMap, // AST node → source location (set by main.zig)
     source_file: []const u8,     // anchor file path for location reporting
@@ -77,6 +84,7 @@ pub const CodeGen = struct {
             .assigned_vars = .{},
             .bitfield_vars = .{},
             .string_vars = .{},
+            .format_vars = .{},
             .type_ctx = null,
             .locs = null,
             .source_file = "",
@@ -135,6 +143,14 @@ pub const CodeGen = struct {
         { var bv_it = self.bitfield_vars.valueIterator(); while (bv_it.next()) |v| self.allocator.free(v.*); }
         self.bitfield_vars.deinit(self.allocator);
         self.string_vars.deinit(self.allocator);
+        {
+            var fi = self.format_vars.valueIterator();
+            while (fi.next()) |v| {
+                self.allocator.free(v.alloc_expr);
+                self.allocator.free(v.type_specs);
+            }
+        }
+        self.format_vars.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -332,6 +348,86 @@ pub const CodeGen = struct {
         return self.ptr_vars.contains(name);
     }
 
+    /// Derive Zig format specifier for a Kodr type name.
+    /// Returns "d" for integers, "d" for floats, "s" for String, "any" otherwise.
+    fn typeToFmtSpec(name: []const u8) []const u8 {
+        if (std.mem.eql(u8, name, K.Type.STRING)) return "s";
+        const int_types = [_][]const u8{
+            "i8", "i16", "i32", "i64", "i128",
+            "u8", "u16", "u32", "u64", "u128",
+            "isize", "usize",
+        };
+        for (int_types) |t| {
+            if (std.mem.eql(u8, name, t)) return "d";
+        }
+        const float_types = [_][]const u8{ "f16", "f32", "f64", "f128" };
+        for (float_types) |t| {
+            if (std.mem.eql(u8, name, t)) return "d";
+        }
+        if (std.mem.eql(u8, name, "bool")) return "any";
+        return "any";
+    }
+
+    /// Build Zig format specifiers string from Format constructor args.
+    /// Format(i32, String) → "ds" (d for i32, s for String)
+    fn buildFormatSpecs(self: *CodeGen, args: []*parser.Node) ![]const u8 {
+        var specs = std.ArrayListUnmanaged(u8){};
+        for (args) |arg| {
+            if (arg.* == .type_named or arg.* == .identifier) {
+                const name = if (arg.* == .type_named) arg.type_named else arg.identifier;
+                const spec = typeToFmtSpec(name);
+                try specs.appendSlice(self.allocator, spec);
+            } else {
+                try specs.appendSlice(self.allocator, "any");
+            }
+        }
+        return specs.toOwnedSlice(self.allocator);
+    }
+
+    /// Detect and track Format constructor: const fmt = Format(i32, String, optionalAlloc)
+    /// Type args are identifiers/type_named nodes. Last arg may be an allocator.
+    /// Returns non-null if this was a Format declaration (tracked, no Zig output needed).
+    fn tryTrackFormat(self: *CodeGen, v: parser.VarDecl) ?void {
+        if (v.value.* != .call_expr) return null;
+        const c = v.value.call_expr;
+        if (c.callee.* != .identifier) return null;
+        if (!std.mem.eql(u8, c.callee.identifier, "Format")) return null;
+        if (c.args.len < 1) return null;
+
+        // Check if last arg is an allocator (named variable in allocator_vars)
+        var type_arg_count = c.args.len;
+        var alloc_expr: []const u8 = self.allocator.dupe(u8, "std.heap.smp_allocator") catch return null;
+        if (c.args.len > 0) {
+            const last = c.args[c.args.len - 1];
+            if (last.* == .identifier and self.allocator_vars.contains(last.identifier)) {
+                type_arg_count -= 1;
+                self.allocator.free(alloc_expr);
+                const info = self.allocator_vars.get(last.identifier).?;
+                alloc_expr = if (info.kind != .smp and info.kind != .page)
+                    std.fmt.allocPrint(self.allocator, "{s}.allocator()", .{last.identifier}) catch return null
+                else
+                    self.allocator.dupe(u8, last.identifier) catch return null;
+            }
+        }
+
+        // All args up to type_arg_count are type names
+        const specs = self.buildFormatSpecs(c.args[0..type_arg_count]) catch {
+            self.allocator.free(alloc_expr);
+            return null;
+        };
+
+        self.format_vars.put(self.allocator, v.name, .{
+            .alloc_expr = alloc_expr,
+            .type_specs = specs,
+        }) catch {
+            self.allocator.free(alloc_expr);
+            self.allocator.free(specs);
+            return null;
+        };
+
+        return {};
+    }
+
     /// Check if a variable holds a String value
     fn isStringVar(self: *const CodeGen, name: []const u8) bool {
         return self.string_vars.contains(name);
@@ -504,6 +600,7 @@ pub const CodeGen = struct {
         const prev_heap_single_vars = self.heap_single_vars;
         const prev_assigned_vars = self.assigned_vars;
         const prev_string_vars = self.string_vars;
+        const prev_format_vars = self.format_vars;
         self.null_vars = .{};
         self.rawptr_vars = .{};
         self.ptr_vars = .{};
@@ -514,6 +611,7 @@ pub const CodeGen = struct {
         self.heap_single_vars = .{};
         self.assigned_vars = .{};
         self.string_vars = .{};
+        self.format_vars = .{};
         self.in_error_union_func = false;
         self.in_null_union_func = false;
         try collectAssigned(f.body, &self.assigned_vars, self.allocator);
@@ -556,6 +654,12 @@ pub const CodeGen = struct {
             self.bitfield_vars = .{};
             self.string_vars.deinit(self.allocator);
             self.string_vars = prev_string_vars;
+            {
+                var _fi = self.format_vars.valueIterator();
+                while (_fi.next()) |v| { self.allocator.free(v.alloc_expr); self.allocator.free(v.type_specs); }
+            }
+            self.format_vars.deinit(self.allocator);
+            self.format_vars = prev_format_vars;
         }
 
         // pub modifier — always pub for main (Zig requires pub fn main for exe entry)
@@ -860,6 +964,11 @@ pub const CodeGen = struct {
 
     /// Shared codegen for var and const declarations
     fn generateDecl(self: *CodeGen, v: parser.VarDecl, kw: []const u8) anyerror!void {
+        // Format constructor: const fmt = Format((i32, String)) → tracked, no Zig output
+        if (self.tryTrackFormat(v)) |_| {
+            try self.write("// format instance");
+            return;
+        }
         // Owned collection: List(T) / List(T, mem.DebugAllocator()) etc. — multi-statement expansion
         if (v.value.* == .coll_expr and isOwnedColl(v.value.coll_expr))
             return self.generateOwnedCollDecl(kw, v.name, v.type_annotation, v.value.coll_expr);
@@ -901,6 +1010,11 @@ pub const CodeGen = struct {
     /// Shared codegen for var/const declarations inside function blocks.
     /// Handles type tracking, null unions, and type_ctx for overflow codegen.
     fn generateStmtDecl(self: *CodeGen, v: parser.VarDecl, kw: []const u8) anyerror!void {
+        // Format constructor: const fmt = Format((i32, String)) → tracked, no Zig output
+        if (self.tryTrackFormat(v)) |_| {
+            try self.write("// format instance");
+            return;
+        }
         const is_null_union = if (v.type_annotation) |t| isNullUnionType(t) else false;
         try self.writeFmt("{s} {s}", .{ kw, v.name });
         if (v.type_annotation) |t| try self.writeFmt(": {s}", .{try self.typeToZig(t)});
@@ -1588,6 +1702,63 @@ pub const CodeGen = struct {
                         try self.generateStringMethod(fe.object, fe.field, c.args);
                         return;
                     }
+                }
+                // Format call: fmt("template {}", args) → std.fmt.allocPrint(alloc, "template {d}", .{args})
+                if (c.callee.* == .identifier and self.format_vars.contains(c.callee.identifier)) {
+                    const info = self.format_vars.get(c.callee.identifier).?;
+                    try self.writeFmt("std.fmt.allocPrint({s}, ", .{info.alloc_expr});
+                    // First arg is the template — replace {} with type-specific specifiers
+                    if (c.args.len > 0 and c.args[0].* == .string_literal) {
+                        const raw = c.args[0].string_literal;
+                        try self.write("\"");
+                        var spec_idx: usize = 0;
+                        var i: usize = 1; // skip opening quote
+                        while (i < raw.len - 1) : (i += 1) { // skip closing quote
+                            if (i + 1 < raw.len - 1 and raw[i] == '{' and raw[i + 1] == '}') {
+                                // Replace {} with the correct specifier
+                                if (spec_idx < info.type_specs.len) {
+                                    const end = spec_idx + 1;
+                                    // Specifiers can be multi-char (e.g. "any")
+                                    var spec_end = spec_idx;
+                                    // Single char specs: d, s. Multi-char: any
+                                    if (spec_idx < info.type_specs.len and info.type_specs[spec_idx] == 'a') {
+                                        // "any" specifier
+                                        try self.write("{any}");
+                                        spec_end = spec_idx + 3; // skip "any"
+                                    } else {
+                                        try self.write("{");
+                                        try self.write(info.type_specs[spec_idx..end]);
+                                        try self.write("}");
+                                        spec_end = end;
+                                    }
+                                    spec_idx = spec_end;
+                                } else {
+                                    try self.write("{any}");
+                                }
+                                i += 1; // skip the }
+                            } else {
+                                try self.output.append(self.allocator, raw[i]);
+                            }
+                        }
+                        try self.write("\"");
+                    } else if (c.args.len > 0) {
+                        try self.generateExpr(c.args[0]);
+                    }
+                    // Pack remaining args into a Zig tuple
+                    try self.write(", .{");
+                    var ai: usize = 1;
+                    while (ai < c.args.len) : (ai += 1) {
+                        if (ai > 1) try self.write(", ");
+                        try self.generateExpr(c.args[ai]);
+                    }
+                    try self.write("}) catch \"\"");
+                    return;
+                }
+                // Format constructor: Format((i32, String)) → tracked, no Zig output
+                if (c.callee.* == .identifier and std.mem.eql(u8, c.callee.identifier, "Format")) {
+                    // Handled at declaration level — emit a no-op
+                    try self.write("{}");
+                    return;
                 }
                 // File/Dir constructor: File("path") → KodrFs.File{ .path = "path", .alloc = smp }
                 if (c.callee.* == .identifier and

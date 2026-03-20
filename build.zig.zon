@@ -1,7 +1,7 @@
 .{
     .name = .kodr,
     .fingerprint = 0x31729db0d5e6dc3b,
-    .version = "0.2.0",
+    .version = "0.2.1",
     .minimum_zig_version = "0.15.2",
     .dependencies = .{},
     .paths = .{

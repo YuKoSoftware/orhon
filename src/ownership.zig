@@ -191,6 +191,14 @@ pub const OwnershipChecker = struct {
                 }
             },
 
+            .enum_decl => |e| {
+                for (e.members) |member| {
+                    if (member.* == .func_decl) {
+                        try self.checkNode(member, scope);
+                    }
+                }
+            },
+
             else => {},
         }
     }
@@ -328,6 +336,8 @@ pub const OwnershipChecker = struct {
             .defer_stmt => |d| {
                 try self.checkNode(d.body, scope);
             },
+
+            .break_stmt, .continue_stmt => {},
 
             .block => try self.checkNode(node, scope),
 

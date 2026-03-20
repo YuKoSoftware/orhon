@@ -30,10 +30,13 @@ projects via `#dep`.
 ## Missing Core Language Features
 
 
-### Arbitrary Unions
-The spec documents `const MyUnion = (i32 | f32)` but only `(Error | T)` and `(null | T)` are confirmed working end-to-end. General-purpose unions beyond those two need to be verified and fully implemented in codegen + all analysis passes.
+### Arbitrary Unions — BASIC DONE
+Arbitrary unions `(i32 | f32 | String)` now generate Zig tagged unions with codegen support for:
+type annotation, variable declaration wrapping, `is` type checks, field access (`result.i32`),
+and `match` arm generation. Still needs: return statement auto-wrapping in functions returning
+arbitrary unions, and propagation pass awareness.
 
-**Priority: medium** — needed for expressing domain types cleanly.
+**Priority: low** — basic infrastructure working, edge cases remain.
 
 ### String Operations — PARTIALLY DONE
 Non-allocating string methods are implemented as compiler-known field operations on `String`:

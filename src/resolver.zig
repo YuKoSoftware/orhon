@@ -189,6 +189,13 @@ pub const TypeResolver = struct {
                     try self.resolveNode(member, &struct_scope);
                 }
             },
+            .enum_decl => |e| {
+                var enum_scope = Scope.init(self.allocator, scope);
+                defer enum_scope.deinit();
+                for (e.members) |member| {
+                    if (member.* == .func_decl) try self.resolveNode(member, &enum_scope);
+                }
+            },
             .block => |b| {
                 var block_scope = Scope.init(self.allocator, scope);
                 defer block_scope.deinit();
@@ -240,6 +247,17 @@ pub const TypeResolver = struct {
                 }
                 try scope.define(v.name, resolved);
             },
+            .compt_decl => |v| {
+                if (v.type_annotation) |t| {
+                    try self.validateType(t, scope);
+                }
+                const val_type = try self.resolveExpr(v.value, scope);
+                const resolved = if (v.type_annotation) |t|
+                    try types.resolveTypeNode(self.decls.typeAllocator(), t)
+                else
+                    val_type;
+                try scope.define(v.name, resolved);
+            },
             else => {},
         }
     }
@@ -261,11 +279,13 @@ pub const TypeResolver = struct {
                 try self.resolveNode(w.body, scope);
             },
             .for_stmt => |f| {
-                _ = try self.resolveExpr(f.iterable, scope);
+                const iter_type = try self.resolveExpr(f.iterable, scope);
                 var for_scope = Scope.init(self.allocator, scope);
                 defer for_scope.deinit();
-                for (f.captures) |v| try for_scope.define(v, RT.inferred);
-                if (f.index_var) |idx| try for_scope.define(idx, RT.inferred);
+                // Infer capture type from iterable
+                const capture_type = inferCaptureType(f.iterable, iter_type);
+                for (f.captures) |v| try for_scope.define(v, capture_type);
+                if (f.index_var) |idx| try for_scope.define(idx, RT{ .primitive = "usize" });
                 try self.resolveNode(f.body, &for_scope);
             },
             .match_stmt => |m| {
@@ -280,6 +300,12 @@ pub const TypeResolver = struct {
             .assignment => |a| {
                 _ = try self.resolveExpr(a.left, scope);
                 _ = try self.resolveExpr(a.right, scope);
+            },
+            .defer_stmt => |d| try self.resolveNode(d.body, scope),
+            .thread_block => |t| try self.resolveNode(t.body, scope),
+            .destruct_decl => |d| {
+                _ = try self.resolveExpr(d.value, scope);
+                for (d.names) |name| try scope.define(name, RT.inferred);
             },
             .block => try self.resolveNode(node, scope),
             else => _ = try self.resolveExpr(node, scope),
@@ -338,10 +364,15 @@ pub const TypeResolver = struct {
                 for (c.args) |arg| _ = try self.resolveExpr(arg, scope);
 
                 if (c.callee.* == .identifier) {
-                    if (scope.lookup(c.callee.identifier)) |t| {
+                    const name = c.callee.identifier;
+                    // Struct constructor: Player(...) → Player
+                    if (self.decls.structs.contains(name)) return RT{ .named = name };
+                    // Builtin generic constructor: List(i32)(...) → List(i32)
+                    if (builtins.isBuiltinType(name)) return RT{ .named = name };
+                    if (scope.lookup(name)) |t| {
                         if (t != .func_ptr) return t;
                     }
-                    if (self.decls.funcs.get(c.callee.identifier)) |sig| {
+                    if (self.decls.funcs.get(name)) |sig| {
                         return sig.return_type;
                     }
                 }
@@ -351,6 +382,18 @@ pub const TypeResolver = struct {
                         if (self.decls.funcs.get(fe.field)) |sig| {
                             return sig.return_type;
                         }
+                    }
+                }
+                // Generic constructor call: Vec2(f32)(...) — callee is itself a call
+                if (c.callee.* == .call_expr) {
+                    const inner_c = c.callee.call_expr;
+                    if (inner_c.callee.* == .identifier) {
+                        const name = inner_c.callee.identifier;
+                        // compt func returning type: Vec2(f32)(...) → named type
+                        if (self.decls.funcs.get(name)) |sig| {
+                            if (sig.is_compt) return RT{ .named = name };
+                        }
+                        if (builtins.isBuiltinType(name)) return RT{ .named = name };
                     }
                 }
                 return callee_type;
@@ -383,14 +426,68 @@ pub const TypeResolver = struct {
             },
 
             .compiler_func => |cf| {
-                for (cf.args) |arg| _ = try self.resolveExpr(arg, scope);
+                var first_arg_type: RT = RT.unknown;
+                for (cf.args, 0..) |arg, idx| {
+                    const t = try self.resolveExpr(arg, scope);
+                    if (idx == 0) first_arg_type = t;
+                }
                 if (std.mem.eql(u8, cf.name, "size") or std.mem.eql(u8, cf.name, "align")) return RT{ .primitive = "usize" };
                 if (std.mem.eql(u8, cf.name, "typeid")) return RT{ .primitive = "usize" };
                 if (std.mem.eql(u8, cf.name, "typename")) return RT{ .primitive = K.Type.STRING };
+                if (std.mem.eql(u8, cf.name, "assert")) return RT{ .primitive = "void" };
+                if (std.mem.eql(u8, cf.name, "swap")) return RT{ .primitive = "void" };
+                // @cast(T, x) → returns T (first arg is the target type)
+                if (std.mem.eql(u8, cf.name, "cast")) {
+                    if (cf.args.len >= 1 and cf.args[0].* == .identifier) {
+                        return RT{ .named = cf.args[0].identifier };
+                    }
+                    if (cf.args.len >= 1 and cf.args[0].* == .type_named) {
+                        const tn = cf.args[0].type_named;
+                        if (types.isPrimitiveName(tn)) return RT{ .primitive = tn };
+                        return RT{ .named = tn };
+                    }
+                }
+                // @copy(x), @move(x) → returns same type as argument
+                if (std.mem.eql(u8, cf.name, "copy") or std.mem.eql(u8, cf.name, "move")) {
+                    return first_arg_type;
+                }
                 return RT.unknown;
             },
 
-            .array_literal => RT.inferred,
+            .array_literal => |elems| {
+                // Resolve element types; infer array type from first element
+                var elem_type: RT = RT.inferred;
+                for (elems) |elem| {
+                    const t = try self.resolveExpr(elem, scope);
+                    if (elem_type == .inferred) elem_type = t;
+                }
+                return elem_type;
+            },
+
+            .ptr_expr => |p| {
+                _ = try self.resolveExpr(p.type_arg, scope);
+                _ = try self.resolveExpr(p.addr_arg, scope);
+                return RT{ .named = p.kind };
+            },
+
+            .coll_expr => |c| {
+                for (c.type_args) |arg| _ = try self.resolveExpr(arg, scope);
+                if (c.alloc_arg) |a| _ = try self.resolveExpr(a, scope);
+                return RT{ .named = c.kind };
+            },
+
+            .tuple_literal => |t| {
+                for (t.fields) |f| _ = try self.resolveExpr(f, scope);
+                return RT.inferred;
+            },
+
+            .range_expr => |r| {
+                _ = try self.resolveExpr(r.left, scope);
+                _ = try self.resolveExpr(r.right, scope);
+                return RT.inferred;
+            },
+
+            .break_stmt, .continue_stmt => RT.unknown,
 
             else => RT.unknown,
         };
@@ -421,10 +518,49 @@ pub const TypeResolver = struct {
             .type_union => |u| {
                 for (u) |t| try self.validateType(t, scope);
             },
+            .type_generic => |g| {
+                // Validate the base type name is known (builtin, compt func, or user-defined)
+                const is_known = builtins.isBuiltinType(g.name) or
+                    self.decls.funcs.contains(g.name) or
+                    self.decls.structs.contains(g.name) or
+                    scope.lookup(g.name) != null;
+                if (!is_known) {
+                    const msg = try std.fmt.allocPrint(self.allocator,
+                        "unknown generic type '{s}'", .{g.name});
+                    defer self.allocator.free(msg);
+                    try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                }
+                // Validate type arguments
+                for (g.args) |arg| try self.validateType(arg, scope);
+            },
+            .type_ptr => |p| try self.validateType(p.elem, scope),
+            .type_func => |f| {
+                for (f.params) |p| try self.validateType(p, scope);
+                try self.validateType(f.ret, scope);
+            },
+            .type_tuple_anon => |members| {
+                for (members) |m| try self.validateType(m, scope);
+            },
+            .type_tuple_named => |fields| {
+                for (fields) |f| try self.validateType(f.type_node, scope);
+            },
             else => {},
         }
     }
 };
+
+/// Infer the element type for for-loop captures from the iterable.
+fn inferCaptureType(iterable: *parser.Node, iter_type: RT) RT {
+    // Range expressions produce integers
+    if (iterable.* == .range_expr) return RT{ .primitive = "usize" };
+    // String iteration produces u8 characters
+    if (iter_type == .primitive and std.mem.eql(u8, iter_type.primitive, K.Type.STRING))
+        return RT{ .primitive = "u8" };
+    // Slice/array of known type — element type is the inner type
+    if (iter_type == .slice) return iter_type.slice.*;
+    if (iter_type == .array) return iter_type.array.elem.*;
+    return RT.inferred;
+}
 
 test "resolver init" {
     var decl_table = declarations.DeclTable.init(std.testing.allocator);
@@ -698,4 +834,251 @@ test "resolver - explicit type annotation preferred" {
 
     const x_type = scope.lookup("x").?;
     try std.testing.expectEqualStrings("i64", x_type.name());
+}
+
+test "resolver - compiler func @cast resolves to target type" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
+    try scope.define("x", RT{ .primitive = "i32" });
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // @cast(i64, x) → i64
+    const target = try a.create(parser.Node);
+    target.* = .{ .identifier = "i64" };
+    const arg = try a.create(parser.Node);
+    arg.* = .{ .identifier = "x" };
+    const args = try a.alloc(*parser.Node, 2);
+    args[0] = target;
+    args[1] = arg;
+    const cast_node = try a.create(parser.Node);
+    cast_node.* = .{ .compiler_func = .{ .name = "cast", .args = args } };
+
+    const result = try resolver.resolveExpr(cast_node, &scope);
+    try std.testing.expectEqualStrings("i64", result.name());
+}
+
+test "resolver - compiler func @copy preserves type" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
+    try scope.define("data", RT{ .named = "Player" });
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // @copy(data) → Player
+    const arg = try a.create(parser.Node);
+    arg.* = .{ .identifier = "data" };
+    const args = try a.alloc(*parser.Node, 1);
+    args[0] = arg;
+    const copy_node = try a.create(parser.Node);
+    copy_node.* = .{ .compiler_func = .{ .name = "copy", .args = args } };
+
+    const result = try resolver.resolveExpr(copy_node, &scope);
+    try std.testing.expectEqualStrings("Player", result.name());
+}
+
+test "resolver - compiler func @assert returns void" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const arg = try a.create(parser.Node);
+    arg.* = .{ .bool_literal = true };
+    const args = try a.alloc(*parser.Node, 1);
+    args[0] = arg;
+    const assert_node = try a.create(parser.Node);
+    assert_node.* = .{ .compiler_func = .{ .name = "assert", .args = args } };
+
+    const result = try resolver.resolveExpr(assert_node, &scope);
+    try std.testing.expectEqualStrings("void", result.name());
+}
+
+test "resolver - for range capture is usize" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+
+    // Range expressions produce usize captures
+    var low = parser.Node{ .int_literal = "0" };
+    var high = parser.Node{ .int_literal = "10" };
+    var range_node = parser.Node{ .range_expr = .{ .op = "..", .left = &low, .right = &high } };
+    const capture_type = inferCaptureType(&range_node, RT.inferred);
+    try std.testing.expectEqualStrings("usize", capture_type.name());
+    _ = &resolver;
+}
+
+test "resolver - struct constructor resolves to named type" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+
+    const fields = try alloc.alloc(declarations.FieldSig, 1);
+    fields[0] = .{ .name = "x", .type_ = .{ .primitive = "i32" }, .has_default = false, .is_pub = true };
+    try decl_table.structs.put("Point", .{ .name = "Point", .fields = fields, .is_pub = true });
+
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Point(x: 5) → should resolve to "Point"
+    const callee = try a.create(parser.Node);
+    callee.* = .{ .identifier = "Point" };
+    const arg = try a.create(parser.Node);
+    arg.* = .{ .int_literal = "5" };
+    const args = try a.alloc(*parser.Node, 1);
+    args[0] = arg;
+    const call = try a.create(parser.Node);
+    call.* = .{ .call_expr = .{ .callee = callee, .args = args, .arg_names = &.{} } };
+
+    const result = try resolver.resolveExpr(call, &scope);
+    try std.testing.expectEqualStrings("Point", result.name());
+}
+
+test "resolver - builtin generic type resolves" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // List(i32) constructor → should resolve to "List"
+    const callee = try a.create(parser.Node);
+    callee.* = .{ .identifier = "List" };
+    const call = try a.create(parser.Node);
+    call.* = .{ .call_expr = .{ .callee = callee, .args = &.{}, .arg_names = &.{} } };
+
+    const result = try resolver.resolveExpr(call, &scope);
+    try std.testing.expectEqualStrings("List", result.name());
+}
+
+test "resolver - validateType catches unknown generic" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // UnknownGeneric(i32) — should error
+    const i32_type = try a.create(parser.Node);
+    i32_type.* = .{ .type_named = "i32" };
+    const args = try a.alloc(*parser.Node, 1);
+    args[0] = i32_type;
+    const generic_node = try a.create(parser.Node);
+    generic_node.* = .{ .type_generic = .{ .name = "UnknownGeneric", .args = args } };
+
+    try resolver.validateType(generic_node, &scope);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "resolver - validateType accepts known generic" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // List(i32) — should be fine (List is a builtin)
+    const i32_type = try a.create(parser.Node);
+    i32_type.* = .{ .type_named = "i32" };
+    const args = try a.alloc(*parser.Node, 1);
+    args[0] = i32_type;
+    const generic_node = try a.create(parser.Node);
+    generic_node.* = .{ .type_generic = .{ .name = "List", .args = args } };
+
+    try resolver.validateType(generic_node, &scope);
+    try std.testing.expect(!reporter.hasErrors());
+}
+
+test "resolver - array literal infers element type" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+    resolver.bitsize = 32;
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // [1, 2, 3] → should resolve to i32 (with bitsize=32)
+    const e1 = try a.create(parser.Node);
+    e1.* = .{ .int_literal = "1" };
+    const e2 = try a.create(parser.Node);
+    e2.* = .{ .int_literal = "2" };
+    const elems = try a.alloc(*parser.Node, 2);
+    elems[0] = e1;
+    elems[1] = e2;
+    const arr = try a.create(parser.Node);
+    arr.* = .{ .array_literal = elems };
+
+    const result = try resolver.resolveExpr(arr, &scope);
+    try std.testing.expectEqualStrings("i32", result.name());
 }

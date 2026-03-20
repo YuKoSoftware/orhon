@@ -78,6 +78,11 @@ pub const BorrowChecker = struct {
                     if (member.* == .func_decl) try self.checkNode(member);
                 }
             },
+            .enum_decl => |e| {
+                for (e.members) |member| {
+                    if (member.* == .func_decl) try self.checkNode(member);
+                }
+            },
             else => {},
         }
     }
@@ -142,6 +147,13 @@ pub const BorrowChecker = struct {
             .defer_stmt => |d| {
                 try self.checkNode(d.body);
             },
+            .compt_decl => |v| {
+                try self.checkExpr(v.value);
+            },
+            .destruct_decl => |d| {
+                try self.checkExpr(d.value);
+            },
+            .break_stmt, .continue_stmt => {},
             .assignment => |a| {
                 // If assigning a borrow, check for conflicts
                 if (a.right.* == .borrow_expr) {

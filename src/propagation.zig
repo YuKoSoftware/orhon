@@ -241,6 +241,25 @@ pub const PropChecker = struct {
                 }
             },
 
+            .defer_stmt => |d| {
+                try self.checkNode(d.body, scope);
+            },
+
+            .compt_decl => |v| {
+                const from_value = try self.exprReturnsUnion(v.value);
+                if (from_value) |is_error| {
+                    const loc = self.nodeLoc(node);
+                    try scope.define(v.name, is_error, if (loc) |l| l.line else 0, if (loc) |l| l.col else 0);
+                }
+            },
+
+            .destruct_decl => |d| {
+                // Check if the destructured value returns a union
+                _ = try self.exprReturnsUnion(d.value);
+            },
+
+            .break_stmt, .continue_stmt => {},
+
             .block => try self.checkNode(node, scope),
 
             else => {},

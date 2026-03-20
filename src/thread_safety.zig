@@ -89,6 +89,11 @@ pub const ThreadSafetyChecker = struct {
                     if (member.* == .func_decl) try self.checkNode(member);
                 }
             },
+            .enum_decl => |e| {
+                for (e.members) |member| {
+                    if (member.* == .func_decl) try self.checkNode(member);
+                }
+            },
             else => {},
         }
     }
@@ -218,6 +223,12 @@ pub const ThreadSafetyChecker = struct {
             .destruct_decl => |d| {
                 try self.checkExprForThreadMoves(d.value);
             },
+
+            .compt_decl => |v| {
+                try self.checkExprForThreadMoves(v.value);
+            },
+
+            .break_stmt, .continue_stmt => {},
 
             .block => try self.checkNode(node),
 

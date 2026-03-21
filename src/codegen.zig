@@ -2157,6 +2157,30 @@ pub const CodeGen = struct {
                 } else if (std.mem.eql(u8, f.field, K.Type.ERROR)) {
                     try self.generateExpr(f.object);
                     try self.write(".err");
+                } else if (std.mem.eql(u8, f.field, "value") and f.object.* == .identifier and
+                    (self.isArbUnionVar(f.object.identifier) or self.isNullVar(f.object.identifier)))
+                {
+                    // .value unwrap — emit correct Zig field based on union kind
+                    const vname = f.object.identifier;
+                    try self.generateExpr(f.object);
+                    if (self.isArbUnionVar(vname)) {
+                        // For arbitrary unions, we need the narrowed type
+                        // For now, fall back to the first non-error/non-null type
+                        if (self.arb_union_vars.get(vname)) |type_node| {
+                            if (type_node.* == .type_union) {
+                                for (type_node.type_union) |t| {
+                                    if (t.* == .type_named and !std.mem.eql(u8, t.type_named, K.Type.ERROR) and !std.mem.eql(u8, t.type_named, K.Type.NULL)) {
+                                        try self.writeFmt("._{s}", .{t.type_named});
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } else if (self.isNullVar(vname)) {
+                        try self.write(".some");
+                    } else {
+                        try self.write(".ok");
+                    }
                 } else if (f.object.* == .identifier and self.isArbUnionVar(f.object.identifier) and
                     isResultValueField(f.field, self.decls))
                 {

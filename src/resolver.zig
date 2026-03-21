@@ -351,9 +351,14 @@ pub const TypeResolver = struct {
             },
             .match_stmt => |m| {
                 const match_type = try self.resolveExpr(m.value, scope);
+                var has_else = false;
                 for (m.arms) |arm| {
                     if (arm.* == .match_arm) {
                         const pat = arm.match_arm.pattern;
+                        // Check for else arm
+                        if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, "else")) {
+                            has_else = true;
+                        }
                         // Validate union match arm patterns
                         if (pat.* == .identifier and !std.mem.eql(u8, pat.identifier, "else")) {
                             try self.validateMatchArm(pat.identifier, match_type, arm);
@@ -361,6 +366,10 @@ pub const TypeResolver = struct {
                         _ = try self.resolveExpr(pat, scope);
                         try self.resolveNode(arm.match_arm.body, scope);
                     }
+                }
+                // Check exhaustiveness for union matches
+                if (!has_else) {
+                    try self.checkMatchExhaustiveness(match_type, m.arms, node);
                 }
             },
             .assignment => |a| {
@@ -610,6 +619,83 @@ pub const TypeResolver = struct {
 
             else => RT.unknown,
         };
+    }
+
+    /// Check that a match on a union type covers all members
+    fn checkMatchExhaustiveness(self: *TypeResolver, match_type: RT, arms: []*parser.Node, match_node: *parser.Node) !void {
+        // Collect covered arm names
+        var covered: [16][]const u8 = undefined;
+        var covered_count: usize = 0;
+        for (arms) |arm| {
+            if (arm.* == .match_arm) {
+                const pat = arm.match_arm.pattern;
+                if (pat.* == .identifier and !std.mem.eql(u8, pat.identifier, "else")) {
+                    if (covered_count < 16) {
+                        covered[covered_count] = pat.identifier;
+                        covered_count += 1;
+                    }
+                }
+                if (pat.* == .null_literal) {
+                    if (covered_count < 16) {
+                        covered[covered_count] = "null";
+                        covered_count += 1;
+                    }
+                }
+            }
+        }
+
+        const covered_slice = covered[0..covered_count];
+
+        switch (match_type) {
+            .error_union => |inner| {
+                const required = [_][]const u8{ "Error", inner.name() };
+                for (required) |req| {
+                    var found = false;
+                    for (covered_slice) |c| {
+                        if (std.mem.eql(u8, c, req)) { found = true; break; }
+                    }
+                    if (!found) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "non-exhaustive match — missing arm for '{s}', add it or use 'else'", .{req});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(match_node) });
+                        return;
+                    }
+                }
+            },
+            .null_union => |inner| {
+                const required = [_][]const u8{ "null", inner.name() };
+                for (required) |req| {
+                    var found = false;
+                    for (covered_slice) |c| {
+                        if (std.mem.eql(u8, c, req)) { found = true; break; }
+                    }
+                    if (!found) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "non-exhaustive match — missing arm for '{s}', add it or use 'else'", .{req});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(match_node) });
+                        return;
+                    }
+                }
+            },
+            .union_type => |members| {
+                for (members) |member| {
+                    var found = false;
+                    for (covered_slice) |c| {
+                        if (std.mem.eql(u8, c, member.name())) { found = true; break; }
+                    }
+                    if (!found) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "non-exhaustive match — missing arm for '{s}', add it or use 'else'", .{member.name()});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(match_node) });
+                        return;
+                    }
+                }
+            },
+            else => {}, // integer/string matches — no exhaustiveness required
+        }
     }
 
     /// Validate that a match arm pattern is a valid member of the matched union type

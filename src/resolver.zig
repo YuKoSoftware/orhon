@@ -618,8 +618,12 @@ pub const TypeResolver = struct {
                     defer self.allocator.free(msg);
                     try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
                 }
-                // Validate type arguments
-                for (g.args) |arg| try self.validateType(arg, scope);
+                // Validate type arguments (Ring/ORing second arg is a size, not a type)
+                const is_ring = std.mem.eql(u8, g.name, "Ring") or std.mem.eql(u8, g.name, "ORing");
+                for (g.args, 0..) |arg, idx| {
+                    if (is_ring and idx == 1) continue; // size arg, not a type
+                    try self.validateType(arg, scope);
+                }
             },
             .type_ptr => |p| try self.validateType(p.elem, scope),
             .type_func => |f| {

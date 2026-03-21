@@ -21,6 +21,8 @@ pub const BUILTIN_TYPES = [_][]const u8{
     "File",
     "Dir",
     "Format",
+    "Ring",
+    "ORing",
 };
 
 /// All compiler function names (prefixed with @ in Kodr source)

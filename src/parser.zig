@@ -322,8 +322,9 @@ pub const PtrExpr = struct {
 };
 
 pub const CollExpr = struct {
-    kind: []const u8, // "List", "Map", "Set"
-    type_args: []*Node, // [T] for List/Set, [K, V] for Map
+    kind: []const u8, // "List", "Map", "Set", "Ring", "ORing"
+    type_args: []*Node, // [T] for List/Set/Ring/ORing, [K, V] for Map
+    size_arg: ?*Node = null, // capacity for Ring/ORing
     alloc_arg: ?*Node, // null = use default owned allocator
 };
 
@@ -1902,21 +1903,28 @@ pub const Parser = struct {
                     }});
                 }
 
-                // Collection constructors: List(T, alloc) / Map(K, V, alloc) / Set(T, alloc)
+                // Collection constructors: List(T, alloc) / Map(K, V, alloc) / Set(T, alloc) / Ring(T, n) / ORing(T, n)
                 const is_list = std.mem.eql(u8, tok.text, "List");
                 const is_map = std.mem.eql(u8, tok.text, "Map");
                 const is_set = std.mem.eql(u8, tok.text, "Set");
-                if ((is_list or is_map or is_set) and self.check(.lparen)) {
+                const is_ring = std.mem.eql(u8, tok.text, "Ring");
+                const is_oring = std.mem.eql(u8, tok.text, "ORing");
+                if ((is_list or is_map or is_set or is_ring or is_oring) and self.check(.lparen)) {
                     _ = self.advance(); // consume (
                     var type_args = std.ArrayListUnmanaged(*Node){};
                     const n_type_args: usize = if (is_map) 2 else 1;
                     for (0..n_type_args) |i| {
                         const type_arg = try self.parseType();
                         try type_args.append(self.alloc(), type_arg);
-                        // comma between type args (not after last)
                         if (i < n_type_args - 1) _ = try self.expect(.comma);
                     }
-                    // Optional allocator arg
+                    // Ring/ORing require a size arg: Ring(T, n)
+                    var size_arg: ?*Node = null;
+                    if (is_ring or is_oring) {
+                        _ = try self.expect(.comma);
+                        size_arg = try self.parseExpr();
+                    }
+                    // Optional allocator arg (for List/Map/Set only)
                     const alloc_arg: ?*Node = if (self.eat(.rparen)) null else blk: {
                         _ = try self.expect(.comma);
                         const arg = try self.parseExpr();
@@ -1926,6 +1934,7 @@ pub const Parser = struct {
                     return self.newNode(.{ .coll_expr = .{
                         .kind = tok.text,
                         .type_args = try type_args.toOwnedSlice(self.alloc()),
+                        .size_arg = size_arg,
                         .alloc_arg = alloc_arg,
                     }});
                 }
@@ -2044,14 +2053,21 @@ pub const Parser = struct {
             if (self.check(.lparen)) {
                 _ = self.advance();
                 var args: std.ArrayListUnmanaged(*Node) = .{};
+                const is_ring_type = std.mem.eql(u8, tok.text, "Ring") or std.mem.eql(u8, tok.text, "ORing");
                 self.skipNewlines();
                 if (!self.check(.rparen)) {
+                    // First arg is always a type
                     try args.append(self.alloc(), try self.parseType());
                     while (self.check(.comma)) {
                         _ = self.advance();
                         self.skipNewlines();
                         if (self.check(.rparen)) break;
-                        try args.append(self.alloc(), try self.parseType());
+                        // Ring/ORing second arg is an integer size, not a type
+                        if (is_ring_type and args.items.len == 1) {
+                            try args.append(self.alloc(), try self.parseExpr());
+                        } else {
+                            try args.append(self.alloc(), try self.parseType());
+                        }
                     }
                 }
                 _ = try self.expect(.rparen);

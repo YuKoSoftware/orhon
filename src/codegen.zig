@@ -12,7 +12,7 @@ const K = @import("constants.zig");
 const module = @import("module.zig");
 
 /// Built-in allocator kinds from std::mem
-const AllocKind = enum { gpa, smp, arena, temp, page };
+const AllocKind = enum { gpa, smp, arena, stack, page, pool };
 
 /// Info tracked per allocator variable
 const AllocInfo = struct {
@@ -66,7 +66,7 @@ pub const CodeGen = struct {
     locs: ?*const parser.LocMap, // AST node → source location (set by main.zig)
     source_file: []const u8,     // anchor file path for location reporting
     uses_fs: bool,               // module uses File or Dir types
-    uses_mem: bool,              // module uses allocator wrappers (Debug/Arena/Temp)
+    uses_mem: bool,              // module uses allocator wrappers (Debug/Arena/Stack)
     uses_string_alloc: bool,     // module uses allocating string methods (repeat)
     in_thread_block: bool,       // inside a Thread body — return → result assignment
     current_thread_name: []const u8, // name of the thread being generated
@@ -235,7 +235,7 @@ pub const CodeGen = struct {
         try self.write("fn KodrNullable(comptime T: type) type { return union(enum) { some: T, none: void }; }\n");
         try self.write("fn kodrTypeId(comptime T: type) usize { return @intFromPtr(@typeName(T).ptr); }\n");
 
-        // Allocator wrappers — import if module uses Debug/Arena/Temp allocators
+        // Allocator wrappers — import if module uses Debug/Arena/Stack allocators
         if (moduleUsesAllocWrappers(ast)) {
             self.uses_mem = true;
             try self.write("const KodrMem = @import(\"mem_rt.zig\");\n");
@@ -249,6 +249,10 @@ pub const CodeGen = struct {
 
         // String repeat helper
         try self.write("fn kodrStringRepeat(alloc: std.mem.Allocator, s: []const u8, n: usize) ![]const u8 { const buf = try alloc.alloc(u8, s.len * n); for (0..n) |i| { @memcpy(buf[i * s.len ..][0..s.len], s); } return buf; }\n");
+        // Ring buffer — panics when full
+        try self.write("fn KodrRing(comptime T: type, comptime cap: usize) type { return struct { buf: [cap]T = undefined, head: usize = 0, len: usize = 0, const Self = @This(); fn push(self: *Self, val: T) void { if (self.len >= cap) @panic(\"ring buffer full\"); self.buf[(self.head + self.len) % cap] = val; self.len += 1; } fn pop(self: *Self) ?T { if (self.len == 0) return null; const val = self.buf[self.head]; self.head = (self.head + 1) % cap; self.len -= 1; return val; } fn isFull(self: *const Self) bool { return self.len >= cap; } fn isEmpty(self: *const Self) bool { return self.len == 0; } fn count(self: *const Self) usize { return self.len; } }; }\n");
+        // ORing buffer — overwrites oldest when full
+        try self.write("fn KodrORing(comptime T: type, comptime cap: usize) type { return struct { buf: [cap]T = undefined, head: usize = 0, len: usize = 0, const Self = @This(); fn push(self: *Self, val: T) void { if (self.len >= cap) { self.buf[self.head] = val; self.head = (self.head + 1) % cap; } else { self.buf[(self.head + self.len) % cap] = val; self.len += 1; } } fn pop(self: *Self) ?T { if (self.len == 0) return null; const val = self.buf[self.head]; self.head = (self.head + 1) % cap; self.len -= 1; return val; } fn isFull(self: *const Self) bool { return self.len >= cap; } fn isEmpty(self: *const Self) bool { return self.len == 0; } fn count(self: *const Self) usize { return self.len; } }; }\n");
 
         // Generate imports
         for (ast.program.imports) |imp| {
@@ -402,7 +406,7 @@ pub const CodeGen = struct {
     }
 
     /// Extract allocator name from a shared coll_expr (alloc_arg is a named identifier).
-    /// For wrapper allocators (Debug/Arena/Temp), appends .allocator() for the unmanaged API.
+    /// For wrapper allocators (Debug/Arena/Stack), appends .allocator() for the unmanaged API.
     fn resolveCollAllocName(self: *const CodeGen, c: parser.CollExpr) ![]const u8 {
         const arg = c.alloc_arg orelse return try self.allocator.dupe(u8, "std.heap.smp_allocator");
         if (arg.* == .identifier) {
@@ -1012,7 +1016,7 @@ pub const CodeGen = struct {
     // MEMORY ALLOCATORS (std::mem)
     // ============================================================
 
-    /// Detect if a node is a mem.DebugAllocator() / mem.Arena() / mem.Temp(n) / mem.Page() constructor call.
+    /// Detect if a node is a mem.DebugAllocator() / mem.Arena() / mem.Stack(n) / mem.Page() constructor call.
     fn getMemAllocKind(node: *parser.Node) ?AllocKind {
         if (node.* != .call_expr) return null;
         const c = node.call_expr;
@@ -1023,14 +1027,15 @@ pub const CodeGen = struct {
         if (std.mem.eql(u8, fe.field, "DebugAllocator")) return .gpa;
         if (std.mem.eql(u8, fe.field, "SMP"))   return .smp;
         if (std.mem.eql(u8, fe.field, "Arena")) return .arena;
-        if (std.mem.eql(u8, fe.field, "Temp"))  return .temp;
+        if (std.mem.eql(u8, fe.field, "Stack"))  return .stack;
         if (std.mem.eql(u8, fe.field, "Page"))  return .page;
+        if (std.mem.eql(u8, fe.field, "Pool"))  return .pool;
         return null;
     }
 
     /// Generate allocator initialization statements for: var a = mem.DebugAllocator() etc.
     /// SMP/Page → global singletons (no wrapper).
-    /// Debug/Arena/Temp → KodrMem wrapper types (methods pass through to Zig).
+    /// Debug/Arena/Stack → KodrMem wrapper types (methods pass through to Zig).
     /// NOTE: generateBlock already called writeIndent() before this statement, so the
     /// first line must NOT call writeIndent(); subsequent lines must.
     fn generateAllocatorInit(self: *CodeGen, name: []const u8, kind: AllocKind, args: []*parser.Node) anyerror!void {
@@ -1055,16 +1060,28 @@ pub const CodeGen = struct {
                 try self.writeFmt("var {s} = KodrMem.ArenaAlloc.init();\n", .{name});
                 try self.writeIndent(); try self.writeFmt("defer {s}.deinit();", .{name});
             },
-            .temp => {
+            .stack => {
                 self.uses_mem = true;
                 if (args.len < 1) {
-                    try self.reporter.report(.{ .message = "mem.Temp requires a size argument" });
+                    try self.reporter.report(.{ .message = "mem.Stack requires a size argument" });
                     return error.CompileError;
                 }
                 try self.writeFmt("var _{s}_buf: [", .{name});
                 try self.generateExpr(args[0]);
                 try self.write("]u8 = undefined;\n");
-                try self.writeIndent(); try self.writeFmt("var {s} = KodrMem.TempAlloc.init(&_{s}_buf);", .{ name, name });
+                try self.writeIndent(); try self.writeFmt("var {s} = KodrMem.StackAlloc.init(&_{s}_buf);", .{ name, name });
+            },
+            .pool => {
+                // Pool uses std.heap.MemoryPool directly — no KodrMem wrapper needed
+                if (args.len < 1) {
+                    try self.reporter.report(.{ .message = "mem.Pool requires a type argument" });
+                    return error.CompileError;
+                }
+                // mem.Pool(T) → std.heap.MemoryPoolAligned(T, null)
+                try self.writeFmt("var {s} = std.heap.MemoryPool(", .{name});
+                try self.generateExpr(args[0]);
+                try self.write(").init(std.heap.smp_allocator);\n");
+                try self.writeIndent(); try self.writeFmt("defer {s}.deinit();", .{name});
             },
         }
         try self.allocator_vars.put(self.allocator, name, .{ .kind = kind, .impl_name = try self.allocator.dupe(u8, name) });
@@ -1110,6 +1127,26 @@ pub const CodeGen = struct {
                 return error.CompileError;
             }
             try self.writeFmt("_ = {s}.reset(.free_all)", .{info.impl_name});
+        } else if (std.mem.eql(u8, method, "create")) {
+            // pool.create() — get an object from the pool
+            if (info.kind != .pool) {
+                try self.reporter.report(.{ .message = "create is only available on mem.Pool(T)" });
+                return error.CompileError;
+            }
+            try self.writeFmt("{s}.create() catch @panic(\"pool exhausted\")", .{alloc_name});
+        } else if (std.mem.eql(u8, method, "destroy")) {
+            // pool.destroy(ptr) — return an object to the pool
+            if (info.kind != .pool) {
+                try self.reporter.report(.{ .message = "destroy is only available on mem.Pool(T)" });
+                return error.CompileError;
+            }
+            if (args.len < 1) {
+                try self.reporter.report(.{ .message = "destroy requires one argument" });
+                return error.CompileError;
+            }
+            try self.writeFmt("{s}.destroy(", .{alloc_name});
+            try self.generateExpr(args[0]);
+            try self.write(")");
         } else {
             const msg = try std.fmt.allocPrint(self.allocator, "unknown allocator method '{s}'", .{method});
             defer self.allocator.free(msg);
@@ -1142,7 +1179,7 @@ pub const CodeGen = struct {
         // Owned collection: List(T) / List(T, mem.DebugAllocator()) etc. — multi-statement expansion
         if (v.value.* == .coll_expr and isOwnedColl(v.value.coll_expr))
             return self.generateOwnedCollDecl(kw, v.name, v.type_annotation, v.value.coll_expr);
-        // mem.DebugAllocator() / mem.Arena() / mem.Temp(n) / mem.Page() — multi-statement expansion
+        // mem.DebugAllocator() / mem.Arena() / mem.Stack(n) / mem.Page() — multi-statement expansion
         if (getMemAllocKind(v.value)) |kind| {
             return self.generateAllocatorInit(v.name, kind, v.value.call_expr.args);
         }
@@ -1948,7 +1985,7 @@ pub const CodeGen = struct {
                                 try self.generateAllocatorMethod(fe.object.identifier, info, fe.field, c.args);
                                 return;
                             }
-                            // Wrapper types (Debug/Arena/Temp) — methods mostly pass through.
+                            // Wrapper types (Debug/Arena/Stack) — methods mostly pass through.
                             // Exception: free() with heap single vars needs raw pointer (no auto-deref).
                             if (std.mem.eql(u8, fe.field, "free") and c.args.len > 0 and
                                 c.args[0].* == .identifier and self.heap_single_vars.contains(c.args[0].identifier))
@@ -3134,9 +3171,26 @@ pub const CodeGen = struct {
 
     /// Generate a collection declaration where the collection owns its allocator.
     /// Default (no arg) and mem.SMP() → use std.heap.smp_allocator (singleton, no boilerplate).
-    /// mem.DebugAllocator() / mem.Arena() / mem.Temp(n) → generate allocator boilerplate first.
+    /// mem.DebugAllocator() / mem.Arena() / mem.Stack(n) → generate allocator boilerplate first.
     /// All collections use the unmanaged API (init = .{}, allocator passed to each method).
     fn generateOwnedCollDecl(self: *CodeGen, decl_kind: []const u8, name: []const u8, type_ann: ?*parser.Node, c: parser.CollExpr) anyerror!void {
+        // Ring/ORing — fixed-size, no allocator
+        if (std.mem.eql(u8, c.kind, "Ring") or std.mem.eql(u8, c.kind, "ORing")) {
+            const zig_type = if (std.mem.eql(u8, c.kind, "Ring")) "KodrRing" else "KodrORing";
+            try self.writeFmt("{s} {s}", .{ decl_kind, name });
+            if (type_ann) |t| {
+                try self.writeFmt(": {s}", .{try self.typeToZig(t)});
+            } else if (c.type_args.len > 0 and c.size_arg != null) {
+                try self.writeFmt(": {s}(", .{zig_type});
+                try self.generateExpr(c.type_args[0]);
+                try self.write(", ");
+                try self.generateExpr(c.size_arg.?);
+                try self.write(")");
+            }
+            try self.write(" = .{};");
+            return;
+        }
+
         const kind: AllocKind = if (c.alloc_arg) |arg| getMemAllocKind(arg) orelse .smp else .smp;
         const extra_args: []*parser.Node = if (c.alloc_arg) |arg|
             if (arg.* == .call_expr) arg.call_expr.args else &[_]*parser.Node{}
@@ -3323,6 +3377,18 @@ pub const CodeGen = struct {
                         }
                         break :blk try self.allocTypeStr("std.AutoHashMapUnmanaged({s}, void)", .{inner});
                     }
+                } else if (std.mem.eql(u8, g.name, "Ring")) {
+                    if (g.args.len >= 2) {
+                        const inner = try self.typeToZig(g.args[0]);
+                        const size_str = if (g.args[1].* == .int_literal) g.args[1].int_literal else "0";
+                        break :blk try self.allocTypeStr("KodrRing({s}, {s})", .{ inner, size_str });
+                    }
+                } else if (std.mem.eql(u8, g.name, "ORing")) {
+                    if (g.args.len >= 2) {
+                        const inner = try self.typeToZig(g.args[0]);
+                        const size_str = if (g.args[1].* == .int_literal) g.args[1].int_literal else "0";
+                        break :blk try self.allocTypeStr("KodrORing({s}, {s})", .{ inner, size_str });
+                    }
                 }
                 break :blk g.name;
             },
@@ -3470,7 +3536,7 @@ fn nodeContainsNullUnion(node: *parser.Node) bool {
     }
 }
 
-/// Check if a module uses wrapper allocators (Debug/Arena/Temp) for preamble import
+/// Check if a module uses wrapper allocators (Debug/Arena/Stack) for preamble import
 fn moduleUsesAllocWrappers(ast: *parser.Node) bool {
     if (ast.* != .program) return false;
     for (ast.program.top_level) |node| {
@@ -3482,13 +3548,13 @@ fn moduleUsesAllocWrappers(ast: *parser.Node) bool {
 fn nodeRefsAllocWrapper(node: *parser.Node) bool {
     switch (node.*) {
         .call_expr => |c| {
-            // Check for mem.DebugAllocator(), mem.Arena(), mem.Temp()
+            // Check for mem.DebugAllocator(), mem.Arena(), mem.Stack()
             if (c.callee.* == .field_expr) {
                 const fe = c.callee.field_expr;
                 if (fe.object.* == .identifier and std.mem.eql(u8, fe.object.identifier, K.Module.MEM)) {
                     if (std.mem.eql(u8, fe.field, "DebugAllocator") or
                         std.mem.eql(u8, fe.field, "Arena") or
-                        std.mem.eql(u8, fe.field, "Temp")) return true;
+                        std.mem.eql(u8, fe.field, "Stack")) return true;
                 }
             }
             for (c.args) |arg| if (nodeRefsAllocWrapper(arg)) return true;

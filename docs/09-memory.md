@@ -189,7 +189,7 @@ Custom allocator *implementation* belongs in Zig via `extern func` — Kodr code
 | `mem.DebugAllocator()` | safe | debug builds — leak detection, double-free checks, general purpose |
 | `mem.Arena()` | fast | batch work, free all at once via `freeAll()` |
 | `mem.Page()` | varies | OS page-sized chunks, large allocations, bypasses heap |
-| `mem.Temp(n)` | fastest | stack-backed scratch, no heap, auto-reset at scope exit — `n` must be a compile-time constant |
+| `mem.Stack(n)` | fastest | stack-backed scratch, no heap, auto-reset at scope exit — `n` must be a compile-time constant |
 
 ### Arena — Batch Free
 ```
@@ -201,12 +201,12 @@ arena.freeAll()    // frees everything at once — all arena values become inval
 
 `arena.free(x)` on an individually arena-allocated value is a no-op — Arena does not track individual allocations. Use `arena.freeAll()` to release memory.
 
-### Temp — Stack-backed Scratch
+### Stack — Stack-backed Scratch
 ```
-var tmp = mem.Temp(4096)            // 4096 bytes on the stack — must be a compile-time constant
-var scratch: []u8 = tmp.alloc(u8, 256)
-var nums: []i32 = tmp.alloc(i32, 16)
-// all memory freed automatically when tmp goes out of scope — no heap involved
+var scratch = mem.Stack(4096)       // 4096 bytes on the stack — must be a compile-time constant
+var buf: []u8 = scratch.alloc(u8, 256)
+var nums: []i32 = scratch.alloc(i32, 16)
+// all memory freed automatically when scratch goes out of scope — no heap involved
 ```
 
 `n` must be a compile-time constant (a literal or `compt` variable) — the buffer lives on the stack.

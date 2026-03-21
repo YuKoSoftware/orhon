@@ -35,7 +35,7 @@ Still missing: `join` (needs slice-of-strings), `toString` (needs generic method
 | `std::console` | **DONE** | print, println, debugPrint, get, printPrefixed |
 | `std::fs` | **DONE** | exists, delete, rename, createDir, deleteDir + File/Dir builtins |
 | `std::math` | **DONE** | pow, sqrt, abs, min, max, floor, ceil, sin, cos, tan, ln, log2, PI, E |
-| `std::mem` | **DONE** | SMP, DebugAllocator, Arena, Temp, Page + alloc/free/freeAll |
+| `std::mem` | **DONE** | SMP, DebugAllocator, Arena, Stack, Page + alloc/free/freeAll |
 | `std::str` | **DONE** | join |
 | `std::system` | **DONE** | getEnv, setEnv, args, cwd, exit, pid |
 | `std::time` | **DONE** | now, nowMs, sleep, elapsed |

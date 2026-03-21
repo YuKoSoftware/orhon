@@ -76,24 +76,24 @@ pub const ArenaAlloc = struct {
     }
 };
 
-pub const TempAlloc = struct {
+pub const StackAlloc = struct {
     _impl: std.heap.FixedBufferAllocator,
 
-    pub fn init(buf: []u8) TempAlloc {
+    pub fn init(buf: []u8) StackAlloc {
         return .{ ._impl = std.heap.FixedBufferAllocator.init(buf) };
     }
-    pub fn allocator(self: *TempAlloc) std.mem.Allocator {
+    pub fn allocator(self: *StackAlloc) std.mem.Allocator {
         return self._impl.allocator();
     }
-    pub fn alloc(self: *TempAlloc, comptime T: type, n: usize) []T {
+    pub fn alloc(self: *StackAlloc, comptime T: type, n: usize) []T {
         return self.allocator().alloc(T, n) catch @panic("out of memory");
     }
-    pub fn allocOne(self: *TempAlloc, comptime T: type, val: T) *T {
+    pub fn allocOne(self: *StackAlloc, comptime T: type, val: T) *T {
         const ptr = self.allocator().create(T) catch @panic("out of memory");
         ptr.* = val;
         return ptr;
     }
-    pub fn free(self: *TempAlloc, ptr: anytype) void {
+    pub fn free(self: *StackAlloc, ptr: anytype) void {
         const T = @TypeOf(ptr);
         switch (@typeInfo(T)) {
             .pointer => |p| {

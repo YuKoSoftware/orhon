@@ -28,24 +28,25 @@ Still missing: `join` (needs slice-of-strings), `toString` (needs generic method
 
 ---
 
-## Missing Standard Library
+## Standard Library
 
-Only `std::console` exists today. Minimum viable stdlib for a general-purpose language:
+| Module | Status | Contents |
+|---|---|---|
+| `std::console` | **DONE** | print, println, debugPrint, get, printPrefixed |
+| `std::fs` | **DONE** | exists, delete, rename, createDir, deleteDir + File/Dir builtins |
+| `std::math` | **DONE** | pow, sqrt, abs, min, max, floor, ceil, sin, cos, tan, ln, log2, PI, E |
+| `std::mem` | **DONE** | SMP, DebugAllocator, Arena, Temp, Page + alloc/free/freeAll |
+| `std::str` | **DONE** | join |
+| `std::system` | **DONE** | getEnv, setEnv, args, cwd, exit, pid |
+| `std::time` | **DONE** | now, nowMs, sleep, elapsed |
+| `std::json` | **DONE** | parse, stringify, get, isValid |
+| `std::sort` | **DONE** | sort, sortDesc, isSorted, reverse, min, max |
+| `std::net` | NOT STARTED | TCP/UDP sockets, basic HTTP client |
 
-| Module | Contents |
-|---|---|
-| `std::str` | format, join, toUpper, toLower, replace, repeat, parseInt, parseFloat, toString (non-allocating ops now builtin on String) |
-| `std::fs` | **DONE** — File/Dir builtin types + fs.exists/delete/rename/createDir/deleteDir |
-| `std::math` | **DONE** — pow, sqrt, abs, min, max, floor, ceil, sin, cos, tan, ln, log2, PI, E |
-| `std::env` | environment variables, process args, cwd |
-| `std::time` | timestamps, sleep, duration, formatting |
-| `std::net` | TCP/UDP sockets, basic HTTP client |
-| `std::json` | parse and emit JSON |
-| `std::sort` | sort slices and lists, custom comparators |
-
-All of these are wrappable from Zig's stdlib. The work is designing the Kodr API surface and adding codegen/builtins support for each.
-
-**Priority: `std::str`, `std::fs`, `std::math` are high. The rest are medium.**
+Non-allocating string methods are built into the compiler (not in std::str):
+`contains`, `startsWith`, `endsWith`, `trim`, `trimLeft`, `trimRight`,
+`indexOf`, `lastIndexOf`, `count`, `split`, `toUpper`, `toLower`,
+`replace`, `repeat`, `parseInt`, `parseFloat`.
 
 ---
 

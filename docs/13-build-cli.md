@@ -3,18 +3,22 @@
 Fully integrated into the compiler. No build files ever.
 
 ```
-kodr build                  // debug build, native platform
-kodr build -x64 -release    // 64-bit release build
-kodr build -arm -fast       // ARM, max optimization
-kodr build -wasm            // WebAssembly target
-kodr run                    // build and run
-kodr run -x64               // build and run for x64
-kodr test                   // run all test blocks
-kodr build -zig             // show raw Zig compiler output — for compiler developers only
-kodr init <name>            // create a new project in ./<name>/
-kodr initstd                // create std/ and global/ folders next to the kodr binary
-kodr addtopath              // add kodr to PATH in your shell profile
-kodr debug                  // dump project info: source dir, modules found, files
+kodr build                          // debug build, native platform
+kodr build -linux_x64 -fast         // Linux x86-64, max speed
+kodr build -linux_arm -small        // Linux ARM64, min binary size
+kodr build -win_x64                 // Windows x86-64
+kodr build -mac_arm                 // macOS Apple Silicon
+kodr build -wasm                    // WebAssembly target
+kodr build -linux_x64 -win_x64     // multi-target (outputs to bin/<target>/)
+kodr build -zig                     // emit Zig source project to bin/zig/
+kodr run                            // build and run
+kodr test                           // run all test blocks
+kodr build -verbose                 // show raw Zig compiler output
+kodr init <name>                    // create a new project in ./<name>/
+kodr init                           // init in current dir, use folder name as project name
+kodr initstd                        // create std/ and global/ folders next to the kodr binary
+kodr addtopath                      // add kodr to PATH in your shell profile
+kodr debug                          // dump project info: source dir, modules found, files
 ```
 
 ---
@@ -25,17 +29,17 @@ Kodr fully controls what the user sees. The Zig compiler runs silently under the
 
 If Zig compilation succeeds — all Zig output is suppressed. The user only sees Kodr's own output.
 
-If Zig compilation fails due to a codegen bug — Kodr reformats the error in its own clean format. Raw Zig errors are never shown unless `-zig` flag is explicitly passed.
+If Zig compilation fails due to a codegen bug — Kodr reformats the error in its own clean format. Raw Zig errors are never shown unless `-verbose` flag is explicitly passed.
 
 ```
 // normal mode — user never sees Zig output
 kodr build
 
-// compiler developer mode — raw Zig output visible
-kodr build -zig
+// verbose mode — raw Zig output visible
+kodr build -verbose
 ```
 
-In a correctly implemented compiler, Zig errors should never reach the user — all issues are caught by Kodr's analysis passes before code generation. The `-zig` flag exists purely for debugging the compiler itself during development.
+In a correctly implemented compiler, Zig errors should never reach the user — all issues are caught by Kodr's analysis passes before code generation. The `-verbose` flag exists purely for debugging the compiler itself during development.
 
 ---
 

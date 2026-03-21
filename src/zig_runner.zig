@@ -72,10 +72,10 @@ pub const ZigRunner = struct {
             try args.append(self.allocator, target_flag);
         }
 
-        if (std.mem.eql(u8, optimize, "release")) {
-            try args.append(self.allocator, "-Doptimize=ReleaseSafe");
-        } else if (std.mem.eql(u8, optimize, "fast")) {
+        if (std.mem.eql(u8, optimize, "fast")) {
             try args.append(self.allocator, "-Doptimize=ReleaseFast");
+        } else if (std.mem.eql(u8, optimize, "small")) {
+            try args.append(self.allocator, "-Doptimize=ReleaseSmall");
         }
 
         var result = try self.runZigIn(args.items, cache.GENERATED_DIR);
@@ -148,10 +148,10 @@ pub const ZigRunner = struct {
             try args.append(self.allocator, target_flag);
         }
 
-        if (std.mem.eql(u8, optimize, "release")) {
-            try args.append(self.allocator, "-Doptimize=ReleaseSafe");
-        } else if (std.mem.eql(u8, optimize, "fast")) {
+        if (std.mem.eql(u8, optimize, "fast")) {
             try args.append(self.allocator, "-Doptimize=ReleaseFast");
+        } else if (std.mem.eql(u8, optimize, "small")) {
+            try args.append(self.allocator, "-Doptimize=ReleaseSmall");
         }
 
         // zig build runs from the directory containing build.zig

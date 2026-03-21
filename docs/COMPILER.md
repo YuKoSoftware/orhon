@@ -139,7 +139,7 @@ Writing the compiler in Zig specifically reduces implementation work significant
 - Tagged unions — natural representation for AST nodes and MIR instructions
 - Zig comptime — generate repetitive compiler code, visitor patterns, type checking rules
 - `std.fs` — file scanning, reading, timestamp checking — incremental cache almost free
-- `std.ChildProcess` — invoke Zig compiler, capture stdout/stderr for `-zig` flag
+- `std.ChildProcess` — invoke Zig compiler, capture stdout/stderr for `-verbose` flag
 - `std.fmt` — Zig code generation is essentially formatted string output
 
 ### `std.zig` — reference implementation
@@ -242,12 +242,13 @@ ERROR: zig compiler not found
 ### Debug vs release code generation
 ```
 kodr build             // debug — full error trace metadata
-kodr build -release    // release — trace stripped, messages kept
-kodr build -zig        // show raw Zig compiler output — compiler dev mode only
+kodr build -fast       // max speed — trace stripped, messages kept
+kodr build -small      // min binary size — trace stripped, messages kept
+kodr build -verbose    // show raw Zig compiler output — compiler dev mode only
 ```
 
 ### Zig output
-The Zig compiler runs silently. Its output is fully captured — never shown to the user unless `-zig` is passed. In a correctly implemented compiler, Zig errors should never reach the user since all issues are caught in passes 1-9 before code generation.
+The Zig compiler runs silently. Its output is fully captured — never shown to the user unless `-verbose` is passed. In a correctly implemented compiler, Zig errors should never reach the user since all issues are caught in passes 1-9 before code generation.
 
 ---
 

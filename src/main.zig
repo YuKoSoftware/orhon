@@ -38,30 +38,61 @@ const Command = enum {
 
 const BuildTarget = enum {
     native,
-    x64,
-    arm,
+    linux_x64,
+    linux_arm,
+    win_x64,
+    mac_x64,
+    mac_arm,
     wasm,
+    zig, // emit Zig source project
+
+    fn toZigTriple(self: BuildTarget) []const u8 {
+        return switch (self) {
+            .native => "",
+            .linux_x64 => "x86_64-linux",
+            .linux_arm => "aarch64-linux",
+            .win_x64 => "x86_64-windows",
+            .mac_x64 => "x86_64-macos",
+            .mac_arm => "aarch64-macos",
+            .wasm => "wasm32-freestanding",
+            .zig => "",
+        };
+    }
+
+    fn folderName(self: BuildTarget) []const u8 {
+        return switch (self) {
+            .native => "native",
+            .linux_x64 => "linux_x64",
+            .linux_arm => "linux_arm",
+            .win_x64 => "win_x64",
+            .mac_x64 => "mac_x64",
+            .mac_arm => "mac_arm",
+            .wasm => "wasm",
+            .zig => "zig",
+        };
+    }
 };
 
 const OptLevel = enum {
     debug,
-    release,
     fast,
+    small,
 };
 
 const CliArgs = struct {
     command: Command,
-    target: BuildTarget,
+    targets: std.ArrayListUnmanaged(BuildTarget),
     optimize: OptLevel,
-    show_zig: bool,       // -zig flag
+    verbose: bool,        // -verbose flag (show Zig compiler output)
     source_dir: []const u8,
     project_name: []const u8, // for init command
+    init_in_place: bool, // kodr init (no name) — init in current dir
     allocator: std.mem.Allocator, // owns duped strings
 
     pub fn deinit(self: *const CliArgs) void {
-        // Free duped strings (default values are string literals — only free if non-empty)
         if (self.project_name.len > 0) self.allocator.free(self.project_name);
         if (!std.mem.eql(u8, self.source_dir, "src")) self.allocator.free(self.source_dir);
+        @constCast(&self.targets).deinit(self.allocator);
     }
 };
 
@@ -76,11 +107,12 @@ fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
 
     var cli = CliArgs{
         .command = .help,
-        .target = .native,
+        .targets = .{},
         .optimize = .debug,
-        .show_zig = false,
+        .verbose = false,
         .source_dir = "src",
         .project_name = "",
+            .init_in_place = false,
         .allocator = allocator,
     };
 
@@ -94,11 +126,20 @@ fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
         cli.command = .@"test";
     } else if (std.mem.eql(u8, cmd_str, "init")) {
         cli.command = .init;
-        if (args.len < 3) {
-            std.debug.print("usage: kodr init <project_name>\n", .{});
-            std.process.exit(1);
+        if (args.len >= 3) {
+            cli.project_name = try allocator.dupe(u8, args[2]);
+        } else {
+            // No name given — init in current directory, use dir name as project name
+            cli.init_in_place = true;
+            const cwd_path = try std.process.getCwdAlloc(allocator);
+            defer allocator.free(cwd_path);
+            const dir_name = std.fs.path.basename(cwd_path);
+            if (dir_name.len == 0) {
+                std.debug.print("error: could not determine project name from current directory\n", .{});
+                std.process.exit(1);
+            }
+            cli.project_name = try allocator.dupe(u8, dir_name);
         }
-        cli.project_name = try allocator.dupe(u8, args[2]);
     } else if (std.mem.eql(u8, cmd_str, "initstd")) {
         cli.command = .initstd;
     } else if (std.mem.eql(u8, cmd_str, "debug")) {
@@ -118,18 +159,26 @@ fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
-        if (std.mem.eql(u8, arg, "-x64")) {
-            cli.target = .x64;
-        } else if (std.mem.eql(u8, arg, "-arm")) {
-            cli.target = .arm;
+        if (std.mem.eql(u8, arg, "-linux_x64")) {
+            try cli.targets.append(allocator, .linux_x64);
+        } else if (std.mem.eql(u8, arg, "-linux_arm")) {
+            try cli.targets.append(allocator, .linux_arm);
+        } else if (std.mem.eql(u8, arg, "-win_x64")) {
+            try cli.targets.append(allocator, .win_x64);
+        } else if (std.mem.eql(u8, arg, "-mac_x64")) {
+            try cli.targets.append(allocator, .mac_x64);
+        } else if (std.mem.eql(u8, arg, "-mac_arm")) {
+            try cli.targets.append(allocator, .mac_arm);
         } else if (std.mem.eql(u8, arg, "-wasm")) {
-            cli.target = .wasm;
-        } else if (std.mem.eql(u8, arg, "-release")) {
-            cli.optimize = .release;
+            try cli.targets.append(allocator, .wasm);
+        } else if (std.mem.eql(u8, arg, "-zig")) {
+            try cli.targets.append(allocator, .zig);
         } else if (std.mem.eql(u8, arg, "-fast")) {
             cli.optimize = .fast;
-        } else if (std.mem.eql(u8, arg, "-zig")) {
-            cli.show_zig = true;
+        } else if (std.mem.eql(u8, arg, "-small")) {
+            cli.optimize = .small;
+        } else if (std.mem.eql(u8, arg, "-verbose")) {
+            cli.verbose = true;
         } else {
             // Treat as source directory
             cli.source_dir = try allocator.dupe(u8, arg);
@@ -157,19 +206,25 @@ fn printHelp() void {
         \\  build               Compile the project in the current directory
         \\  run                 Build and immediately execute the binary
         \\  test                Run all test { } blocks in the project
-        \\  init <name>         Create a new project in ./<name>/
+        \\  init [name]         Create a new project (in ./<name>/ or current dir if no name)
         \\  initstd             Install the standard library next to the kodr binary
         \\  addtopath           Add kodr to your shell PATH
         \\  debug               Show project info — modules, files, source directory
         \\  version             Print the compiler version
         \\
-        \\Build flags (for build and run):
-        \\  -x64                Target x86-64 Linux
-        \\  -arm                Target ARM64 Linux
-        \\  -wasm               Target WebAssembly
-        \\  -release            Optimized build with safety checks
-        \\  -fast               Maximum optimization, no safety checks
-        \\  -zig                Show raw Zig compiler output (for debugging the compiler)
+        \\Targets (combinable — e.g. kodr build -linux_x64 -win_x64):
+        \\  -linux_x64          Linux x86-64
+        \\  -linux_arm          Linux ARM64
+        \\  -win_x64            Windows x86-64
+        \\  -mac_x64            macOS x86-64
+        \\  -mac_arm            macOS ARM64 (Apple Silicon)
+        \\  -wasm               WebAssembly
+        \\  -zig                Emit Zig source project (no binary)
+        \\
+        \\Build flags:
+        \\  -fast               Maximum speed optimization
+        \\  -small              Minimum binary size optimization
+        \\  -verbose            Show raw Zig compiler output
         \\
     ;
     std.debug.print("{s}", .{help});
@@ -192,7 +247,7 @@ const EXAMPLE_KODR_TEMPLATE      = @embedFile("templates/example.kodr");
 const CONTROL_FLOW_KODR_TEMPLATE = @embedFile("templates/control_flow.kodr");
 
 
-fn initProject(allocator: std.mem.Allocator, name: []const u8) !void {
+fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: bool) !void {
     // Validate project name
     if (name.len == 0) {
         std.debug.print("error: project name cannot be empty\n", .{});
@@ -205,16 +260,16 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8) !void {
         }
     }
 
-    // Create <name>/ and <name>/src/
     // Create project directory and src/ subdirectory
-    const src_dir_path = try std.fs.path.join(allocator, &.{ name, "src" });
+    const base = if (in_place) "." else name;
+    const src_dir_path = try std.fs.path.join(allocator, &.{ base, "src" });
     defer allocator.free(src_dir_path);
     try std.fs.cwd().makePath(src_dir_path);
 
     // Write src/main.kodr from template
     // Template contains a single {s} placeholder for the project name.
     // Split on it and write in two parts — avoids allocPrint brace escaping issues.
-    const main_kodr_path = try std.fs.path.join(allocator, &.{ name, "src", "main.kodr" });
+    const main_kodr_path = try std.fs.path.join(allocator, &.{ base, "src", "main.kodr" });
     defer allocator.free(main_kodr_path);
 
     const main_file = try std.fs.cwd().createFile(main_kodr_path, .{});
@@ -230,7 +285,7 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8) !void {
     }
 
     // Write src/example.kodr from template
-    const example_kodr_path = try std.fs.path.join(allocator, &.{ name, "src", "example.kodr" });
+    const example_kodr_path = try std.fs.path.join(allocator, &.{ base, "src", "example.kodr" });
     defer allocator.free(example_kodr_path);
 
     const example_file = try std.fs.cwd().createFile(example_kodr_path, .{});
@@ -238,7 +293,7 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8) !void {
     try example_file.writeAll(EXAMPLE_KODR_TEMPLATE);
 
     // Write src/control_flow.kodr from template
-    const control_flow_path = try std.fs.path.join(allocator, &.{ name, "src", "control_flow.kodr" });
+    const control_flow_path = try std.fs.path.join(allocator, &.{ base, "src", "control_flow.kodr" });
     defer allocator.free(control_flow_path);
 
     const control_flow_file = try std.fs.cwd().createFile(control_flow_path, .{});
@@ -246,13 +301,16 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8) !void {
     try control_flow_file.writeAll(CONTROL_FLOW_KODR_TEMPLATE);
 
     std.debug.print("Created project '{s}'\n", .{name});
-    std.debug.print("  {s}/\n", .{name});
-    std.debug.print("  {s}/src/\n", .{name});
-    std.debug.print("  {s}/src/main.kodr\n", .{name});
-    std.debug.print("  {s}/src/example.kodr\n", .{name});
-    std.debug.print("  {s}/src/control_flow.kodr\n", .{name});
-    std.debug.print("\nGet started:\n", .{});
-    std.debug.print("  cd {s}\n", .{name});
+    std.debug.print("  {s}/src/\n", .{base});
+    std.debug.print("  {s}/src/main.kodr\n", .{base});
+    std.debug.print("  {s}/src/example.kodr\n", .{base});
+    std.debug.print("  {s}/src/control_flow.kodr\n", .{base});
+    if (!in_place) {
+        std.debug.print("\nGet started:\n", .{});
+        std.debug.print("  cd {s}\n", .{name});
+    } else {
+        std.debug.print("\nGet started:\n", .{});
+    }
     std.debug.print("  kodr build\n", .{});
     std.debug.print("  kodr run\n", .{});
 }
@@ -269,6 +327,16 @@ const MATH_KODR    = @embedFile("std/math.kodr");
 const MATH_ZIG     = @embedFile("std/math.zig");
 const MEM_KODR     = @embedFile("std/mem.kodr");
 const MEM_ZIG      = @embedFile("std/mem.zig");
+const STR_KODR     = @embedFile("std/str.kodr");
+const STR_ZIG      = @embedFile("std/str.zig");
+const SYSTEM_KODR  = @embedFile("std/system.kodr");
+const SYSTEM_ZIG   = @embedFile("std/system.zig");
+const TIME_KODR    = @embedFile("std/time.kodr");
+const TIME_ZIG     = @embedFile("std/time.zig");
+const JSON_KODR    = @embedFile("std/json.kodr");
+const JSON_ZIG     = @embedFile("std/json.zig");
+const SORT_KODR    = @embedFile("std/sort.kodr");
+const SORT_ZIG     = @embedFile("std/sort.zig");
 
 fn initStd(allocator: std.mem.Allocator) !void {
     // Find directory containing the kodr binary
@@ -337,6 +405,72 @@ fn initStd(allocator: std.mem.Allocator) !void {
     defer mem_zig_file.close();
     try mem_zig_file.writeAll(MEM_ZIG);
 
+    // Write str.kodr into std/
+    const str_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "str.kodr" });
+    defer allocator.free(str_kodr_path);
+    const str_kodr_file = try std.fs.cwd().createFile(str_kodr_path, .{});
+    defer str_kodr_file.close();
+    try str_kodr_file.writeAll(STR_KODR);
+
+    // Write str.zig into std/ — string utilities implementation
+    const str_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "str.zig" });
+    defer allocator.free(str_zig_path);
+    const str_zig_file = try std.fs.cwd().createFile(str_zig_path, .{});
+    defer str_zig_file.close();
+    try str_zig_file.writeAll(STR_ZIG);
+
+    // Write system module
+    const system_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "system.kodr" });
+    defer allocator.free(system_kodr_path);
+    const system_kodr_file = try std.fs.cwd().createFile(system_kodr_path, .{});
+    defer system_kodr_file.close();
+    try system_kodr_file.writeAll(SYSTEM_KODR);
+
+    const system_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "system.zig" });
+    defer allocator.free(system_zig_path);
+    const system_zig_file = try std.fs.cwd().createFile(system_zig_path, .{});
+    defer system_zig_file.close();
+    try system_zig_file.writeAll(SYSTEM_ZIG);
+
+    // Write time module
+    const time_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "time.kodr" });
+    defer allocator.free(time_kodr_path);
+    const time_kodr_file = try std.fs.cwd().createFile(time_kodr_path, .{});
+    defer time_kodr_file.close();
+    try time_kodr_file.writeAll(TIME_KODR);
+
+    const time_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "time.zig" });
+    defer allocator.free(time_zig_path);
+    const time_zig_file = try std.fs.cwd().createFile(time_zig_path, .{});
+    defer time_zig_file.close();
+    try time_zig_file.writeAll(TIME_ZIG);
+
+    // Write json module
+    const json_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "json.kodr" });
+    defer allocator.free(json_kodr_path);
+    const json_kodr_file = try std.fs.cwd().createFile(json_kodr_path, .{});
+    defer json_kodr_file.close();
+    try json_kodr_file.writeAll(JSON_KODR);
+
+    const json_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "json.zig" });
+    defer allocator.free(json_zig_path);
+    const json_zig_file = try std.fs.cwd().createFile(json_zig_path, .{});
+    defer json_zig_file.close();
+    try json_zig_file.writeAll(JSON_ZIG);
+
+    // Write sort module
+    const sort_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "sort.kodr" });
+    defer allocator.free(sort_kodr_path);
+    const sort_kodr_file = try std.fs.cwd().createFile(sort_kodr_path, .{});
+    defer sort_kodr_file.close();
+    try sort_kodr_file.writeAll(SORT_KODR);
+
+    const sort_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "sort.zig" });
+    defer allocator.free(sort_zig_path);
+    const sort_zig_file = try std.fs.cwd().createFile(sort_zig_path, .{});
+    defer sort_zig_file.close();
+    try sort_zig_file.writeAll(SORT_ZIG);
+
     // Create global/ next to binary (empty — user fills this)
     const global_dir = try std.fs.path.join(allocator, &.{ exe_dir, "global" });
     defer allocator.free(global_dir);
@@ -351,6 +485,16 @@ fn initStd(allocator: std.mem.Allocator) !void {
     std.debug.print("  {s}/std/math.kodr\n", .{exe_dir});
     std.debug.print("  {s}/std/math.zig\n", .{exe_dir});
     std.debug.print("  {s}/std/mem.kodr\n", .{exe_dir});
+    std.debug.print("  {s}/std/str.kodr\n", .{exe_dir});
+    std.debug.print("  {s}/std/str.zig\n", .{exe_dir});
+    std.debug.print("  {s}/std/system.kodr\n", .{exe_dir});
+    std.debug.print("  {s}/std/system.zig\n", .{exe_dir});
+    std.debug.print("  {s}/std/time.kodr\n", .{exe_dir});
+    std.debug.print("  {s}/std/time.zig\n", .{exe_dir});
+    std.debug.print("  {s}/std/json.kodr\n", .{exe_dir});
+    std.debug.print("  {s}/std/json.zig\n", .{exe_dir});
+    std.debug.print("  {s}/std/sort.kodr\n", .{exe_dir});
+    std.debug.print("  {s}/std/sort.zig\n", .{exe_dir});
     std.debug.print("  {s}/global/\n", .{exe_dir});
     std.debug.print("\nAdd your shared modules to {s}/global/\n", .{exe_dir});
 }
@@ -468,12 +612,12 @@ pub fn main() !void {
     defer _ = da.deinit();
     const allocator = if (@import("builtin").mode == .Debug) da.allocator() else std.heap.smp_allocator;
 
-    const cli = try parseArgs(allocator);
+    var cli = try parseArgs(allocator);
     defer cli.deinit();
 
     // Handle init and addtopath before setting up the full pipeline
     if (cli.command == .init) {
-        initProject(allocator, cli.project_name) catch |err| {
+        initProject(allocator, cli.project_name, cli.init_in_place) catch |err| {
             std.debug.print("error: failed to create project: {}\n", .{err});
             std.process.exit(1);
         };
@@ -508,7 +652,7 @@ pub fn main() !void {
         return;
     }
 
-    const mode: errors.BuildMode = if (cli.optimize == .release or cli.optimize == .fast)
+    const mode: errors.BuildMode = if (cli.optimize == .fast or cli.optimize == .small)
         .release
     else
         .debug;
@@ -595,7 +739,7 @@ fn runDebug(allocator: std.mem.Allocator, cli: *const CliArgs) !void {
     std.debug.print("\n", .{});
 }
 
-fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *errors.Reporter) !?[]const u8 {
+fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Reporter) !?[]const u8 {
 
     // ── Pass 3: Module Resolution ──────────────────────────────
     var mod_resolver = module.Resolver.init(allocator, reporter);
@@ -623,9 +767,16 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
     try comp_cache.loadTimestamps();
     try comp_cache.loadDeps();
 
-    // Parse all modules
-    try mod_resolver.parseModules(allocator);
-    if (reporter.hasErrors()) return null;
+    // Parse all modules — loop until no new unparsed modules remain
+    // (std imports discovered during parsing add new modules to the map)
+    {
+        var prev_count: usize = 0;
+        while (mod_resolver.modules.count() != prev_count) {
+            prev_count = mod_resolver.modules.count();
+            try mod_resolver.parseModules(allocator);
+            if (reporter.hasErrors()) return null;
+        }
+    }
 
     // Scan and parse any #dep directories declared in the root module
     try mod_resolver.scanAndParseDeps(allocator, cli.source_dir);
@@ -802,7 +953,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
     try comp_cache.saveDeps();
 
     if (cli.command == .@"test") {
-        var runner = zig_runner.ZigRunner.init(allocator, reporter, cli.show_zig) catch |err| {
+        var runner = zig_runner.ZigRunner.init(allocator, reporter, cli.verbose) catch |err| {
             if (err == error.ZigNotFound) return null;
             return err;
         };
@@ -838,22 +989,19 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
     }
 
     // ── Pass 12: Zig Compiler ──────────────────────────────────
-    var runner = zig_runner.ZigRunner.init(allocator, reporter, cli.show_zig) catch |err| {
+    var runner = zig_runner.ZigRunner.init(allocator, reporter, cli.verbose) catch |err| {
         if (err == error.ZigNotFound) return null;
         return err;
     };
     defer runner.deinit();
 
-    const target_str: []const u8 = switch (cli.target) {
-        .x64 => "x86_64-linux",
-        .arm => "aarch64-linux",
-        .wasm => "wasm32-freestanding",
-        .native => "",
-    };
+    // Default to native if no targets specified
+    if (cli.targets.items.len == 0)
+        try cli.targets.append(allocator, .native);
 
     const opt_str: []const u8 = switch (cli.optimize) {
-        .release => "release",
         .fast => "fast",
+        .small => "small",
         .debug => "",
     };
 
@@ -945,8 +1093,24 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
             });
         }
 
-        const built = try runner.buildAll(target_str, opt_str, multi_targets.items);
-        if (!built) return null;
+        for (cli.targets.items) |build_target| {
+            const target_str = build_target.toZigTriple();
+
+            // -zig target: copy generated Zig source to bin/zig/
+            if (build_target == .zig) {
+                try emitZigProject(allocator);
+                continue;
+            }
+
+            const use_subfolder = cli.targets.items.len > 1;
+            const built = try runner.buildAll(target_str, opt_str, multi_targets.items);
+            if (!built) return null;
+
+            // Move artifacts to target subfolder if multi-target
+            if (use_subfolder) {
+                try moveArtifactsToSubfolder(allocator, build_target.folderName());
+            }
+        }
 
         // Generate interface files for lib targets
         for (multi_targets.items) |t| {
@@ -994,11 +1158,25 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
 
             try runner.generateBuildZig(mod.name, build_type, binary_name, project_version);
 
-            const built = if (std.mem.eql(u8, build_type, "exe"))
-                try runner.build(target_str, opt_str, mod.name, binary_name)
-            else
-                try runner.buildLib(target_str, opt_str, mod.name, binary_name, build_type);
-            if (!built) return null;
+            for (cli.targets.items) |build_target| {
+                const target_str = build_target.toZigTriple();
+
+                if (build_target == .zig) {
+                    try emitZigProject(allocator);
+                    continue;
+                }
+
+                const use_subfolder = cli.targets.items.len > 1;
+                const built = if (std.mem.eql(u8, build_type, "exe"))
+                    try runner.build(target_str, opt_str, mod.name, binary_name)
+                else
+                    try runner.buildLib(target_str, opt_str, mod.name, binary_name, build_type);
+                if (!built) return null;
+
+                if (use_subfolder) {
+                    try moveArtifactsToSubfolder(allocator, build_target.folderName());
+                }
+            }
 
             if (std.mem.eql(u8, build_type, "exe")) {
                 if (exe_binary_name == null) {
@@ -1288,6 +1466,51 @@ fn emitInterfaceDecl(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc
 
 /// Generate a pub-only interface `.kodr` file into `bin/<binary_name>.kodr`.
 /// Called after a successful static or dynamic library build.
+/// Copy the generated Zig project from .kodr-cache/generated/ to bin/zig/
+fn emitZigProject(allocator: std.mem.Allocator) !void {
+    const dst_dir = "bin/zig";
+    try std.fs.cwd().makePath(dst_dir);
+
+    var src_dir = try std.fs.cwd().openDir(cache.GENERATED_DIR, .{ .iterate = true });
+    defer src_dir.close();
+
+    var it = src_dir.iterate();
+    while (try it.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
+        const dst_path = try std.fs.path.join(allocator, &.{ dst_dir, entry.name });
+        defer allocator.free(dst_path);
+        const src_path = try std.fs.path.join(allocator, &.{ cache.GENERATED_DIR, entry.name });
+        defer allocator.free(src_path);
+        try std.fs.cwd().copyFile(src_path, std.fs.cwd(), dst_path, .{});
+    }
+    std.debug.print("Emitted Zig project: {s}/\n", .{dst_dir});
+}
+
+/// Move all artifacts from bin/ to bin/<subfolder>/
+fn moveArtifactsToSubfolder(allocator: std.mem.Allocator, subfolder: []const u8) !void {
+    const dst = try std.fs.path.join(allocator, &.{ "bin", subfolder });
+    defer allocator.free(dst);
+    try std.fs.cwd().makePath(dst);
+
+    var bin_dir = std.fs.cwd().openDir("bin", .{ .iterate = true }) catch return;
+    defer bin_dir.close();
+
+    var it = bin_dir.iterate();
+    while (try it.next()) |entry| {
+        if (entry.kind != .file) continue;
+        const src_path = try std.fs.path.join(allocator, &.{ "bin", entry.name });
+        defer allocator.free(src_path);
+        const dst_path = try std.fs.path.join(allocator, &.{ dst, entry.name });
+        defer allocator.free(dst_path);
+        std.fs.cwd().rename(src_path, dst_path) catch {
+            // Fallback: copy + delete
+            std.fs.cwd().copyFile(src_path, std.fs.cwd(), dst_path, .{}) catch continue;
+            std.fs.cwd().deleteFile(src_path) catch {};
+        };
+    }
+}
+
 fn generateInterface(
     alloc: std.mem.Allocator,
     mod_name: []const u8,
@@ -1355,8 +1578,10 @@ test "pipeline - imports all passes" {
 
 test "cli - build target names" {
     try std.testing.expectEqual(BuildTarget.native, .native);
-    try std.testing.expectEqual(BuildTarget.x64, .x64);
+    try std.testing.expectEqual(BuildTarget.linux_x64, .linux_x64);
+    try std.testing.expectEqual(BuildTarget.win_x64, .win_x64);
     try std.testing.expectEqual(BuildTarget.wasm, .wasm);
+    try std.testing.expectEqual(BuildTarget.zig, .zig);
 }
 
 test "full pipeline - hello world" {

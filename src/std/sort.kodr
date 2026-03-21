@@ -1,0 +1,29 @@
+module sort
+
+// sort — sorting and ordering utilities for Kodr programs
+// Import with: import std::sort
+// All functions use `any` — type determined by arguments + variable annotation.
+
+// Sort a mutable slice in-place, ascending order
+
+extern func sort(arr: any) void
+
+// Sort a mutable slice in-place, descending order
+
+extern func sortDesc(arr: any) void
+
+// Check if a slice is sorted in ascending order
+
+extern func isSorted(arr: any) bool
+
+// Reverse a slice in-place
+
+extern func reverse(arr: any) void
+
+// Find the minimum value in a slice
+
+extern func min(arr: any) any
+
+// Find the maximum value in a slice
+
+extern func max(arr: any) any

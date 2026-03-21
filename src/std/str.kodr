@@ -1,0 +1,8 @@
+module str
+
+// str — string utilities for Kodr programs
+// Import with: import std::str
+
+// Join a slice of strings with a separator
+
+extern func join(parts: any, sep: String) String

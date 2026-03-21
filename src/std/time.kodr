@@ -1,0 +1,21 @@
+module time
+
+// time — time operations for Kodr programs
+// Import with: import std::time
+// Implementation lives in time.zig — do not generate body, use paired .zig file.
+
+// Current unix timestamp in seconds
+
+extern func now() i64
+
+// Current unix timestamp in milliseconds
+
+extern func nowMs() i64
+
+// Sleep for the given number of milliseconds
+
+extern func sleep(ms: i64) void
+
+// Difference between two timestamps in milliseconds
+
+extern func elapsed(start: i64, end: i64) i64

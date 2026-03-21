@@ -1,0 +1,29 @@
+module system
+
+// system — OS/system operations for Kodr programs
+// Import with: import std::system
+// Implementation lives in system.zig — do not generate body, use paired .zig file.
+
+// Get an environment variable by name — returns null if not set
+
+extern func getEnv(key: String) (null | String)
+
+// Set an environment variable
+
+extern func setEnv(key: String, value: String) void
+
+// Get command line arguments as a slice of strings
+
+extern func args() []String
+
+// Get the current working directory
+
+extern func cwd() String
+
+// Exit the process with a status code
+
+extern func exit(code: i32) void
+
+// Get the current process ID
+
+extern func pid() i32

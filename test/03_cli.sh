@@ -24,10 +24,11 @@ else
     fail "kodr <unknown> exits non-zero"
 fi
 
-if ! "$KODR" init 2>/dev/null; then
-    pass "kodr init (no name) exits non-zero"
+cd "$TESTDIR" && mkdir -p inplace_test && cd inplace_test
+if "$KODR" init >/dev/null 2>&1 && [ -f src/main.kodr ]; then
+    pass "kodr init (no name) inits in current dir"
 else
-    fail "kodr init (no name) exits non-zero"
+    fail "kodr init (no name) inits in current dir"
 fi
 
 report_results

@@ -1,0 +1,20 @@
+module json
+
+// json — JSON parsing and emission for Kodr programs
+// Import with: import std::json
+
+// Validate and pretty-print a JSON string
+
+extern func parse(text: String) (Error | String)
+
+// Minify/compact a JSON string
+
+extern func stringify(text: String) String
+
+// Extract a top-level string value by key
+
+extern func get(json: String, key: String) (null | String)
+
+// Check if text is valid JSON
+
+extern func isValid(text: String) bool

@@ -29,7 +29,7 @@ runnable. Pipeline order:
 | `test/01_unit.sh` | Zig unit tests (`zig build test`) |
 | `test/02_build.sh` | Compile the compiler (`zig build`) |
 | `test/03_cli.sh` | CLI args, help, error exits |
-| `test/04_init.sh` | `kodr init` + `kodr initstd` scaffolding |
+| `test/04_init.sh` | `kodr init` + embedded std scaffolding |
 | `test/05_compile.sh` | `kodr build`, `kodr run`, `kodr test`, `kodr debug`, incremental |
 | `test/06_library.sh` | Static + dynamic library builds |
 | `test/07_multimodule.sh` | Multi-module project builds |

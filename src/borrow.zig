@@ -101,10 +101,12 @@ pub const BorrowChecker = struct {
                 }
             },
             .const_decl => |v| {
-                // const declarations with borrows are always immutable
+                // Borrow mutability comes from the type annotation (&T vs const &T),
+                // not from const/var — const binding to &T is still a mutable borrow
                 if (v.value.* == .borrow_expr) {
+                    const is_mut = isMutableBorrowType(v.type_annotation);
                     if (extractBorrowTarget(v.value.borrow_expr)) |target| {
-                        try self.addBorrow(target.variable, target.field, false);
+                        try self.addBorrow(target.variable, target.field, is_mut);
                     }
                 } else {
                     try self.checkExpr(v.value);

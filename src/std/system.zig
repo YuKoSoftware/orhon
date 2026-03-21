@@ -1,7 +1,7 @@
 // system.zig — OS/system operations implementation for Kodr's std::system
 // Hand-written implementation. Paired with system.kodr.
 // Do not edit the generated system.zig in .kodr-cache/generated/ —
-// edit this source file and run kodr initstd to update.
+// edit this source file — embedded into the compiler at build time.
 
 const std = @import("std");
 

@@ -416,7 +416,8 @@ run_fixture neg_own fail_ownership.kodr "use of moved value\|moved" "fixture: ca
 # thread safety errors
 run_fixture neg_thread2 fail_threads.kodr "must be joined" "fixture: catches unjoined thread"
 
-# TODO: borrow conflict test — borrow checker doesn't catch mutable+immutable overlap yet
+# borrow errors
+run_fixture neg_borrow fail_borrow.kodr "cannot borrow\|already borrowed" "fixture: catches borrow conflict"
 # TODO: propagation test — propagation checker doesn't catch unhandled unions in some patterns
 
 report_results

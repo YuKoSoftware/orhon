@@ -6,7 +6,7 @@ Bugs discovered during testing. Fix before v1.
 
 ## Borrow Checker
 
-- **Mutable+immutable overlap not caught** — borrowing `&p` (mutable) while `const &p` (immutable) is active does not trigger an error. The borrow checker should reject simultaneous mutable and immutable borrows of the same variable.
+- ~~**Mutable+immutable overlap not caught**~~ — FIXED v0.3.2. `const_decl` was hardcoding immutable; now checks type annotation.
 
 ## Error Propagation
 

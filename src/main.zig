@@ -30,7 +30,6 @@ const Command = enum {
     @"test",
     init,
     addtopath,
-    initstd,
     debug,
     version,
     fmt,
@@ -141,8 +140,6 @@ fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
             }
             cli.project_name = try allocator.dupe(u8, dir_name);
         }
-    } else if (std.mem.eql(u8, cmd_str, "initstd")) {
-        cli.command = .initstd;
     } else if (std.mem.eql(u8, cmd_str, "debug")) {
         cli.command = .debug;
     } else if (std.mem.eql(u8, cmd_str, "fmt")) {
@@ -195,7 +192,7 @@ fn printUsage() void {
     const usage =
         \\kodr — The Kodr compiler  (kodr help for more info)
         \\
-        \\  build   run   test   fmt   init   initstd   addtopath   debug   version
+        \\  build   run   test   fmt   init   addtopath   debug   version
         \\
     ;
     std.debug.print("{s}", .{usage});
@@ -211,7 +208,6 @@ fn printHelp() void {
         \\  test                Run all test { } blocks in the project
         \\  init [name]         Create a new project (in ./<name>/ or current dir if no name)
         \\  fmt                 Format all .kodr files in the project
-        \\  initstd             Install the standard library next to the kodr binary
         \\  addtopath           Add kodr to your shell PATH
         \\  debug               Show project info — modules, files, source directory
         \\  version             Print the compiler version
@@ -270,39 +266,51 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: bool) !
     defer allocator.free(src_dir_path);
     try std.fs.cwd().makePath(src_dir_path);
 
-    // Write src/main.kodr from template
+    // Write src/main.kodr from template (skip if exists)
     // Template contains a single {s} placeholder for the project name.
     // Split on it and write in two parts — avoids allocPrint brace escaping issues.
     const main_kodr_path = try std.fs.path.join(allocator, &.{ base, "src", "main.kodr" });
     defer allocator.free(main_kodr_path);
 
-    const main_file = try std.fs.cwd().createFile(main_kodr_path, .{});
-    defer main_file.close();
+    if (std.fs.cwd().access(main_kodr_path, .{})) |_| {
+        // main.kodr exists — don't overwrite
+    } else |_| {
+        const main_file = try std.fs.cwd().createFile(main_kodr_path, .{});
+        defer main_file.close();
 
-    const placeholder = "{s}";
-    if (std.mem.indexOf(u8, MAIN_KODR_TEMPLATE, placeholder)) |pos| {
-        try main_file.writeAll(MAIN_KODR_TEMPLATE[0..pos]);
-        try main_file.writeAll(name);
-        try main_file.writeAll(MAIN_KODR_TEMPLATE[pos + placeholder.len..]);
-    } else {
-        try main_file.writeAll(MAIN_KODR_TEMPLATE);
+        const placeholder = "{s}";
+        if (std.mem.indexOf(u8, MAIN_KODR_TEMPLATE, placeholder)) |pos| {
+            try main_file.writeAll(MAIN_KODR_TEMPLATE[0..pos]);
+            try main_file.writeAll(name);
+            try main_file.writeAll(MAIN_KODR_TEMPLATE[pos + placeholder.len..]);
+        } else {
+            try main_file.writeAll(MAIN_KODR_TEMPLATE);
+        }
     }
 
-    // Write src/example.kodr from template
+    // Write src/example.kodr from template (skip if exists)
     const example_kodr_path = try std.fs.path.join(allocator, &.{ base, "src", "example.kodr" });
     defer allocator.free(example_kodr_path);
 
-    const example_file = try std.fs.cwd().createFile(example_kodr_path, .{});
-    defer example_file.close();
-    try example_file.writeAll(EXAMPLE_KODR_TEMPLATE);
+    if (std.fs.cwd().access(example_kodr_path, .{})) |_| {
+        // example.kodr exists — don't overwrite
+    } else |_| {
+        const example_file = try std.fs.cwd().createFile(example_kodr_path, .{});
+        defer example_file.close();
+        try example_file.writeAll(EXAMPLE_KODR_TEMPLATE);
+    }
 
-    // Write src/control_flow.kodr from template
+    // Write src/control_flow.kodr from template (skip if exists)
     const control_flow_path = try std.fs.path.join(allocator, &.{ base, "src", "control_flow.kodr" });
     defer allocator.free(control_flow_path);
 
-    const control_flow_file = try std.fs.cwd().createFile(control_flow_path, .{});
-    defer control_flow_file.close();
-    try control_flow_file.writeAll(CONTROL_FLOW_KODR_TEMPLATE);
+    if (std.fs.cwd().access(control_flow_path, .{})) |_| {
+        // control_flow.kodr exists — don't overwrite
+    } else |_| {
+        const control_flow_file = try std.fs.cwd().createFile(control_flow_path, .{});
+        defer control_flow_file.close();
+        try control_flow_file.writeAll(CONTROL_FLOW_KODR_TEMPLATE);
+    }
 
     std.debug.print("Created project '{s}'\n", .{name});
     std.debug.print("  {s}/src/\n", .{base});
@@ -342,166 +350,49 @@ const JSON_ZIG     = @embedFile("std/json.zig");
 const SORT_KODR    = @embedFile("std/sort.kodr");
 const SORT_ZIG     = @embedFile("std/sort.zig");
 
-fn initStd(allocator: std.mem.Allocator) !void {
-    // Find directory containing the kodr binary
-    var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const exe_path = try std.fs.selfExePath(&exe_buf);
-    const exe_dir = std.fs.path.dirname(exe_path) orelse ".";
+/// Write an embedded file to .kodr-cache/std/ if it doesn't already exist
+fn writeStdFile(dir: []const u8, name: []const u8, content: []const u8, allocator: std.mem.Allocator) !void {
+    const path = try std.fs.path.join(allocator, &.{ dir, name });
+    defer allocator.free(path);
+    std.fs.cwd().access(path, .{}) catch {
+        const file = try std.fs.cwd().createFile(path, .{});
+        defer file.close();
+        try file.writeAll(content);
+    };
+}
 
-    // Create std/ next to binary
-    const std_dir = try std.fs.path.join(allocator, &.{ exe_dir, "std" });
-    defer allocator.free(std_dir);
+/// Ensure all embedded std files exist in .kodr-cache/std/
+fn ensureStdFiles(allocator: std.mem.Allocator) !void {
+    const std_dir = cache.CACHE_DIR ++ "/std";
     try std.fs.cwd().makePath(std_dir);
 
-    // Write console.kodr into std/
-    const console_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "console.kodr" });
-    defer allocator.free(console_kodr_path);
-    const console_kodr_file = try std.fs.cwd().createFile(console_kodr_path, .{});
-    defer console_kodr_file.close();
-    try console_kodr_file.writeAll(CONSOLE_KODR);
+    const files = [_]struct { name: []const u8, content: []const u8 }{
+        .{ .name = "console.kodr", .content = CONSOLE_KODR },
+        .{ .name = "console.zig",  .content = CONSOLE_ZIG },
+        .{ .name = "fs.kodr",      .content = FS_KODR },
+        .{ .name = "fs.zig",       .content = FS_ZIG },
+        .{ .name = "math.kodr",    .content = MATH_KODR },
+        .{ .name = "math.zig",     .content = MATH_ZIG },
+        .{ .name = "mem.kodr",     .content = MEM_KODR },
+        .{ .name = "mem.zig",      .content = MEM_ZIG },
+        .{ .name = "str.kodr",     .content = STR_KODR },
+        .{ .name = "str.zig",      .content = STR_ZIG },
+        .{ .name = "system.kodr",  .content = SYSTEM_KODR },
+        .{ .name = "system.zig",   .content = SYSTEM_ZIG },
+        .{ .name = "time.kodr",    .content = TIME_KODR },
+        .{ .name = "time.zig",     .content = TIME_ZIG },
+        .{ .name = "json.kodr",    .content = JSON_KODR },
+        .{ .name = "json.zig",     .content = JSON_ZIG },
+        .{ .name = "sort.kodr",    .content = SORT_KODR },
+        .{ .name = "sort.zig",     .content = SORT_ZIG },
+    };
 
-    // Write console.zig into std/ — paired implementation file
-    const console_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "console.zig" });
-    defer allocator.free(console_zig_path);
-    const console_zig_file = try std.fs.cwd().createFile(console_zig_path, .{});
-    defer console_zig_file.close();
-    try console_zig_file.writeAll(CONSOLE_ZIG);
-
-    // Write fs.kodr into std/
-    const fs_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "fs.kodr" });
-    defer allocator.free(fs_kodr_path);
-    const fs_kodr_file = try std.fs.cwd().createFile(fs_kodr_path, .{});
-    defer fs_kodr_file.close();
-    try fs_kodr_file.writeAll(FS_KODR);
-
-    // Write fs.zig into std/ — paired implementation file
-    const fs_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "fs.zig" });
-    defer allocator.free(fs_zig_path);
-    const fs_zig_file = try std.fs.cwd().createFile(fs_zig_path, .{});
-    defer fs_zig_file.close();
-    try fs_zig_file.writeAll(FS_ZIG);
-
-    // Write math.kodr into std/
-    const math_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "math.kodr" });
-    defer allocator.free(math_kodr_path);
-    const math_kodr_file = try std.fs.cwd().createFile(math_kodr_path, .{});
-    defer math_kodr_file.close();
-    try math_kodr_file.writeAll(MATH_KODR);
-
-    // Write math.zig into std/ — paired implementation file
-    const math_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "math.zig" });
-    defer allocator.free(math_zig_path);
-    const math_zig_file = try std.fs.cwd().createFile(math_zig_path, .{});
-    defer math_zig_file.close();
-    try math_zig_file.writeAll(MATH_ZIG);
-
-    // Write mem.kodr into std/
-    const mem_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "mem.kodr" });
-    defer allocator.free(mem_kodr_path);
-    const mem_kodr_file = try std.fs.cwd().createFile(mem_kodr_path, .{});
-    defer mem_kodr_file.close();
-    try mem_kodr_file.writeAll(MEM_KODR);
-
-    // Write mem.zig into std/ — allocator wrapper implementations
-    const mem_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "mem.zig" });
-    defer allocator.free(mem_zig_path);
-    const mem_zig_file = try std.fs.cwd().createFile(mem_zig_path, .{});
-    defer mem_zig_file.close();
-    try mem_zig_file.writeAll(MEM_ZIG);
-
-    // Write str.kodr into std/
-    const str_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "str.kodr" });
-    defer allocator.free(str_kodr_path);
-    const str_kodr_file = try std.fs.cwd().createFile(str_kodr_path, .{});
-    defer str_kodr_file.close();
-    try str_kodr_file.writeAll(STR_KODR);
-
-    // Write str.zig into std/ — string utilities implementation
-    const str_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "str.zig" });
-    defer allocator.free(str_zig_path);
-    const str_zig_file = try std.fs.cwd().createFile(str_zig_path, .{});
-    defer str_zig_file.close();
-    try str_zig_file.writeAll(STR_ZIG);
-
-    // Write system module
-    const system_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "system.kodr" });
-    defer allocator.free(system_kodr_path);
-    const system_kodr_file = try std.fs.cwd().createFile(system_kodr_path, .{});
-    defer system_kodr_file.close();
-    try system_kodr_file.writeAll(SYSTEM_KODR);
-
-    const system_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "system.zig" });
-    defer allocator.free(system_zig_path);
-    const system_zig_file = try std.fs.cwd().createFile(system_zig_path, .{});
-    defer system_zig_file.close();
-    try system_zig_file.writeAll(SYSTEM_ZIG);
-
-    // Write time module
-    const time_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "time.kodr" });
-    defer allocator.free(time_kodr_path);
-    const time_kodr_file = try std.fs.cwd().createFile(time_kodr_path, .{});
-    defer time_kodr_file.close();
-    try time_kodr_file.writeAll(TIME_KODR);
-
-    const time_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "time.zig" });
-    defer allocator.free(time_zig_path);
-    const time_zig_file = try std.fs.cwd().createFile(time_zig_path, .{});
-    defer time_zig_file.close();
-    try time_zig_file.writeAll(TIME_ZIG);
-
-    // Write json module
-    const json_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "json.kodr" });
-    defer allocator.free(json_kodr_path);
-    const json_kodr_file = try std.fs.cwd().createFile(json_kodr_path, .{});
-    defer json_kodr_file.close();
-    try json_kodr_file.writeAll(JSON_KODR);
-
-    const json_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "json.zig" });
-    defer allocator.free(json_zig_path);
-    const json_zig_file = try std.fs.cwd().createFile(json_zig_path, .{});
-    defer json_zig_file.close();
-    try json_zig_file.writeAll(JSON_ZIG);
-
-    // Write sort module
-    const sort_kodr_path = try std.fs.path.join(allocator, &.{ std_dir, "sort.kodr" });
-    defer allocator.free(sort_kodr_path);
-    const sort_kodr_file = try std.fs.cwd().createFile(sort_kodr_path, .{});
-    defer sort_kodr_file.close();
-    try sort_kodr_file.writeAll(SORT_KODR);
-
-    const sort_zig_path = try std.fs.path.join(allocator, &.{ std_dir, "sort.zig" });
-    defer allocator.free(sort_zig_path);
-    const sort_zig_file = try std.fs.cwd().createFile(sort_zig_path, .{});
-    defer sort_zig_file.close();
-    try sort_zig_file.writeAll(SORT_ZIG);
-
-    // Create global/ next to binary (empty — user fills this)
-    const global_dir = try std.fs.path.join(allocator, &.{ exe_dir, "global" });
-    defer allocator.free(global_dir);
-    try std.fs.cwd().makePath(global_dir);
-
-    std.debug.print("Initialized kodr stdlib:\n", .{});
-    std.debug.print("  {s}/std/\n", .{exe_dir});
-    std.debug.print("  {s}/std/console.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/console.zig\n", .{exe_dir});
-    std.debug.print("  {s}/std/fs.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/fs.zig\n", .{exe_dir});
-    std.debug.print("  {s}/std/math.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/math.zig\n", .{exe_dir});
-    std.debug.print("  {s}/std/mem.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/str.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/str.zig\n", .{exe_dir});
-    std.debug.print("  {s}/std/system.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/system.zig\n", .{exe_dir});
-    std.debug.print("  {s}/std/time.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/time.zig\n", .{exe_dir});
-    std.debug.print("  {s}/std/json.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/json.zig\n", .{exe_dir});
-    std.debug.print("  {s}/std/sort.kodr\n", .{exe_dir});
-    std.debug.print("  {s}/std/sort.zig\n", .{exe_dir});
-    std.debug.print("  {s}/global/\n", .{exe_dir});
-    std.debug.print("\nAdd your shared modules to {s}/global/\n", .{exe_dir});
+    for (files) |f| {
+        try writeStdFile(std_dir, f.name, f.content, allocator);
+    }
 }
+
+
 
 // ============================================================
 // PATH INSTALLATION
@@ -636,11 +527,6 @@ pub fn main() !void {
         return;
     }
 
-    if (cli.command == .initstd) {
-        try initStd(allocator);
-        return;
-    }
-
     if (cli.command == .fmt) {
         const formatter = @import("formatter.zig");
         try formatter.formatProject(allocator, cli.source_dir);
@@ -750,6 +636,9 @@ fn runDebug(allocator: std.mem.Allocator, cli: *const CliArgs) !void {
 }
 
 fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Reporter) !?[]const u8 {
+
+    // Ensure embedded std files exist in .kodr-cache/std/
+    try ensureStdFiles(allocator);
 
     // ── Pass 3: Module Resolution ──────────────────────────────
     var mod_resolver = module.Resolver.init(allocator, reporter);

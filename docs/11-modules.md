@@ -120,32 +120,23 @@ math.add(1, 2)
 import std::alpha
 alpha.println("hello")
 
-// Global shared module — global:: scope, looks in <kodr_dir>/global/
-import global::utils
-utils.trim("  hello  ")
-
 // With alias — as renames the access prefix
 import std::alpha as io
 io.println("hello")
-
-// External libraries (C, system) — use a Zig bridge file, see zig-bridge doc
-import global::gtk     // gtk.kodr + gtk.zig — Zig handles C under the hood
-import global::sdl     // sdl.kodr + sdl.zig
 ```
 
 **Scope rules:**
 - No `::` → project-local (`src/`)
-- `std::name` → `<kodr_dir>/std/name.kodr`
-- `global::name` → `<kodr_dir>/global/name.kodr`
+- `std::name` → embedded stdlib (auto-extracted to `.kodr-cache/std/`)
 - Only one level of `::` — `std::a::b` is never valid
-- `std` and `global` are reserved — cannot be project module names
+- `std` is reserved — cannot be a project module name
 - Default alias is always the module name, never the scope prefix
 
 ### Naming Collision Resolution
 Use `as` to disambiguate modules with the same name:
 ```
 import std::utils as std_utils
-import global::utils as my_utils
+import utils as my_utils
 
 std_utils.trim("hello")
 my_utils.doSomething()
@@ -178,7 +169,7 @@ a precompiled library without its full source.
 - No anchor file found — at least one file in the module must be named after the module
 - `module main` not in `main.kodr`
 - `func main()` missing when `#build = exe`
-- Unknown import scope (anything other than `std` or `global`)
+- Unknown import scope (only `std` is supported)
 - `extern func` with a body — extern functions must have no body
 - `extern func` without a paired `.zig` file
 - `func main()` present when `#build = static` or `#build = dynamic`
@@ -255,7 +246,3 @@ the same way as project-local modules, just sourced from the declared path.
 
 **Transitive dependencies** — if `mylib` has its own deps, they live inside `mylib`'s
 folder. The consuming project does not declare them.
-
-**Global shared libraries** — place modules in `<kodr_dir>/global/` and import with
-`import global::name`. Created by `kodr initstd`. Useful for personal utility
-libraries shared across all projects on a machine.

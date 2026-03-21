@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 04_init.sh — Project scaffolding (kodr init, kodr initstd)
+# 04_init.sh — Project scaffolding (kodr init, embedded std)
 source "$(dirname "$0")/helpers.sh"
 require_kodr
 setup_tmpdir
@@ -52,21 +52,18 @@ else
     fail "init on existing dir succeeds"
 fi
 
-section "kodr initstd"
+section "embedded std (auto-extracted on build)"
 
-"$KODR" initstd >/dev/null 2>&1 || true
-KODR_DIR="$(dirname "$KODR")"
+cd "$TESTDIR/testproj"
+"$KODR" build >/dev/null 2>&1 || true
 
-if [ -f "$KODR_DIR/std/console.kodr" ]; then pass "creates std/console.kodr"
-else fail "creates std/console.kodr"; fi
+if [ -f .kodr-cache/std/console.kodr ]; then pass "build extracts std/console.kodr"
+else fail "build extracts std/console.kodr"; fi
 
-if [ -f "$KODR_DIR/std/console.zig" ]; then pass "creates std/console.zig sidecar"
-else fail "creates std/console.zig sidecar"; fi
+if [ -f .kodr-cache/std/console.zig ]; then pass "build extracts std/console.zig"
+else fail "build extracts std/console.zig"; fi
 
-if [ -d "$KODR_DIR/global" ]; then pass "creates global/ directory"
-else fail "creates global/ directory"; fi
-
-if grep -q "pub fn print" "$KODR_DIR/std/console.zig"; then
+if grep -q "pub fn print" .kodr-cache/std/console.zig; then
     pass "console.zig contains print function"
 else
     fail "console.zig contains print function"

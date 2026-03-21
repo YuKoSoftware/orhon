@@ -5,14 +5,17 @@ module main
 #build   = exe
 #bitsize = 32
 
-// cannot return a reference
-
-struct Data {
-    pub value: i32
+struct Point {
+    pub x: i32
+    pub y: i32
 }
 
-func return_ref(d: &Data) &Data {
-    return d
+// cannot borrow as mutable while immutably borrowed
+
+func borrow_conflict() void {
+    var p: Point = Point(x: 1, y: 2)
+    const r1: const &Point = &p
+    const r2: &Point = &p
 }
 
 func main() void { }

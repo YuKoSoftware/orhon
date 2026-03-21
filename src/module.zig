@@ -29,19 +29,12 @@ pub const Resolver = struct {
     modules: std.StringHashMap(Module),
     allocator: std.mem.Allocator,
     reporter: *errors.Reporter,
-    kodr_dir: []const u8, // directory containing the kodr binary — for std/ and global/
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter) Resolver {
-        // Resolve the kodr binary directory at init time
-        var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const exe_path = std.fs.selfExePath(&exe_buf) catch "";
-        const exe_dir = std.fs.path.dirname(exe_path) orelse ".";
-        const kodr_dir = allocator.dupe(u8, exe_dir) catch ".";
         return .{
             .modules = std.StringHashMap(Module).init(allocator),
             .allocator = allocator,
             .reporter = reporter,
-            .kodr_dir = kodr_dir,
         };
     }
 
@@ -65,7 +58,6 @@ pub const Resolver = struct {
             }
         }
         self.modules.deinit();
-        self.allocator.free(self.kodr_dir);
     }
 
     /// Scan a directory for .kodr files and group by module name
@@ -325,8 +317,17 @@ pub const Resolver = struct {
                     // std::mem is a built-in compiler module — no .kodr file needed
                     if (std.mem.eql(u8, sc, "std") and std.mem.eql(u8, decl.path, "mem")) continue;
 
-                    // Scoped import: std::name or global::name
-                    const scope_dir = try std.fs.path.join(self.allocator, &.{ self.kodr_dir, sc });
+                    // Only std:: imports are supported
+                    if (!std.mem.eql(u8, sc, "std")) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "unknown import scope '{s}' — only 'std' is supported", .{sc});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg });
+                        continue;
+                    }
+
+                    // std:: resolves from .kodr-cache/std/ (embedded in compiler)
+                    const scope_dir = try std.fs.path.join(self.allocator, &.{ cache.CACHE_DIR, "std" });
                     defer self.allocator.free(scope_dir);
 
                     const file_path = try std.fmt.allocPrint(self.allocator,
@@ -335,7 +336,7 @@ pub const Resolver = struct {
                     // Check the .kodr file exists
                     std.fs.cwd().access(file_path, .{}) catch {
                         const msg = try std.fmt.allocPrint(self.allocator,
-                            "module '{s}::{s}' not found — run `kodr initstd` to install the stdlib",
+                            "module '{s}::{s}' not found",
                             .{ sc, decl.path });
                         defer self.allocator.free(msg);
                         try self.reporter.report(.{ .message = msg });

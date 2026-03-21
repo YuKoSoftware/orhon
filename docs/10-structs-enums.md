@@ -69,16 +69,15 @@ var cfg = Config(width: 1920, height: 1080)                     // fullscreen us
 - No `self` = static, `const &T` = immutable, `&T` = mutable, `T` = consuming
 - Fields are private by default — `pub` makes them accessible outside the module
 
-### Static Struct Variables
-Static variables are shared across all instances. Both `var` and `const` are supported. Ownership rules apply — moving a static variable out makes it invalid.
+### Static Struct Constants
+Static constants are shared across all instances. Only `const` is supported — no mutable shared state.
 ```
 struct Player {
-    var defaultHealth: f32 = 100.0    // mutable, shared across all instances
     const maxPlayers: i32 = 64        // immutable, shared across all instances
+    const defaultHealth: f32 = 100.0  // immutable
 }
 
-Player.defaultHealth = 200.0          // allowed, var
-Player.maxPlayers = 128               // compile error, const
+const max = Player.maxPlayers         // access via type name
 ```
 
 ### Composition

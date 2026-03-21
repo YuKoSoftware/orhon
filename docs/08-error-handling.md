@@ -2,7 +2,7 @@
 
 ## Error Handling
 
-Functions that can fail return a union of `Error` and the success type. No exceptions, no monads — just a union and a type check. An error is a message `String` with a distinct type. If unhandled before scope exit, the program crashes and prints the message. That crash is the signal — the programmer sees exactly what went wrong and where.
+Functions that can fail return a union of `Error` and the success type. No exceptions, no monads — just a union and a type check. An error is a message `String` with a distinct type. If unhandled before scope exit, the compiler rejects the code.
 
 ```
 const ErrDivByZero = Error("division by zero")
@@ -14,12 +14,12 @@ func divide(a: i32, b: i32) (Error | i32) {
     return a / b
 }
 
-var result = divide(10, 0)
+var result: (Error | i32) = divide(10, 0)
 if(result is Error) {
     console.print(result.Error)    // "division by zero"
     return
 }
-var value: i32 = result.i32
+var value: i32 = result.value      // safe — Error case eliminated
 ```
 
 Inline errors are fine for one-off cases:
@@ -29,13 +29,42 @@ func readFile(path: String) (Error | String) {
 }
 ```
 
-If the error is not handled before scope exit — crash, print message, done.
+### Union Unwrap
 
-`match` is a clean alternative to `if/is` when both branches need handling:
+After narrowing a union with `is` + early exit, use `.value` to access the remaining type:
+
 ```
-match result {
+const result: (Error | i32) = divide(10, 2)
+if(result is Error) { return 0 }
+return result.value                // compiler knows it's i32
+```
+
+Using `.value` without narrowing is a compile error:
+```
+const result: (Error | i32) = divide(10, 2)
+return result.value                // ERROR: unsafe unwrap
+```
+
+### Exhaustive Match
+
+`match` on a union type must cover all members or include `else`:
+
+```
+match(result) {
     Error => { console.print(result.Error) }
-    i32   => { var value: i32 = result.i32 }
+    i32   => { var value: i32 = result.value }
+}
+
+// or with else
+match(result) {
+    Error => { return 0 }
+    else  => { return result.value }
+}
+
+// missing arm without else = compile error
+match(result) {
+    Error => { return 0 }
+    // ERROR: non-exhaustive match — missing arm for 'i32'
 }
 ```
 
@@ -45,7 +74,7 @@ match result {
 
 Absence of a value expressed through a union with `null`. `null` is never a standalone value — it only exists inside a union type.
 
-The same scope-based rule as error handling applies — a `(null | T)` union must be handled before leaving scope. If not handled, the compiler throws a hard error.
+The same scope-based rule as error handling applies — a `(null | T)` union must be handled before leaving scope. If not handled, the compiler rejects the code.
 
 ```
 func find(id: i32) (null | User) {
@@ -53,18 +82,17 @@ func find(id: i32) (null | User) {
 }
 
 // must handle before scope exit
-var result = find(42)
+var result: (null | User) = find(42)
 if(result is null) {
-    // handle absence
     return
 }
-var user: User = result.User
+var user: User = result.value      // safe — null case eliminated
 ```
 
 Or with `match`:
 ```
-match result {
+match(result) {
     null => { return }
-    User => { var user: User = result.User }
+    User => { var user: User = result.value }
 }
 ```

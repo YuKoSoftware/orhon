@@ -110,8 +110,8 @@ extern func windowNew() Ptr(u8)
 ```
 
 ```
-// usage
-import global::gtk
+// usage — place gtk.kodr + gtk.zig in your project src/
+import gtk
 
-var window = gtk.windowNew()
+const window = gtk.windowNew()
 ```

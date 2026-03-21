@@ -34,11 +34,9 @@ version_expr    <- "Version" "(" _ integer_literal _ "," _ integer_literal _ ","
 
 import          <- "import" _ import_path ("as" _ name)? newline
 import_path     <- scope_import / local_import / c_header
-scope_import    <- scope_name "::" name   # std::alpha or global::utils
+scope_import    <- "std" "::" name         # std::console, std::math etc.
 local_import    <- name                   # project-local module
 c_header        <- string_literal          # C header import
-scope_name      <- "std" / "global"        # valid scopes — only one level allowed
-                 / name ("." name)*
 
 # ============================================================
 # TOP LEVEL DECLARATIONS

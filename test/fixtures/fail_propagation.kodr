@@ -12,12 +12,17 @@ func may_fail(n: i32) (Error | i32) {
     return n
 }
 
-// unhandled error union — void return can't propagate
+// unhandled error union — void function can't propagate
 
 func unhandled_error() void {
     const result = may_fail(1)
-    if(result is Error) {
-    }
+}
+
+// unsafe unwrap — accessing .i32 without checking first
+
+func unsafe_unwrap() i32 {
+    const result = may_fail(5)
+    return result.i32
 }
 
 func main() void { }

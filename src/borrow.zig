@@ -190,7 +190,7 @@ pub const BorrowChecker = struct {
                 try self.checkNotMutablyBorrowedPath(name, null);
             },
             .call_expr => |c| {
-                // Method call: obj.method(args) — check if self param creates a borrow
+                // Method call: obj.method(args) — temporary borrow for duration of call
                 if (c.callee.* == .field_expr) {
                     const fe = c.callee.field_expr;
                     if (fe.object.* == .identifier) {
@@ -203,7 +203,13 @@ pub const BorrowChecker = struct {
                                     const self_node = sig.param_nodes[0];
                                     if (self_node.* == .param) {
                                         const is_mut = isMutableBorrowType(self_node.param.type_annotation);
+                                        // Temporary borrow: check conflicts, add, then remove after call
                                         try self.addBorrow(obj_name, null, is_mut);
+                                        // Check args while borrow is active
+                                        for (c.args) |arg| try self.checkExpr(arg);
+                                        // Release temporary borrow
+                                        self.removeLastBorrow(obj_name);
+                                        return;
                                     }
                                 }
                             }
@@ -312,6 +318,18 @@ pub const BorrowChecker = struct {
             .is_mutable = is_mutable,
             .scope_depth = self.scope_depth,
         });
+    }
+
+    /// Remove the last borrow for a variable (used for temporary method call borrows)
+    fn removeLastBorrow(self: *BorrowChecker, variable: []const u8) void {
+        var i: usize = self.active_borrows.items.len;
+        while (i > 0) {
+            i -= 1;
+            if (std.mem.eql(u8, self.active_borrows.items[i].variable, variable)) {
+                _ = self.active_borrows.swapRemove(i);
+                return;
+            }
+        }
     }
 
     /// Drop all borrows at or deeper than the given depth (scope exit)

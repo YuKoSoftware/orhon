@@ -418,6 +418,8 @@ run_fixture neg_thread2 fail_threads.kodr "must be joined" "fixture: catches unj
 
 # borrow errors
 run_fixture neg_borrow fail_borrow.kodr "cannot borrow\|already borrowed" "fixture: catches borrow conflict"
-# TODO: propagation test — propagation checker doesn't catch unhandled unions in some patterns
+# propagation errors
+run_fixture neg_prop fail_propagation.kodr "unhandled.*union\|cannot propagate" "fixture: catches unhandled error union"
+run_fixture neg_unwrap fail_propagation.kodr "unsafe unwrap" "fixture: catches unsafe union unwrap"
 
 report_results

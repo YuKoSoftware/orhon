@@ -12,6 +12,7 @@ Ideas and language decisions that are not yet committed.
 ## Undecided
 
 - **`Array(T, N)` / `Slice(T)` syntax** — replace `[N]T` and `[]T` with generic builtin style to match `List(T)`, `Ptr(T)`, etc. More consistent and easier to type, but more verbose and mismatches array literals `[1, 2, 3]`.
+- **`else` on `for`/`while`** — execute a block when the loop body never runs (empty iterable or condition false on first check). `for(items) |item| { ... } else { console.println("empty") }`.
 
 ---
 
@@ -64,6 +65,9 @@ No editor integration. Blocks adoption. Needed before the language is usable day
 
 ### Documentation Generator (`kodr doc`)
 Generate HTML/Markdown docs from `pub` declarations and doc comments.
+
+### Fuzz Testing
+Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser. Native speed, no external tools, add directly to existing test blocks in `lexer.zig` and `parser.zig`. Do this once the parser is stable and manual testing stops finding bugs.
 
 ---
 

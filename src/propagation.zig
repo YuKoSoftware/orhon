@@ -155,6 +155,8 @@ pub const PropChecker = struct {
     fn checkStatement(self: *PropChecker, node: *parser.Node, scope: *PropScope) anyerror!void {
         switch (node.*) {
             .var_decl, .const_decl => |v| {
+                // Check for unsafe unwrap in the value expression
+                try self.checkExprForUnsafeUnwrap(v.value, scope);
                 // Check type annotation first
                 const from_annotation = if (v.type_annotation) |ta| typeNodeIsUnion(ta) else null;
                 // Then check value expression
@@ -210,6 +212,7 @@ pub const PropChecker = struct {
                     if (val.* == .identifier) {
                         scope.markHandled(val.identifier);
                     }
+                    try self.checkExprForUnsafeUnwrap(val, scope);
                 }
             },
 
@@ -217,9 +220,14 @@ pub const PropChecker = struct {
                 // Walk the condition to find type checks — handles compound conditions
                 // `x is Error` desugars to `@type(x) == Error`
                 // `x is not null` desugars to `@type(x) != null`
-                // Only mark as handled if the then-block has statements (empty body = not handled)
-                const has_body = i.then_block.* == .block and i.then_block.block.statements.len > 0;
-                if (has_body) {
+                // Only mark as handled if the then-block has an early exit (return/break/continue)
+                // This ensures type narrowing: code after the if can safely unwrap
+                const has_early_exit = blockHasEarlyExit(i.then_block);
+                if (has_early_exit) {
+                    self.extractTypeChecks(i.condition, scope);
+                }
+                // Also mark as handled if there's an else branch (both paths covered)
+                if (i.else_block != null and !has_early_exit) {
                     self.extractTypeChecks(i.condition, scope);
                 }
                 try self.checkNode(i.then_block, scope);
@@ -265,6 +273,43 @@ pub const PropChecker = struct {
 
             .block => try self.checkNode(node, scope),
 
+            else => {},
+        }
+    }
+
+    /// Check if an expression contains unsafe unwrap of an unhandled union (e.g. result.i32)
+    fn checkExprForUnsafeUnwrap(self: *PropChecker, node: *parser.Node, scope: *PropScope) anyerror!void {
+        switch (node.*) {
+            .field_expr => |f| {
+                // result.i32 / result.String — unwrap of union field
+                if (f.object.* == .identifier) {
+                    const name = f.object.identifier;
+                    if (scope.isTracked(name)) |uvar| {
+                        if (!uvar.handled) {
+                            const kind = if (uvar.is_error_union) K.Type.ERROR else K.Type.NULL;
+                            const msg = try std.fmt.allocPrint(self.allocator,
+                                "unsafe unwrap of {s} union '{s}' — check with 'is' or 'match' first",
+                                .{ kind, name });
+                            defer self.allocator.free(msg);
+                            try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                        }
+                    }
+                }
+                try self.checkExprForUnsafeUnwrap(f.object, scope);
+            },
+            .binary_expr => |b| {
+                try self.checkExprForUnsafeUnwrap(b.left, scope);
+                try self.checkExprForUnsafeUnwrap(b.right, scope);
+            },
+            .unary_expr => |u| try self.checkExprForUnsafeUnwrap(u.operand, scope),
+            .call_expr => |c| {
+                try self.checkExprForUnsafeUnwrap(c.callee, scope);
+                for (c.args) |arg| try self.checkExprForUnsafeUnwrap(arg, scope);
+            },
+            .index_expr => |i| {
+                try self.checkExprForUnsafeUnwrap(i.object, scope);
+                try self.checkExprForUnsafeUnwrap(i.index, scope);
+            },
             else => {},
         }
     }
@@ -362,6 +407,20 @@ fn typeNodeIsUnion(node: *parser.Node) ?bool {
         },
         else => return null,
     }
+}
+
+/// Check if a block contains an early exit (return, break, continue) at the top level
+fn blockHasEarlyExit(node: *parser.Node) bool {
+    if (node.* != .block) return false;
+    for (node.block.statements) |stmt| {
+        switch (stmt.*) {
+            .return_stmt => return true,
+            .break_stmt => return true,
+            .continue_stmt => return true,
+            else => {},
+        }
+    }
+    return false;
 }
 
 fn typeCanPropagate(node: *parser.Node) bool {

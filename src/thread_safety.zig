@@ -249,7 +249,7 @@ pub const ThreadSafetyChecker = struct {
                                 "thread '{s}' .value already consumed — .value is a move, can only be called once",
                                 .{name}) catch return;
                             defer self.allocator.free(msg);
-                            self.reporter.report(.{ .message = msg }) catch {};
+                            self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(expr) }) catch {};
                             return;
                         }
                         self.joined_threads.put(name, {}) catch {};

@@ -460,7 +460,21 @@ pub const TypeResolver = struct {
                     // Builtin generic constructor: List(i32)(...) → List(i32)
                     if (builtins.isBuiltinType(name)) return RT{ .named = name };
                     if (scope.lookup(name)) |t| {
-                        if (t != .func_ptr) return t;
+                        if (t == .func_ptr) {
+                            // Function pointer call — OK
+                        } else if (!self.decls.funcs.contains(name) and
+                            !self.decls.structs.contains(name) and
+                            !self.decls.enums.contains(name) and
+                            !self.decls.bitfields.contains(name) and
+                            !builtins.isBuiltinType(name))
+                        {
+                            // Non-callable variable
+                            const msg = try std.fmt.allocPrint(self.allocator,
+                                "'{s}' is not callable — expected a function or constructor", .{name});
+                            defer self.allocator.free(msg);
+                            try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                            return t;
+                        }
                     }
                     if (self.decls.funcs.get(name)) |sig| {
                         return sig.return_type;
@@ -503,8 +517,18 @@ pub const TypeResolver = struct {
             },
 
             .index_expr => |i| {
-                _ = try self.resolveExpr(i.object, scope);
+                const obj_type = try self.resolveExpr(i.object, scope);
                 _ = try self.resolveExpr(i.index, scope);
+                // Reject indexing non-indexable types (bool, void, etc.)
+                if (obj_type == .primitive) {
+                    const tn = obj_type.primitive;
+                    if (std.mem.eql(u8, tn, "bool") or std.mem.eql(u8, tn, "void")) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "cannot index into type '{s}'", .{tn});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                    }
+                }
                 return RT.inferred;
             },
 

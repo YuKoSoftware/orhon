@@ -27,6 +27,7 @@ pub const BorrowChecker = struct {
     locs: ?*const parser.LocMap,
     source_file: []const u8,
     decls: ?*declarations.DeclTable,
+    current_node: ?*parser.Node,
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter) BorrowChecker {
         return .{
@@ -37,6 +38,7 @@ pub const BorrowChecker = struct {
             .locs = null,
             .source_file = "",
             .decls = null,
+            .current_node = null,
         };
     }
 
@@ -91,6 +93,7 @@ pub const BorrowChecker = struct {
     }
 
     fn checkStatement(self: *BorrowChecker, node: *parser.Node) anyerror!void {
+        self.current_node = node;
         switch (node.*) {
             .var_decl => |v| {
                 // If the type is var &T and value is &x, it's a mutable borrow
@@ -274,16 +277,17 @@ pub const BorrowChecker = struct {
             if (!std.mem.eql(u8, b.variable, name) or !b.is_mutable) continue;
             if (!pathsOverlap(b.field, field)) continue;
 
+            const loc = if (self.current_node) |cn| self.nodeLoc(cn) else null;
             if (field) |f| {
                 const msg = try std.fmt.allocPrint(self.allocator,
                     "cannot use '{s}.{s}' while it is mutably borrowed", .{ name, f });
                 defer self.allocator.free(msg);
-                try self.reporter.report(.{ .message = msg });
+                try self.reporter.report(.{ .message = msg, .loc = loc });
             } else {
                 const msg = try std.fmt.allocPrint(self.allocator,
                     "cannot use '{s}' while it is mutably borrowed", .{name});
                 defer self.allocator.free(msg);
-                try self.reporter.report(.{ .message = msg });
+                try self.reporter.report(.{ .message = msg, .loc = loc });
             }
             return;
         }
@@ -297,6 +301,7 @@ pub const BorrowChecker = struct {
             if (!pathsOverlap(existing.field, field)) continue;
 
             if (is_mutable or existing.is_mutable) {
+                const loc = if (self.current_node) |cn| self.nodeLoc(cn) else null;
                 const label = borrowLabel(variable, field);
                 const msg = try std.fmt.allocPrint(self.allocator,
                     "cannot borrow '{s}' as {s}: already borrowed as {s}",
@@ -306,7 +311,7 @@ pub const BorrowChecker = struct {
                         if (existing.is_mutable) "mutable" else "immutable",
                     });
                 defer self.allocator.free(msg);
-                try self.reporter.report(.{ .message = msg });
+                try self.reporter.report(.{ .message = msg, .loc = loc });
                 return;
             }
             // Multiple immutable borrows are fine

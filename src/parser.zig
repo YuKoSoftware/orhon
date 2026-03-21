@@ -459,8 +459,8 @@ pub const Parser = struct {
         const tok = self.peek();
         if (tok.kind != kind) {
             const msg = try std.fmt.allocPrint(self.alloc(),
-                "expected {s}, found '{s}'",
-                .{ @tagName(kind), tok.text });
+                "expected '{s}', found '{s}'",
+                .{ tokenFriendlyName(kind), tok.text });
             defer self.alloc().free(msg);
             try self.reporter.report(.{
                 .message = msg,
@@ -2196,6 +2196,46 @@ pub const Parser = struct {
         return false; // Primitive types are identifiers in Kodr
     }
 };
+
+fn tokenFriendlyName(kind: lexer.TokenKind) []const u8 {
+    return switch (kind) {
+        .identifier => "identifier",
+        .int_literal => "number",
+        .float_literal => "number",
+        .string_literal => "string",
+        .lparen => "(",
+        .rparen => ")",
+        .lbrace => "{",
+        .rbrace => "}",
+        .lbracket => "[",
+        .rbracket => "]",
+        .comma => ",",
+        .dot => ".",
+        .colon => ":",
+        .eq => "==",
+        .neq => "!=",
+        .assign => "=",
+        .newline => "newline",
+        .eof => "end of file",
+        .kw_func => "func",
+        .kw_var => "var",
+        .kw_const => "const",
+        .kw_return => "return",
+        .kw_if => "if",
+        .kw_else => "else",
+        .kw_while => "while",
+        .kw_for => "for",
+        .kw_match => "match",
+        .kw_struct => "struct",
+        .kw_enum => "enum",
+        .kw_import => "import",
+        .kw_module => "module",
+        .kw_pub => "pub",
+        .kw_test => "test",
+        .kw_main => "main",
+        else => @tagName(kind),
+    };
+}
 
 test "parser - module tokens debug" {
     const alloc = std.testing.allocator;

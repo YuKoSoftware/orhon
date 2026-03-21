@@ -421,5 +421,7 @@ run_fixture neg_borrow fail_borrow.kodr "cannot borrow\|already borrowed" "fixtu
 # propagation errors
 run_fixture neg_prop fail_propagation.kodr "unhandled.*union\|cannot propagate" "fixture: catches unhandled error union"
 run_fixture neg_unwrap fail_propagation.kodr "unsafe unwrap" "fixture: catches unsafe union unwrap"
+run_fixture neg_callnonfunc fail_types.kodr "not callable" "fixture: rejects calling non-function"
+run_fixture neg_indexbool fail_types.kodr "cannot index" "fixture: rejects indexing non-indexable"
 
 report_results

@@ -64,4 +64,18 @@ func bad_continue() void {
     continue
 }
 
+// calling a non-function
+
+func call_non_func() void {
+    const x: i32 = 5
+    const y: i32 = x()
+}
+
+// indexing a non-indexable type
+
+func index_bool() void {
+    const x: bool = true
+    const y: bool = x[0]
+}
+
 func main() void { }

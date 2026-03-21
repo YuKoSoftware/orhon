@@ -232,13 +232,23 @@ pub const DeclCollector = struct {
             }
         }
 
-        // Validate field names don't conflict with type names
-        for (fields.items) |field| {
+        // Validate field names don't conflict with type names and no duplicates
+        for (fields.items, 0..) |field, i| {
             if (isReservedTypeName(field.name)) {
                 const msg = try std.fmt.allocPrint(self.allocator,
                     "field name '{s}' conflicts with type name — choose a different name", .{field.name});
                 defer self.allocator.free(msg);
                 try self.reporter.report(.{ .message = msg, .loc = loc });
+            }
+            // Check for duplicate field names
+            for (fields.items[0..i]) |prev| {
+                if (std.mem.eql(u8, field.name, prev.name)) {
+                    const msg = try std.fmt.allocPrint(self.allocator,
+                        "duplicate field '{s}' in struct '{s}'", .{ field.name, s.name });
+                    defer self.allocator.free(msg);
+                    try self.reporter.report(.{ .message = msg, .loc = loc });
+                    break;
+                }
             }
         }
 
@@ -263,6 +273,16 @@ pub const DeclCollector = struct {
         var variants: std.ArrayListUnmanaged([]const u8) = .{};
         for (e.members) |member| {
             if (member.* == .enum_variant) {
+                // Check for duplicate variant names
+                for (variants.items) |prev| {
+                    if (std.mem.eql(u8, member.enum_variant.name, prev)) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "duplicate variant '{s}' in enum '{s}'", .{ member.enum_variant.name, e.name });
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = loc });
+                        break;
+                    }
+                }
                 try variants.append(self.allocator, member.enum_variant.name);
             }
         }

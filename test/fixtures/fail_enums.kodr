@@ -1,0 +1,16 @@
+module main
+
+#name    = "fail_enums"
+#version = Version(1, 0, 0)
+#build   = exe
+#bitsize = 32
+
+// duplicate variant name in enum
+
+enum(u8) Color {
+    Red
+    Green
+    Red
+}
+
+func main() void { }

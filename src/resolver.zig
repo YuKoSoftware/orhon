@@ -350,10 +350,15 @@ pub const TypeResolver = struct {
                 try self.resolveNode(f.body, &for_scope);
             },
             .match_stmt => |m| {
-                _ = try self.resolveExpr(m.value, scope);
+                const match_type = try self.resolveExpr(m.value, scope);
                 for (m.arms) |arm| {
                     if (arm.* == .match_arm) {
-                        _ = try self.resolveExpr(arm.match_arm.pattern, scope);
+                        const pat = arm.match_arm.pattern;
+                        // Validate union match arm patterns
+                        if (pat.* == .identifier and !std.mem.eql(u8, pat.identifier, "else")) {
+                            try self.validateMatchArm(pat.identifier, match_type, arm);
+                        }
+                        _ = try self.resolveExpr(pat, scope);
                         try self.resolveNode(arm.match_arm.body, scope);
                     }
                 }
@@ -605,6 +610,44 @@ pub const TypeResolver = struct {
 
             else => RT.unknown,
         };
+    }
+
+    /// Validate that a match arm pattern is a valid member of the matched union type
+    fn validateMatchArm(self: *TypeResolver, pattern_name: []const u8, match_type: RT, arm_node: *parser.Node) !void {
+        switch (match_type) {
+            .error_union => |inner| {
+                // Valid arms: Error, and the inner type
+                if (std.mem.eql(u8, pattern_name, "Error")) return;
+                if (std.mem.eql(u8, pattern_name, inner.name())) return;
+                const msg = try std.fmt.allocPrint(self.allocator,
+                    "match arm '{s}' is not a member of (Error | {s})", .{ pattern_name, inner.name() });
+                defer self.allocator.free(msg);
+                try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(arm_node) });
+            },
+            .null_union => |inner| {
+                // Valid arms: null, and the inner type
+                if (std.mem.eql(u8, pattern_name, "null")) return;
+                if (std.mem.eql(u8, pattern_name, inner.name())) return;
+                const msg = try std.fmt.allocPrint(self.allocator,
+                    "match arm '{s}' is not a member of (null | {s})", .{ pattern_name, inner.name() });
+                defer self.allocator.free(msg);
+                try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(arm_node) });
+            },
+            .union_type => |members| {
+                // Valid arms: any member type name
+                for (members) |member| {
+                    if (std.mem.eql(u8, pattern_name, member.name())) return;
+                }
+                const msg = try std.fmt.allocPrint(self.allocator,
+                    "match arm '{s}' is not a member of this union type", .{pattern_name});
+                defer self.allocator.free(msg);
+                try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(arm_node) });
+            },
+            else => {
+                // Not a union type — pattern matching on integer/string values, not type arms
+                // These are validated by codegen, not here
+            },
+        }
     }
 
     fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {

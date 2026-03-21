@@ -1,0 +1,38 @@
+module main
+
+#name    = "fail_match"
+#version = Version(1, 0, 0)
+#build   = exe
+#bitsize = 32
+
+// match arm with a type that is not a member of the union
+
+func get_result(flag: bool) (Error | i32) {
+    if(flag) { return 42 }
+    return Error("fail")
+}
+
+func bad_match_arm() void {
+    const result = get_result(true)
+    match(result) {
+        Error  => { }
+        String => { }
+    }
+}
+
+// match on nullable with wrong arm type
+
+func find(id: i32) (null | i32) {
+    if(id <= 0) { return null }
+    return id
+}
+
+func bad_null_match() void {
+    const val = find(1)
+    match(val) {
+        null   => { }
+        String => { }
+    }
+}
+
+func main() void { }

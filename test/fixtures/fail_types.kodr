@@ -78,4 +78,19 @@ func index_bool() void {
     const y: bool = x[0]
 }
 
+// match arm with wrong type name
+
+func get_val(flag: bool) (i32 | String) {
+    if(flag) { return 42 }
+    return "hello"
+}
+
+func bad_match() void {
+    const val = get_val(true)
+    match(val) {
+        i32   => { }
+        Strin => { }
+    }
+}
+
 func main() void { }

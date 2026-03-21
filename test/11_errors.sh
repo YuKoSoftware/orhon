@@ -423,5 +423,21 @@ run_fixture neg_prop fail_propagation.kodr "unhandled.*union\|cannot propagate" 
 run_fixture neg_unwrap fail_propagation.kodr "unsafe unwrap" "fixture: catches unsafe union unwrap"
 run_fixture neg_callnonfunc fail_types.kodr "not callable" "fixture: rejects calling non-function"
 run_fixture neg_indexbool fail_types.kodr "cannot index" "fixture: rejects indexing non-indexable"
+run_fixture neg_matcharm fail_types.kodr "not a member" "fixture: rejects invalid match arm type"
+
+# struct errors
+run_fixture neg_struct_dup fail_structs.kodr "duplicate field" "fixture: catches duplicate struct field"
+
+# enum errors
+run_fixture neg_enum_dup fail_enums.kodr "duplicate variant" "fixture: catches duplicate enum variant"
+
+# function errors (first error in file: default before required)
+run_fixture neg_func fail_functions.kodr "defaults.*must.*after\|required.*param" "fixture: catches default before required param"
+
+# scope errors (module-level var fires first since it's a parser error)
+run_fixture neg_scope fail_scope.kodr "module-level.*var.*not allowed\|already declared" "fixture: catches scope errors"
+
+# match errors
+run_fixture neg_match fail_match.kodr "not a member" "fixture: catches invalid match arm"
 
 report_results

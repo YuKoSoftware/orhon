@@ -724,12 +724,14 @@ pub const CodeGen = struct {
         };
     }
 
+    /// Emit a re-export for an extern declaration from the paired sidecar .zig file.
+    fn generateExternReExport(self: *CodeGen, name: []const u8) anyerror!void {
+        try self.writeLineFmt("pub const {s} = @import(\"{s}_extern.zig\").{s};", .{ name, self.module_name, name });
+    }
+
     fn generateFunc(self: *CodeGen, f: parser.FuncDecl) anyerror!void {
         // extern func — re-export from paired sidecar file
-        if (f.is_extern) {
-            try self.writeLineFmt("pub const {s} = @import(\"{s}_extern.zig\").{s};", .{ f.name, self.module_name, f.name });
-            return;
-        }
+        if (f.is_extern) return self.generateExternReExport(f.name);
 
         // Track if this function returns an error, null, or arbitrary union
         const prev_error = self.in_error_union_func;
@@ -898,6 +900,7 @@ pub const CodeGen = struct {
     // ============================================================
 
     fn generateStruct(self: *CodeGen, s: parser.StructDecl) anyerror!void {
+        if (s.is_extern) return self.generateExternReExport(s.name);
         if (s.is_pub) try self.write("pub ");
         try self.writeFmt("const {s} = struct {{\n", .{s.name});
         self.indent += 1;
@@ -1120,10 +1123,12 @@ pub const CodeGen = struct {
     // ============================================================
 
     fn generateConst(self: *CodeGen, v: parser.VarDecl) anyerror!void {
+        if (v.is_extern) return self.generateExternReExport(v.name);
         return self.generateDecl(v, "const");
     }
 
     fn generateVar(self: *CodeGen, v: parser.VarDecl) anyerror!void {
+        if (v.is_extern) return self.generateExternReExport(v.name);
         return self.generateDecl(v, "var");
     }
 

@@ -341,7 +341,7 @@ pub const ZigRunner = struct {
     /// Run all test blocks in the generated Zig project
     pub fn runTests(self: *ZigRunner, module_name: []const u8, project_name: []const u8) !bool {
         // Generate build.zig with test step included
-        try self.generateBuildZigWithTests(module_name, "exe", project_name);
+        try self.generateBuildZigWithTests(module_name, "exe", project_name, null);
 
         var args: std.ArrayListUnmanaged([]const u8) = .{};
         defer args.deinit(self.allocator);
@@ -368,8 +368,9 @@ pub const ZigRunner = struct {
         module_name: []const u8,
         build_type: []const u8,
         project_name: []const u8,
+        project_version: ?[3]u64,
     ) !void {
-        return self.generateBuildZigWithTests(module_name, build_type, project_name);
+        return self.generateBuildZigWithTests(module_name, build_type, project_name, project_version);
     }
 
     fn generateBuildZigWithTests(
@@ -377,8 +378,9 @@ pub const ZigRunner = struct {
         module_name: []const u8,
         build_type: []const u8,
         project_name: []const u8,
+        project_version: ?[3]u64,
     ) !void {
-        const content = try buildZigContent(self.allocator, module_name, build_type, project_name);
+        const content = try buildZigContent(self.allocator, module_name, build_type, project_name, project_version);
         defer self.allocator.free(content);
         try cache.writeGeneratedZig("build", content, self.allocator);
     }
@@ -391,6 +393,7 @@ pub fn buildZigContent(
     module_name: []const u8,
     build_type: []const u8,
     project_name: []const u8,
+    project_version: ?[3]u64,
 ) ![]u8 {
     var buf = std.ArrayListUnmanaged(u8){};
     errdefer buf.deinit(allocator);
@@ -405,9 +408,16 @@ pub fn buildZigContent(
     );
 
     if (std.mem.eql(u8, build_type, "exe")) {
+        // Version line for addExecutable
+        var ver_buf: [128]u8 = undefined;
+        const ver_line: []const u8 = if (project_version) |v|
+            std.fmt.bufPrint(&ver_buf, "\n        .version = .{{ .major = {d}, .minor = {d}, .patch = {d} }},", .{ v[0], v[1], v[2] }) catch ""
+        else
+            "";
+
         const exe_chunk = try std.fmt.allocPrint(allocator,
             \\    const exe = b.addExecutable(.{{
-            \\        .name = "{s}",
+            \\        .name = "{s}",{s}
             \\        .root_module = b.createModule(.{{
             \\            .root_source_file = b.path("{s}.zig"),
             \\            .target = target,
@@ -421,7 +431,7 @@ pub fn buildZigContent(
             \\    const run_step = b.step("run", "Run");
             \\    run_step.dependOn(&run_cmd.step);
             \\
-        , .{ project_name, module_name });
+        , .{ project_name, ver_line, module_name });
         defer allocator.free(exe_chunk);
         try buf.appendSlice(allocator, exe_chunk);
     } else if (std.mem.eql(u8, build_type, "static")) {
@@ -489,6 +499,7 @@ pub const MultiTarget = struct {
     project_name: []const u8,
     build_type: []const u8, // "exe", "static", "dynamic"
     lib_imports: []const []const u8, // names of imported lib modules (for linking)
+    version: ?[3]u64 = null,
 };
 
 /// Build a unified build.zig for multiple targets.
@@ -543,9 +554,15 @@ pub fn buildZigContentMulti(
     for (targets) |t| {
         if (!std.mem.eql(u8, t.build_type, "exe")) continue;
 
+        var ver_buf: [128]u8 = undefined;
+        const ver_line: []const u8 = if (t.version) |v|
+            std.fmt.bufPrint(&ver_buf, "\n        .version = .{{ .major = {d}, .minor = {d}, .patch = {d} }},", .{ v[0], v[1], v[2] }) catch ""
+        else
+            "";
+
         const exe_chunk = try std.fmt.allocPrint(allocator,
             \\    const exe_{s} = b.addExecutable(.{{
-            \\        .name = "{s}",
+            \\        .name = "{s}",{s}
             \\        .root_module = b.createModule(.{{
             \\            .root_source_file = b.path("{s}.zig"),
             \\            .target = target,
@@ -553,7 +570,7 @@ pub fn buildZigContentMulti(
             \\        }}),
             \\    }});
             \\
-        , .{ t.module_name, t.project_name, t.module_name });
+        , .{ t.module_name, t.project_name, ver_line, t.module_name });
         defer allocator.free(exe_chunk);
         try buf.appendSlice(allocator, exe_chunk);
 
@@ -672,7 +689,7 @@ test "zig runner - find zig path format" {
 
 test "buildZigContent - exe" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "myapp");
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addExecutable") != null);
@@ -686,7 +703,7 @@ test "buildZigContent - exe" {
 
 test "buildZigContent - static" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "mylib", "static", "mylib");
+    const content = try buildZigContent(alloc, "mylib", "static", "mylib", null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -700,7 +717,7 @@ test "buildZigContent - static" {
 
 test "buildZigContent - dynamic" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "mylib", "dynamic", "mylib");
+    const content = try buildZigContent(alloc, "mylib", "dynamic", "mylib", null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -712,7 +729,7 @@ test "buildZigContent - dynamic" {
 
 test "buildZigContent - project name in exe artifact" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "calculator");
+    const content = try buildZigContent(alloc, "main", "exe", "calculator", null);
     defer alloc.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "\"calculator\"") != null);
 }

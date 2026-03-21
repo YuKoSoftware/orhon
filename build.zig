@@ -1,17 +1,29 @@
 const std = @import("std");
 
+pub const version = std.SemanticVersion{ .major = 0, .minor = 2, .patch = 3 };
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Version string for runtime use
+    const version_str = std.fmt.comptimePrint("{d}.{d}.{d}", .{ version.major, version.minor, version.patch });
+
     // Main kodr compiler executable
+    const root_module = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    root_module.addOptions("build_options", blk: {
+        const opts = b.addOptions();
+        opts.addOption([]const u8, "version", version_str);
+        break :blk opts;
+    });
     const exe = b.addExecutable(.{
         .name = "kodr",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = root_module,
+        .version = version,
     });
 
     b.installArtifact(exe);

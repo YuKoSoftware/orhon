@@ -51,10 +51,5 @@ pub fn log2(x: anytype) @TypeOf(x) {
     return @log2(x);
 }
 
-pub fn PI() f64 {
-    return std.math.pi;
-}
-
-pub fn E() f64 {
-    return std.math.e;
-}
+pub const PI: f64 = std.math.pi;
+pub const E: f64 = std.math.e;

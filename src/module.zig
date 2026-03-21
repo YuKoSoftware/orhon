@@ -570,7 +570,7 @@ pub const Resolver = struct {
 
 /// Extract (major, minor, patch) from a Version(x, y, z) call node.
 /// Returns null if the node is not a well-formed Version call.
-fn extractVersion(node: *parser.Node) ?[3]u64 {
+pub fn extractVersion(node: *parser.Node) ?[3]u64 {
     if (node.* != .call_expr) return null;
     const call = node.call_expr;
     if (call.callee.* != .identifier) return null;

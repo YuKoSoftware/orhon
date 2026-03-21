@@ -180,6 +180,7 @@ pub const StructDecl = struct {
     name: []const u8,
     members: []*Node,
     is_pub: bool,
+    is_extern: bool = false,
 };
 
 pub const EnumDecl = struct {
@@ -201,6 +202,7 @@ pub const VarDecl = struct {
     type_annotation: ?*Node,
     value: *Node,
     is_pub: bool,
+    is_extern: bool = false,
 };
 
 pub const TestDecl = struct {
@@ -683,7 +685,7 @@ pub const Parser = struct {
             .kw_extern    => {
                 const ext_tok = self.peek();
                 try self.reporter.report(.{
-                    .message = "'pub extern func' is redundant — extern func is always public, use 'extern func'",
+                    .message = "'pub extern' is redundant — extern declarations are always public, use 'extern'",
                     .loc = .{ .file = "", .line = ext_tok.line, .col = ext_tok.col },
                 });
                 return error.ParseError;
@@ -709,9 +711,62 @@ pub const Parser = struct {
     }
 
     fn parseExternDecl(self: *Parser) anyerror!*Node {
-        _ = self.advance(); // consume 'extern'
-        // parseFuncDecl will consume 'func'
-        return self.parseFuncDecl(true, true);
+        const ext_tok = self.advance(); // consume 'extern'
+        const tok = self.peek();
+        return switch (tok.kind) {
+            .kw_func => self.parseFuncDecl(true, true),
+            .kw_const => self.parseExternConstOrVar(true),
+            .kw_var => self.parseExternConstOrVar(false),
+            .kw_struct => self.parseExternStructDecl(),
+            else => {
+                try self.reporter.report(.{
+                    .message = "expected 'func', 'const', 'var', or 'struct' after 'extern'",
+                    .loc = .{ .file = "", .line = ext_tok.line, .col = ext_tok.col },
+                });
+                return error.ParseError;
+            },
+        };
+    }
+
+    /// Parse `extern const NAME: TYPE` or `extern var NAME: TYPE` — no value, just a declaration.
+    fn parseExternConstOrVar(self: *Parser, is_const: bool) anyerror!*Node {
+        _ = self.advance(); // consume 'const' or 'var'
+        const name_tok = try self.expect(.identifier);
+        _ = try self.expect(.colon);
+        const type_ann = try self.parseType();
+        try self.expectNewlineOrEof();
+        // Create a dummy value node — extern decls have no value
+        const dummy = try self.newNode(.{ .int_literal = "0" });
+        if (is_const) {
+            return self.newNode(.{ .const_decl = .{
+                .name = name_tok.text,
+                .type_annotation = type_ann,
+                .value = dummy,
+                .is_pub = true,
+                .is_extern = true,
+            }});
+        } else {
+            return self.newNode(.{ .var_decl = .{
+                .name = name_tok.text,
+                .type_annotation = type_ann,
+                .value = dummy,
+                .is_pub = true,
+                .is_extern = true,
+            }});
+        }
+    }
+
+    /// Parse `extern struct NAME` — opaque type from sidecar .zig file.
+    fn parseExternStructDecl(self: *Parser) anyerror!*Node {
+        _ = self.advance(); // consume 'struct'
+        const name_tok = try self.expect(.identifier);
+        try self.expectNewlineOrEof();
+        return self.newNode(.{ .struct_decl = .{
+            .name = name_tok.text,
+            .members = &.{},
+            .is_pub = true,
+            .is_extern = true,
+        }});
     }
 
     // ============================================================

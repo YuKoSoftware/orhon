@@ -3,6 +3,7 @@
 // No business logic here — delegates to each pass.
 
 const std = @import("std");
+const build_options = @import("build_options");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const module = @import("module.zig");
@@ -503,7 +504,7 @@ pub fn main() !void {
     }
 
     if (cli.command == .version) {
-        std.debug.print("kodr 0.2.1\n", .{});
+        std.debug.print("kodr {s}\n", .{build_options.version});
         return;
     }
 
@@ -890,6 +891,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
 
             var build_type: []const u8 = "exe";
             var project_name: []const u8 = "";
+            var mt_version: ?[3]u64 = null;
             if (mod.ast) |ast| {
                 for (ast.program.metadata) |meta| {
                     if (std.mem.eql(u8, meta.metadata.field, "build")) {
@@ -906,6 +908,9 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
                                 project_name = raw;
                             }
                         }
+                    }
+                    if (std.mem.eql(u8, meta.metadata.field, "version")) {
+                        mt_version = module.extractVersion(meta.metadata.value);
                     }
                 }
             }
@@ -936,6 +941,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
                 .project_name = binary_name,
                 .build_type = build_type,
                 .lib_imports = lib_slice,
+                .version = mt_version,
             });
         }
 
@@ -960,6 +966,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
 
             var build_type: []const u8 = "exe";
             var project_name: []const u8 = "";
+            var project_version: ?[3]u64 = null;
             if (mod.ast) |ast| {
                 for (ast.program.metadata) |meta| {
                     if (std.mem.eql(u8, meta.metadata.field, "build")) {
@@ -977,12 +984,15 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *const CliArgs, reporter: *err
                             }
                         }
                     }
+                    if (std.mem.eql(u8, meta.metadata.field, "version")) {
+                        project_version = module.extractVersion(meta.metadata.value);
+                    }
                 }
             }
 
             const binary_name = if (project_name.len > 0) project_name else mod.name;
 
-            try runner.generateBuildZig(mod.name, build_type, binary_name);
+            try runner.generateBuildZig(mod.name, build_type, binary_name, project_version);
 
             const built = if (std.mem.eql(u8, build_type, "exe"))
                 try runner.build(target_str, opt_str, mod.name, binary_name)
@@ -1021,10 +1031,20 @@ fn collectExternFuncNames(ast: *parser.Node, allocator: std.mem.Allocator) ![][]
             .func_decl => |f| {
                 if (f.is_extern) try names.append(allocator, try allocator.dupe(u8, f.name));
             },
+            .const_decl => |v| {
+                if (v.is_extern) try names.append(allocator, try allocator.dupe(u8, v.name));
+            },
+            .var_decl => |v| {
+                if (v.is_extern) try names.append(allocator, try allocator.dupe(u8, v.name));
+            },
             .struct_decl => |s| {
-                for (s.members) |m| {
-                    if (m.* == .func_decl and m.func_decl.is_extern)
-                        try names.append(allocator, try allocator.dupe(u8, m.func_decl.name));
+                if (s.is_extern) {
+                    try names.append(allocator, try allocator.dupe(u8, s.name));
+                } else {
+                    for (s.members) |m| {
+                        if (m.* == .func_decl and m.func_decl.is_extern)
+                            try names.append(allocator, try allocator.dupe(u8, m.func_decl.name));
+                    }
                 }
             },
             else => {},

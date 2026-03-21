@@ -1,4 +1,4 @@
-# Zig Bridge — `extern func` and Paired `.zig` Files
+# Zig Bridge — `extern` Declarations and Paired `.zig` Files
 
 Kodr handles all external interop through Zig. Kodr never talks to C, system APIs,
 or external libraries directly — that complexity always lives in a paired `.zig` file.
@@ -10,8 +10,8 @@ layouts. No need to duplicate that work in Kodr.
 ## How It Works
 
 A Kodr module can be paired with a hand-written `.zig` file that provides the actual
-implementation. The `.kodr` file declares the interface using `extern func` — always implicitly public.
-The compiler emits nothing for `extern func` bodies — it uses the paired `.zig` directly.
+implementation. The `.kodr` file declares the interface using `extern` — always implicitly public.
+The compiler emits nothing for `extern` bodies — it re-exports from the paired `.zig` directly.
 
 ```
 // console.kodr — public Kodr interface
@@ -19,7 +19,6 @@ module console
 
 extern func print(msg: String) void
 extern func println(msg: String) void
-extern func debugPrint(msg: String) void
 extern func get() (Error | String)
 ```
 
@@ -38,23 +37,39 @@ pub fn println(msg: []const u8) void {
 }
 ```
 
-```
-// usage in any Kodr file
-import std::console
-
-func main() void {
-    console.println("hello kodr !")
-}
-```
-
 ---
 
-## `extern func` Rules
+## `extern` Declaration Types
 
-- `extern func` has a signature but no body — hard compiler error if body is present
-- Always implicitly public — `pub extern func` is a compiler error (redundant)
-- The paired `.zig` file must exist alongside the `.kodr` file — hard compiler error if missing
-- The `.zig` function signature must match the Kodr declaration — mismatch is a Zig compile error
+All `extern` declarations are implicitly public. `pub extern` is a compiler error (redundant).
+A paired `.zig` sidecar file must exist alongside the `.kodr` file — hard error if missing.
+
+### `extern func` — bridge a Zig function
+```
+extern func print(msg: String) void
+extern func sqrt(x: any) any
+```
+No body allowed. The Zig sidecar must have a matching `pub fn`.
+
+### `extern const` — expose a Zig constant
+```
+extern const PI: f64
+extern const E: f64
+```
+The Zig sidecar must have a matching `pub const`.
+
+### `extern var` — expose a mutable Zig variable
+```
+extern var counter: i32
+```
+The Zig sidecar must have a matching `pub var`.
+
+### `extern struct` — import an opaque type from Zig
+```
+extern struct Socket
+```
+The Zig sidecar must have a matching `pub const Socket = struct { ... };` or type alias.
+The struct's fields and methods are defined entirely in Zig.
 
 ---
 

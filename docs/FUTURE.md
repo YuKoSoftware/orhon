@@ -62,16 +62,13 @@ Generate HTML/Markdown docs from `pub` declarations and doc comments. Needed for
 
 ---
 
-## Extended `extern` — data, types, and Zig-generated code
+## Extended `extern` — DONE
 
-Currently `extern func` only bridges Kodr → Zig for functions. The bridge should be extended to cover:
+The Zig bridge now supports: `extern func`, `extern const`, `extern var`, `extern struct`.
+All use the same re-export pattern from the paired sidecar `.zig` file.
+`extern func` with `any` params already maps to `anytype` (used in std::math).
 
-- **`extern func` with `any` params** — maps to `anytype` in the sidecar `.zig`, enabling generic Zig utilities callable from Kodr
-- **`extern var` / `extern const`** — expose a Zig variable or constant to Kodr (e.g. hardware registers, OS constants)
-- **`extern struct` / `extern enum`** — declare a type whose layout and implementation lives in Zig, used as an opaque or fully-typed value in Kodr
-- **Zig-generated code** — allow a sidecar `.zig` file to `comptime`-generate types or values that Kodr then imports, enabling macros/codegen patterns without adding them to the Kodr language itself
-
-This would make the Zig bridge a full interop layer, not just a function escape hatch. Particularly useful for: hardware bindings, wrapping C libraries, and letting power users drop into Zig for anything Kodr doesn't cover yet.
+Still not implemented: `extern enum` (low priority — enums can be defined in Kodr directly).
 
 ---
 

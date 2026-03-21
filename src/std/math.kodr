@@ -48,5 +48,5 @@ extern func log2(x: any) any
 
 // Constants — use as math.PI, math.E
 
-extern func PI() f64
-extern func E() f64
+extern const PI: f64
+extern const E: f64

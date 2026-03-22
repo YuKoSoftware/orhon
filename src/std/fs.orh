@@ -1,5 +1,36 @@
 module fs
 
-// fs — filesystem and path operations for Orhon programs
+// fs — filesystem operations for Orhon programs
 // Import with: import std::fs
-// TODO: reimplement with clean bridge pattern
+
+// Read entire file as String
+
+extern func readFile(path: String) (Error | String)
+
+// Write String to file (creates or overwrites)
+
+extern func writeFile(path: String, content: String) (Error | void)
+
+// Append String to file
+
+extern func appendFile(path: String, content: String) (Error | void)
+
+// Check if path exists
+
+extern func exists(path: String) bool
+
+// Delete a file
+
+extern func remove(path: String) (Error | void)
+
+// File size in bytes
+
+extern func fileSize(path: String) (Error | i64)
+
+// Create directory (and parents)
+
+extern func mkdir(path: String) (Error | void)
+
+// List directory entries
+
+extern func readDir(path: String) (Error | String)

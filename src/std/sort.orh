@@ -1,5 +1,28 @@
 module sort
 
-// sort — sorting and ordering utilities for Orhon programs
+// sort — sorting utilities for Orhon programs
 // Import with: import std::sort
-// TODO: reimplement with clean bridge pattern
+
+// Sort a slice of i32 in ascending order (returns new sorted slice)
+
+extern func intAsc(items: any) any
+
+// Sort a slice of i32 in descending order (returns new sorted slice)
+
+extern func intDesc(items: any) any
+
+// Sort a slice of f64 in ascending order
+
+extern func floatAsc(items: any) any
+
+// Sort a slice of f64 in descending order
+
+extern func floatDesc(items: any) any
+
+// Sort a slice of String in ascending order (lexicographic)
+
+extern func strAsc(items: any) any
+
+// Reverse a slice
+
+extern func reverse(items: any) any

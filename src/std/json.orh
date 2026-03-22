@@ -2,4 +2,19 @@ module json
 
 // json — JSON parsing and serialization for Orhon programs
 // Import with: import std::json
-// TODO: reimplement with clean bridge pattern
+
+// Parse a JSON string — returns the raw string value for a key
+
+extern func get(source: String, key: String) (Error | String)
+
+// Check if a key exists in a JSON string
+
+extern func hasKey(source: String, key: String) bool
+
+// Build JSON from key-value pairs
+
+extern func object(keys: any, values: any) String
+
+// Stringify a value to JSON
+
+extern func stringify(value: any) String

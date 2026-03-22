@@ -2,4 +2,27 @@ module time
 
 // time — time and duration utilities for Orhon programs
 // Import with: import std::time
-// TODO: reimplement with clean bridge pattern
+
+// Current time in milliseconds since epoch
+
+extern func now() i64
+
+// Current time in nanoseconds since epoch
+
+extern func nowNano() i64
+
+// Sleep for a number of milliseconds
+
+extern func sleepMs(ms: i32) void
+
+// Sleep for a number of seconds
+
+extern func sleepSec(sec: i32) void
+
+// Measure elapsed time — returns nanoseconds since a previous nowNano() call
+
+extern func elapsed(start: i64) i64
+
+// Format milliseconds since epoch as ISO 8601 string
+
+extern func format(ms: i64) String

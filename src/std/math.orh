@@ -2,4 +2,48 @@ module math
 
 // math — mathematical functions for Orhon programs
 // Import with: import std::math
-// TODO: reimplement with clean bridge pattern
+
+// Basic
+
+extern func abs(x: f64) f64
+extern func min(a: f64, b: f64) f64
+extern func max(a: f64, b: f64) f64
+extern func clamp(x: f64, lo: f64, hi: f64) f64
+
+// Rounding
+
+extern func floor(x: f64) f64
+extern func ceil(x: f64) f64
+extern func round(x: f64) f64
+
+// Powers and roots
+
+extern func sqrt(x: f64) f64
+extern func pow(base: f64, exp: f64) f64
+extern func log(x: f64) f64
+extern func log2(x: f64) f64
+extern func log10(x: f64) f64
+extern func exp(x: f64) f64
+
+// Trigonometry
+
+extern func sin(x: f64) f64
+extern func cos(x: f64) f64
+extern func tan(x: f64) f64
+extern func asin(x: f64) f64
+extern func acos(x: f64) f64
+extern func atan(x: f64) f64
+extern func atan2(y: f64, x: f64) f64
+
+// Constants
+
+extern func pi() f64
+extern func e() f64
+extern func inf() f64
+
+// Integer math
+
+extern func absInt(x: i32) i32
+extern func minInt(a: i32, b: i32) i32
+extern func maxInt(a: i32, b: i32) i32
+extern func clampInt(x: i32, lo: i32, hi: i32) i32

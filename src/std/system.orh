@@ -2,4 +2,19 @@ module system
 
 // system — OS interaction for Orhon programs
 // Import with: import std::system
-// TODO: reimplement with clean bridge pattern
+
+// Run a command with arguments — returns struct with code, stdout, stderr
+
+extern func run(cmd: String, args: any) any
+
+// Get an environment variable
+
+extern func getEnv(name: String) (Error | String)
+
+// Get current working directory
+
+extern func cwd() String
+
+// Exit the process with a status code
+
+extern func exit(code: i32) void

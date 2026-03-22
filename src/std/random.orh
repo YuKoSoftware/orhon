@@ -2,4 +2,23 @@ module random
 
 // random — random number generation for Orhon programs
 // Import with: import std::random
-// TODO: reimplement with clean bridge pattern
+
+// Random integer in range [min, max] (inclusive)
+
+extern func int(lo: i32, hi: i32) i32
+
+// Random float in range [0.0, 1.0)
+
+extern func float() f64
+
+// Random float in range [min, max)
+
+extern func floatRange(lo: f64, hi: f64) f64
+
+// Random bool
+
+extern func boolean() bool
+
+// Seed the generator (0 = use system entropy)
+
+extern func seed(s: u64) void

@@ -10,6 +10,7 @@ const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const K = @import("constants.zig");
 const module = @import("module.zig");
+const RT = @import("types.zig").ResolvedType;
 
 /// The Zig code generator
 pub const CodeGen = struct {
@@ -24,11 +25,7 @@ pub const CodeGen = struct {
     in_null_union_func: bool, // current function returns (null | T)
     in_arb_union_func: bool, // current function returns an arbitrary union like (i32 | String)
     arb_union_return_type: ?*parser.Node, // return type node for arbitrary union wrapping
-    error_vars: std.StringHashMapUnmanaged(void),       // variables with (Error | T) type
-    null_vars: std.StringHashMapUnmanaged(void),       // variables with (null | T) type
     arb_union_vars: std.StringHashMapUnmanaged(*parser.Node),  // variables with arbitrary union type → type node
-    rawptr_vars: std.StringHashMapUnmanaged(void),     // variables holding RawPtr(T) or VolatilePtr(T)
-    ptr_vars: std.StringHashMapUnmanaged(void),        // variables holding Ptr(T)
     in_test_block: bool, // inside a test { } block — assert uses std.testing.expect
     destruct_counter: usize, // unique index for destructuring temp vars
     warned_rawptr: bool,     // RawPtr/VolatilePtr warning printed once per module
@@ -41,7 +38,6 @@ pub const CodeGen = struct {
     source_file: []const u8,     // anchor file path for location reporting
     module_builds: ?*const std.StringHashMapUnmanaged(module.BuildType), // imported module → build type
     narrowed_vars: std.StringHashMapUnmanaged([]const u8), // var name → narrowed type (from `is` checks)
-    string_vars: std.StringHashMapUnmanaged(void), // variables holding String ([]const u8)
     // MIR annotation table — Phase 1 typed annotation pass
     node_map: ?*const mir.NodeMap = null,
     union_registry: ?*const mir.UnionRegistry = null,
@@ -58,6 +54,15 @@ pub const CodeGen = struct {
         return .plain;
     }
 
+    /// Get the union member types for an arb union node from MIR annotations.
+    /// Returns null if the node is not an arb union or not in the node_map.
+    fn getUnionMembers(self: *const CodeGen, node: *parser.Node) ?[]const RT {
+        if (self.getNodeInfo(node)) |info| {
+            if (info.resolved_type == .union_type) return info.resolved_type.union_type;
+        }
+        return null;
+    }
+
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter, is_debug: bool) CodeGen {
         return .{
             .reporter = reporter,
@@ -71,11 +76,7 @@ pub const CodeGen = struct {
             .in_null_union_func = false,
             .in_arb_union_func = false,
             .arb_union_return_type = null,
-            .error_vars = .{},
-            .null_vars = .{},
             .arb_union_vars = .{},
-            .rawptr_vars = .{},
-            .ptr_vars = .{},
             .in_test_block = false,
             .destruct_counter = 0,
             .warned_rawptr = false,
@@ -88,7 +89,6 @@ pub const CodeGen = struct {
             .source_file = "",
             .module_builds = null,
             .narrowed_vars = .{},
-            .string_vars = .{},
         };
     }
 
@@ -117,14 +117,9 @@ pub const CodeGen = struct {
         for (self.type_strings.items) |s| self.allocator.free(s);
         self.type_strings.deinit(self.allocator);
         self.output.deinit(self.allocator);
-        self.null_vars.deinit(self.allocator);
         self.arb_union_vars.deinit(self.allocator);
-        self.rawptr_vars.deinit(self.allocator);
-        self.ptr_vars.deinit(self.allocator);
         self.assigned_vars.deinit(self.allocator);
-        self.error_vars.deinit(self.allocator);
         self.narrowed_vars.deinit(self.allocator);
-        self.string_vars.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -237,92 +232,20 @@ pub const CodeGen = struct {
     }
 
     /// Check if a variable name is a tracked error union variable
-    fn isErrorVar(self: *const CodeGen, name: []const u8) bool {
-        return self.error_vars.contains(name);
-    }
 
-    /// Check if a variable name is a tracked null union variable
-    fn isNullVar(self: *const CodeGen, name: []const u8) bool {
-        return self.null_vars.contains(name);
-    }
 
-    /// Check if a variable name is a tracked arbitrary union variable
-    fn isArbUnionVar(self: *const CodeGen, name: []const u8) bool {
-        return self.arb_union_vars.contains(name);
-    }
-
-    /// Check if a type annotation node is String
-    fn isStringType(node: *parser.Node) bool {
-        return node.* == .type_named and std.mem.eql(u8, node.type_named, K.Type.STRING);
-    }
-
-    /// Check if a declaration is String-typed (annotation or string literal value)
-    fn isStringDecl(v: parser.VarDecl) bool {
-        if (v.type_annotation) |t| return isStringType(t);
-        return v.value.* == .string_literal;
-    }
-
-    /// Check if an expression is known to be a string (literal or tracked variable)
+    /// Check if an expression is known to be a string (literal, interpolation, or MIR-typed)
     fn isStringExpr(self: *const CodeGen, node: *parser.Node) bool {
         return switch (node.*) {
             .string_literal, .interpolated_string => true,
-            .identifier => |name| self.string_vars.contains(name),
-            else => false,
+            else => self.getTypeClass(node) == .string,
         };
-    }
-
-    /// Look up a call expression's return type node via the declaration table.
-    /// Returns the return_type_node if the callee is a known function returning an arbitrary union.
-    fn callReturnsArbUnion(self: *const CodeGen, value: *parser.Node) ?*parser.Node {
-        if (value.* != .call_expr) return null;
-        const c = value.call_expr;
-        const name = switch (c.callee.*) {
-            .identifier => |n| n,
-            else => return null,
-        };
-        if (self.decls) |d| {
-            if (d.funcs.get(name)) |fsig| {
-                if (isArbitraryUnion(fsig.return_type_node)) return fsig.return_type_node;
-            }
-        }
-        return null;
-    }
-
-    /// Check if a call expression returns a null union via the declaration table.
-    fn callReturnsNullUnion(self: *const CodeGen, value: *parser.Node) bool {
-        if (value.* != .call_expr) return false;
-        const c = value.call_expr;
-        const name = switch (c.callee.*) {
-            .identifier => |n| n,
-            else => return false,
-        };
-        if (self.decls) |d| {
-            if (d.funcs.get(name)) |fsig| {
-                return isNullUnionType(fsig.return_type_node);
-            }
-        }
-        return false;
-    }
-
-    /// Check if a call expression returns an error union via the declaration table.
-    fn callReturnsErrorUnion(self: *const CodeGen, value: *parser.Node) bool {
-        if (value.* != .call_expr) return false;
-        const c = value.call_expr;
-        const name = switch (c.callee.*) {
-            .identifier => |n| n,
-            else => return false,
-        };
-        if (self.decls) |d| {
-            if (d.funcs.get(name)) |fsig| {
-                return isErrorUnionType(fsig.return_type_node);
-            }
-        }
-        return false;
     }
 
     /// Info about an `x is T` / `x is not T` condition
     const IsCheckInfo = struct {
         var_name: []const u8,
+        var_node: *parser.Node,
         type_name: []const u8,
         is_positive: bool, // true for `is`, false for `is not`
     };
@@ -340,12 +263,13 @@ pub const CodeGen = struct {
         if (b.left.compiler_func.args.len == 0) return null;
         const val_node = b.left.compiler_func.args[0];
         if (val_node.* != .identifier) return null;
-        if (!self.isArbUnionVar(val_node.identifier)) return null;
+        if (self.getTypeClass(val_node) != .arb_union) return null;
         if (b.right.* != .identifier) return null;
         const rhs = b.right.identifier;
         if (std.mem.eql(u8, rhs, K.Type.ERROR) or std.mem.eql(u8, rhs, K.Type.NULL)) return null;
         return .{
             .var_name = val_node.identifier,
+            .var_node = val_node,
             .type_name = rhs,
             .is_positive = is_eq,
         };
@@ -353,17 +277,34 @@ pub const CodeGen = struct {
 
     /// Compute the remaining type after narrowing one type out of an arbitrary union.
     /// Returns the single remaining type name, or null if multiple types remain.
-    fn remainingUnionType(type_node: *parser.Node, excluded: []const u8) ?[]const u8 {
-        if (type_node.* != .type_union) return null;
-        var remaining: ?[]const u8 = null;
-        for (type_node.type_union) |t| {
-            if (t.* != .type_named) return null;
-            if (std.mem.eql(u8, t.type_named, excluded)) continue;
-            if (std.mem.eql(u8, t.type_named, K.Type.ERROR) or std.mem.eql(u8, t.type_named, K.Type.NULL)) continue;
-            if (remaining != null) return null; // multiple remaining
-            remaining = t.type_named;
+    /// Works with both AST type nodes and MIR resolved types.
+    fn remainingUnionType(type_node: ?*parser.Node, members_rt: ?[]const RT, excluded: []const u8) ?[]const u8 {
+        // Prefer MIR resolved types
+        if (members_rt) |members| {
+            var remaining: ?[]const u8 = null;
+            for (members) |m| {
+                const n = m.name();
+                if (std.mem.eql(u8, n, excluded)) continue;
+                if (std.mem.eql(u8, n, K.Type.ERROR) or std.mem.eql(u8, n, K.Type.NULL)) continue;
+                if (remaining != null) return null;
+                remaining = n;
+            }
+            return remaining;
         }
-        return remaining;
+        // Fallback to AST node
+        if (type_node) |tn| {
+            if (tn.* != .type_union) return null;
+            var remaining: ?[]const u8 = null;
+            for (tn.type_union) |t| {
+                if (t.* != .type_named) return null;
+                if (std.mem.eql(u8, t.type_named, excluded)) continue;
+                if (std.mem.eql(u8, t.type_named, K.Type.ERROR) or std.mem.eql(u8, t.type_named, K.Type.NULL)) continue;
+                if (remaining != null) return null;
+                remaining = t.type_named;
+            }
+            return remaining;
+        }
+        return null;
     }
 
 
@@ -379,29 +320,6 @@ pub const CodeGen = struct {
             }
         }
         return false;
-    }
-
-    /// Check if a variable name holds a RawPtr or VolatilePtr
-    fn isRawPtrVar(self: *const CodeGen, name: []const u8) bool {
-        return self.rawptr_vars.contains(name);
-    }
-
-    /// Check if a value expression is a RawPtr/VolatilePtr instantiation
-    fn isPtrExpr(value: *parser.Node) bool {
-        return value.* == .ptr_expr and
-            (std.mem.eql(u8, value.ptr_expr.kind, "RawPtr") or
-             std.mem.eql(u8, value.ptr_expr.kind, "VolatilePtr"));
-    }
-
-    /// Check if a value expression is a safe Ptr(T) instantiation
-    fn isSafePtrExpr(value: *parser.Node) bool {
-        return value.* == .ptr_expr and std.mem.eql(u8, value.ptr_expr.kind, "Ptr");
-    }
-
-
-    /// Check if a variable holds a safe Ptr(T)
-    fn isPtrVar(self: *const CodeGen, name: []const u8) bool {
-        return self.ptr_vars.contains(name);
     }
 
 
@@ -421,60 +339,62 @@ pub const CodeGen = struct {
 
     /// Wrap a value for an arbitrary union: 42 → .{ ._i32 = 42 }
     /// Infers the tag from the value's literal type or from the union member types.
-    fn generateArbUnionWrappedExpr(self: *CodeGen, value: *parser.Node, type_ann: *parser.Node) anyerror!void {
-        // Determine which union member this value matches
-        const tag = self.inferArbUnionTag(value, type_ann);
+    /// Accepts either an AST type node or MIR resolved members.
+    fn generateArbUnionWrappedExpr(self: *CodeGen, value: *parser.Node, type_ann: ?*parser.Node, members_rt: ?[]const RT) anyerror!void {
+        const tag = inferArbUnionTag(value, type_ann, members_rt);
         if (tag) |t| {
             try self.writeFmt(".{{ ._{s} = ", .{t});
             try self.generateExpr(value);
             try self.write(" }");
         } else {
-            // Can't infer tag — emit raw value, let Zig figure it out
             try self.generateExpr(value);
         }
     }
 
     /// Infer which union tag a value belongs to based on its literal type.
-    /// Uses the union's type annotation to find the actual member name instead of
-    /// hardcoding defaults (e.g. int_literal in `(i64 | String)` → "i64", not "i32").
-    fn inferArbUnionTag(_: *const CodeGen, value: *parser.Node, type_ann: *parser.Node) ?[]const u8 {
-        if (type_ann.* != .type_union) return null;
-        const members = type_ann.type_union;
-
+    /// Uses either AST type annotation or MIR resolved types.
+    fn inferArbUnionTag(value: *parser.Node, type_ann: ?*parser.Node, members_rt: ?[]const RT) ?[]const u8 {
         return switch (value.*) {
-            .int_literal => findMemberByKind(members, .int) orelse "i32",
-            .float_literal => findMemberByKind(members, .float) orelse "f32",
-            .string_literal => findMemberByKind(members, .string) orelse "String",
-            .bool_literal => findMemberByKind(members, .bool_) orelse "bool",
+            .int_literal => findMemberByKindRT(members_rt, .int) orelse findMemberByKindAST(type_ann, .int) orelse "i32",
+            .float_literal => findMemberByKindRT(members_rt, .float) orelse findMemberByKindAST(type_ann, .float) orelse "f32",
+            .string_literal => findMemberByKindRT(members_rt, .string) orelse findMemberByKindAST(type_ann, .string) orelse "String",
+            .bool_literal => findMemberByKindRT(members_rt, .bool_) orelse findMemberByKindAST(type_ann, .bool_) orelse "bool",
             else => null,
         };
     }
 
     const TypeKind = enum { int, float, string, bool_ };
 
-    /// Search union members for a type matching the given kind.
-    fn findMemberByKind(members: []*parser.Node, kind: TypeKind) ?[]const u8 {
+    fn matchesKind(n: []const u8, kind: TypeKind) bool {
+        return switch (kind) {
+            .int => std.mem.eql(u8, n, "i8") or std.mem.eql(u8, n, "i16") or
+                std.mem.eql(u8, n, "i32") or std.mem.eql(u8, n, "i64") or
+                std.mem.eql(u8, n, "u8") or std.mem.eql(u8, n, "u16") or
+                std.mem.eql(u8, n, "u32") or std.mem.eql(u8, n, "u64") or
+                std.mem.eql(u8, n, "usize"),
+            .float => std.mem.eql(u8, n, "f32") or std.mem.eql(u8, n, "f64"),
+            .string => std.mem.eql(u8, n, "String"),
+            .bool_ => std.mem.eql(u8, n, "bool"),
+        };
+    }
+
+    /// Search union members (MIR resolved types) for a type matching the given kind.
+    fn findMemberByKindRT(members_rt: ?[]const RT, kind: TypeKind) ?[]const u8 {
+        const members = members_rt orelse return null;
         for (members) |m| {
+            const n = m.name();
+            if (matchesKind(n, kind)) return n;
+        }
+        return null;
+    }
+
+    /// Search union members (AST nodes) for a type matching the given kind.
+    fn findMemberByKindAST(type_ann: ?*parser.Node, kind: TypeKind) ?[]const u8 {
+        const ta = type_ann orelse return null;
+        if (ta.* != .type_union) return null;
+        for (ta.type_union) |m| {
             if (m.* != .type_named) continue;
-            const name = m.type_named;
-            switch (kind) {
-                .int => {
-                    if (std.mem.eql(u8, name, "i8") or std.mem.eql(u8, name, "i16") or
-                        std.mem.eql(u8, name, "i32") or std.mem.eql(u8, name, "i64") or
-                        std.mem.eql(u8, name, "u8") or std.mem.eql(u8, name, "u16") or
-                        std.mem.eql(u8, name, "u32") or std.mem.eql(u8, name, "u64") or
-                        std.mem.eql(u8, name, "usize")) return name;
-                },
-                .float => {
-                    if (std.mem.eql(u8, name, "f32") or std.mem.eql(u8, name, "f64")) return name;
-                },
-                .string => {
-                    if (std.mem.eql(u8, name, "String")) return name;
-                },
-                .bool_ => {
-                    if (std.mem.eql(u8, name, "bool")) return name;
-                },
-            }
+            if (matchesKind(m.type_named, kind)) return m.type_named;
         }
         return null;
     }
@@ -486,9 +406,8 @@ pub const CodeGen = struct {
         return switch (node.*) {
             // Positional function calls returning a null union already produce OrhonNullable
             .call_expr => |c| c.arg_names.len == 0,
-            // A variable already tracked as null union
-            .identifier => |name| self.null_vars.contains(name),
-            else => false,
+            // A variable typed as null union via MIR
+            else => self.getTypeClass(node) == .null_union,
         };
     }
 
@@ -630,22 +549,12 @@ pub const CodeGen = struct {
         const prev_arb = self.in_arb_union_func;
         const prev_arb_return = self.arb_union_return_type;
         // Clear per-function tracking maps — each function has its own scope
-        const prev_null_vars = self.null_vars;
         const prev_arb_union_vars = self.arb_union_vars;
-        const prev_rawptr_vars = self.rawptr_vars;
-        const prev_ptr_vars = self.ptr_vars;
         const prev_assigned_vars = self.assigned_vars;
-        const prev_error_vars = self.error_vars;
         const prev_narrowed_vars = self.narrowed_vars;
-        const prev_string_vars = self.string_vars;
-        self.null_vars = .{};
         self.arb_union_vars = .{};
-        self.rawptr_vars = .{};
-        self.ptr_vars = .{};
         self.assigned_vars = .{};
-        self.error_vars = .{};
         self.narrowed_vars = .{};
-        self.string_vars = .{};
         self.in_error_union_func = false;
         self.in_null_union_func = false;
         self.in_arb_union_func = false;
@@ -666,22 +575,12 @@ pub const CodeGen = struct {
             self.in_null_union_func = prev_null;
             self.in_arb_union_func = prev_arb;
             self.arb_union_return_type = prev_arb_return;
-            self.null_vars.deinit(self.allocator);
-            self.null_vars = prev_null_vars;
             self.arb_union_vars.deinit(self.allocator);
             self.arb_union_vars = prev_arb_union_vars;
-            self.rawptr_vars.deinit(self.allocator);
-            self.rawptr_vars = prev_rawptr_vars;
-            self.ptr_vars.deinit(self.allocator);
-            self.ptr_vars = prev_ptr_vars;
             self.assigned_vars.deinit(self.allocator);
             self.assigned_vars = prev_assigned_vars;
-            self.error_vars.deinit(self.allocator);
-            self.error_vars = prev_error_vars;
             self.narrowed_vars.deinit(self.allocator);
             self.narrowed_vars = prev_narrowed_vars;
-            self.string_vars.deinit(self.allocator);
-            self.string_vars = prev_string_vars;
         }
 
         // pub modifier — always pub for main (Zig requires pub fn main for exe entry)
@@ -724,8 +623,6 @@ pub const CodeGen = struct {
                         param.param.name,
                         try self.typeToZig(param.param.type_annotation),
                     });
-                    if (isStringType(param.param.type_annotation))
-                        try self.string_vars.put(self.allocator, param.param.name, {});
                     // Default params handled at call site, not in Zig signature
                 }
             }
@@ -919,27 +816,13 @@ pub const CodeGen = struct {
         }
         try self.write(" = ");
         if (is_error_union) {
-            try self.error_vars.put(self.allocator, v.name, {});
             try self.generateExpr(v.value);
         } else if (is_null_union) {
-            try self.null_vars.put(self.allocator, v.name, {});
             try self.generateNullWrappedExpr(v.value);
         } else if (is_arb_union) {
             try self.arb_union_vars.put(self.allocator, v.name, v.type_annotation.?);
-            try self.generateArbUnionWrappedExpr(v.value, v.type_annotation.?);
+            try self.generateArbUnionWrappedExpr(v.value, v.type_annotation, null);
         } else {
-            if (isPtrExpr(v.value)) try self.rawptr_vars.put(self.allocator, v.name, {});
-            if (isSafePtrExpr(v.value)) try self.ptr_vars.put(self.allocator, v.name, {});
-            if (isStringDecl(v)) try self.string_vars.put(self.allocator, v.name, {});
-            // Infer union kind from function call return type (no explicit annotation)
-            if (v.type_annotation == null) {
-                if (self.callReturnsErrorUnion(v.value))
-                    try self.error_vars.put(self.allocator, v.name, {})
-                else if (self.callReturnsNullUnion(v.value))
-                    try self.null_vars.put(self.allocator, v.name, {})
-                else if (self.callReturnsArbUnion(v.value)) |rt|
-                    try self.arb_union_vars.put(self.allocator, v.name, rt);
-            }
             try self.generateExpr(v.value);
         }
         try self.write(";\n");
@@ -955,18 +838,13 @@ pub const CodeGen = struct {
         if (v.type_annotation) |t| try self.writeFmt(": {s}", .{try self.typeToZig(t)});
         try self.write(" = ");
         if (is_error_union) {
-            try self.error_vars.put(self.allocator, v.name, {});
             try self.generateExpr(v.value);
         } else if (is_null_union) {
-            try self.null_vars.put(self.allocator, v.name, {});
             try self.generateNullWrappedExpr(v.value);
         } else if (is_arb_union) {
             try self.arb_union_vars.put(self.allocator, v.name, v.type_annotation.?);
-            try self.generateArbUnionWrappedExpr(v.value, v.type_annotation.?);
+            try self.generateArbUnionWrappedExpr(v.value, v.type_annotation, null);
         } else {
-            if (isPtrExpr(v.value)) try self.rawptr_vars.put(self.allocator, v.name, {});
-            if (isSafePtrExpr(v.value)) try self.ptr_vars.put(self.allocator, v.name, {});
-            if (isStringDecl(v)) try self.string_vars.put(self.allocator, v.name, {});
             const prev_ctx = self.type_ctx;
             self.type_ctx = v.type_annotation;
             try self.generateExpr(v.value);
@@ -1157,7 +1035,7 @@ pub const CodeGen = struct {
                         }
                     } else if (self.in_arb_union_func) {
                         if (self.arb_union_return_type) |rt| {
-                            try self.generateArbUnionWrappedExpr(v, rt);
+                            try self.generateArbUnionWrappedExpr(v, rt, null);
                         } else {
                             try self.generateExpr(v);
                         }
@@ -1175,11 +1053,12 @@ pub const CodeGen = struct {
                 const is_info = self.extractIsCheck(i.condition);
                 if (is_info) |info| {
                     // Inside then-block: positive `is T` narrows to T, negative `is not T` narrows to remaining
+                    const members_rt = self.getUnionMembers(info.var_node);
+                    const type_node = if (info.var_node.* == .identifier) self.arb_union_vars.get(info.var_node.identifier) else null;
                     if (info.is_positive) {
                         try self.narrowed_vars.put(self.allocator, info.var_name, info.type_name);
-                    } else if (self.arb_union_vars.get(info.var_name)) |type_node| {
-                        if (remainingUnionType(type_node, info.type_name)) |rem|
-                            try self.narrowed_vars.put(self.allocator, info.var_name, rem);
+                    } else if (remainingUnionType(type_node, members_rt, info.type_name)) |rem| {
+                        try self.narrowed_vars.put(self.allocator, info.var_name, rem);
                     }
                 }
                 try self.generateBlock(i.then_block);
@@ -1188,11 +1067,11 @@ pub const CodeGen = struct {
                     try self.write(" else ");
                     // Inside else-block: opposite narrowing
                     if (is_info) |info| {
+                        const members_rt = self.getUnionMembers(info.var_node);
+                        const type_node = if (info.var_node.* == .identifier) self.arb_union_vars.get(info.var_node.identifier) else null;
                         if (info.is_positive) {
-                            if (self.arb_union_vars.get(info.var_name)) |type_node| {
-                                if (remainingUnionType(type_node, info.type_name)) |rem|
-                                    try self.narrowed_vars.put(self.allocator, info.var_name, rem);
-                            }
+                            if (remainingUnionType(type_node, members_rt, info.type_name)) |rem|
+                                try self.narrowed_vars.put(self.allocator, info.var_name, rem);
                         } else {
                             try self.narrowed_vars.put(self.allocator, info.var_name, info.type_name);
                         }
@@ -1203,14 +1082,12 @@ pub const CodeGen = struct {
                 // After if with early exit: narrow to the opposite
                 if (is_info) |info| {
                     if (blockHasEarlyExit(i.then_block)) {
+                        const members_rt = self.getUnionMembers(info.var_node);
+                        const type_node = if (info.var_node.* == .identifier) self.arb_union_vars.get(info.var_node.identifier) else null;
                         if (info.is_positive) {
-                            // `if x is T { return }` → after: x is not T
-                            if (self.arb_union_vars.get(info.var_name)) |type_node| {
-                                if (remainingUnionType(type_node, info.type_name)) |rem|
-                                    try self.narrowed_vars.put(self.allocator, info.var_name, rem);
-                            }
+                            if (remainingUnionType(type_node, members_rt, info.type_name)) |rem|
+                                try self.narrowed_vars.put(self.allocator, info.var_name, rem);
                         } else {
-                            // `if x is not T { return }` → after: x is T
                             try self.narrowed_vars.put(self.allocator, info.var_name, info.type_name);
                         }
                     }
@@ -1296,7 +1173,7 @@ pub const CodeGen = struct {
                 // match val    { i32   => { } f32  => { } }
                 const is_type_match = blk: {
                     // Check if the match value is an arbitrary union variable
-                    if (m.value.* == .identifier and self.isArbUnionVar(m.value.identifier))
+                    if (self.getTypeClass(m.value) == .arb_union)
                         break :blk true;
                     for (m.arms) |arm| {
                         if (arm.* != .match_arm) continue;
@@ -1391,7 +1268,7 @@ pub const CodeGen = struct {
                     try self.generateExpr(a.right);
                     try self.write(");");
                 } else if (std.mem.eql(u8, a.op, "=") and
-                    a.left.* == .identifier and self.isNullVar(a.left.identifier))
+                    self.getTypeClass(a.left) == .null_union)
                 {
                     // Assignment to null union var → wrap value
                     try self.generateExpr(a.left);
@@ -1399,13 +1276,14 @@ pub const CodeGen = struct {
                     try self.generateNullWrappedExpr(a.right);
                     try self.write(";");
                 } else if (std.mem.eql(u8, a.op, "=") and
-                    a.left.* == .identifier and self.arb_union_vars.get(a.left.identifier) != null)
+                    self.getTypeClass(a.left) == .arb_union)
                 {
                     // Assignment to arb union var → wrap value
-                    const type_node = self.arb_union_vars.get(a.left.identifier).?;
+                    const members_rt = self.getUnionMembers(a.left);
+                    const type_node = if (a.left.* == .identifier) self.arb_union_vars.get(a.left.identifier) else null;
                     try self.generateExpr(a.left);
                     try self.write(" = ");
-                    try self.generateArbUnionWrappedExpr(a.right, type_node);
+                    try self.generateArbUnionWrappedExpr(a.right, type_node, members_rt);
                     try self.write(";");
                 } else {
                     try self.generateExpr(a.left);
@@ -1533,7 +1411,7 @@ pub const CodeGen = struct {
                             return;
                         }
                         // Arbitrary union type check: `val is i32` → `val == ._i32`
-                        if (val_node.* == .identifier and self.isArbUnionVar(val_node.identifier)) {
+                        if (self.getTypeClass(val_node) == .arb_union) {
                             try self.write("(");
                             try self.generateExpr(val_node);
                             try self.writeFmt(" {s} ._{s})", .{ cmp, rhs });
@@ -1657,46 +1535,57 @@ pub const CodeGen = struct {
             .field_expr => |f| {
                 // ptr.value → ptr.* (safe Ptr(T) dereference)
                 if (std.mem.eql(u8, f.field, "value") and
-                    f.object.* == .identifier and self.isPtrVar(f.object.identifier))
+                    self.getTypeClass(f.object) == .safe_ptr)
                 {
                     try self.generateExpr(f.object);
                     try self.write(".*");
                 // raw.value → raw[0] (RawPtr/VolatilePtr dereference)
                 } else if (std.mem.eql(u8, f.field, "value") and
-                    f.object.* == .identifier and self.isRawPtrVar(f.object.identifier))
+                    self.getTypeClass(f.object) == .raw_ptr)
                 {
                     try self.generateExpr(f.object);
                     try self.write("[0]");
                 } else if (std.mem.eql(u8, f.field, K.Type.ERROR)) {
                     try self.generateExpr(f.object);
                     try self.write(".err");
-                } else if (std.mem.eql(u8, f.field, "value") and f.object.* == .identifier and
-                    (self.isArbUnionVar(f.object.identifier) or self.isNullVar(f.object.identifier) or self.isErrorVar(f.object.identifier)))
+                } else if (std.mem.eql(u8, f.field, "value") and
+                    (self.getTypeClass(f.object) == .arb_union or self.getTypeClass(f.object) == .null_union or self.getTypeClass(f.object) == .error_union))
                 {
                     // .value unwrap — emit correct Zig field based on union kind
-                    const vname = f.object.identifier;
+                    const obj_tc = self.getTypeClass(f.object);
                     try self.generateExpr(f.object);
-                    if (self.isArbUnionVar(vname)) {
+                    if (obj_tc == .arb_union) {
                         // Use narrowed type from `is` checks if available
-                        if (self.narrowed_vars.get(vname)) |narrowed| {
-                            try self.writeFmt("._{s}", .{narrowed});
-                        } else if (self.arb_union_vars.get(vname)) |type_node| {
-                            // Fall back to first non-error/non-null type
-                            if (type_node.* == .type_union) {
-                                for (type_node.type_union) |t| {
-                                    if (t.* == .type_named and !std.mem.eql(u8, t.type_named, K.Type.ERROR) and !std.mem.eql(u8, t.type_named, K.Type.NULL)) {
-                                        try self.writeFmt("._{s}", .{t.type_named});
+                        if (f.object.* == .identifier) {
+                            if (self.narrowed_vars.get(f.object.identifier)) |narrowed| {
+                                try self.writeFmt("._{s}", .{narrowed});
+                            } else if (self.getUnionMembers(f.object)) |members| {
+                                // MIR: fall back to first non-error/non-null type
+                                for (members) |m| {
+                                    const n = m.name();
+                                    if (!std.mem.eql(u8, n, K.Type.ERROR) and !std.mem.eql(u8, n, K.Type.NULL)) {
+                                        try self.writeFmt("._{s}", .{n});
                                         break;
+                                    }
+                                }
+                            } else if (self.arb_union_vars.get(f.object.identifier)) |type_node| {
+                                // AST fallback
+                                if (type_node.* == .type_union) {
+                                    for (type_node.type_union) |t| {
+                                        if (t.* == .type_named and !std.mem.eql(u8, t.type_named, K.Type.ERROR) and !std.mem.eql(u8, t.type_named, K.Type.NULL)) {
+                                            try self.writeFmt("._{s}", .{t.type_named});
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
-                    } else if (self.isNullVar(vname)) {
+                    } else if (obj_tc == .null_union) {
                         try self.write(".some");
-                    } else if (self.isErrorVar(vname)) {
+                    } else if (obj_tc == .error_union) {
                         try self.write(".ok");
                     }
-                } else if (f.object.* == .identifier and self.isArbUnionVar(f.object.identifier) and
+                } else if (self.getTypeClass(f.object) == .arb_union and
                     isResultValueField(f.field, self.decls))
                 {
                     // Arbitrary union field access: result.i32 → result._i32
@@ -1704,7 +1593,7 @@ pub const CodeGen = struct {
                     try self.writeFmt("._{s}", .{f.field});
                 } else if (isResultValueField(f.field, self.decls)) {
                     // Check if the object is a null union variable
-                    if (f.object.* == .identifier and self.isNullVar(f.object.identifier)) {
+                    if (self.getTypeClass(f.object) == .null_union) {
                         // result.User → result.some (null union access)
                         try self.generateExpr(f.object);
                         try self.write(".some");

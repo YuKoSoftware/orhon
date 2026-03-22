@@ -482,7 +482,17 @@ pub const TypeResolver = struct {
                 64 => RT{ .primitive = "f64" },
                 else => RT{ .primitive = "float_literal" },
             } else RT{ .primitive = "float_literal" },
-            .string_literal, .interpolated_string => RT{ .primitive = K.Type.STRING },
+            .string_literal => RT{ .primitive = K.Type.STRING },
+            .interpolated_string => |interp| {
+                // Resolve inner expressions so they appear in type_map
+                for (interp.parts) |part| {
+                    switch (part) {
+                        .expr => |expr_node| _ = try self.resolveExpr(expr_node, scope),
+                        .literal => {},
+                    }
+                }
+                return RT{ .primitive = K.Type.STRING };
+            },
             .bool_literal => RT{ .primitive = "bool" },
             .null_literal => RT.null_type,
             .error_literal => RT.err,

@@ -4,21 +4,16 @@ Bugs discovered during testing. Fix before v1.
 
 ---
 
-## Codegen — inferred union types not tracked
+## ~~Codegen — inferred union types not tracked~~ (FIXED v0.4.7)
 
-When a variable receives a function return without a type annotation, the codegen
-doesn't track it as an error/null/arb union variable. This causes `.value` unwrap
-to emit literal `.value` instead of `.ok`, `.some`, or `._i32`.
+Fixed by MIR Phase 1 integration. The MIR annotator resolves types from function
+call returns via the resolver's type_map, so codegen queries `getTypeClass(node)`
+instead of relying on hashmap registration from explicit annotations.
 
-**Workaround:** Always annotate union variables — `const r: (Error | i32) = f()`.
+## ~~Codegen — arb union types not unified across functions~~ (FIXED v0.4.7)
 
-## Codegen — arb union types not unified across functions
-
-Each function that declares `(i32 | String)` gets a unique generated union type
-(`func_name__union_NNNNN`). Assigning a return value from one function into a
-local typed as the "same" union causes a Zig type mismatch.
-
-**Workaround:** Use direct literal assignment or avoid cross-function arb union returns.
+Fixed by MIR UnionRegistry. Canonical union type deduplication ensures `(i32 | String)`
+in different functions maps to the same generated Zig type.
 
 ## Codegen — bitfield variants not namespaced
 
@@ -47,5 +42,6 @@ not directly iterable in Zig. Need iterator bridge methods.
 
 ## Codegen — thread blocks
 
-`thread(T) name { }` syntax is parsed but codegen was removed. Thread support
-needs reimplementation via the bridge pattern (std.thread).
+`thread(T) name { }` syntax is parsed but codegen was removed. Threading has been
+redesigned as a language-level feature (see FUTURE.md). Old thread block syntax
+will be replaced by the new `thread` keyword + `Handle(T)` model.

@@ -376,6 +376,16 @@ pub const MirAnnotator = struct {
                 try self.annotateNode(r.right);
             },
 
+            .interpolated_string => |interp| {
+                try self.annotateExpr(node);
+                for (interp.parts) |part| {
+                    switch (part) {
+                        .expr => |expr_node| try self.annotateNode(expr_node),
+                        .literal => {},
+                    }
+                }
+            },
+
             // Leaf expressions
             .int_literal,
             .float_literal,
@@ -384,7 +394,6 @@ pub const MirAnnotator = struct {
             .null_literal,
             .error_literal,
             .identifier,
-            .interpolated_string,
             => try self.annotateExpr(node),
 
             else => {},

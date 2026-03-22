@@ -56,7 +56,6 @@ std.hash          // fast general purpose hashing — FNV, xxHash, SipHash
 std.io            // raw streams, buffers, readers, writers
 std.bytes         // raw byte manipulation, endianness, bit operations
 std.math.linear   // Vec2(T), Vec3(T), Vec4(T), Mat4(T), Quat(T)
-std.thread        // thread spawning, joining (bridge replacement for builtin thread)
 ```
 
 ### Far future
@@ -91,7 +90,94 @@ Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.
 Relaxes bridge safety rules within a block — allows mutable refs across the Orhon↔Zig boundary. Not yet implemented; strict mode (option 1) is the current default.
 
 ### `#gpu` metadata
-Reserved for future GPU/concurrency design.
+Reserved for future GPU/compute design.
+
+---
+
+## Threading Model
+
+Threading is a **language-level feature**, not a stdlib module. A thread is a function that runs concurrently and returns a `Handle(T)`.
+
+### Syntax
+
+Declaration — identical to `func`, but with the `thread` keyword and `Handle(T)` return type:
+
+```
+thread worker(data: List(int)) Handle(int) {
+    const sum: int = data.reduce(fn(a, b) { return a + b })
+    return Handle(sum)
+}
+```
+
+Calling a thread starts it immediately. The return value is a `Handle(T)`:
+
+```
+const h: Handle(int) = worker(my_data)
+const result: int = h.return()
+```
+
+### Handle(T)
+
+The handle is the interface between the caller and the running thread. Internally it holds a pointer to the OS thread and an optional result slot.
+
+**Methods:**
+- `.return()` — blocks until done, moves the value out, consumes the handle
+- `.wait()` — blocks until done, does not consume
+- `.done()` — non-blocking bool check
+- `.join()` — blocks, discards value, cleans up
+
+Calling `.return()` twice is a **compile error** — the value is moved on first call, the handle is consumed.
+
+### Ownership rules
+
+Threads follow the same ownership rules as functions — no special cases:
+
+- **Move** — data moves into the thread on the call, comes back on `.return()`. No window where two threads access the same data.
+- **Immutable borrow** — pass freely to multiple threads. Multiple readers, no conflict.
+- **Mutable borrow** — one thread only. Enforced by existing borrow checker.
+- **Split** — divide mutable data between threads. Each gets its own slice.
+
+No mutexes, no locks, no atomics at the language level. The borrow checker prevents data races by design.
+
+### Multiple spawns
+
+Each call returns a fresh handle. Thread declarations are templates, handles are live instances:
+
+```
+const a: Handle(int) = worker(data1)
+const b: Handle(int) = worker(data2)
+const r1: int = a.return()
+const r2: int = b.return()
+```
+
+### Void threads
+
+```
+thread logger(msg: str) Handle(void) {
+    print(msg)
+    return Handle(void)
+}
+
+const h: Handle(void) = logger("hello")
+h.return()
+```
+
+### Implementation
+
+- Threads map to OS threads (`std.Thread` in Zig).
+- `Handle(T)` is a compiler-generated generic struct.
+- `.done()` uses an atomic bool under the hood — invisible to the user.
+- `.return()` and `.wait()` use OS thread join for synchronization.
+- No runtime, no scheduler, no colored functions.
+- Users can build their own thread pools using `List(Handle(T))`.
+
+### Design decisions
+
+- No `std.thread` module — threading is a language primitive.
+- No goroutines — no runtime, no GC, no scheduler overhead.
+- No async/await — no colored functions, no executor.
+- Thread pool is a user-space concern — a list of handles is a pool.
+- Shared mutable state between threads is impossible by design.
 
 ---
 

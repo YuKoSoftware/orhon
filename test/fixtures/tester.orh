@@ -455,6 +455,24 @@ pub func test_null_inferred() i32 {
     return result.value
 }
 
+// Truly inferred error union — no annotation, MIR resolves type
+pub func test_error_inferred() i32 {
+    const result = safe_divide(10, 2)
+    if(result is Error) {
+        return 0 - 1
+    }
+    return result.value
+}
+
+// Truly inferred null union — no annotation, MIR resolves type
+pub func test_null_inferred_real() i32 {
+    const result = find_player(5)
+    if(result is null) {
+        return 0 - 1
+    }
+    return result.value
+}
+
 pub func test_null_reassign() i32 {
     var x: (null | i32) = null
     x = 42
@@ -616,6 +634,14 @@ test "null none" {
 
 test "null inferred" {
     assert(test_null_inferred() == 50)
+}
+
+test "error inferred" {
+    assert(test_error_inferred() == 5)
+}
+
+test "null inferred real" {
+    assert(test_null_inferred_real() == 50)
 }
 
 test "null reassign" {
@@ -795,6 +821,14 @@ test "arb union assign" {
 
 test "arb union three" {
     assert(test_arb_union_three() == 1)
+}
+
+test "arb union cross" {
+    assert(test_arb_union_cross() == 42)
+}
+
+test "arb union inferred" {
+    assert(test_arb_union_inferred() == 1)
 }
 
 test "arb value positive" {
@@ -1038,6 +1072,30 @@ pub func test_arb_union_three() i32 {
     return 0
 }
 
+
+// Cross-function arb union — function returns same union type
+
+func make_union_val() (i32 | String) {
+    return 42
+}
+
+pub func test_arb_union_cross() i32 {
+    const result: (i32 | String) = make_union_val()
+    if(result is i32) {
+        return result.value
+    }
+    return 0
+}
+
+// Inferred arb union — no annotation, MIR resolves
+
+pub func test_arb_union_inferred() i32 {
+    const result = make_union_val()
+    if(result is i32) {
+        return 1
+    }
+    return 0
+}
 
 // ─── Allocating string methods ──────────────────────────────
 

@@ -1,0 +1,26 @@
+module allocator
+
+// allocator — memory allocators for Orhon programs
+// Import with: import std::allocator
+// Each allocator is a proper type with create() and uniform interface.
+
+// SMP — general-purpose, thread-safe allocator (default)
+
+extern struct SMP {
+    extern func create() SMP
+    extern func deinit(self: &SMP) void
+}
+
+// Arena — batch allocator, freeAll releases everything at once
+
+extern struct Arena {
+    extern func create() Arena
+    extern func freeAll(self: &Arena) void
+    extern func deinit(self: &Arena) void
+}
+
+// Page — OS page allocator, simple and fast
+
+extern struct Page {
+    extern func create() Page
+}

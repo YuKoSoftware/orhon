@@ -431,6 +431,13 @@ pub fn buildZigContent(
         \\    const target = b.standardTargetOptions(.{});
         \\    const optimize = b.standardOptimizeOption(.{});
         \\
+        \\    // Orhon runtime — shared module available to all targets
+        \\    const rt_mod = b.createModule(.{
+        \\        .root_source_file = b.path("_orhon_rt.zig"),
+        \\        .target = target,
+        \\        .optimize = optimize,
+        \\    });
+        \\
     );
 
     if (std.mem.eql(u8, build_type, "exe")) {
@@ -450,6 +457,7 @@ pub fn buildZigContent(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
+            \\    exe.root_module.addImport("_orhon_rt", rt_mod);
             \\    b.installArtifact(exe);
             \\
             \\    const run_cmd = b.addRunArtifact(exe);
@@ -471,6 +479,7 @@ pub fn buildZigContent(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
+            \\    lib.root_module.addImport("_orhon_rt", rt_mod);
             \\    b.installArtifact(lib);
             \\
         , .{ project_name, module_name });
@@ -487,6 +496,7 @@ pub fn buildZigContent(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
+            \\    lib.root_module.addImport("_orhon_rt", rt_mod);
             \\    b.installArtifact(lib);
             \\
         , .{ project_name, module_name });
@@ -503,6 +513,7 @@ pub fn buildZigContent(
         \\            .optimize = optimize,
         \\        }}),
         \\    }});
+        \\    unit_tests.root_module.addImport("_orhon_rt", rt_mod);
         \\    const run_tests = b.addRunArtifact(unit_tests);
         \\    const test_step = b.step("test", "Run tests");
         \\    test_step.dependOn(&run_tests.step);
@@ -545,6 +556,13 @@ pub fn buildZigContentMulti(
         \\    const target = b.standardTargetOptions(.{});
         \\    const optimize = b.standardOptimizeOption(.{});
         \\
+        \\    // Orhon runtime — shared module available to all targets
+        \\    const rt_mod = b.createModule(.{
+        \\        .root_source_file = b.path("_orhon_rt.zig"),
+        \\        .target = target,
+        \\        .optimize = optimize,
+        \\    });
+        \\
     );
 
     // Build a map from module_name → project_name for lib targets (used by exe linking)
@@ -567,9 +585,10 @@ pub fn buildZigContentMulti(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
+            \\    lib_{s}.root_module.addImport("_orhon_rt", rt_mod);
             \\    b.installArtifact(lib_{s});
             \\
-        , .{ t.module_name, t.project_name, linkage, t.module_name, t.module_name });
+        , .{ t.module_name, t.project_name, linkage, t.module_name, t.module_name, t.module_name });
         defer allocator.free(lib_chunk);
         try buf.appendSlice(allocator, lib_chunk);
 
@@ -595,8 +614,9 @@ pub fn buildZigContentMulti(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
+            \\    exe_{s}.root_module.addImport("_orhon_rt", rt_mod);
             \\
-        , .{ t.module_name, t.project_name, ver_line, t.module_name });
+        , .{ t.module_name, t.project_name, ver_line, t.module_name, t.module_name });
         defer allocator.free(exe_chunk);
         try buf.appendSlice(allocator, exe_chunk);
 
@@ -807,5 +827,6 @@ test "buildZigContentMulti - single exe (no libs)" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addExecutable") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") == null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "addImport") == null);
+    // Runtime module is always imported
+    try std.testing.expect(std.mem.indexOf(u8, content, "addImport(\"_orhon_rt\"") != null);
 }

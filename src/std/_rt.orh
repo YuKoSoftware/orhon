@@ -1,0 +1,22 @@
+module _rt
+
+// _rt — Orhon compiler runtime
+// Auto-imported by the compiler. Not user-facing.
+// Provides internal types and allocators used by compiler features.
+
+// Runtime allocator — used by @{} string interpolation
+extern func alloc() any
+
+// Error type — used by (Error | T) unions
+extern struct OrhonError {
+    pub message: String
+}
+
+// Nullable wrapper — used by (null | T) unions
+extern func OrhonNullable(T: type) type
+
+// Result wrapper — used by (Error | T) unions
+extern func OrhonResult(T: type) type
+
+// Type identity — used by typeid() builtin
+extern func orhonTypeId(T: type) any

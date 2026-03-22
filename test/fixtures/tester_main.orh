@@ -585,5 +585,29 @@ func main() void {
         console.println("FAIL system_run")
     }
 
+    if(tester.test_string_eq() == 1) {
+        console.println("PASS string_eq")
+    } else {
+        console.println("FAIL string_eq")
+    }
+
+    if(tester.test_string_ne() == 1) {
+        console.println("PASS string_ne")
+    } else {
+        console.println("FAIL string_ne")
+    }
+
+    if(tester.test_string_eq_literal() == 1) {
+        console.println("PASS string_eq_literal")
+    } else {
+        console.println("FAIL string_eq_literal")
+    }
+
+    if(tester.test_string_eq_param("same", "same") == 1) {
+        console.println("PASS string_eq_param")
+    } else {
+        console.println("FAIL string_eq_param")
+    }
+
     console.println("TESTER:DONE")
 }

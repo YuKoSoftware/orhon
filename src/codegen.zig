@@ -41,6 +41,7 @@ pub const CodeGen = struct {
     source_file: []const u8,     // anchor file path for location reporting
     module_builds: ?*const std.StringHashMapUnmanaged(module.BuildType), // imported module → build type
     narrowed_vars: std.StringHashMapUnmanaged([]const u8), // var name → narrowed type (from `is` checks)
+    string_vars: std.StringHashMapUnmanaged(void), // variables holding String ([]const u8)
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter, is_debug: bool) CodeGen {
         return .{
@@ -72,6 +73,7 @@ pub const CodeGen = struct {
             .source_file = "",
             .module_builds = null,
             .narrowed_vars = .{},
+            .string_vars = .{},
         };
     }
 
@@ -107,6 +109,7 @@ pub const CodeGen = struct {
         self.assigned_vars.deinit(self.allocator);
         self.error_vars.deinit(self.allocator);
         self.narrowed_vars.deinit(self.allocator);
+        self.string_vars.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -151,17 +154,7 @@ pub const CodeGen = struct {
         // File header
         try self.writeFmt("// generated from module {s} — do not edit\n", .{module_name});
         try self.write("const std = @import(\"std\");\n");
-
-        // Orhon runtime types — only emit if the module uses Error or null unions
-        if (self.moduleUsesErrorUnion(ast)) {
-            try self.write("const OrhonError = struct { message: []const u8 };\n");
-            try self.write("fn OrhonResult(comptime T: type) type { return union(enum) { ok: T, err: OrhonError }; }\n");
-        }
-        // Always emit OrhonNullable — used by null unions and string indexOf/lastIndexOf
-        try self.write("fn OrhonNullable(comptime T: type) type { return union(enum) { some: T, none: void }; }\n");
-        try self.write("fn orhonTypeId(comptime T: type) usize { return @intFromPtr(@typeName(T).ptr); }\n");
-
-        // BRIDGE TODO: Ring, ORing, stringRepeat moved to bridge modules
+        try self.write("const _rt = @import(\"_orhon_rt\");\n");
 
         // Generate imports
         for (ast.program.imports) |imp| {
@@ -175,23 +168,6 @@ pub const CodeGen = struct {
             try self.generateTopLevel(node);
             try self.write("\n");
         }
-    }
-
-    fn moduleUsesErrorUnion(_: *CodeGen, ast: *parser.Node) bool {
-        if (ast.* != .program) return false;
-        for (ast.program.top_level) |node| {
-            if (nodeContainsErrorUnion(node)) return true;
-            if (nodeUsesOverflow(node)) return true;
-        }
-        return false;
-    }
-
-    fn moduleUsesNullUnion(_: *CodeGen, ast: *parser.Node) bool {
-        if (ast.* != .program) return false;
-        for (ast.program.top_level) |node| {
-            if (nodeContainsNullUnion(node)) return true;
-        }
-        return false;
     }
 
     /// Extract the value type from a (Error | T) or (null | T) union type annotation.
@@ -256,6 +232,26 @@ pub const CodeGen = struct {
     /// Check if a variable name is a tracked arbitrary union variable
     fn isArbUnionVar(self: *const CodeGen, name: []const u8) bool {
         return self.arb_union_vars.contains(name);
+    }
+
+    /// Check if a type annotation node is String
+    fn isStringType(node: *parser.Node) bool {
+        return node.* == .type_named and std.mem.eql(u8, node.type_named, K.Type.STRING);
+    }
+
+    /// Check if a declaration is String-typed (annotation or string literal value)
+    fn isStringDecl(v: parser.VarDecl) bool {
+        if (v.type_annotation) |t| return isStringType(t);
+        return v.value.* == .string_literal;
+    }
+
+    /// Check if an expression is known to be a string (literal or tracked variable)
+    fn isStringExpr(self: *const CodeGen, node: *parser.Node) bool {
+        return switch (node.*) {
+            .string_literal, .interpolated_string => true,
+            .identifier => |name| self.string_vars.contains(name),
+            else => false,
+        };
     }
 
     /// Look up a call expression's return type node via the declaration table.
@@ -624,6 +620,7 @@ pub const CodeGen = struct {
         const prev_assigned_vars = self.assigned_vars;
         const prev_error_vars = self.error_vars;
         const prev_narrowed_vars = self.narrowed_vars;
+        const prev_string_vars = self.string_vars;
         self.null_vars = .{};
         self.arb_union_vars = .{};
         self.rawptr_vars = .{};
@@ -631,6 +628,7 @@ pub const CodeGen = struct {
         self.assigned_vars = .{};
         self.error_vars = .{};
         self.narrowed_vars = .{};
+        self.string_vars = .{};
         self.in_error_union_func = false;
         self.in_null_union_func = false;
         self.in_arb_union_func = false;
@@ -665,6 +663,8 @@ pub const CodeGen = struct {
             self.error_vars = prev_error_vars;
             self.narrowed_vars.deinit(self.allocator);
             self.narrowed_vars = prev_narrowed_vars;
+            self.string_vars.deinit(self.allocator);
+            self.string_vars = prev_string_vars;
         }
 
         // pub modifier — always pub for main (Zig requires pub fn main for exe entry)
@@ -707,6 +707,8 @@ pub const CodeGen = struct {
                         param.param.name,
                         try self.typeToZig(param.param.type_annotation),
                     });
+                    if (isStringType(param.param.type_annotation))
+                        try self.string_vars.put(self.allocator, param.param.name, {});
                     // Default params handled at call site, not in Zig signature
                 }
             }
@@ -911,6 +913,7 @@ pub const CodeGen = struct {
         } else {
             if (isPtrExpr(v.value)) try self.rawptr_vars.put(self.allocator, v.name, {});
             if (isSafePtrExpr(v.value)) try self.ptr_vars.put(self.allocator, v.name, {});
+            if (isStringDecl(v)) try self.string_vars.put(self.allocator, v.name, {});
             // Infer union kind from function call return type (no explicit annotation)
             if (v.type_annotation == null) {
                 if (self.callReturnsErrorUnion(v.value))
@@ -946,6 +949,7 @@ pub const CodeGen = struct {
         } else {
             if (isPtrExpr(v.value)) try self.rawptr_vars.put(self.allocator, v.name, {});
             if (isSafePtrExpr(v.value)) try self.ptr_vars.put(self.allocator, v.name, {});
+            if (isStringDecl(v)) try self.string_vars.put(self.allocator, v.name, {});
             const prev_ctx = self.type_ctx;
             self.type_ctx = v.type_annotation;
             try self.generateExpr(v.value);
@@ -1426,6 +1430,7 @@ pub const CodeGen = struct {
             },
             .float_literal => |text| try self.write(text),
             .string_literal => |text| try self.write(text),
+            .interpolated_string => |interp| try self.generateInterpolatedString(interp),
             .bool_literal => |b| try self.write(if (b) "true" else "false"),
             .null_literal => try self.write("null"),
             .error_literal => |msg| {
@@ -1434,7 +1439,7 @@ pub const CodeGen = struct {
                     try self.writeFmt(".{{ .err = .{{ .message = {s} }} }}", .{msg});
                 } else {
                     // Standalone Error value (const, assignment)
-                    try self.writeFmt("OrhonError{{ .message = {s} }}", .{msg});
+                    try self.writeFmt("_rt.OrhonError{{ .message = {s} }}", .{msg});
                 }
             },
             .identifier => |name| {
@@ -1535,6 +1540,14 @@ pub const CodeGen = struct {
                     try self.write(")");
                 } else if (std.mem.eql(u8, b.op, "%")) {
                     try self.write("@mod(");
+                    try self.generateExpr(b.left);
+                    try self.write(", ");
+                    try self.generateExpr(b.right);
+                    try self.write(")");
+                } else if ((is_eq or is_ne) and (self.isStringExpr(b.left) or self.isStringExpr(b.right))) {
+                    // String ([]const u8) comparison → std.mem.eql
+                    if (is_ne) try self.write("!");
+                    try self.write("std.mem.eql(u8, ");
                     try self.generateExpr(b.left);
                     try self.write(", ");
                     try self.generateExpr(b.right);
@@ -1853,6 +1866,53 @@ pub const CodeGen = struct {
         try self.write("}");
     }
 
+    /// Generate string interpolation using std.fmt.allocPrint.
+    /// "hello @{name}, value @{x}!" →
+    ///   std.fmt.allocPrint(_rt.alloc, "hello {s}, value {}", .{name, x}) catch unreachable
+    fn generateInterpolatedString(self: *CodeGen, interp: parser.InterpolatedString) anyerror!void {
+        try self.write("std.fmt.allocPrint(_rt.alloc, \"");
+        // Build format string
+        for (interp.parts) |part| {
+            switch (part) {
+                .literal => |text| {
+                    // Escape any braces and special chars in the literal
+                    for (text) |ch| {
+                        switch (ch) {
+                            '{' => try self.write("{{"),
+                            '}' => try self.write("}}"),
+                            '\\' => try self.write("\\"),
+                            else => {
+                                const buf: [1]u8 = .{ch};
+                                try self.write(&buf);
+                            },
+                        }
+                    }
+                },
+                .expr => |node| {
+                    if (self.isStringExpr(node)) {
+                        try self.write("{s}");
+                    } else {
+                        try self.write("{}");
+                    }
+                },
+            }
+        }
+        try self.write("\", .{");
+        // Build args tuple
+        var first = true;
+        for (interp.parts) |part| {
+            switch (part) {
+                .literal => {},
+                .expr => |node| {
+                    if (!first) try self.write(", ");
+                    try self.generateExpr(node);
+                    first = false;
+                },
+            }
+        }
+        try self.write("}) catch unreachable");
+    }
+
     /// Desugar a string match into an if/else chain.
     /// match s { "hello" => { } "world" => { } else => { } }
     /// → if (std.mem.eql(u8, s, "hello")) { } else if (...) { } else { }
@@ -1950,8 +2010,8 @@ pub const CodeGen = struct {
                 else null;
             if (builtin_name) |builtin| {
                 // overflow(a + b) → (blk: { const _ov = @addWithOverflow(a, b);
-                //   if (_ov[1] != 0) break :blk OrhonResult(@TypeOf(a)){ .err = .{ .message = "overflow" } }
-                //   else break :blk OrhonResult(@TypeOf(a)){ .ok = _ov[0] }; })
+                //   if (_ov[1] != 0) break :blk _rt.OrhonResult(@TypeOf(a)){ .err = .{ .message = "overflow" } }
+                //   else break :blk _rt.OrhonResult(@TypeOf(a)){ .ok = _ov[0] }; })
                 // When operands are literals, @TypeOf gives comptime_int which Zig rejects.
                 // Use the concrete type from the enclosing decl's type_ctx if available.
                 const left_is_literal = b.left.* == .int_literal or b.left.* == .float_literal;
@@ -1974,15 +2034,15 @@ pub const CodeGen = struct {
                 try self.write(", ");
                 try self.generateExpr(b.right);
                 if (type_str) |ts| {
-                    try self.write("); if (_ov[1] != 0) break :blk OrhonResult(");
+                    try self.write("); if (_ov[1] != 0) break :blk _rt.OrhonResult(");
                     try self.write(ts);
-                    try self.write("){ .err = .{ .message = \"overflow\" } } else break :blk OrhonResult(");
+                    try self.write("){ .err = .{ .message = \"overflow\" } } else break :blk _rt.OrhonResult(");
                     try self.write(ts);
                     try self.write("){ .ok = _ov[0] }; })");
                 } else {
-                    try self.write("); if (_ov[1] != 0) break :blk OrhonResult(@TypeOf(");
+                    try self.write("); if (_ov[1] != 0) break :blk _rt.OrhonResult(@TypeOf(");
                     try self.generateExpr(b.left);
-                    try self.write(")){ .err = .{ .message = \"overflow\" } } else break :blk OrhonResult(@TypeOf(");
+                    try self.write(")){ .err = .{ .message = \"overflow\" } } else break :blk _rt.OrhonResult(@TypeOf(");
                     try self.generateExpr(b.left);
                     try self.write(")){ .ok = _ov[0] }; })");
                 }
@@ -2000,8 +2060,8 @@ pub const CodeGen = struct {
             if (cf.args.len > 0) try self.generateExpr(cf.args[0]);
             try self.write("))");
         } else if (std.mem.eql(u8, cf.name, "typeid")) {
-            // typeid(x) → orhonTypeId(@TypeOf(x))
-            try self.write("orhonTypeId(@TypeOf(");
+            // typeid(x) → _rt.orhonTypeId(@TypeOf(x))
+            try self.write("_rt.orhonTypeId(@TypeOf(");
             if (cf.args.len > 0) try self.generateExpr(cf.args[0]);
             try self.write("))");
         } else if (std.mem.eql(u8, cf.name, "typeOf")) {
@@ -2195,7 +2255,7 @@ pub const CodeGen = struct {
     fn typeToZig(self: *CodeGen, node: *parser.Node) ![]const u8 {
         return switch (node.*) {
             .type_named => |name| {
-                if (std.mem.eql(u8, name, K.Type.ERROR)) return "OrhonError";
+                if (std.mem.eql(u8, name, K.Type.ERROR)) return "_rt.OrhonError";
                 // Inside a generic struct, self-references use @This()
                 if (self.generic_struct_name) |gsn| {
                     if (std.mem.eql(u8, name, gsn)) return "@This()";
@@ -2226,8 +2286,8 @@ pub const CodeGen = struct {
                             !std.mem.eql(u8, t.type_named, K.Type.NULL))
                         {
                             const inner = try self.typeToZig(t);
-                            if (has_error) break :blk try self.allocTypeStr("OrhonResult({s})", .{inner});
-                            if (has_null) break :blk try self.allocTypeStr("OrhonNullable({s})", .{inner});
+                            if (has_error) break :blk try self.allocTypeStr("_rt.OrhonResult({s})", .{inner});
+                            if (has_null) break :blk try self.allocTypeStr("_rt.OrhonNullable({s})", .{inner});
                         }
                     }
                 }
@@ -2376,90 +2436,6 @@ fn isResultValueField(name: []const u8, decls: ?*declarations.DeclTable) bool {
     return false;
 }
 
-/// Check if an AST node (or its descendants) contains an overflow() call
-fn nodeUsesOverflow(node: *parser.Node) bool {
-    return switch (node.*) {
-        .call_expr => |c| blk: {
-            if (c.callee.* == .identifier and std.mem.eql(u8, c.callee.identifier, "overflow")) break :blk true;
-            for (c.args) |a| { if (nodeUsesOverflow(a)) break :blk true; }
-            break :blk false;
-        },
-        .func_decl => |f| nodeUsesOverflow(f.body),
-        .struct_decl => |s| blk: {
-            for (s.members) |m| { if (nodeUsesOverflow(m)) break :blk true; }
-            break :blk false;
-        },
-        .block => |b| blk: {
-            for (b.statements) |s| { if (nodeUsesOverflow(s)) break :blk true; }
-            break :blk false;
-        },
-        .var_decl, .const_decl => |v| nodeUsesOverflow(v.value),
-        .return_stmt => |r| if (r.value) |v| nodeUsesOverflow(v) else false,
-        .if_stmt => |i| nodeUsesOverflow(i.condition) or nodeUsesOverflow(i.then_block) or
-            if (i.else_block) |eb| nodeUsesOverflow(eb) else false,
-        else => false,
-    };
-}
-
-/// Check if an AST node (or its children) contains an Error union type
-fn nodeContainsErrorUnion(node: *parser.Node) bool {
-    switch (node.*) {
-        .func_decl => |f| {
-            if (f.return_type.* == .type_union) {
-                for (f.return_type.type_union) |t| {
-                    if (t.* == .type_named and std.mem.eql(u8, t.type_named, K.Type.ERROR)) return true;
-                }
-            }
-            return false;
-        },
-        .struct_decl => |s| {
-            for (s.members) |m| {
-                if (nodeContainsErrorUnion(m)) return true;
-            }
-            return false;
-        },
-        .error_literal => return true,
-        .const_decl => |v| {
-            if (v.type_annotation) |ta| {
-                if (ta.* == .type_named and std.mem.eql(u8, ta.type_named, K.Type.ERROR)) return true;
-            }
-            return v.value.* == .error_literal;
-        },
-        else => return false,
-    }
-}
-
-/// Check if an AST node (or its children) contains a null union type
-fn nodeContainsNullUnion(node: *parser.Node) bool {
-    switch (node.*) {
-        .func_decl => |f| {
-            if (f.return_type.* == .type_union) {
-                for (f.return_type.type_union) |t| {
-                    if (t.* == .type_named and std.mem.eql(u8, t.type_named, K.Type.NULL)) return true;
-                }
-            }
-            return false;
-        },
-        .struct_decl => |s| {
-            for (s.members) |m| {
-                if (nodeContainsNullUnion(m)) return true;
-            }
-            return false;
-        },
-        .var_decl, .const_decl => |v| {
-            if (v.type_annotation) |ta| {
-                if (ta.* == .type_union) {
-                    for (ta.type_union) |t| {
-                        if (t.* == .type_named and std.mem.eql(u8, t.type_named, K.Type.NULL)) return true;
-                    }
-                }
-            }
-            return false;
-        },
-        else => return false,
-    }
-}
-
 test "codegen - simple program" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
@@ -2512,7 +2488,7 @@ test "codegen - simple program" {
     try std.testing.expect(std.mem.indexOf(u8, output, "pub fn main()") != null);
 }
 
-test "codegen - orhonTypeId always in preamble" {
+test "codegen - runtime import in preamble" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
@@ -2553,7 +2529,7 @@ test "codegen - orhonTypeId always in preamble" {
     try gen.generate(prog, "main");
     try std.testing.expect(!reporter.hasErrors());
     const output = gen.getOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "fn orhonTypeId(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "@import(\"_orhon_rt\")") != null);
 }
 
 test "codegen - type to zig" {
@@ -2750,7 +2726,7 @@ test "codegen - overflow helpers wrap/sat/overflow" {
     try gen.generateExpr(ov_call);
     const ov_out = gen.getOutput();
     try std.testing.expect(std.mem.indexOf(u8, ov_out, "@addWithOverflow") != null);
-    try std.testing.expect(std.mem.indexOf(u8, ov_out, "OrhonResult") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ov_out, "_rt.OrhonResult") != null);
 }
 
 // BRIDGE TODO: string method codegen test removed — string methods now go through bridge

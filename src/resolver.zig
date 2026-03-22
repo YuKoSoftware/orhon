@@ -473,7 +473,7 @@ pub const TypeResolver = struct {
                 64 => RT{ .primitive = "f64" },
                 else => RT{ .primitive = "float_literal" },
             } else RT{ .primitive = "float_literal" },
-            .string_literal => RT{ .primitive = K.Type.STRING },
+            .string_literal, .interpolated_string => RT{ .primitive = K.Type.STRING },
             .bool_literal => RT{ .primitive = "bool" },
             .null_literal => RT.null_type,
             .error_literal => RT.err,

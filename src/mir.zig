@@ -304,6 +304,7 @@ pub const MirGen = struct {
             .bool_literal => |b| MirValue{ .bool_const = b },
             .null_literal => MirValue{ .null_const = {} },
             .string_literal => |s| MirValue{ .string_const = s },
+            .interpolated_string => MirValue{ .string_const = "\"<interpolated>\"" },
             .identifier => |name| blk: {
                 // Look up slot — simplified, returns func_ref for now
                 break :blk MirValue{ .func_ref = name };

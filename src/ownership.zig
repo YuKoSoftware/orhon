@@ -126,7 +126,7 @@ pub const OwnershipChecker = struct {
             .array_literal => |elems| {
                 if (elems.len > 0) {
                     return switch (elems[0].*) {
-                        .int_literal, .float_literal, .bool_literal, .string_literal => true,
+                        .int_literal, .float_literal, .bool_literal, .string_literal, .interpolated_string => true,
                         else => false,
                     };
                 }
@@ -539,7 +539,7 @@ pub const OwnershipChecker = struct {
 /// Conservative: returns false if unknown.
 fn inferPrimitiveFromValue(value: *parser.Node, scope: *OwnershipScope) bool {
     return switch (value.*) {
-        .int_literal, .float_literal, .bool_literal, .string_literal => true,
+        .int_literal, .float_literal, .bool_literal, .string_literal, .interpolated_string => true,
         .binary_expr => true, // arithmetic/comparison results are primitive
         .unary_expr => true, // negation/not results are primitive
         .identifier => |name| {

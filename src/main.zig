@@ -342,6 +342,10 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: bool) !
 // STD INIT
 // ============================================================
 
+const RT_ORH = @embedFile("std/_rt.orh");
+const RT_ZIG = @embedFile("std/_rt.zig");
+const ALLOCATOR_ORH = @embedFile("std/allocator.orh");
+const ALLOCATOR_ZIG = @embedFile("std/allocator.zig");
 const CONSOLE_ORH = @embedFile("std/console.orh");
 const CONSOLE_ZIG = @embedFile("std/console.zig");
 const FS_ORH      = @embedFile("std/fs.orh");
@@ -382,6 +386,10 @@ fn ensureStdFiles(allocator: std.mem.Allocator) !void {
     try std.fs.cwd().makePath(std_dir);
 
     const files = [_]struct { name: []const u8, content: []const u8 }{
+        .{ .name = "_rt.orh",       .content = RT_ORH },
+        .{ .name = "_rt.zig",       .content = RT_ZIG },
+        .{ .name = "allocator.orh", .content = ALLOCATOR_ORH },
+        .{ .name = "allocator.zig", .content = ALLOCATOR_ZIG },
         .{ .name = "console.orh", .content = CONSOLE_ORH },
         .{ .name = "console.zig", .content = CONSOLE_ZIG },
         .{ .name = "fs.orh",      .content = FS_ORH },
@@ -680,6 +688,14 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
 
     // Ensure embedded std files exist in .orh-cache/std/
     try ensureStdFiles(allocator);
+
+    // Copy runtime bridge to generated dir — always available for all modules
+    try cache.ensureGeneratedDir();
+    {
+        const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_rt.zig", .{});
+        defer file.close();
+        try file.writeAll(RT_ZIG);
+    }
 
     // ── Pass 3: Module Resolution ──────────────────────────────
     var mod_resolver = module.Resolver.init(allocator, reporter);

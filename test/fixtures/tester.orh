@@ -1335,3 +1335,47 @@ pub func test_system_run() i32 {
 test "system run" {
     assert(test_system_run() == 1)
 }
+
+// ─── String Comparison ──────────────────────────────────────
+
+pub func test_string_eq() i32 {
+    const a: String = "hello"
+    const b: String = "hello"
+    if(a == b) { return 1 }
+    return 0
+}
+
+pub func test_string_ne() i32 {
+    const a: String = "hello"
+    const b: String = "world"
+    if(a != b) { return 1 }
+    return 0
+}
+
+pub func test_string_eq_literal() i32 {
+    const a: String = "hello"
+    if(a == "hello") { return 1 }
+    return 0
+}
+
+pub func test_string_eq_param(a: String, b: String) i32 {
+    if(a == b) { return 1 }
+    return 0
+}
+
+test "string eq" {
+    assert(test_string_eq() == 1)
+}
+
+test "string ne" {
+    assert(test_string_ne() == 1)
+}
+
+test "string eq literal" {
+    assert(test_string_eq_literal() == 1)
+}
+
+test "string eq param" {
+    assert(test_string_eq_param("foo", "foo") == 1)
+    assert(test_string_eq_param("foo", "bar") == 0)
+}

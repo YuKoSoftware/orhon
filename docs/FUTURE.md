@@ -26,6 +26,7 @@ All stdlib modules use the bridge pattern (module + `.zig` sidecar). The codegen
 
 ### Implemented (bridge modules)
 ```
+std.allocator     // memory allocators — SMP, Arena, Page
 std.console       // terminal I/O — print, println, get
 std.ziglib        // bridge testbed — exercises all interop patterns
 ```
@@ -35,7 +36,6 @@ std.ziglib        // bridge testbed — exercises all interop patterns
 std.fs            // filesystem + path operations
 std.json          // JSON parsing and serialization
 std.math          // mathematical functions
-std.mem           // memory allocators
 std.random        // random number generation
 std.sort          // sorting and ordering
 std.str           // string utilities
@@ -49,7 +49,6 @@ std.collections   // List, Map, Set — generic collection types (bridge)
 std.net           // raw sockets — TCP, UDP
 std.encoding      // base64, hex, UTF-8, UTF-16
 std.unicode       // full unicode support, normalization
-std.fmt           // string formatting
 std.process       // spawn processes, pipes, child processes
 std.signal        // OS signals — SIGINT, SIGTERM etc
 std.reflect       // type introspection
@@ -92,12 +91,6 @@ Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.
 ---
 
 ## Pending Language Work
-
-### String `==` comparison
-Currently generates invalid Zig for string comparison. Codegen should emit `std.mem.eql(u8, a, b)` when both sides are `String`.
-
-### String interpolation
-`@{name}` syntax was removed during codegen cleanup. Needs reimplementation — either in codegen as a core feature or through a bridge string module.
 
 ### `for` loop over bridge types
 Solved by having bridge types expose `.items()` returning a slice. Standard `for` iteration works on slices. No codegen change needed — bridge modules implement the pattern.

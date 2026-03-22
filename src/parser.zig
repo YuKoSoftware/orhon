@@ -63,6 +63,7 @@ pub const NodeKind = enum {
     tuple_literal,
     error_literal,
     range_expr,
+    interpolated_string,
     // Types
     type_primitive,
     type_slice,
@@ -129,6 +130,7 @@ pub const Node = union(NodeKind) {
     tuple_literal: TupleLiteral,
     error_literal: []const u8,
     range_expr: BinaryOp,
+    interpolated_string: InterpolatedString,
     type_primitive: []const u8,
     type_slice: *Node,
     type_array: TypeArray,
@@ -276,6 +278,15 @@ pub const MatchStmt = struct {
 pub const MatchArm = struct {
     pattern: *Node,
     body: *Node,
+};
+
+pub const InterpolatedPart = union(enum) {
+    literal: []const u8, // string chunk (raw text, no quotes)
+    expr: *Node, // embedded expression
+};
+
+pub const InterpolatedString = struct {
+    parts: []InterpolatedPart,
 };
 
 pub const BinaryOp = struct {
@@ -1902,6 +1913,11 @@ pub const Parser = struct {
             },
             .string_literal => {
                 _ = self.advance();
+                // Check for interpolation: @{expr} inside the string
+                const text = tok.text;
+                if (std.mem.indexOf(u8, text, "@{") != null) {
+                    return self.parseInterpolatedString(text);
+                }
                 return self.newNode(.{ .string_literal = tok.text });
             },
             .kw_true => {
@@ -2059,6 +2075,42 @@ pub const Parser = struct {
                 return error.ParseError;
             },
         }
+    }
+
+    /// Parse a string containing @{expr} interpolation into parts.
+    /// Input text includes quotes: "hello @{name}!"
+    /// Produces InterpolatedString with literal chunks and expression nodes.
+    fn parseInterpolatedString(self: *Parser, text: []const u8) anyerror!*Node {
+        // Strip surrounding quotes
+        const inner = text[1 .. text.len - 1];
+        var parts: std.ArrayListUnmanaged(InterpolatedPart) = .{};
+        var pos: usize = 0;
+
+        while (pos < inner.len) {
+            if (std.mem.indexOfPos(u8, inner, pos, "@{")) |at| {
+                // Literal chunk before @{
+                if (at > pos) {
+                    try parts.append(self.alloc(), .{ .literal = inner[pos..at] });
+                }
+                // Find closing }
+                const close = std.mem.indexOfPos(u8, inner, at + 2, "}") orelse {
+                    try self.reporter.report(.{ .message = "unterminated @{ in string interpolation" });
+                    return error.ParseError;
+                };
+                const expr_name = inner[at + 2 .. close];
+                const expr_node = try self.newNode(.{ .identifier = expr_name });
+                try parts.append(self.alloc(), .{ .expr = expr_node });
+                pos = close + 1;
+            } else {
+                // Remaining literal
+                try parts.append(self.alloc(), .{ .literal = inner[pos..] });
+                break;
+            }
+        }
+
+        return self.newNode(.{ .interpolated_string = .{
+            .parts = try parts.toOwnedSlice(self.alloc()),
+        } });
     }
 
     // ============================================================

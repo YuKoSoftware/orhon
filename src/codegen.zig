@@ -1224,7 +1224,9 @@ pub const CodeGen = struct {
                 try self.writeIndent(); try self.writeFmt("defer {s}.deinit();", .{name});
             },
         }
-        try self.allocator_vars.put(self.allocator, name, .{ .kind = kind, .impl_name = try self.allocator.dupe(u8, name) });
+        const impl_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(impl_name);
+        try self.allocator_vars.put(self.allocator, name, .{ .kind = kind, .impl_name = impl_name });
     }
 
     /// Generate a method call on an allocator variable: a.alloc(), a.allocOne(), a.free(), a.freeAll()
@@ -1346,26 +1348,7 @@ pub const CodeGen = struct {
             try self.arb_union_vars.put(self.allocator, v.name, v.type_annotation.?);
             try self.generateArbUnionWrappedExpr(v.value, v.type_annotation.?);
         } else {
-            if (isPtrExpr(v.value)) try self.rawptr_vars.put(self.allocator, v.name, {});
-            if (isSafePtrExpr(v.value)) try self.ptr_vars.put(self.allocator, v.name, {});
-            if (isCollExpr(v.value, "List")) try self.list_vars.put(self.allocator, v.name, try self.resolveCollAllocName(v.value.coll_expr));
-            if (isCollExpr(v.value, "Map")) try self.map_vars.put(self.allocator, v.name, try self.resolveCollAllocName(v.value.coll_expr));
-            if (isCollExpr(v.value, "Set")) try self.set_vars.put(self.allocator, v.name, try self.resolveCollAllocName(v.value.coll_expr));
-            if (v.type_annotation) |t| {
-                if (t.* == .type_named and self.isBitfieldType(t.type_named))
-                    try self.bitfield_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, t.type_named));
-            }
-            if (isStringType(v.type_annotation) or v.value.* == .string_literal)
-                try self.string_vars.put(self.allocator, v.name, {});
-            // Infer union kind from function call return type (no explicit annotation)
-            if (v.type_annotation == null) {
-                if (self.callReturnsErrorUnion(v.value))
-                    try self.error_vars.put(self.allocator, v.name, {})
-                else if (self.callReturnsNullUnion(v.value))
-                    try self.null_vars.put(self.allocator, v.name, {})
-                else if (self.callReturnsArbUnion(v.value)) |rt|
-                    try self.arb_union_vars.put(self.allocator, v.name, rt);
-            }
+            try self.trackVarProperties(v);
             try self.generateExpr(v.value);
         }
         try self.write(";\n");
@@ -1395,32 +1378,52 @@ pub const CodeGen = struct {
             try self.arb_union_vars.put(self.allocator, v.name, v.type_annotation.?);
             try self.generateArbUnionWrappedExpr(v.value, v.type_annotation.?);
         } else {
-            if (isPtrExpr(v.value)) try self.rawptr_vars.put(self.allocator, v.name, {});
-            if (isSafePtrExpr(v.value)) try self.ptr_vars.put(self.allocator, v.name, {});
-            if (isCollExpr(v.value, "List")) try self.list_vars.put(self.allocator, v.name, try self.resolveCollAllocName(v.value.coll_expr));
-            if (isCollExpr(v.value, "Map")) try self.map_vars.put(self.allocator, v.name, try self.resolveCollAllocName(v.value.coll_expr));
-            if (isCollExpr(v.value, "Set")) try self.set_vars.put(self.allocator, v.name, try self.resolveCollAllocName(v.value.coll_expr));
-            if (v.type_annotation) |t| {
-                if (t.* == .type_named and self.isBitfieldType(t.type_named))
-                    try self.bitfield_vars.put(self.allocator, v.name, try self.allocator.dupe(u8, t.type_named));
-            }
-            if (isStringType(v.type_annotation) or v.value.* == .string_literal)
-                try self.string_vars.put(self.allocator, v.name, {});
-            // Infer union kind from function call return type (no explicit annotation)
-            if (v.type_annotation == null) {
-                if (self.callReturnsErrorUnion(v.value))
-                    try self.error_vars.put(self.allocator, v.name, {})
-                else if (self.callReturnsNullUnion(v.value))
-                    try self.null_vars.put(self.allocator, v.name, {})
-                else if (self.callReturnsArbUnion(v.value)) |rt|
-                    try self.arb_union_vars.put(self.allocator, v.name, rt);
-            }
+            try self.trackVarProperties(v);
             const prev_ctx = self.type_ctx;
             self.type_ctx = v.type_annotation;
             try self.generateExpr(v.value);
             self.type_ctx = prev_ctx;
         }
         try self.writeFmt("; _ = &{s};", .{v.name});
+    }
+
+    /// Track variable properties (ptr, collection, bitfield, string, inferred unions)
+    fn trackVarProperties(self: *CodeGen, v: parser.VarDecl) anyerror!void {
+        if (isPtrExpr(v.value)) try self.rawptr_vars.put(self.allocator, v.name, {});
+        if (isSafePtrExpr(v.value)) try self.ptr_vars.put(self.allocator, v.name, {});
+        if (isCollExpr(v.value, "List")) {
+            const alloc_name = try self.resolveCollAllocName(v.value.coll_expr);
+            errdefer self.allocator.free(alloc_name);
+            try self.list_vars.put(self.allocator, v.name, alloc_name);
+        }
+        if (isCollExpr(v.value, "Map")) {
+            const alloc_name = try self.resolveCollAllocName(v.value.coll_expr);
+            errdefer self.allocator.free(alloc_name);
+            try self.map_vars.put(self.allocator, v.name, alloc_name);
+        }
+        if (isCollExpr(v.value, "Set")) {
+            const alloc_name = try self.resolveCollAllocName(v.value.coll_expr);
+            errdefer self.allocator.free(alloc_name);
+            try self.set_vars.put(self.allocator, v.name, alloc_name);
+        }
+        if (v.type_annotation) |t| {
+            if (t.* == .type_named and self.isBitfieldType(t.type_named)) {
+                const type_name = try self.allocator.dupe(u8, t.type_named);
+                errdefer self.allocator.free(type_name);
+                try self.bitfield_vars.put(self.allocator, v.name, type_name);
+            }
+        }
+        if (isStringType(v.type_annotation) or v.value.* == .string_literal)
+            try self.string_vars.put(self.allocator, v.name, {});
+        // Infer union kind from function call return type (no explicit annotation)
+        if (v.type_annotation == null) {
+            if (self.callReturnsErrorUnion(v.value))
+                try self.error_vars.put(self.allocator, v.name, {})
+            else if (self.callReturnsNullUnion(v.value))
+                try self.null_vars.put(self.allocator, v.name, {})
+            else if (self.callReturnsArbUnion(v.value)) |rt|
+                try self.arb_union_vars.put(self.allocator, v.name, rt);
+        }
     }
 
     /// Info extracted from an a.allocOne(T, val) call expression

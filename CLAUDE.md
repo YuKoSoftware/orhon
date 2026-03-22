@@ -165,8 +165,4 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 
 ---
 
-## Priority Rule
 
-Focus on getting the core language working. Don't flesh out std,
-don't add new language features, don't chase edge cases in analysis passes.
-Implement the common/core paths first. Stdlib and full blueprint come later.

@@ -219,10 +219,6 @@ pub const Lexer = struct {
                                 _ = self.advance(); // consume /
                                 break;
                             }
-                            if (c == '\n') {
-                                self.line += 1;
-                                self.col = 0;
-                            }
                             _ = self.advance();
                         }
                     } else {
@@ -243,6 +239,7 @@ pub const Lexer = struct {
         while (self.peek()) |ch| {
             if (ch == '\\') {
                 _ = self.advance(); // consume backslash
+                if (self.peek() == null) break; // EOF after backslash
                 _ = self.advance(); // consume escape char
             } else if (ch == '"') {
                 _ = self.advance(); // consume closing "
@@ -685,6 +682,19 @@ test "lexer - extern keyword" {
     try std.testing.expectEqual(TokenKind.kw_func,   kinds.items[1]);
 }
 
+test "lexer - block comment line tracking" {
+    // After a multiline block comment, tokens should have correct line numbers
+    var lex = Lexer.init("func\n/* line2\nline3\nline4 */\nvar");
+    const tok1 = lex.next(); // func on line 1
+    _ = lex.next(); // newline after func
+    // block comment is consumed by skipWhitespaceAndComments
+    _ = lex.next(); // newline after block comment
+    const tok2 = lex.next(); // var on line 5
+
+    try std.testing.expectEqual(@as(usize, 1), tok1.line);
+    try std.testing.expectEqual(@as(usize, 5), tok2.line);
+}
+
 test "lexer - colon not consumed as scope" {
     // single : should remain .colon, not .scope
     const alloc = std.testing.allocator;
@@ -700,4 +710,74 @@ test "lexer - colon not consumed as scope" {
         }
     }
     try std.testing.expectEqual(TokenKind.colon, kinds.items[1]);
+}
+
+test "fuzz lexer" {
+    try std.testing.fuzz({}, struct {
+        fn run(_: void, input: []const u8) !void {
+            var lex = Lexer.init(input);
+            var count: usize = 0;
+            const limit = input.len +| 100; // saturating add
+            while (count < limit) : (count += 1) {
+                const tok = lex.next();
+                if (tok.kind == .eof) return;
+            }
+            return error.TestUnexpectedResult;
+        }
+    }.run, .{});
+}
+
+test "lexer - stress random inputs" {
+    // Generate pseudo-random inputs to stress test the lexer
+    const alloc = std.testing.allocator;
+    const seeds = [_][]const u8{
+        // Edge cases: unterminated constructs
+        "\"unterminated string",
+        "/* unterminated block comment",
+        "/* nested /* comment */",
+        "///",
+        // Invalid literals
+        "0x", "0b", "0o", "0xZZ", "0b22", "0o99",
+        "123_", "_123", "1__2",
+        // Deep nesting
+        "(((((((((((((((((((((((((((((((",
+        "))))))))))))))))))))))))))))))))",
+        "[[[[[[[[[[[",
+        // All operators adjacent
+        "+-*/%++==!=<><=>=&|^!>><<..",
+        // Keywords mashed together
+        "funcvarconstreturnifelsewhileformatchstructenumimportpub",
+        // Mixed unicode and ASCII
+        "\x00\x01\x02\xff\xfe\xfd",
+        "\t\t\t\n\n\n\r\r\r   ",
+        // Long repetitions
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0000000000000000000000000000000000000000000000000000000000000000",
+        "\"\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\"",
+        // Real-ish code fragments
+        "func f(x: i32, y: i32) i32 { return x + y }",
+        "module test\nimport std::console\n\nfunc main() void {\n  console::println(\"hi\")\n}",
+        "const x: (Error | i32) = Error(\"fail\")",
+        "var list = List(i32)()\nlist.add(42)\nfor item in list { }",
+        "struct Point { x: f64 y: f64 }\nconst p = Point { x: 1.0, y: 2.0 }",
+        // Empty and minimal
+        "",
+        " ",
+        "\n",
+        "x",
+        // Boundary characters
+        ":::::::::::::::",
+        "................",
+        ",,,,,,,,,,,,,,,,",
+    };
+
+    for (seeds) |input| {
+        var lex = Lexer.init(input);
+        var tokens = try lex.tokenize(alloc);
+        defer tokens.deinit(alloc);
+
+        // Must always produce at least EOF
+        try std.testing.expect(tokens.items.len > 0);
+        try std.testing.expectEqual(TokenKind.eof, tokens.items[tokens.items.len - 1].kind);
+    }
 }

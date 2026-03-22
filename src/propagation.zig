@@ -130,6 +130,12 @@ pub const PropChecker = struct {
                     if (member.* == .func_decl) try self.checkTopLevel(member);
                 }
             },
+            .test_decl => |t| {
+                var scope = PropScope.init(self.allocator, null, false);
+                defer scope.deinit();
+                try self.checkNode(t.body, &scope);
+                try self.checkScopeExit(&scope);
+            },
             .bitfield_decl => {},
             else => {},
         }
@@ -273,6 +279,14 @@ pub const PropChecker = struct {
 
             .block => try self.checkNode(node, scope),
 
+            .thread_block => |t| {
+                // Check thread body for unhandled unions
+                var thread_scope = PropScope.init(self.allocator, scope, false);
+                defer thread_scope.deinit();
+                try self.checkNode(t.body, &thread_scope);
+                try self.checkScopeExit(&thread_scope);
+            },
+
             else => {},
         }
     }
@@ -309,6 +323,11 @@ pub const PropChecker = struct {
             .index_expr => |i| {
                 try self.checkExprForUnsafeUnwrap(i.object, scope);
                 try self.checkExprForUnsafeUnwrap(i.index, scope);
+            },
+            .slice_expr => |s| {
+                try self.checkExprForUnsafeUnwrap(s.object, scope);
+                try self.checkExprForUnsafeUnwrap(s.low, scope);
+                try self.checkExprForUnsafeUnwrap(s.high, scope);
             },
             else => {},
         }
@@ -409,18 +428,28 @@ fn typeNodeIsUnion(node: *parser.Node) ?bool {
     }
 }
 
-/// Check if a block contains an early exit (return, break, continue) at the top level
+/// Check if a block contains an early exit (return, break, continue)
 fn blockHasEarlyExit(node: *parser.Node) bool {
-    if (node.* != .block) return false;
+    if (node.* != .block) return nodeIsEarlyExit(node);
     for (node.block.statements) |stmt| {
-        switch (stmt.*) {
-            .return_stmt => return true,
-            .break_stmt => return true,
-            .continue_stmt => return true,
-            else => {},
-        }
+        if (nodeIsEarlyExit(stmt)) return true;
     }
     return false;
+}
+
+fn nodeIsEarlyExit(node: *parser.Node) bool {
+    return switch (node.*) {
+        .return_stmt => true,
+        .break_stmt => true,
+        .continue_stmt => true,
+        .block => blockHasEarlyExit(node),
+        .if_stmt => |i| blk: {
+            // if+else where both branches exit
+            const else_block = i.else_block orelse break :blk false;
+            break :blk blockHasEarlyExit(i.then_block) and blockHasEarlyExit(else_block);
+        },
+        else => false,
+    };
 }
 
 fn typeCanPropagate(node: *parser.Node) bool {

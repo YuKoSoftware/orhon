@@ -112,7 +112,7 @@ fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
         .verbose = false,
         .source_dir = "src",
         .project_name = "",
-            .init_in_place = false,
+        .init_in_place = false,
         .allocator = allocator,
     };
 

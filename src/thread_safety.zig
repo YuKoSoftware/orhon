@@ -94,6 +94,29 @@ pub const ThreadSafetyChecker = struct {
                     if (member.* == .func_decl) try self.checkNode(member);
                 }
             },
+            .test_decl => |t| {
+                // Treat test bodies like function bodies for thread safety
+                const prev_declared = self.declared_threads;
+                const prev_joined = self.joined_threads;
+                const prev_moved = self.moved_to_thread;
+                const prev_consumed = self.consumed_threads;
+                self.declared_threads = std.StringHashMap(void).init(self.allocator);
+                self.joined_threads = std.StringHashMap(void).init(self.allocator);
+                self.moved_to_thread = std.StringHashMap([]const u8).init(self.allocator);
+                self.consumed_threads = std.StringHashMap(void).init(self.allocator);
+                defer {
+                    self.declared_threads.deinit();
+                    self.joined_threads.deinit();
+                    self.moved_to_thread.deinit();
+                    self.consumed_threads.deinit();
+                    self.declared_threads = prev_declared;
+                    self.joined_threads = prev_joined;
+                    self.moved_to_thread = prev_moved;
+                    self.consumed_threads = prev_consumed;
+                }
+                try self.checkNode(t.body);
+                try self.checkUnjoinedThreads();
+            },
             else => {},
         }
     }
@@ -155,19 +178,19 @@ pub const ThreadSafetyChecker = struct {
                 // Check if using a value that was moved into a thread
                 try self.checkExprForThreadMoves(v.value);
                 // Check for .value join via: var x = thread_name.value
-                self.checkJoinExpr(v.value);
+                try self.checkJoinExpr(v.value);
             },
 
             .const_decl => |v| {
                 try self.checkExprForThreadMoves(v.value);
                 // Check for .value join via: const x = thread_name.value
-                self.checkJoinExpr(v.value);
+                try self.checkJoinExpr(v.value);
             },
 
             .assignment => |a| {
                 try self.checkExprForThreadMoves(a.right);
                 // Check for .value join via: x = thread_name.value
-                self.checkJoinExpr(a.right);
+                try self.checkJoinExpr(a.right);
             },
 
             .call_expr => |c| {
@@ -188,7 +211,7 @@ pub const ThreadSafetyChecker = struct {
 
             .return_stmt => |r| {
                 if (r.value) |v| {
-                    self.checkJoinExpr(v);
+                    try self.checkJoinExpr(v);
                     try self.checkExprForThreadMoves(v);
                 }
             },
@@ -237,7 +260,7 @@ pub const ThreadSafetyChecker = struct {
     }
 
     /// Recursively check if an expression contains thread joins (thread_name.value)
-    fn checkJoinExpr(self: *ThreadSafetyChecker, expr: *parser.Node) void {
+    fn checkJoinExpr(self: *ThreadSafetyChecker, expr: *parser.Node) anyerror!void {
         switch (expr.*) {
             .field_expr => |fe| {
                 if (fe.object.* == .identifier and std.mem.eql(u8, fe.field, "value")) {
@@ -245,26 +268,26 @@ pub const ThreadSafetyChecker = struct {
                     if (self.declared_threads.contains(name)) {
                         // Check for second .value call — .value is a move
                         if (self.consumed_threads.contains(name)) {
-                            const msg = std.fmt.allocPrint(self.allocator,
+                            const msg = try std.fmt.allocPrint(self.allocator,
                                 "thread '{s}' .value already consumed — .value is a move, can only be called once",
-                                .{name}) catch return;
+                                .{name});
                             defer self.allocator.free(msg);
-                            self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(expr) }) catch {};
+                            try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(expr) });
                             return;
                         }
-                        self.joined_threads.put(name, {}) catch {};
-                        self.consumed_threads.put(name, {}) catch {};
+                        try self.joined_threads.put(name, {});
+                        try self.consumed_threads.put(name, {});
                         _ = self.moved_to_thread.remove(name);
                     }
                 }
             },
             .binary_expr => |b| {
-                self.checkJoinExpr(b.left);
-                self.checkJoinExpr(b.right);
+                try self.checkJoinExpr(b.left);
+                try self.checkJoinExpr(b.right);
             },
             .call_expr => |c| {
-                self.checkJoinExpr(c.callee);
-                for (c.args) |arg| self.checkJoinExpr(arg);
+                try self.checkJoinExpr(c.callee);
+                for (c.args) |arg| try self.checkJoinExpr(arg);
             },
             else => {},
         }
@@ -517,14 +540,14 @@ test "thread safety - second .value call is error" {
     // First .value — ok
     var t_id = parser.Node{ .identifier = "t" };
     var val1 = parser.Node{ .field_expr = .{ .object = &t_id, .field = "value" } };
-    checker.checkJoinExpr(&val1);
+    try checker.checkJoinExpr(&val1);
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(checker.consumed_threads.contains("t"));
 
     // Second .value — should error
     var t_id2 = parser.Node{ .identifier = "t" };
     var val2 = parser.Node{ .field_expr = .{ .object = &t_id2, .field = "value" } };
-    checker.checkJoinExpr(&val2);
+    try checker.checkJoinExpr(&val2);
     try std.testing.expect(reporter.hasErrors());
 }
 

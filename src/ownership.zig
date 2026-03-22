@@ -88,6 +88,16 @@ pub const OwnershipChecker = struct {
 
     /// Look up a field's type from the DeclTable using the variable's tracked type.
     /// Returns true if primitive, false if non-primitive, null if unknown.
+    /// Check if a variable's type is a known struct in DeclTable
+    fn isKnownStruct(self: *const OwnershipChecker, scope: *OwnershipScope, obj_name: []const u8) bool {
+        const decls = self.decls orelse return false;
+        const var_state = scope.getState(obj_name) orelse return false;
+        if (var_state.type_name.len > 0) {
+            return decls.structs.contains(var_state.type_name);
+        }
+        return false;
+    }
+
     fn lookupFieldType(self: *const OwnershipChecker, scope: *OwnershipScope, obj_name: []const u8, field_name: []const u8) ?bool {
         const decls = self.decls orelse return null;
         const var_state = scope.getState(obj_name) orelse return null;
@@ -181,6 +191,12 @@ pub const OwnershipChecker = struct {
 
                 // Check for unhandled error unions at scope exit
                 // (simplified — full impl tracks error union vars)
+            },
+
+            .test_decl => |t| {
+                var test_scope = OwnershipScope.init(self.allocator, scope);
+                defer test_scope.deinit();
+                try self.checkNode(t.body, &test_scope);
             },
 
             .struct_decl => |s| {
@@ -403,15 +419,24 @@ pub const OwnershipChecker = struct {
                     if (scope.getState(obj_name)) |state| {
                         if (!state.is_primitive) {
                             const field_is_prim = self.lookupFieldType(scope, obj_name, f.field);
-                            if (field_is_prim != null and !field_is_prim.?) {
-                                // Non-primitive field access as move → struct atomicity error
+                            if (field_is_prim) |is_prim| {
+                                if (!is_prim) {
+                                    // Known non-primitive field → struct atomicity error
+                                    const msg = try std.fmt.allocPrint(self.allocator,
+                                        "cannot move field '{s}' out of '{s}' — structs are atomic ownership units",
+                                        .{ f.field, obj_name });
+                                    defer self.allocator.free(msg);
+                                    try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                                }
+                            } else if (self.isKnownStruct(scope, obj_name)) {
+                                // Known struct but field not found — conservative error
                                 const msg = try std.fmt.allocPrint(self.allocator,
                                     "cannot move field '{s}' out of '{s}' — structs are atomic ownership units",
                                     .{ f.field, obj_name });
                                 defer self.allocator.free(msg);
                                 try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
                             }
-                            // Primitive field access is always a copy — no error
+                            // Unknown type (union unwrap, etc.) — skip check
                         }
                     }
                 }
@@ -460,6 +485,12 @@ pub const OwnershipChecker = struct {
             .array_literal => |elems| {
                 for (elems) |elem| {
                     try self.checkExpr(elem, scope, false);
+                }
+            },
+
+            .tuple_literal => |t| {
+                for (t.fields) |field| {
+                    try self.checkExpr(field, scope, false);
                 }
             },
 

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const version = std.SemanticVersion{ .major = 0, .minor = 3, .patch = 8 };
+pub const version = std.SemanticVersion{ .major = 0, .minor = 3, .patch = 9 };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -73,4 +73,17 @@ pub fn build(b: *std.Build) void {
         const run_unit_tests = b.addRunArtifact(unit_tests);
         test_step.dependOn(&run_unit_tests.step);
     }
+
+    // Fuzz step — runs random inputs through lexer + parser
+    const fuzz_exe = b.addExecutable(.{
+        .name = "fuzz",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/fuzz.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_fuzz = b.addRunArtifact(fuzz_exe);
+    const fuzz_step = b.step("fuzz", "Fuzz test the lexer and parser");
+    fuzz_step.dependOn(&run_fuzz.step);
 }

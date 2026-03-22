@@ -624,27 +624,21 @@ pub const TypeResolver = struct {
     /// Check that a match on a union type covers all members
     fn checkMatchExhaustiveness(self: *TypeResolver, match_type: RT, arms: []*parser.Node, match_node: *parser.Node) !void {
         // Collect covered arm names
-        var covered: [16][]const u8 = undefined;
-        var covered_count: usize = 0;
+        var covered: std.ArrayListUnmanaged([]const u8) = .{};
+        defer covered.deinit(self.allocator);
         for (arms) |arm| {
             if (arm.* == .match_arm) {
                 const pat = arm.match_arm.pattern;
                 if (pat.* == .identifier and !std.mem.eql(u8, pat.identifier, "else")) {
-                    if (covered_count < 16) {
-                        covered[covered_count] = pat.identifier;
-                        covered_count += 1;
-                    }
+                    try covered.append(self.allocator, pat.identifier);
                 }
                 if (pat.* == .null_literal) {
-                    if (covered_count < 16) {
-                        covered[covered_count] = "null";
-                        covered_count += 1;
-                    }
+                    try covered.append(self.allocator, "null");
                 }
             }
         }
 
-        const covered_slice = covered[0..covered_count];
+        const covered_slice = covered.items;
 
         switch (match_type) {
             .error_union => |inner| {
@@ -895,11 +889,45 @@ fn typesCompatible(a: RT, b: RT) bool {
     // Integer-to-integer and float-to-float are compatible (Zig handles coercion)
     if (a == .primitive and b == .primitive and isIntegerType(a.primitive) and isIntegerType(b.primitive)) return true;
     if (a == .primitive and b == .primitive and isFloatType(a.primitive) and isFloatType(b.primitive)) return true;
-    // Error/null/arbitrary unions accept their inner types
-    if (b == .error_union or b == .null_union or b == .union_type) return true;
-    if (a == .error_union or a == .null_union or a == .union_type) return true;
+    // Error unions accept their inner type, Error, or unresolved literals
+    if (b == .error_union) return a == .err or a == .inferred or a == .unknown or
+        std.mem.eql(u8, a_name, b.error_union.name()) or isLiteralCompatible(a, b.error_union.*);
+    if (a == .error_union) return b == .err or b == .inferred or b == .unknown or
+        std.mem.eql(u8, b_name, a.error_union.name()) or isLiteralCompatible(b, a.error_union.*);
+    // Null unions accept their inner type, null, or unresolved literals
+    if (b == .null_union) return a == .null_type or a == .inferred or a == .unknown or
+        std.mem.eql(u8, a_name, b.null_union.name()) or isLiteralCompatible(a, b.null_union.*);
+    if (a == .null_union) return b == .null_type or b == .inferred or b == .unknown or
+        std.mem.eql(u8, b_name, a.null_union.name()) or isLiteralCompatible(b, a.null_union.*);
+    // Arbitrary unions accept any of their members, or unresolved literals matching any member
+    if (b == .union_type) {
+        if (a == .inferred or a == .unknown) return true;
+        for (b.union_type) |member| {
+            if (std.mem.eql(u8, a_name, member.name())) return true;
+            if (isLiteralCompatible(a, member)) return true;
+        }
+        return false;
+    }
+    if (a == .union_type) {
+        if (b == .inferred or b == .unknown) return true;
+        for (a.union_type) |member| {
+            if (std.mem.eql(u8, b_name, member.name())) return true;
+            if (isLiteralCompatible(b, member)) return true;
+        }
+        return false;
+    }
     // func_ptr / func returns are hard to check without full inference — allow
     if (a == .func_ptr or b == .func_ptr) return true;
+    return false;
+}
+
+/// Check if an unresolved literal type is compatible with a target type
+/// e.g. numeric_literal is compatible with any integer member of a union
+fn isLiteralCompatible(val: RT, target: RT) bool {
+    if (val != .primitive) return false;
+    if (target != .primitive) return false;
+    if (std.mem.eql(u8, val.primitive, "numeric_literal") and isIntegerType(target.primitive)) return true;
+    if (std.mem.eql(u8, val.primitive, "float_literal") and isFloatType(target.primitive)) return true;
     return false;
 }
 
@@ -1435,4 +1463,48 @@ test "resolver - array literal infers element type" {
 
     const result = try resolver.resolveExpr(arr, &scope);
     try std.testing.expectEqualStrings("i32", result.name());
+}
+
+test "resolver - match exhaustiveness with many arms" {
+    // Verify that match exhaustiveness checking works with >16 union members
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    defer resolver.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Build a union with 20 members: (T0 | T1 | ... | T19)
+    const n_members = 20;
+    const members = try a.alloc(RT, n_members);
+    for (0..n_members) |i| {
+        const name = try std.fmt.allocPrint(a, "T{d}", .{i});
+        members[i] = .{ .named = name };
+    }
+    const union_type: RT = .{ .union_type = members };
+
+    // Build match arms covering only 18 of 20 members (missing T18, T19)
+    const n_arms = 18;
+    const arms = try a.alloc(*parser.Node, n_arms);
+    for (0..n_arms) |i| {
+        const pat = try a.create(parser.Node);
+        pat.* = .{ .identifier = try std.fmt.allocPrint(a, "T{d}", .{i}) };
+        const body = try a.create(parser.Node);
+        body.* = .{ .int_literal = "0" };
+        const arm = try a.create(parser.Node);
+        arm.* = .{ .match_arm = .{ .pattern = pat, .body = body } };
+        arms[i] = arm;
+    }
+
+    const match_node = try a.create(parser.Node);
+    match_node.* = .{ .int_literal = "0" }; // dummy node for location
+
+    // Should report missing T18
+    try resolver.checkMatchExhaustiveness(union_type, arms, match_node);
+    try std.testing.expect(reporter.hasErrors());
 }

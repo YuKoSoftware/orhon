@@ -2772,3 +2772,89 @@ test "parser - pub var rejected" {
     _ = p.parseProgram() catch {};
     try std.testing.expect(reporter.hasErrors());
 }
+
+test "fuzz parser" {
+    const alloc = std.testing.allocator;
+    try std.testing.fuzz({}, struct {
+        fn run(_: void, input: []const u8) !void {
+            var lex = lexer.Lexer.init(input);
+            var tokens = try lex.tokenize(alloc);
+            defer tokens.deinit(alloc);
+
+            var reporter = errors.Reporter.init(alloc, .debug);
+            defer reporter.deinit();
+
+            var p = Parser.init(tokens.items, alloc, &reporter);
+            defer p.deinit();
+
+            _ = p.parseProgram() catch return;
+        }
+    }.run, .{});
+}
+
+test "parser - stress random inputs" {
+    const alloc = std.testing.allocator;
+    const seeds = [_][]const u8{
+        // Malformed declarations
+        "module",
+        "module \n func",
+        "func ()",
+        "func f(",
+        "func f() {",
+        "func f() void { return",
+        "struct {",
+        "struct S { x: }",
+        "enum E {",
+        "enum E { A B C",
+        // Malformed expressions
+        "module m\nfunc f() void { var x = }",
+        "module m\nfunc f() void { var x = + }",
+        "module m\nfunc f() void { var x = ((())) }",
+        "module m\nfunc f() void { if { } }",
+        "module m\nfunc f() void { while { } }",
+        "module m\nfunc f() void { for in { } }",
+        "module m\nfunc f() void { match { } }",
+        // Deeply nested
+        "module m\nfunc f() void { if true { if true { if true { if true { if true { } } } } } }",
+        "module m\nfunc f() void { var x = ((((((((1)))))))) }",
+        // Keywords as identifiers
+        "module m\nfunc func() void { }",
+        "module m\nfunc f() void { var var = 1 }",
+        "module m\nfunc f() void { const const = 1 }",
+        // Missing pieces
+        "module m\nimport",
+        "module m\nimport ::",
+        "module m\n#build =",
+        "module m\n#version",
+        // Type expressions
+        "module m\nfunc f(x: ) void { }",
+        "module m\nfunc f(x: []) void { }",
+        "module m\nfunc f(x: (|)) void { }",
+        "module m\nfunc f(x: &) void { }",
+        // Empty and minimal
+        "",
+        "\n\n\n",
+        "module m",
+        "module m\n",
+        // Real code that should parse
+        "module m\nfunc add(a: i32, b: i32) i32 { return a + b }",
+        "module m\nstruct Point { x: f64\n y: f64 }",
+        "module m\nenum Color { Red\n Green\n Blue }",
+        "module m\nconst PI: f64 = 3.14159",
+    };
+
+    for (seeds) |input| {
+        var lex2 = lexer.Lexer.init(input);
+        var tokens = try lex2.tokenize(alloc);
+        defer tokens.deinit(alloc);
+
+        var reporter = errors.Reporter.init(alloc, .debug);
+        defer reporter.deinit();
+
+        var p = Parser.init(tokens.items, alloc, &reporter);
+        defer p.deinit();
+
+        // Must not panic — errors are fine, crashes are not
+        _ = p.parseProgram() catch continue;
+    }
+}

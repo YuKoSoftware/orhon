@@ -78,6 +78,12 @@ pub const BorrowChecker = struct {
                 self.dropBorrowsAtDepth(self.scope_depth);
                 self.scope_depth -= 1;
             },
+            .test_decl => |t| {
+                self.scope_depth += 1;
+                try self.checkNode(t.body);
+                self.dropBorrowsAtDepth(self.scope_depth);
+                self.scope_depth -= 1;
+            },
             .struct_decl => |s| {
                 for (s.members) |member| {
                     if (member.* == .func_decl) try self.checkNode(member);

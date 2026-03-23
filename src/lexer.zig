@@ -106,6 +106,7 @@ pub const TokenKind = enum {
     eof,
     invalid,
     hash,       // #
+    doc_comment, // /// documentation comment
 };
 
 /// A single token with its kind, source text, and location
@@ -209,7 +210,10 @@ pub const Lexer = struct {
             switch (ch) {
                 ' ', '\t', '\r' => _ = self.advance(),
                 '/' => {
-                    if (self.peekAt(1) == '/') {
+                    if (self.peekAt(1) == '/' and self.peekAt(2) == '/' and self.peekAt(3) != '/') {
+                        // Doc comment (///) — don't consume, let next() produce a token
+                        break;
+                    } else if (self.peekAt(1) == '/') {
                         // Line comment — consume until newline
                         while (self.peek()) |c| {
                             if (c == '\n') break;
@@ -388,6 +392,26 @@ pub const Lexer = struct {
 
         // Identifier or keyword
         if (std.ascii.isAlphabetic(ch) or ch == '_') return self.lexIdentOrKeyword();
+
+        // Doc comment (///) — extract content after the prefix
+        if (ch == '/' and self.peekAt(1) == '/' and self.peekAt(2) == '/' and self.peekAt(3) != '/') {
+            _ = self.advance(); // /
+            _ = self.advance(); // /
+            _ = self.advance(); // /
+            // Skip one optional space after ///
+            if (self.peek() == ' ') _ = self.advance();
+            const text_start = self.pos;
+            while (self.peek()) |c| {
+                if (c == '\n') break;
+                _ = self.advance();
+            }
+            return .{
+                .kind = .doc_comment,
+                .text = self.source[text_start..self.pos],
+                .line = start_line,
+                .col = start_col,
+            };
+        }
 
         // Single/double character operators and punctuation
         const start = self.pos;
@@ -786,4 +810,83 @@ test "lexer - stress random inputs" {
         try std.testing.expect(tokens.items.len > 0);
         try std.testing.expectEqual(TokenKind.eof, tokens.items[tokens.items.len - 1].kind);
     }
+}
+
+test "lexer - doc comment produces token" {
+    var lex = Lexer.init("/// This is a doc comment\nfunc");
+    const alloc = std.testing.allocator;
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var kinds = std.ArrayListUnmanaged(TokenKind){};
+    defer kinds.deinit(alloc);
+    var texts = std.ArrayListUnmanaged([]const u8){};
+    defer texts.deinit(alloc);
+    for (tokens.items) |t| {
+        if (t.kind != .newline and t.kind != .eof) {
+            try kinds.append(alloc, t.kind);
+            try texts.append(alloc, t.text);
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 2), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.doc_comment, kinds.items[0]);
+    try std.testing.expectEqualStrings("This is a doc comment", texts.items[0]);
+    try std.testing.expectEqual(TokenKind.kw_func, kinds.items[1]);
+}
+
+test "lexer - multiple doc comment lines" {
+    var lex = Lexer.init("/// Line one\n/// Line two\nfunc");
+    const alloc = std.testing.allocator;
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var kinds = std.ArrayListUnmanaged(TokenKind){};
+    defer kinds.deinit(alloc);
+    for (tokens.items) |t| {
+        if (t.kind != .newline and t.kind != .eof) {
+            try kinds.append(alloc, t.kind);
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 3), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.doc_comment, kinds.items[0]);
+    try std.testing.expectEqual(TokenKind.doc_comment, kinds.items[1]);
+    try std.testing.expectEqual(TokenKind.kw_func, kinds.items[2]);
+}
+
+test "lexer - four slashes is regular comment not doc" {
+    var lex = Lexer.init("//// not a doc comment\nfunc");
+    const alloc = std.testing.allocator;
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var kinds = std.ArrayListUnmanaged(TokenKind){};
+    defer kinds.deinit(alloc);
+    for (tokens.items) |t| {
+        if (t.kind != .newline and t.kind != .eof) {
+            try kinds.append(alloc, t.kind);
+        }
+    }
+    // //// is a regular comment, so only func remains
+    try std.testing.expectEqual(@as(usize, 1), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.kw_func, kinds.items[0]);
+}
+
+test "lexer - doc comment without space after slashes" {
+    var lex = Lexer.init("///no space\nfunc");
+    const alloc = std.testing.allocator;
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var kinds = std.ArrayListUnmanaged(TokenKind){};
+    defer kinds.deinit(alloc);
+    var texts = std.ArrayListUnmanaged([]const u8){};
+    defer texts.deinit(alloc);
+    for (tokens.items) |t| {
+        if (t.kind != .newline and t.kind != .eof) {
+            try kinds.append(alloc, t.kind);
+            try texts.append(alloc, t.text);
+        }
+    }
+    try std.testing.expectEqual(TokenKind.doc_comment, kinds.items[0]);
+    try std.testing.expectEqualStrings("no space", texts.items[0]);
 }

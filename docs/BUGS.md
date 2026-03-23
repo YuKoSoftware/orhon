@@ -49,3 +49,12 @@ expose slices through bridge methods, matching the Orhon bridge pattern.
 Threading implemented as language-level feature. `thread name(params) Handle(T) { body }`
 declares a thread function. Calling it spawns an OS thread and returns `Handle(T)`.
 Handle methods: `.value` (block + move result), `.wait()`, `.done()`, `.join()`.
+
+## Std — bridge functions named with Orhon keywords
+
+Several std bridge functions use Orhon keywords as names (`size`, `match`). The lexer
+tokenizes these as keyword tokens instead of identifiers, so parsing the raw std `.orh`
+files fails. Affects `orhon gendoc .orh-cache/std` and any tooling that parses std source.
+
+Fix: rename the affected bridge functions to non-keyword names (e.g. `length` instead of
+`size`). Do not weaken the parser to accept keywords as identifiers.

@@ -65,7 +65,8 @@ cast, copy, move, swap, assert, size, align, typename, typeid
 ```
 // single line comment
 
-/// reserved for future documentation generation — not yet implemented
+/// doc comment — documents the declaration below it
+/// multiple consecutive lines merge into one doc block
 
 /* block comment
    everything between is raw text
@@ -73,3 +74,5 @@ cast, copy, move, swap, assert, size, align, typename, typeid
 ```
 
 Block comments use `/* */`. No nesting — the first `*/` closes the comment. Single-line `//` is preferred for regular comments; `/* */` is for temporarily disabling code blocks.
+
+Doc comments (`///`) attach to the declaration immediately below them. At the top of an anchor file (after `module`), they document the module itself. Consecutive `///` lines merge into a single doc block. A blank line between `///` and the declaration breaks the attachment. Use `orhon gendoc` to generate Markdown documentation from `pub` declarations and their doc comments.

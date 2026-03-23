@@ -1,4 +1,6 @@
 module example
+/// The example module is a living language manual.
+/// It covers every implemented feature with short examples.
 
 // ─── Imports ─────────────────────────────────────────────────────────────────
 
@@ -26,11 +28,13 @@ compt func double(n: i32) i32 {
 
 // ─── Structs ─────────────────────────────────────────────────────────────────
 
+/// A 2D point with x and y coordinates
 pub struct Point {
     pub x: f64
     pub y: f64
 }
 
+/// A game player with health tracking
 pub struct Player {
     pub name: String
     health: f32
@@ -54,6 +58,7 @@ func make_player() Player {
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
+/// Cardinal directions
 pub enum(u8) Direction {
     North
     South

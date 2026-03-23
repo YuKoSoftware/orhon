@@ -149,6 +149,7 @@ pub const Program = struct {
 
 pub const ModuleDecl = struct {
     name: []const u8,
+    doc: ?[]const u8 = null,
 };
 
 pub const ImportDecl = struct {
@@ -174,6 +175,7 @@ pub const FuncDecl = struct {
     is_pub: bool,
     is_bridge: bool, // no body — implementation in paired .zig file
     is_thread: bool, // thread declaration — generates spawn wrapper + body
+    doc: ?[]const u8 = null,
 };
 
 pub const StructDecl = struct {
@@ -182,6 +184,7 @@ pub const StructDecl = struct {
     members: []*Node,
     is_pub: bool,
     is_bridge: bool = false,
+    doc: ?[]const u8 = null,
 };
 
 pub const EnumDecl = struct {
@@ -189,6 +192,7 @@ pub const EnumDecl = struct {
     backing_type: *Node,
     members: []*Node,
     is_pub: bool,
+    doc: ?[]const u8 = null,
 };
 
 pub const BitfieldDecl = struct {
@@ -196,6 +200,7 @@ pub const BitfieldDecl = struct {
     backing_type: *Node,
     members: [][]const u8,  // flag names only — no data fields
     is_pub: bool,
+    doc: ?[]const u8 = null,
 };
 
 pub const VarDecl = struct {
@@ -204,6 +209,7 @@ pub const VarDecl = struct {
     value: *Node,
     is_pub: bool,
     is_bridge: bool = false,
+    doc: ?[]const u8 = null,
 };
 
 pub const TestDecl = struct {
@@ -216,11 +222,13 @@ pub const FieldDecl = struct {
     type_annotation: *Node,
     default_value: ?*Node,
     is_pub: bool,
+    doc: ?[]const u8 = null,
 };
 
 pub const EnumVariant = struct {
     name: []const u8,
     fields: []*Node, // params for data-carrying variants
+    doc: ?[]const u8 = null,
 };
 
 pub const Param = struct {
@@ -383,6 +391,7 @@ pub const Parser = struct {
     arena: std.heap.ArenaAllocator,
     reporter: *errors.Reporter,
     locs: LocMap,
+    pending_doc: ?[]const u8 = null,
 
     pub fn init(tokens: []const Token, allocator: std.mem.Allocator, reporter: *errors.Reporter) Parser {
         return .{
@@ -442,6 +451,58 @@ pub const Parser = struct {
     fn skipNewlines(self: *Parser) void {
         while (self.pos < self.tokens.len and self.tokens[self.pos].kind == .newline) {
             self.pos += 1;
+        }
+    }
+
+    /// Collect consecutive /// doc comment tokens into pending_doc.
+    /// Only merges doc lines separated by exactly one newline (no blank lines).
+    fn collectDocComments(self: *Parser) !void {
+        self.pending_doc = null;
+        self.skipNewlines();
+
+        if (self.pos >= self.tokens.len or self.tokens[self.pos].kind != .doc_comment) return;
+
+        var buf = std.ArrayListUnmanaged(u8){};
+        while (self.pos < self.tokens.len and self.tokens[self.pos].kind == .doc_comment) {
+            if (buf.items.len > 0) try buf.append(self.alloc(), '\n');
+            try buf.appendSlice(self.alloc(), self.tokens[self.pos].text);
+            self.pos += 1; // consume doc_comment
+
+            // Check what follows: single newline is ok (continue), anything else stops collection
+            if (self.pos < self.tokens.len and self.tokens[self.pos].kind == .newline) {
+                self.pos += 1; // consume the newline
+                // If next is another newline (blank line), stop — don't attach
+                if (self.pos < self.tokens.len and self.tokens[self.pos].kind == .newline) {
+                    break;
+                }
+            }
+        }
+        if (buf.items.len > 0) {
+            self.pending_doc = buf.items;
+        }
+    }
+
+    /// Consume and return pending_doc, clearing it.
+    fn takePendingDoc(self: *Parser) ?[]const u8 {
+        const doc = self.pending_doc;
+        self.pending_doc = null;
+        return doc;
+    }
+
+    /// Attach a doc comment to any declaration node that has a doc field.
+    fn attachDoc(node: *Node, doc: ?[]const u8) void {
+        if (doc == null) return;
+        switch (node.*) {
+            .func_decl   => |*d| d.doc = doc,
+            .struct_decl => |*d| d.doc = doc,
+            .enum_decl   => |*d| d.doc = doc,
+            .bitfield_decl => |*d| d.doc = doc,
+            .const_decl  => |*d| d.doc = doc,
+            .var_decl    => |*d| d.doc = doc,
+            .compt_decl  => |*d| d.doc = doc,
+            .field_decl  => |*d| d.doc = doc,
+            .enum_variant => |*d| d.doc = doc,
+            else => {},
         }
     }
 
@@ -512,6 +573,10 @@ pub const Parser = struct {
         // module declaration is mandatory
         const module = try self.parseModuleDecl();
 
+        // Collect doc comments after module decl — these document the module
+        try self.collectDocComments();
+        module.module_decl.doc = self.takePendingDoc();
+
         // metadata (#build = ..., etc.)
         var metadata_list: std.ArrayListUnmanaged(*Node) = .{};
         var imports_list: std.ArrayListUnmanaged(*Node) = .{};
@@ -524,21 +589,26 @@ pub const Parser = struct {
             self.skipNewlines();
             if (self.check(.eof)) break;
 
+            // Collect any doc comments before the next item
+            try self.collectDocComments();
+
             const tok = self.peek();
 
             if (tok.kind == .hash) {
+                self.pending_doc = null; // discard doc before metadata
                 const meta = try self.parseMetadata();
                 try metadata_list.append(self.alloc(), meta);
                 continue;
             }
 
             if (tok.kind == .kw_import or tok.kind == .kw_include) {
+                self.pending_doc = null; // discard doc before imports
                 const imp = try self.parseImport();
                 try imports_list.append(self.alloc(), imp);
                 continue;
             }
 
-            // Top level declaration
+            // Top level declaration — pending_doc will be consumed by parse functions
             const tl = try self.parseTopLevel() orelse break;
             try top_level_list.append(self.alloc(), tl);
         }
@@ -675,8 +745,9 @@ pub const Parser = struct {
     fn parseTopLevel(self: *Parser) !?*Node {
         self.skipNewlines();
         const tok = self.peek();
+        const doc = self.takePendingDoc();
 
-        return switch (tok.kind) {
+        const node: ?*Node = switch (tok.kind) {
             .kw_func => try self.parseFuncDecl(false, false),
             .kw_thread => try self.parseThreadDecl(false),
             .kw_compt => try self.parseComptDecl(),
@@ -706,6 +777,8 @@ pub const Parser = struct {
                 return error.ParseError;
             },
         };
+        if (node) |n| attachDoc(n, doc);
+        return node;
     }
 
     fn parsePubDecl(self: *Parser) anyerror!*Node {
@@ -834,7 +907,12 @@ pub const Parser = struct {
         while (!self.check(.rbrace) and !self.check(.eof)) {
             self.skipNewlines();
             if (self.check(.rbrace)) break;
-            try members.append(self.alloc(), try self.parseBridgeDecl(false));
+            try self.collectDocComments();
+            if (self.check(.rbrace)) break;
+            const member_doc = self.takePendingDoc();
+            const member = try self.parseBridgeDecl(false);
+            attachDoc(member, member_doc);
+            try members.append(self.alloc(), member);
             self.skipNewlines();
         }
         _ = try self.expect(.rbrace);
@@ -1016,6 +1094,10 @@ pub const Parser = struct {
             self.skipNewlines();
             if (self.check(.rbrace)) break;
 
+            try self.collectDocComments();
+            if (self.check(.rbrace)) break;
+            const member_doc = self.takePendingDoc();
+
             const member_pub = self.eat(.kw_pub);
             const tok = self.peek();
 
@@ -1039,6 +1121,7 @@ pub const Parser = struct {
                     return error.ParseError;
                 },
             };
+            attachDoc(member, member_doc);
             try members.append(self.alloc(), member);
             self.skipNewlines();
         }
@@ -1090,13 +1173,19 @@ pub const Parser = struct {
         while (!self.check(.rbrace) and !self.check(.eof)) {
             self.skipNewlines();
             if (self.check(.rbrace)) break;
+
+            try self.collectDocComments();
+            if (self.check(.rbrace)) break;
+            const member_doc = self.takePendingDoc();
+
             const member_pub = self.eat(.kw_pub);
             const tok = self.peek();
-            if (tok.kind == .kw_func) {
-                try members.append(self.alloc(), try self.parseFuncDecl(member_pub, false));
-            } else {
-                try members.append(self.alloc(), try self.parseEnumVariant());
-            }
+            const member: *Node = if (tok.kind == .kw_func)
+                try self.parseFuncDecl(member_pub, false)
+            else
+                try self.parseEnumVariant();
+            attachDoc(member, member_doc);
+            try members.append(self.alloc(), member);
             self.skipNewlines();
         }
         _ = try self.expect(.rbrace);

@@ -94,10 +94,6 @@ Add coverage for features not yet in the example module:
 - Bitfield enums (`enum @bitfield`)
 - Stdlib import/usage examples
 
-### Documentation Generator (`orhon doc`)
-
-Generate HTML/Markdown docs from `pub` declarations and doc comments.
-
 ### Fuzz Testing
 
 Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.

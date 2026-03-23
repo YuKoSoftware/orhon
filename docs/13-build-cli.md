@@ -19,6 +19,7 @@ orhon init                           // init in current dir, use folder name as 
 orhon addtopath                      // add orhon to PATH in your shell profile
 orhon debug                          // dump project info: source dir, modules found, files
 orhon fmt                            // format all .orh files in the project
+orhon gendoc                         // generate Markdown docs from /// comments
 ```
 
 ---

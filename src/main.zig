@@ -33,6 +33,7 @@ const Command = enum {
     debug,
     version,
     fmt,
+    gendoc,
     lsp,
     which,
     help,
@@ -146,6 +147,8 @@ fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
         cli.command = .debug;
     } else if (std.mem.eql(u8, cmd_str, "fmt")) {
         cli.command = .fmt;
+    } else if (std.mem.eql(u8, cmd_str, "gendoc")) {
+        cli.command = .gendoc;
     } else if (std.mem.eql(u8, cmd_str, "addtopath") or std.mem.eql(u8, cmd_str, "-addtopath")) {
         cli.command = .addtopath;
     } else if (std.mem.eql(u8, cmd_str, "version") or std.mem.eql(u8, cmd_str, "--version")) {
@@ -198,7 +201,7 @@ fn printUsage() void {
     const usage =
         \\orhon — The Orhon compiler  (orhon help for more info)
         \\
-        \\  build   run   test   fmt   init   lsp   addtopath   debug   version
+        \\  build   run   test   fmt   gendoc   init   lsp   addtopath   debug   version
         \\
     ;
     std.debug.print("{s}", .{usage});
@@ -214,6 +217,7 @@ fn printHelp() void {
         \\  test                Run all test { } blocks in the project
         \\  init [name]         Create a new project (in ./<name>/ or current dir if no name)
         \\  fmt                 Format all .orh files in the project
+        \\  gendoc              Generate Markdown docs from /// comments (pub items)
         \\  lsp                 Start the language server (for editor integration)
         \\  addtopath           Add orhon to your shell PATH
         \\  debug               Show project info — modules, files, source directory
@@ -608,6 +612,11 @@ pub fn main() !void {
         return;
     }
 
+    if (cli.command == .gendoc) {
+        try runGendoc(allocator, &cli);
+        return;
+    }
+
     if (cli.command == .lsp) {
         const lsp = @import("lsp.zig");
         try lsp.serve(allocator);
@@ -730,6 +739,61 @@ fn runDebug(allocator: std.mem.Allocator, cli: *const CliArgs) !void {
     }
 
     std.debug.print("\n", .{});
+}
+
+fn runGendoc(allocator: std.mem.Allocator, cli: *const CliArgs) !void {
+    const docgen = @import("docgen.zig");
+
+    // Ensure std files are available (parsing may discover std imports)
+    try ensureStdFiles(allocator);
+
+    // Check source dir exists
+    std.fs.cwd().access(cli.source_dir, .{}) catch {
+        std.debug.print("error: source directory '{s}' not found\n", .{cli.source_dir});
+        return;
+    };
+
+    var reporter = errors.Reporter.init(allocator, .debug);
+    defer reporter.deinit();
+
+    var mod_resolver = module.Resolver.init(allocator, &reporter);
+    defer mod_resolver.deinit();
+
+    try mod_resolver.scanDirectory(cli.source_dir);
+
+    if (reporter.hasErrors()) {
+        try reporter.flush();
+        return;
+    }
+
+    // Parse all modules (two passes for std imports)
+    try mod_resolver.parseModules(allocator);
+    if (reporter.hasErrors()) {
+        try reporter.flush();
+        return;
+    }
+    // Second pass: parse any newly discovered std modules
+    {
+        var has_unparsed = false;
+        var check_it = mod_resolver.modules.iterator();
+        while (check_it.next()) |entry| {
+            if (entry.value_ptr.ast == null) { has_unparsed = true; break; }
+        }
+        if (has_unparsed) {
+            try mod_resolver.parseModules(allocator);
+        }
+    }
+
+    if (reporter.hasErrors()) {
+        try reporter.flush();
+        return;
+    }
+
+    // Output to docs/api/{source_dir_name}/
+    const dir_name = std.fs.path.basename(cli.source_dir);
+    const output_dir = try std.fmt.allocPrint(allocator, "docs/api/{s}", .{dir_name});
+    defer allocator.free(output_dir);
+    try docgen.generateDocs(allocator, &mod_resolver, output_dir);
 }
 
 fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Reporter) !?[]const u8 {

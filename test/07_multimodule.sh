@@ -67,7 +67,7 @@ func main() void {
 ORHON
 
 # Remove example module (not needed)
-rm -f src/example.orh src/control_flow.orh
+rm -rf src/example
 
 OUTPUT=$("$ORHON" build 2>&1)
 if echo "$OUTPUT" | grep -q "Built:.*dynlink"; then pass "multi-target: exe built"
@@ -113,7 +113,7 @@ func main() void {
 }
 ORHON
 
-rm -f src/example.orh src/control_flow.orh
+rm -rf src/example
 
 OUTPUT=$("$ORHON" build 2>&1)
 if echo "$OUTPUT" | grep -q "Built:.*statlink"; then pass "static-link: exe built"

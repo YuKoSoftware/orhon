@@ -61,7 +61,7 @@ The codegen is a **pure 1:1 translator** — it maps Orhon syntax to Zig syntax 
 
 ## Bridge System
 
-Orhon interacts with Zig through the bridge bridge. A module declares its interface using `bridge`, and a paired `.zig` sidecar provides the implementation. The codegen re-exports from the sidecar — no special cases.
+Orhon interacts with Zig through the bridge. A module declares its interface using `bridge`, and a paired `.zig` sidecar provides the implementation. The codegen re-exports from the sidecar — no special cases.
 
 ### Bridge safety rules
 - `T` (by value) — moves across the bridge

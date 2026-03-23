@@ -37,6 +37,12 @@ else fail "creates example/error_handling.orh"; fi
 if [ -f testproj/src/example/data_types.orh ]; then pass "creates example/data_types.orh"
 else fail "creates example/data_types.orh"; fi
 
+if [ -f testproj/src/example/strings.orh ]; then pass "creates example/strings.orh"
+else fail "creates example/strings.orh"; fi
+
+if [ -f testproj/src/example/advanced.orh ]; then pass "creates example/advanced.orh"
+else fail "creates example/advanced.orh"; fi
+
 if head -1 testproj/src/main.orh | grep -q "^module main$"; then
     pass "main.orh has 'module main'"
 else

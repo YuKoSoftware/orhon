@@ -36,8 +36,7 @@ pub fn assertContains(text: []const u8, sub: []const u8) void {
 // ── Fail ──
 
 pub fn fail(msg: []const u8) void {
-    _ = msg;
-    @panic("test failed");
+    @panic(msg);
 }
 
 // ── Tests ──

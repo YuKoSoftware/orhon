@@ -39,7 +39,7 @@ pub const Buffer = struct {
         return alloc.dupe(u8, self.data.items) catch return "";
     }
 
-    pub fn size(self: *Buffer) i32 {
+    pub fn len(self: *Buffer) i32 {
         return @intCast(self.data.items.len);
     }
 
@@ -65,13 +65,13 @@ test "create and write" {
     defer buf.deinit();
     buf.write("hello");
     buf.write(" world");
-    try std.testing.expectEqual(@as(i32, 11), buf.size());
+    try std.testing.expectEqual(@as(i32, 11), buf.len());
 }
 
 test "fromString" {
     var buf = Buffer.fromString("orhon");
     defer buf.deinit();
-    try std.testing.expectEqual(@as(i32, 5), buf.size());
+    try std.testing.expectEqual(@as(i32, 5), buf.len());
     try std.testing.expect(std.mem.eql(u8, buf.toString(), "orhon"));
 }
 
@@ -99,6 +99,6 @@ test "clear resets" {
     var buf = Buffer.fromString("data");
     defer buf.deinit();
     buf.clear();
-    try std.testing.expectEqual(@as(i32, 0), buf.size());
+    try std.testing.expectEqual(@as(i32, 0), buf.len());
     try std.testing.expect(std.mem.eql(u8, buf.toString(), ""));
 }

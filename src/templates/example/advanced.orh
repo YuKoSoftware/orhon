@@ -1,0 +1,194 @@
+module example
+
+import std::console
+
+// ─── Collections ────────────────────────────────────────────────────────────
+
+// List(T) — growable array
+
+func list_demo() i32 {
+    var items: List(i32) = List(i32)
+    defer { items.free() }
+    items.add(10)
+    items.add(20)
+    items.add(30)
+    return items.get(1)
+}
+
+// Map(K, V) — key-value store
+
+func map_demo() i32 {
+    var scores: Map(String, i32) = Map(String, i32)
+    defer { scores.free() }
+    scores.put("alice", 42)
+    scores.put("bob", 99)
+    if(scores.has("alice")) { return 1 }
+    return 0
+}
+
+// Map.get returns (null | V)
+
+func map_get_demo() i32 {
+    var m: Map(String, i32) = Map(String, i32)
+    defer { m.free() }
+    m.put("x", 77)
+    const result: (null | i32) = m.get("x")
+    if(result is not null) {
+        return result.value
+    }
+    return 0
+}
+
+// Set(T) — unique elements
+
+func set_demo() i32 {
+    var seen: Set(i32) = Set(i32)
+    defer { seen.free() }
+    seen.add(5)
+    seen.add(5)
+    seen.add(6)
+    if(seen.has(5) and seen.has(6)) { return 1 }
+    return 0
+}
+
+// ─── Bitfields ──────────────────────────────────────────────────────────────
+
+// bitfield — flag set backed by an unsigned integer
+
+bitfield(u32) Perms {
+    Read
+    Write
+    Execute
+}
+
+func bitfield_constructor() i32 {
+    const p: Perms = Perms(Read, Write)
+    if(p.has(Read) and p.has(Write) and !p.has(Execute)) {
+        return 1
+    }
+    return 0
+}
+
+func bitfield_methods() i32 {
+    var p: Perms = Perms()
+    p.set(Execute)
+    if(p.has(Execute)) {
+        p.clear(Execute)
+        if(!p.has(Execute)) {
+            return 1
+        }
+    }
+    return 0
+}
+
+// ─── Threading ──────────────────────────────────────────────────────────────
+
+// thread function spawns an OS thread, Handle(T) gets the result
+
+thread doubler(x: i32) Handle(i32) {
+    return Handle(x * 2)
+}
+
+thread noop() Handle(void) {
+}
+
+// .value blocks until done, moves the value out
+
+func thread_demo() i32 {
+    var h: Handle(i32) = doubler(21)
+    return h.value
+}
+
+// multiple concurrent threads
+
+func thread_multi() i32 {
+    var a: Handle(i32) = doubler(10)
+    var b: Handle(i32) = doubler(15)
+    const r1: i32 = a.value
+    const r2: i32 = b.value
+    return r1 + r2
+}
+
+// void thread + .wait()
+
+func thread_void() i32 {
+    var h: Handle(void) = noop()
+    h.wait()
+    return 1
+}
+
+// .join() discards result and cleans up
+
+func thread_join() i32 {
+    var h: Handle(i32) = doubler(99)
+    h.join()
+    return 1
+}
+
+// ─── Cast ───────────────────────────────────────────────────────────────────
+
+// cast(TargetType, value) — explicit type conversion
+
+func cast_demo() i64 {
+    const x: i32 = 42
+    return cast(i64, x)
+}
+
+func cast_float() i32 {
+    return cast(i32, 3.7)
+}
+
+// ─── typeid ─────────────────────────────────────────────────────────────────
+
+// typeid(value) — compare types at runtime
+
+func typeid_demo() i32 {
+    const x: i32 = 1
+    const y: i32 = 2
+    if(typeid(x) == typeid(y)) { return 1 }
+    return 0
+}
+
+// ─── splitAt ────────────────────────────────────────────────────────────────
+
+// splitAt — splits array into two non-overlapping slices
+
+func split_demo() i32 {
+    const arr: [6]i32 = [1, 2, 3, 4, 5, 6]
+    const left, right = arr.splitAt(3)
+    var total: i32 = 0
+    for(left) |v| { total += v }
+    for(right) |v| { total += v }
+    return total
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+test "list" {
+    assert(list_demo() == 20)
+}
+
+test "map" {
+    assert(map_demo() == 1)
+}
+
+test "set" {
+    assert(set_demo() == 1)
+}
+
+test "bitfield" {
+    assert(bitfield_constructor() == 1)
+    assert(bitfield_methods() == 1)
+}
+
+test "thread" {
+    assert(thread_demo() == 42)
+}
+
+test "cast" {
+    assert(cast_float() == 3)
+}
+
+test "split" {
+    assert(split_demo() == 21)
+}

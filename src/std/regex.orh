@@ -16,9 +16,9 @@ module regex
 //   |         alternation
 //   \         escape special characters
 
-// Test if pattern matches the entire text
+// Test if pattern matches entire text
 
-bridge func match(pattern: String, text: String) bool
+bridge func matches(pattern: String, text: String) bool
 
 // Find first match in text
 

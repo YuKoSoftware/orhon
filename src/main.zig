@@ -260,6 +260,8 @@ const EXAMPLE_ORH_TEMPLATE      = @embedFile("templates/example/example.orh");
 const CONTROL_FLOW_ORH_TEMPLATE = @embedFile("templates/example/control_flow.orh");
 const ERROR_HANDLING_TEMPLATE   = @embedFile("templates/example/error_handling.orh");
 const DATA_TYPES_TEMPLATE       = @embedFile("templates/example/data_types.orh");
+const STRINGS_TEMPLATE          = @embedFile("templates/example/strings.orh");
+const ADVANCED_TEMPLATE         = @embedFile("templates/example/advanced.orh");
 
 
 fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: bool) !void {
@@ -313,6 +315,8 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: bool) !
         .{ "control_flow.orh",   CONTROL_FLOW_ORH_TEMPLATE },
         .{ "error_handling.orh", ERROR_HANDLING_TEMPLATE },
         .{ "data_types.orh",     DATA_TYPES_TEMPLATE },
+        .{ "strings.orh",        STRINGS_TEMPLATE },
+        .{ "advanced.orh",       ADVANCED_TEMPLATE },
     };
 
     inline for (example_files) |entry| {
@@ -331,7 +335,7 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: bool) !
     std.debug.print("Created project '{s}'\n", .{name});
     std.debug.print("  {s}/src/\n", .{base});
     std.debug.print("  {s}/src/main.orh\n", .{base});
-    std.debug.print("  {s}/src/example/  (4 files — language manual)\n", .{base});
+    std.debug.print("  {s}/src/example/  (6 files — language manual)\n", .{base});
     if (!in_place) {
         std.debug.print("\nGet started:\n", .{});
         std.debug.print("  cd {s}\n", .{name});

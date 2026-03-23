@@ -289,7 +289,7 @@ fn matchRegex(regex: Regex, text: []const u8, pos: usize) ?usize {
 
 // ── Public API ──
 
-pub fn match(pattern: []const u8, text: []const u8) bool {
+pub fn matches(pattern: []const u8, text: []const u8) bool {
     var p = Parser.init(pattern);
     const regex = p.parseRegex() orelse return false;
     const end = matchRegex(regex, text, 0) orelse return false;
@@ -376,77 +376,77 @@ pub fn replaceAll(pattern: []const u8, text: []const u8, replacement: []const u8
 // ── Tests ──
 
 test "literal match" {
-    try std.testing.expect(match("hello", "hello"));
-    try std.testing.expect(!match("hello", "world"));
-    try std.testing.expect(!match("hello", "hello world"));
+    try std.testing.expect(matches("hello", "hello"));
+    try std.testing.expect(!matches("hello", "world"));
+    try std.testing.expect(!matches("hello", "hello world"));
 }
 
 test "dot matches any" {
-    try std.testing.expect(match("h.llo", "hello"));
-    try std.testing.expect(match("h.llo", "hallo"));
-    try std.testing.expect(!match("h.llo", "hllo"));
+    try std.testing.expect(matches("h.llo", "hello"));
+    try std.testing.expect(matches("h.llo", "hallo"));
+    try std.testing.expect(!matches("h.llo", "hllo"));
 }
 
 test "star quantifier" {
-    try std.testing.expect(match("ab*c", "ac"));
-    try std.testing.expect(match("ab*c", "abc"));
-    try std.testing.expect(match("ab*c", "abbbc"));
+    try std.testing.expect(matches("ab*c", "ac"));
+    try std.testing.expect(matches("ab*c", "abc"));
+    try std.testing.expect(matches("ab*c", "abbbc"));
 }
 
 test "plus quantifier" {
-    try std.testing.expect(!match("ab+c", "ac"));
-    try std.testing.expect(match("ab+c", "abc"));
-    try std.testing.expect(match("ab+c", "abbbc"));
+    try std.testing.expect(!matches("ab+c", "ac"));
+    try std.testing.expect(matches("ab+c", "abc"));
+    try std.testing.expect(matches("ab+c", "abbbc"));
 }
 
 test "question quantifier" {
-    try std.testing.expect(match("ab?c", "ac"));
-    try std.testing.expect(match("ab?c", "abc"));
-    try std.testing.expect(!match("ab?c", "abbc"));
+    try std.testing.expect(matches("ab?c", "ac"));
+    try std.testing.expect(matches("ab?c", "abc"));
+    try std.testing.expect(!matches("ab?c", "abbc"));
 }
 
 test "character class" {
-    try std.testing.expect(match("[abc]", "a"));
-    try std.testing.expect(match("[abc]", "b"));
-    try std.testing.expect(!match("[abc]", "d"));
+    try std.testing.expect(matches("[abc]", "a"));
+    try std.testing.expect(matches("[abc]", "b"));
+    try std.testing.expect(!matches("[abc]", "d"));
 }
 
 test "character range" {
-    try std.testing.expect(match("[a-z]+", "hello"));
-    try std.testing.expect(!match("[a-z]+", "HELLO"));
+    try std.testing.expect(matches("[a-z]+", "hello"));
+    try std.testing.expect(!matches("[a-z]+", "HELLO"));
 }
 
 test "negated class" {
-    try std.testing.expect(match("[^0-9]+", "hello"));
-    try std.testing.expect(!match("[^0-9]+", "123"));
+    try std.testing.expect(matches("[^0-9]+", "hello"));
+    try std.testing.expect(!matches("[^0-9]+", "123"));
 }
 
 test "shorthand classes" {
-    try std.testing.expect(match("\\d+", "123"));
-    try std.testing.expect(!match("\\d+", "abc"));
-    try std.testing.expect(match("\\w+", "hello_123"));
-    try std.testing.expect(match("\\s", " "));
+    try std.testing.expect(matches("\\d+", "123"));
+    try std.testing.expect(!matches("\\d+", "abc"));
+    try std.testing.expect(matches("\\w+", "hello_123"));
+    try std.testing.expect(matches("\\s", " "));
 }
 
 test "alternation" {
-    try std.testing.expect(match("cat|dog", "cat"));
-    try std.testing.expect(match("cat|dog", "dog"));
-    try std.testing.expect(!match("cat|dog", "bird"));
+    try std.testing.expect(matches("cat|dog", "cat"));
+    try std.testing.expect(matches("cat|dog", "dog"));
+    try std.testing.expect(!matches("cat|dog", "bird"));
 }
 
 test "grouping" {
-    try std.testing.expect(match("(ab)+", "abab"));
-    try std.testing.expect(!match("(ab)+", "aabb"));
+    try std.testing.expect(matches("(ab)+", "abab"));
+    try std.testing.expect(!matches("(ab)+", "aabb"));
 }
 
 test "anchors" {
-    try std.testing.expect(match("^hello$", "hello"));
-    try std.testing.expect(!match("^hello$", "hello world"));
+    try std.testing.expect(matches("^hello$", "hello"));
+    try std.testing.expect(!matches("^hello$", "hello world"));
 }
 
 test "escape special chars" {
-    try std.testing.expect(match("a\\.b", "a.b"));
-    try std.testing.expect(!match("a\\.b", "axb"));
+    try std.testing.expect(matches("a\\.b", "a.b"));
+    try std.testing.expect(!matches("a\\.b", "axb"));
 }
 
 test "find" {

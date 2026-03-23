@@ -27,9 +27,9 @@ bridge struct Buffer {
 
     bridge func toString(self: &Buffer) String
 
-    // Number of bytes in the buffer
+    // Length of the buffer in bytes
 
-    bridge func size(self: &Buffer) i32
+    bridge func len(self: &Buffer) i32
 
     // Reset buffer to empty
 

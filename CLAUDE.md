@@ -8,7 +8,7 @@ One-sentence pitch: *"A simple yet powerful language that is safe."*
 **Full language spec:** `docs/` folder — read relevant files before making any decisions about
 language behavior, syntax, or semantics. Do not rely on memory or assumptions — check the spec.
 
-**Other docs:** `docs/COMPILER.md` — compiler architecture + project structure. `docs/FUTURE.md` — future ideas, stdlib roadmap, next steps. `docs/BUGS.md` — known bugs to fix.
+**Other docs:** `docs/COMPILER.md` — compiler architecture + project structure. `docs/TODO.md` — bugs, polish tasks, future architecture.
 
 ---
 

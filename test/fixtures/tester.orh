@@ -357,11 +357,6 @@ pub func concat_test() String {
 
 // ─── Struct instantiation ────────────────────────────────────
 
-pub func make_vec2(a: f32, b: f32) f32 {
-    const v: Vec2 = Vec2(x: a, y: b)
-    return v.x + v.y
-}
-
 pub func make_internal() i32 {
     const s: Internal = Internal(value: 42, name: "test")
     return s.value

@@ -1,0 +1,111 @@
+module example
+
+// ─── String Methods ─────────────────────────────────────────────────────────
+
+// toUpper / toLower — return new strings
+
+func upper_demo() i32 {
+    const s: String = "hello"
+    const u: String = s.toUpper()
+    if(u.contains("HELLO")) { return 1 }
+    return 0
+}
+
+func lower_demo() i32 {
+    const s: String = "WORLD"
+    const l: String = s.toLower()
+    if(l.contains("world")) { return 1 }
+    return 0
+}
+
+// replace — returns new string with substitution
+
+func replace_demo() String {
+    const s: String = "hello world"
+    return s.replace("world", "orhon")
+}
+
+// repeat — returns string repeated n times
+
+func repeat_demo() String {
+    const s: String = "ha"
+    return s.repeat(3)
+}
+
+// parseInt / parseFloat — parse strings to numbers
+
+func parse_int_demo() i32 {
+    const s: String = "42"
+    return s.parseInt()
+}
+
+func parse_float_demo() i32 {
+    const s: String = "3.14"
+    const f: f64 = s.parseFloat()
+    if(f > 3.0) { return 1 }
+    return 0
+}
+
+// toString — convert values to string
+
+func tostring_demo() i32 {
+    const x: i32 = 42
+    const s: String = x.toString()
+    if(s.contains("42")) { return 1 }
+    return 0
+}
+
+// ─── String Interpolation ───────────────────────────────────────────────────
+
+// @{expr} embeds a value inside a string literal
+
+func interpolation_demo() i32 {
+    const name: String = "world"
+    const msg: String = "hello @{name}!"
+    if(msg.contains("hello world!")) { return 1 }
+    return 0
+}
+
+func interpolation_int() i32 {
+    const x: i32 = 42
+    const msg: String = "value is @{x}"
+    if(msg.contains("value is 42")) { return 1 }
+    return 0
+}
+
+// ─── String Comparison ──────────────────────────────────────────────────────
+
+// == and != compare string contents, not pointers
+
+func string_eq_demo() i32 {
+    const a: String = "hello"
+    const b: String = "hello"
+    if(a == b) { return 1 }
+    return 0
+}
+
+func string_ne_demo() i32 {
+    const a: String = "hello"
+    const b: String = "world"
+    if(a != b) { return 1 }
+    return 0
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+test "string upper" {
+    assert(upper_demo() == 1)
+}
+
+test "string lower" {
+    assert(lower_demo() == 1)
+}
+
+test "string interpolation" {
+    assert(interpolation_demo() == 1)
+}
+
+test "string comparison" {
+    assert(string_eq_demo() == 1)
+    assert(string_ne_demo() == 1)
+}

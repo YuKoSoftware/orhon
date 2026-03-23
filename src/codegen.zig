@@ -1403,16 +1403,27 @@ pub const CodeGen = struct {
                     }
                     try self.emit(" }");
                 } else {
-                    // Positional arguments → regular function call
-                    try self.generateExpr(c.callee);
-                    try self.emit("(");
-                    for (c.args, 0..) |arg, i| {
-                        if (i > 0) try self.emit(", ");
-                        try self.generateExpr(arg);
+                    // Inside a generic struct, Name(T) self-instantiation → just @This()
+                    // (skip the type args since @This() is already the instantiated type)
+                    const is_self_generic = if (self.generic_struct_name) |gsn|
+                        c.callee.* == .identifier and std.mem.eql(u8, c.callee.identifier, gsn)
+                    else
+                        false;
+
+                    if (is_self_generic) {
+                        try self.emit("@This()");
+                    } else {
+                        // Positional arguments → regular function call
+                        try self.generateExpr(c.callee);
+                        try self.emit("(");
+                        for (c.args, 0..) |arg, i| {
+                            if (i > 0) try self.emit(", ");
+                            try self.generateExpr(arg);
+                        }
+                        // Fill in default args if caller passed fewer than the function expects
+                        try self.fillDefaultArgs(c);
+                        try self.emit(")");
                     }
-                    // Fill in default args if caller passed fewer than the function expects
-                    try self.fillDefaultArgs(c);
-                    try self.emit(")");
                 }
             },
             .field_expr => |f| {
@@ -1769,14 +1780,24 @@ pub const CodeGen = struct {
                     }
                     try self.emit(" }");
                 } else {
-                    try self.generateExprMir(m.getCallee());
-                    try self.emit("(");
-                    for (m.callArgs(), 0..) |arg, i| {
-                        if (i > 0) try self.emit(", ");
-                        try self.generateCoercedExprMir(arg);
+                    // Inside a generic struct, Name(T) self-instantiation → just @This()
+                    const is_self_generic_mir = if (self.generic_struct_name) |gsn|
+                        c.callee.* == .identifier and std.mem.eql(u8, c.callee.identifier, gsn)
+                    else
+                        false;
+
+                    if (is_self_generic_mir) {
+                        try self.emit("@This()");
+                    } else {
+                        try self.generateExprMir(m.getCallee());
+                        try self.emit("(");
+                        for (m.callArgs(), 0..) |arg, i| {
+                            if (i > 0) try self.emit(", ");
+                            try self.generateCoercedExprMir(arg);
+                        }
+                        try self.fillDefaultArgs(c);
+                        try self.emit(")");
                     }
-                    try self.fillDefaultArgs(c);
-                    try self.emit(")");
                 }
             },
             .field_access => {
@@ -2817,6 +2838,11 @@ pub const CodeGen = struct {
                 const is_collection = std.mem.eql(u8, g.name, "List") or
                     std.mem.eql(u8, g.name, "Map") or
                     std.mem.eql(u8, g.name, "Set");
+
+                // Inside a generic struct, self-references use @This()
+                if (self.generic_struct_name) |gsn| {
+                    if (std.mem.eql(u8, g.name, gsn)) break :blk "@This()";
+                }
 
                 // User-defined generic type — Name(T, U) → Name(zigT, zigU)
                 if (g.args.len > 0) {

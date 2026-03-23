@@ -58,3 +58,42 @@ files fails. Affects `orhon gendoc .orh-cache/std` and any tooling that parses s
 
 Fix: rename the affected bridge functions to non-keyword names (e.g. `length` instead of
 `size`). Do not weaken the parser to accept keywords as identifiers.
+
+## Codegen — cross-module struct ref-passing
+
+When calling a method on an imported module's struct, the codegen doesn't know the
+method's parameter types. If a parameter takes `const &T`, the codegen emits the
+argument by value instead of taking its address with `&`. Zig then errors with
+`expected type '*const T', found 'T'`.
+
+Affected: any cross-module struct method with `const &` non-self parameters.
+Workaround: use by-value parameters for cross-module struct methods.
+
+Fix: codegen needs access to imported module DeclTables during method call generation,
+or the MIR pass should annotate call arguments with the expected parameter passing mode.
+
+## Resolver — qualified generic types not validated
+
+`math.Vec2(f64)` passes resolver validation without checking that `Vec2` exists in the
+math module's DeclTable. Currently, any dot-qualified generic type is trusted — validation
+is deferred to Zig compile time. `math.Nonexistent(f64)` would pass the resolver silently.
+
+Fix: resolver needs cross-module DeclTable access during `validateType()` for
+`type_generic` nodes with qualified names.
+
+## Ownership — const values treated as moved on by-value pass
+
+Passing a `const` struct value to a function by value counts as a move. Using the same
+const value in two separate calls errors with "use of moved value". Const values are
+immutable and should be implicitly copyable — the ownership checker should treat by-value
+passing of const values as a copy, not a move.
+
+```
+const a: Vec2(f64) = Vec2(f64)(x: 1.0, y: 2.0)
+const b: Vec2(f64) = a.add(a)   // ERROR: use of moved value 'a'
+```
+
+## Stdlib — string interpolation leaks memory
+
+`@{variable}` interpolation allocates temporary buffers that are never freed. Known
+since early implementation. Fix after default allocator strategy matures.

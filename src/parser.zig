@@ -2319,11 +2319,31 @@ pub const Parser = struct {
                     .args = try args.toOwnedSlice(self.alloc()),
                 }});
             }
-            // Check for scoped type: mem.Allocator, etc.
+            // Check for scoped type: module.Type or module.Generic(T)
             if (self.check(.dot)) {
                 _ = self.advance();
                 const field_tok = try self.expect(.identifier);
                 const full_name = try std.fmt.allocPrint(self.alloc(), "{s}.{s}", .{ tok.text, field_tok.text });
+                // Check for generic: module.Type(T)
+                if (self.check(.lparen)) {
+                    _ = self.advance();
+                    var gargs: std.ArrayListUnmanaged(*Node) = .{};
+                    self.skipNewlines();
+                    if (!self.check(.rparen)) {
+                        try gargs.append(self.alloc(), try self.parseType());
+                        while (self.check(.comma)) {
+                            _ = self.advance();
+                            self.skipNewlines();
+                            if (self.check(.rparen)) break;
+                            try gargs.append(self.alloc(), try self.parseType());
+                        }
+                    }
+                    _ = try self.expect(.rparen);
+                    return self.newNode(.{ .type_generic = .{
+                        .name = full_name,
+                        .args = try gargs.toOwnedSlice(self.alloc()),
+                    }});
+                }
                 return self.newNode(.{ .type_named = full_name });
             }
             return self.newNode(.{ .type_named = tok.text });

@@ -40,50 +40,35 @@ All stdlib modules use the bridge pattern (module + `.zig` sidecar). The codegen
 ### Implemented
 ```
 std.allocator     // memory allocators — SMP, Arena, Page
+std.collections   // List(T), Map(K,V), Set(T) — generic collections via bridge
+std.compression   // algorithms — lz4, zstd, deflate
 std.console       // terminal I/O — print, println, get
+std.crypto        // primitives — hashing, symmetric, asymmetric encryption
+std.csv           // parse and emit CSV
+std.encoding      // base64, hex, UTF-8, UTF-16
 std.fs            // filesystem — readFile, writeFile, exists, remove, mkdir, readDir
+std.http          // HTTP client, URL utilities
+std.ini           // INI config file parser
 std.json          // JSON — get, hasKey, object, stringify
 std.math          // math — abs, sqrt, pow, trig, floor, ceil, round + integer variants
+std.net           // raw sockets — TCP, UDP
 std.random        // random — int, float, boolean, seed
+std.regex         // pattern matching
+std.simd          // SIMD vector intrinsics — reduce, splat, reverse
 std.sort          // sorting — intAsc, intDesc, floatAsc, strAsc, reverse
 std.str           // string utilities — contains, replace, toUpper, parseInt, toString, etc.
+std.stream        // raw streams, buffers, readers, writers
 std.system        // OS — run, getEnv, cwd, exit, signals (trap, check, clear, raise)
+std.testing       // test utilities
 std.time          // time — now, sleepMs, elapsed, format
-std.collections   // List(T), Map(K,V), Set(T) — generic collections via bridge
-std.ziglib        // bridge testbed — exercises all interop patterns
-std.simd          // SIMD vector intrinsics — reduce, splat, reverse
+std.toml          // TOML config file parser
 std.tui           // terminal UI — raw mode, cursor, key input, screen buffer, drawing
-```
-
-### Next up
-```
-std.process       // spawn processes, pipes, child processes
-std.encoding      // base64, hex, UTF-8, UTF-16
-std.io            // raw streams, buffers, readers, writers
-std.net           // raw sockets — TCP, UDP
-std.crypto        // primitives only — hashing, symmetric, asymmetric encryption
-```
-
-### Remaining
-```
-std.unicode       // full unicode support, normalization
-std.reflect       // type introspection
-std.compress      // algorithms only — lz4, zstd, deflate
-std.regex         // pattern matching
 std.xml           // parse and emit XML
-std.csv           // parse and emit CSV
-std.hash          // fast general purpose hashing — FNV, xxHash, SipHash
-std.bytes         // raw byte manipulation, endianness, bit operations
-std.math.linear   // Vec2(T), Vec3(T), Vec4(T), Mat4(T), Quat(T)
+std.yaml          // YAML parsing — mappings, sequences, scalars, dot-path access
+std.ziglib        // bridge testbed — exercises all interop patterns
 ```
 
-### Far future
-```
-std.yaml          // parse and emit YAML
-std.audio         // audio device access, playback primitives
-std.window        // window creation, input events, platform abstraction only
-std.gpu           // GPU access, compute, backend agnostic (Vulkan, OpenGL, WebGPU)
-```
+Linear math types (Vec2, Vec3, Vec4, Mat4, Quat) are part of `std.math` — generic structs in `linear.orh` declaring `module math`. Access via `import std::math` → `math.Vec2(f32)`, `math.Mat4(f64)`, etc.
 
 ---
 
@@ -99,6 +84,15 @@ Add coverage for features not yet in the example module:
 ### Fuzz Testing
 
 Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.
+
+### Workarounds to Fix
+
+Active workarounds in the codebase that need proper solutions:
+
+- **Cross-module ref-passing** — linear math types use by-value params instead of `const &` because codegen can't resolve imported module method signatures. Fix: give codegen access to cross-module DeclTables, or annotate call args in MIR.
+- **Qualified generic type validation** — `math.Vec2(f64)` skips resolver validation entirely. Fix: cross-module DeclTable lookup in `validateType()`.
+- **Const by-value treated as move** — ownership checker prevents using the same const value in two method calls. Fix: ownership checker should treat const by-value as copy, not move.
+- **String interpolation leak** — `@{variable}` allocates temporaries that are never freed. Fix after default allocator matures.
 
 ---
 
@@ -239,18 +233,3 @@ h.return()
 - Thread pool is a user-space concern — a list of handles is a pool.
 - Shared mutable state between threads is impossible by design.
 
----
-
-## Decided Against
-
-- **Closures** — function pointers cover the use case. Captures create ownership complexity. Pass variables as arguments instead.
-- **Traits / interfaces** — `any` + `compt` covers generic type dispatch. Traits add complexity (hierarchies, orphan rules, associated types) without proportional value.
-- **Coroutines / async** — threads + move semantics cover parallelism. Coroutines need a runtime, colored functions, and an executor.
-- **REPL** — compiled language. `orhon run` is fast enough. A REPL needs an interpreter or incremental compiler.
-- **Top-level `println`** — keep in `std::console`. One import, all I/O. No special-case global functions.
-- **Collection method chaining** — `.filter().map().take()` allocates intermediate collections. For loops are explicit, zero-alloc, and already work.
-- **Untagged unions** — all unions carry a tag. Safety requires knowing which type is active. Use `bridge struct` with Zig sidecar for unsafe C interop.
-- **Goroutines** — need a runtime, GC, scheduler. OS threads + move semantics are deterministic with no runtime overhead.
-- **`Array(T, N)` / `Slice(T)` syntax** — `[N]T` and `[]T` are shorter, universal, and match array literals.
-- **`else` on `for`/`while`** — confusing semantics. Use `if(items.len == 0)` instead.
-- **Enum associated values** — arbitrary unions + `is` already cover this cleanly.

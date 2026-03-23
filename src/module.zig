@@ -393,8 +393,42 @@ pub const Resolver = struct {
                     const result = try self.modules.getOrPut(imp_mod_name);
                     if (!result.found_existing) {
                         result.key_ptr.* = imp_mod_name;
-                        const files = try self.allocator.alloc([]const u8, 1);
-                        files[0] = file_path;
+
+                        // Scan std directory for additional files declaring the same module
+                        var file_list = std.ArrayListUnmanaged([]const u8){};
+                        try file_list.append(self.allocator, file_path); // anchor first
+
+                        const anchor_basename = try std.fmt.allocPrint(self.allocator, "{s}.orh", .{decl.path});
+                        defer self.allocator.free(anchor_basename);
+
+                        var std_dir = std.fs.cwd().openDir(scope_dir, .{ .iterate = true }) catch null;
+                        if (std_dir) |*sd| {
+                            defer sd.close();
+                            var dir_iter = sd.iterate();
+                            while (try dir_iter.next()) |dir_entry| {
+                                if (dir_entry.kind != .file) continue;
+                                if (!std.mem.endsWith(u8, dir_entry.name, ".orh")) continue;
+                                if (std.mem.eql(u8, dir_entry.name, anchor_basename)) continue;
+                                // Skip internal files
+                                if (dir_entry.name[0] == '_') continue;
+
+                                const extra_path = try std.fmt.allocPrint(self.allocator,
+                                    "{s}/{s}", .{ scope_dir, dir_entry.name });
+                                const extra_mod = try self.readModuleName(extra_path) orelse {
+                                    self.allocator.free(extra_path);
+                                    continue;
+                                };
+                                defer self.allocator.free(extra_mod);
+
+                                if (std.mem.eql(u8, extra_mod, decl.path)) {
+                                    try file_list.append(self.allocator, extra_path);
+                                } else {
+                                    self.allocator.free(extra_path);
+                                }
+                            }
+                        }
+
+                        const files = try file_list.toOwnedSlice(self.allocator);
                         result.value_ptr.* = .{
                             .name = imp_mod_name,
                             .files = files,

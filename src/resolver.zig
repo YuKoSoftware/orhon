@@ -834,7 +834,10 @@ pub const TypeResolver = struct {
             },
             .type_generic => |g| {
                 // Validate the base type name is known (builtin, compt func, or user-defined)
-                const is_known = builtins.isBuiltinType(g.name) or
+                // Qualified names (module.Type) are from imports — trust them, Zig validates at compile time
+                const is_qualified = std.mem.indexOfScalar(u8, g.name, '.') != null;
+                const is_known = is_qualified or
+                    builtins.isBuiltinType(g.name) or
                     self.decls.funcs.contains(g.name) or
                     self.decls.structs.contains(g.name) or
                     scope.lookup(g.name) != null;

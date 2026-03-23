@@ -99,6 +99,24 @@ compt func describe(val: any) String {
     return "unknown"
 }
 
+// ─── SIMD Vectors ─────────────────────────────────────────────────────────────
+
+// Vector(N, T) maps to hardware SIMD registers.
+// Arithmetic operators work element-wise.
+
+func vector_add() Vector(4, f32) {
+    const a: Vector(4, f32) = [1.0, 2.0, 3.0, 4.0]
+    const b: Vector(4, f32) = [5.0, 6.0, 7.0, 8.0]
+    return a + b
+}
+
+// Scalar broadcast — the scalar is expanded to fill all lanes.
+
+func vector_scale() Vector(4, f32) {
+    const v: Vector(4, f32) = [1.0, 2.0, 3.0, 4.0]
+    return v * 2.0
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 test "compound assignment" {

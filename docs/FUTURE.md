@@ -51,6 +51,7 @@ std.system        // OS — run, getEnv, cwd, exit, signals (trap, check, clear,
 std.time          // time — now, sleepMs, elapsed, format
 std.collections   // List(T), Map(K,V), Set(T) — generic collections via bridge
 std.ziglib        // bridge testbed — exercises all interop patterns
+std.simd          // SIMD vector intrinsics — reduce, splat, reverse
 ```
 
 ### Next up

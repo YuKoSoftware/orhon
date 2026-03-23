@@ -17,6 +17,7 @@ pub const BUILTIN_TYPES = [_][]const u8{
     "List",
     "Map",
     "Set",
+    "Vector",
 };
 
 /// Compiler function names (called as keywords, no prefix)
@@ -59,6 +60,16 @@ pub const BUILD_TYPES = [_][]const u8{
     "static",
     "dynamic",
 };
+
+/// Value types — fixed-size types that always copy, never move.
+/// Distinct from primitives (i32, f32) but share copy semantics.
+pub fn isValueType(name: []const u8) bool {
+    const value_types = [_][]const u8{"Vector"};
+    for (value_types) |vt| {
+        if (std.mem.eql(u8, name, vt)) return true;
+    }
+    return false;
+}
 
 pub fn isBuiltinType(name: []const u8) bool {
     for (BUILTIN_TYPES) |bt| {
@@ -118,12 +129,19 @@ test "builtin type detection" {
     try std.testing.expect(isBuiltinType("List"));
     try std.testing.expect(isBuiltinType("Map"));
     try std.testing.expect(isBuiltinType("Set"));
+    try std.testing.expect(isBuiltinType("Vector"));
 }
 
 test "compiler func detection" {
     try std.testing.expect(isCompilerFunc("cast"));
     try std.testing.expect(isCompilerFunc("typeOf"));
     try std.testing.expect(!isCompilerFunc("print"));
+}
+
+test "value type detection" {
+    try std.testing.expect(isValueType("Vector"));
+    try std.testing.expect(!isValueType("List"));
+    try std.testing.expect(!isValueType("i32"));
 }
 
 test "primitive mapping" {

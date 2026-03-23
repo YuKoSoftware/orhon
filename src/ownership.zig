@@ -5,6 +5,7 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 const types = @import("types.zig");
+const builtins = @import("builtins.zig");
 const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 
@@ -173,7 +174,7 @@ pub const OwnershipChecker = struct {
                 for (f.params) |param| {
                     if (param.* == .param) {
                         const type_name = typeNodeName(param.param.type_annotation);
-                        const is_prim = types.isPrimitiveName(type_name);
+                        const is_prim = types.isPrimitiveName(type_name) or builtins.isValueType(type_name);
                         try func_scope.define(param.param.name, is_prim);
                     }
                 }
@@ -227,7 +228,7 @@ pub const OwnershipChecker = struct {
                 // Define the new variable as owned, with type name for field lookup
                 const type_name = if (v.type_annotation) |t| typeNodeName(t) else "";
                 const is_prim = if (type_name.len > 0)
-                    types.isPrimitiveName(type_name)
+                    (types.isPrimitiveName(type_name) or builtins.isValueType(type_name))
                 else
                     inferPrimitiveFromValue(v.value, scope);
                 try scope.defineTyped(v.name, is_prim, type_name);

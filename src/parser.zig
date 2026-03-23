@@ -2292,10 +2292,15 @@ pub const Parser = struct {
                 _ = self.advance();
                 var args: std.ArrayListUnmanaged(*Node) = .{};
                 const is_ring_type = std.mem.eql(u8, tok.text, "Ring") or std.mem.eql(u8, tok.text, "ORing");
+                const is_vector_type = std.mem.eql(u8, tok.text, "Vector");
                 self.skipNewlines();
                 if (!self.check(.rparen)) {
-                    // First arg is always a type
-                    try args.append(self.alloc(), try self.parseType());
+                    // Vector first arg is an integer size, not a type
+                    if (is_vector_type) {
+                        try args.append(self.alloc(), try self.parseExpr());
+                    } else {
+                        try args.append(self.alloc(), try self.parseType());
+                    }
                     while (self.check(.comma)) {
                         _ = self.advance();
                         self.skipNewlines();

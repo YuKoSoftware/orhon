@@ -844,10 +844,12 @@ pub const TypeResolver = struct {
                     defer self.allocator.free(msg);
                     try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
                 }
-                // Validate type arguments (Ring/ORing second arg is a size, not a type)
+                // Validate type arguments (Ring/ORing second arg is a size, Vector first arg is a size)
                 const is_ring = std.mem.eql(u8, g.name, "Ring") or std.mem.eql(u8, g.name, "ORing");
+                const is_vector = std.mem.eql(u8, g.name, "Vector");
                 for (g.args, 0..) |arg, idx| {
                     if (is_ring and idx == 1) continue; // size arg, not a type
+                    if (is_vector and idx == 0) continue; // lane count, not a type
                     try self.validateType(arg, scope);
                 }
             },

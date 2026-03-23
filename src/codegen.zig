@@ -1610,14 +1610,19 @@ pub const CodeGen = struct {
                         return;
                     }
                 }
-                // Division → @divTrunc
-                if (std.mem.eql(u8, b.op, "/")) {
+                // Vector operand detection for arithmetic
+                const lhs_is_vec = mirIsVector(m.lhs());
+                const rhs_is_vec = mirIsVector(m.rhs());
+                const any_vec = lhs_is_vec or rhs_is_vec;
+
+                // Division → @divTrunc (skip for vectors — Zig @Vector supports native / and %)
+                if (!any_vec and std.mem.eql(u8, b.op, "/")) {
                     try self.emit("@divTrunc(");
                     try self.generateExprMir(m.lhs());
                     try self.emit(", ");
                     try self.generateExprMir(m.rhs());
                     try self.emit(")");
-                } else if (std.mem.eql(u8, b.op, "%")) {
+                } else if (!any_vec and std.mem.eql(u8, b.op, "%")) {
                     try self.emit("@mod(");
                     try self.generateExprMir(m.lhs());
                     try self.emit(", ");
@@ -1630,6 +1635,28 @@ pub const CodeGen = struct {
                     try self.generateExprMir(m.lhs());
                     try self.emit(", ");
                     try self.generateExprMir(m.rhs());
+                    try self.emit(")");
+                } else if (any_vec and lhs_is_vec != rhs_is_vec) {
+                    // Vector-scalar broadcast: wrap scalar side with @splat
+                    const op = opToZig(b.op);
+                    try self.emit("(");
+                    if (lhs_is_vec) {
+                        try self.generateExprMir(m.lhs());
+                        try self.emitFmt(" {s} ", .{op});
+                        try self.emit("@as(@TypeOf(");
+                        try self.generateExprMir(m.lhs());
+                        try self.emit("), @splat(");
+                        try self.generateExprMir(m.rhs());
+                        try self.emit("))");
+                    } else {
+                        try self.emit("@as(@TypeOf(");
+                        try self.generateExprMir(m.rhs());
+                        try self.emit("), @splat(");
+                        try self.generateExprMir(m.lhs());
+                        try self.emit("))");
+                        try self.emitFmt(" {s} ", .{op});
+                        try self.generateExprMir(m.rhs());
+                    }
                     try self.emit(")");
                 } else {
                     const op = opToZig(b.op);
@@ -1967,6 +1994,14 @@ pub const CodeGen = struct {
     /// Check if a MirNode represents a string expression (via type_class or AST kind).
     fn mirIsString(m: *const mir.MirNode) bool {
         return m.type_class == .string or m.ast.* == .string_literal or m.ast.* == .interpolated_string;
+    }
+
+    /// Check if a MirNode represents a SIMD Vector type.
+    fn mirIsVector(m: *const mir.MirNode) bool {
+        if (m.resolved_type == .generic) {
+            return std.mem.eql(u8, m.resolved_type.generic.name, "Vector");
+        }
+        return false;
     }
 
     /// Check if a MirNode is typed as a bitfield, return the bitfield name.
@@ -2769,6 +2804,13 @@ pub const CodeGen = struct {
                         const inner = try self.typeToZig(g.args[0]);
                         const size_str = if (g.args[1].* == .int_literal) g.args[1].int_literal else "0";
                         break :blk try self.allocTypeStr("OrhonORing({s}, {s})", .{ inner, size_str });
+                    }
+                } else if (std.mem.eql(u8, g.name, "Vector")) {
+                    // Vector(N, T) → @Vector(N, T)
+                    if (g.args.len >= 2) {
+                        const size_str = if (g.args[0].* == .int_literal) g.args[0].int_literal else "0";
+                        const elem = try self.typeToZig(g.args[1]);
+                        break :blk try self.allocTypeStr("@Vector({s}, {s})", .{ size_str, elem });
                     }
                 }
                 // Collection types → _collections.Name(zigT, ...)

@@ -169,6 +169,34 @@ var a, b, c = minMax(arr)    // error — MinMax only has 2 fields
 
 ---
 
+## SIMD Vectors
+
+`Vector(N, T)` is a fixed-size SIMD vector type. `N` is the lane count (any integer), `T` is the element type (any numeric primitive). Maps directly to hardware SIMD registers.
+
+```
+// declare vectors with array literal syntax
+var v: Vector(4, f32) = [1.0, 2.0, 3.0, 4.0]
+var w: Vector(4, f32) = [5.0, 6.0, 7.0, 8.0]
+
+// arithmetic operators work element-wise
+var sum = v + w        // [6.0, 8.0, 10.0, 12.0]
+var diff = v - w
+var prod = v * w
+var quot = v / w
+
+// scalar broadcast — scalar is expanded to fill all lanes
+var scaled = v * 2.0   // [2.0, 4.0, 6.0, 8.0]
+
+// any size and numeric element type
+var wide: Vector(8, f32) = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+var ints: Vector(4, i32) = [1, 2, 3, 4]
+var doubles: Vector(2, f64) = [1.0, 2.0]
+```
+
+Vectors have copy semantics — assigning or passing a vector always copies. For SIMD intrinsics (reduce, shuffle), use `import std::simd`.
+
+---
+
 ## First-Class `type`
 
 `type` is a keyword — it represents a type as a compile-time value. You can pass types as parameters, return them from functions, and store them in `const` variables.

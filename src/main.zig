@@ -354,8 +354,6 @@ const FS_ORH      = @embedFile("std/fs.orh");
 const FS_ZIG      = @embedFile("std/fs.zig");
 const MATH_ORH    = @embedFile("std/math.orh");
 const MATH_ZIG    = @embedFile("std/math.zig");
-const MEM_ORH     = @embedFile("std/mem.orh");
-const MEM_ZIG     = @embedFile("std/mem.zig");
 const STR_ORH     = @embedFile("std/str.orh");
 const STR_ZIG     = @embedFile("std/str.zig");
 const SYSTEM_ORH  = @embedFile("std/system.orh");
@@ -400,8 +398,6 @@ fn ensureStdFiles(allocator: std.mem.Allocator) !void {
         .{ .name = "fs.zig",      .content = FS_ZIG },
         .{ .name = "math.orh",    .content = MATH_ORH },
         .{ .name = "math.zig",    .content = MATH_ZIG },
-        .{ .name = "mem.orh",     .content = MEM_ORH },
-        .{ .name = "mem.zig",     .content = MEM_ZIG },
         .{ .name = "str.orh",     .content = STR_ORH },
         .{ .name = "str.zig",     .content = STR_ZIG },
         .{ .name = "system.orh",  .content = SYSTEM_ORH },
@@ -960,6 +956,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         cg.module_builds = &module_builds;
         cg.node_map = &mir_annotator.node_map;
         cg.union_registry = &mir_annotator.union_registry;
+        cg.var_types = &mir_annotator.var_types;
 
         try cg.generate(ast, mod_name);
         if (reporter.hasErrors()) return null;

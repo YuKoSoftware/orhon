@@ -45,7 +45,8 @@ for TEST_NAME in \
     str_upper str_lower str_replace str_repeat str_parse_int str_parse_float \
     default_param tostring_int tostring_bool \
     interpolation interpolation_int \
-    string_eq string_ne string_eq_literal string_eq_param; do
+    string_eq string_ne string_eq_literal string_eq_param \
+    bitfield_constructor bitfield_methods; do
     if echo "$BINOUT" | grep -q "PASS $TEST_NAME"; then pass "runtime: $TEST_NAME"
     else fail "runtime: $TEST_NAME"; fi
 done

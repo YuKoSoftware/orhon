@@ -1,5 +1,0 @@
-module mem
-
-// mem — memory allocators for Orhon programs
-// Import with: import std::mem
-// TODO: reimplement with clean bridge pattern

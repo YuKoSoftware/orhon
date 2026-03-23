@@ -84,16 +84,6 @@ Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.
 
 ---
 
-## Future Language Features
-
-### `unsafe` keyword
-Relaxes bridge safety rules within a block — allows mutable refs across the Orhon↔Zig boundary. Not yet implemented; strict mode (option 1) is the current default.
-
-### `#gpu` metadata
-Reserved for future GPU/compute design.
-
----
-
 ## Threading Model
 
 Threading is a **language-level feature**, not a stdlib module. A thread is a function that runs concurrently and returns a `Handle(T)`.
@@ -186,8 +176,11 @@ h.return()
 ### Phase 1 — Typed Annotation Pass (implemented)
 The MIR annotator (pass 10) walks the AST + resolver type_map to produce a NodeMap — an annotation table keyed by AST node pointer. Each entry carries `ResolvedType`, `TypeClass`, and optional coercion/narrowing info. Codegen can query this instead of re-discovering types via ad-hoc hashmaps. Includes a `UnionRegistry` for canonical union type deduplication.
 
-### Phase 2 — Typed Tree
+### Phase 2 — Single Source of Truth (implemented)
+MIR is the single source of truth for type information in codegen. Eliminated all AST type inspection functions (`isErrorUnionType`, `isNullUnionType`, `isArbitraryUnion`), the `arb_union_vars` hashmap, and 4 function return type tracking fields. Added `var_types` registry, `current_func_node` tracking, and `funcReturnTypeClass()`/`funcReturnMembers()` helpers. Codegen queries MIR for all type decisions. Only `narrowed_vars` remains (legitimate runtime scope state from `is` checks).
+
+### Phase 3 — Typed Tree
 Lower the NodeMap into a proper `MirNode` tree with its own node types. Codegen reads the MirNode tree instead of the AST. This enables desugaring and tree transformations before code emission.
 
-### Phase 3 — SSA + Optimization
+### Phase 4 — SSA + Optimization
 Flatten the MirNode tree to basic blocks with SSA form. Add optimization passes: dead code elimination, constant folding, inlining decisions. Codegen reads the SSA IR.

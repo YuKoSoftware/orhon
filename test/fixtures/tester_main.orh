@@ -543,5 +543,17 @@ func main() void {
         console.println("FAIL string_eq_param")
     }
 
+    if(tester.test_bitfield_constructor() == 1) {
+        console.println("PASS bitfield_constructor")
+    } else {
+        console.println("FAIL bitfield_constructor")
+    }
+
+    if(tester.test_bitfield_methods() == 1) {
+        console.println("PASS bitfield_methods")
+    } else {
+        console.println("FAIL bitfield_methods")
+    }
+
     console.println("TESTER:DONE")
 }

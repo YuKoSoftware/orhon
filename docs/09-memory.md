@@ -143,7 +143,9 @@ var arr: [10]i32 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]   // fixed array, on the stac
 
 ### Heap Allocation — Requires an Explicit Allocator
 ```
-var a = mem.DebugAllocator()
+import std::allocator
+
+var a: allocator.SMP = allocator.SMP.create()
 
 // single value
 var x: i32 = a.allocOne(i32, 42)
@@ -163,50 +165,25 @@ a.free(data)    // free slice
 
 `a.free(x)` is an ownership move — `x` becomes invalid after the call. Using `x` after freeing is a compile-time error. Heap-allocated values that go out of scope without an explicit free are a memory leak — always call `a.free(x)` explicitly.
 
-### Passing Allocators Around
-```
-// mem.Allocator is the interface type — accepts any allocator
-func process(a: mem.Allocator, n: i32) []i32 {
-    var buf: []i32 = a.alloc(i32, n)
-    return buf    // caller owns buf, caller is responsible for freeing
-}
-
-var a = mem.DebugAllocator()
-var result: []i32 = process(a, 100)
-// ... use result ...
-a.free(result)
-```
-
-Returning a heap-allocated value without also returning or passing the allocator is a compiler warning — the caller needs to know which allocator to free with.
-
 Custom allocator *implementation* belongs in Zig via `extern func` — Orhon code uses allocators but does not build them.
 
 ### Built-in Allocators
 
 | Allocator | Speed | Notes |
 |-----------|-------|-------|
-| `mem.SMP()` | fastest | default for release builds — per-thread freelist, zero setup, global singleton |
-| `mem.DebugAllocator()` | safe | debug builds — leak detection, double-free checks, general purpose |
-| `mem.Arena()` | fast | batch work, free all at once via `freeAll()` |
-| `mem.Page()` | varies | OS page-sized chunks, large allocations, bypasses heap |
-| `mem.Stack(n)` | fastest | stack-backed scratch, no heap, auto-reset at scope exit — `n` must be a compile-time constant |
+| `allocator.SMP` | fast | general-purpose, thread-safe — wraps Zig's `GeneralPurposeAllocator` |
+| `allocator.Arena` | fast | batch work, free all at once via `freeAll()` |
+| `allocator.Page` | varies | OS page-sized chunks, large allocations, stateless |
+
+All allocators follow the same pattern: `Type.create()` to instantiate, `.deinit()` to tear down.
 
 ### Arena — Batch Free
 ```
-var arena = mem.Arena()
+var arena: allocator.Arena = allocator.Arena.create()
 var buf: []u8 = arena.alloc(u8, 4096)
 var tmp: []i32 = arena.alloc(i32, 100)
 arena.freeAll()    // frees everything at once — all arena values become invalid
+arena.deinit()
 ```
 
-`arena.free(x)` on an individually arena-allocated value is a no-op — Arena does not track individual allocations. Use `arena.freeAll()` to release memory.
-
-### Stack — Stack-backed Scratch
-```
-var scratch = mem.Stack(4096)       // 4096 bytes on the stack — must be a compile-time constant
-var buf: []u8 = scratch.alloc(u8, 256)
-var nums: []i32 = scratch.alloc(i32, 16)
-// all memory freed automatically when scratch goes out of scope — no heap involved
-```
-
-`n` must be a compile-time constant (a literal or `compt` variable) — the buffer lives on the stack.
+`arena.freeAll()` releases all allocations but retains capacity for reuse. Call `.deinit()` to release the backing memory.

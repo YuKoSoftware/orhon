@@ -1269,3 +1269,31 @@ test "string eq param" {
     assert(test_string_eq_param("foo", "foo") == 1)
     assert(test_string_eq_param("foo", "bar") == 0)
 }
+
+// ─── Bitfields ──────────────────────────────────────────────
+
+bitfield(u32) Perms {
+    Read
+    Write
+    Execute
+}
+
+pub func test_bitfield_constructor() i32 {
+    var p: Perms = Perms(Read, Write)
+    if(p.has(Read) and p.has(Write) and !p.has(Execute)) {
+        return 1
+    }
+    return 0
+}
+
+pub func test_bitfield_methods() i32 {
+    var p: Perms = Perms()
+    p.set(Execute)
+    if(p.has(Execute)) {
+        p.clear(Execute)
+        if(!p.has(Execute)) {
+            return 1
+        }
+    }
+    return 0
+}

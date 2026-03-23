@@ -154,6 +154,8 @@ pub const MirAnnotator = struct {
     type_map: *const std.AutoHashMapUnmanaged(*parser.Node, RT),
     node_map: NodeMap,
     union_registry: UnionRegistry,
+    /// Variable name → NodeInfo lookup (fallback when node pointer isn't in type_map).
+    var_types: std.StringHashMapUnmanaged(NodeInfo),
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -168,12 +170,14 @@ pub const MirAnnotator = struct {
             .type_map = type_map,
             .node_map = .{},
             .union_registry = UnionRegistry.init(allocator),
+            .var_types = .{},
         };
     }
 
     pub fn deinit(self: *MirAnnotator) void {
         self.node_map.deinit(self.allocator);
         self.union_registry.deinit();
+        self.var_types.deinit(self.allocator);
     }
 
     /// Annotate the entire program AST.
@@ -241,7 +245,9 @@ pub const MirAnnotator = struct {
                     }
                     break :blk RT.unknown;
                 };
+                const info = NodeInfo{ .resolved_type = t, .type_class = classifyType(t) };
                 try self.recordNode(node, t);
+                try self.var_types.put(self.allocator, v.name, info);
 
                 // Canonicalize arb union types
                 if (t == .union_type) {
@@ -488,4 +494,29 @@ test "mir annotator - basic" {
 
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expectEqual(@as(usize, 0), annotator.node_map.count());
+    try std.testing.expectEqual(@as(usize, 0), annotator.var_types.count());
+}
+
+test "var_types - populated from var_decl" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var type_map: std.AutoHashMapUnmanaged(*parser.Node, RT) = .{};
+    defer type_map.deinit(alloc);
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+
+    var annotator = MirAnnotator.init(alloc, &reporter, &decl_table, &type_map);
+    defer annotator.deinit();
+
+    // Manually insert a var_types entry to verify the registry works
+    const info = NodeInfo{ .resolved_type = RT{ .primitive = "i32" }, .type_class = .plain };
+    try annotator.var_types.put(alloc, "x", info);
+    try std.testing.expectEqual(@as(usize, 1), annotator.var_types.count());
+
+    const got = annotator.var_types.get("x").?;
+    try std.testing.expectEqual(TypeClass.plain, got.type_class);
+    try std.testing.expectEqualStrings("i32", got.resolved_type.name());
 }

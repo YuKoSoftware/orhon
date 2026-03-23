@@ -15,15 +15,16 @@ instead of relying on hashmap registration from explicit annotations.
 Fixed by MIR UnionRegistry. Canonical union type deduplication ensures `(i32 | String)`
 in different functions maps to the same generated Zig type.
 
-## Codegen — bitfield variants not namespaced
+## ~~Codegen — bitfield variants not namespaced~~ (FIXED v0.4.8)
 
-`Perms(Read, Write)` generates `Perms(Read, Write)` in Zig, but `Read` is not
-in scope — it should be `.Read`. Bitfield variant names conflict with identifiers.
+Fixed by detecting bitfield constructor calls in codegen. `Perms(Read, Write)` now
+generates `Perms{ .value = Perms.Read | Perms.Write }`. Method args like `p.has(Read)`
+are qualified as `p.has(Perms.Read)` via MIR type lookup.
 
-## Codegen — `mem` module not auto-imported
+## ~~Codegen — `allocator` module not auto-imported~~ (FIXED v0.4.8)
 
-`mem.DebugAllocator()`, `mem.Arena()`, `mem.Page()` generate `mem.X()` in Zig
-but `mem` is not imported. The allocator module needs codegen-level import wiring.
+Was a documentation issue — docs referenced `mem.*` but the module is `std::allocator`.
+Stale `mem.orh`/`mem.zig` deleted, docs updated. `import std::allocator` works correctly.
 
 ## Codegen — array literal to slice coercion
 
@@ -35,10 +36,11 @@ where Zig expects slices. Need `&` address-of operator for coercion.
 `Map(K,V).get()` returns `?V` in Zig but codegen treats it as `V`. Need null
 union wrapping or `.?` unwrap at the call site.
 
-## Codegen — Set/Map iteration
+## ~~Codegen — Set/Map iteration~~ (RESOLVED)
 
-`for(set) |key|` and `for(map) |(key, value)|` don't work — Set/Map types are
-not directly iterable in Zig. Need iterator bridge methods.
+`for(set) |key|` direct syntax is not supported. Iteration works via bridge methods:
+`for(map.keys()) |key|`, `for(set.items()) |item|`. This is by design — collections
+expose slices through bridge methods, matching the Orhon bridge pattern.
 
 ## Codegen — thread blocks
 

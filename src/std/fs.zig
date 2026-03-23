@@ -111,6 +111,30 @@ pub fn readDir(path: []const u8) OrhonResult([]const u8) {
     return .{ .ok = buf.items };
 }
 
+// ── Path: Join ──
+
+pub fn joinPath(a: []const u8, b: []const u8) []const u8 {
+    return std.fs.path.join(alloc, &.{ a, b }) catch return "";
+}
+
+// ── Path: Dirname ──
+
+pub fn dirname(path: []const u8) []const u8 {
+    return std.fs.path.dirname(path) orelse "";
+}
+
+// ── Path: Basename ──
+
+pub fn basename(path: []const u8) []const u8 {
+    return std.fs.path.basename(path);
+}
+
+// ── Path: Extension ──
+
+pub fn extension(path: []const u8) []const u8 {
+    return std.fs.path.extension(path);
+}
+
 // ── Tests ──
 
 test "writeFile and readFile" {
@@ -146,4 +170,23 @@ test "mkdir" {
     _ = mkdir(tmp);
     try std.testing.expect(exists(tmp));
     std.fs.cwd().deleteDir(tmp) catch {};
+}
+
+test "joinPath" {
+    const result = joinPath("/home/user", "file.txt");
+    try std.testing.expect(std.mem.eql(u8, result, "/home/user/file.txt"));
+}
+
+test "dirname" {
+    try std.testing.expect(std.mem.eql(u8, dirname("/home/user/file.txt"), "/home/user"));
+}
+
+test "basename" {
+    try std.testing.expect(std.mem.eql(u8, basename("/home/user/file.txt"), "file.txt"));
+}
+
+test "extension" {
+    try std.testing.expect(std.mem.eql(u8, extension("file.txt"), ".txt"));
+    try std.testing.expect(std.mem.eql(u8, extension("archive.tar.gz"), ".gz"));
+    try std.testing.expect(std.mem.eql(u8, extension("noext"), ""));
 }

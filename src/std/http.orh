@@ -1,0 +1,12 @@
+module http
+
+// http — HTTP client for Orhon programs
+// Import with: import std::http
+
+// Send a GET request, return response body
+
+bridge func get(url: String) (Error | String)
+
+// Send a POST request with body and content type, return response body
+
+bridge func post(url: String, body: String, contentType: String) (Error | String)

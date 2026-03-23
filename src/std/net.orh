@@ -1,0 +1,46 @@
+module net
+
+// net — TCP networking for Orhon programs
+// Import with: import std::net
+
+// ── TCP Client ──
+
+// Connect to a TCP server
+
+bridge func tcpConnect(host: String, port: i32) (Error | Connection)
+
+// ── TCP Server ──
+
+// Listen for TCP connections on a port
+
+bridge func tcpListen(host: String, port: i32) (Error | Listener)
+
+// ── Connection ──
+
+bridge struct Connection {
+
+    // Send data over the connection
+
+    bridge func send(self: &Connection, data: String) (Error | void)
+
+    // Receive up to n bytes
+
+    bridge func recv(self: &Connection, n: i32) (Error | String)
+
+    // Close the connection
+
+    bridge func close(self: &Connection) void
+}
+
+// ── Listener ──
+
+bridge struct Listener {
+
+    // Accept a new connection (blocks until one arrives)
+
+    bridge func accept(self: &Listener) (Error | Connection)
+
+    // Stop listening
+
+    bridge func close(self: &Listener) void
+}

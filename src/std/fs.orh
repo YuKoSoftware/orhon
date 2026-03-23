@@ -34,3 +34,21 @@ bridge func mkdir(path: String) (Error | void)
 // List directory entries
 
 bridge func readDir(path: String) (Error | String)
+
+// ── Path Operations ──
+
+// Join two path segments
+
+bridge func joinPath(a: String, b: String) String
+
+// Parent directory of a path
+
+bridge func dirname(path: String) String
+
+// Filename component of a path
+
+bridge func basename(path: String) String
+
+// File extension (including the dot)
+
+bridge func extension(path: String) String

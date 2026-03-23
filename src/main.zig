@@ -378,6 +378,16 @@ const COMPRESS_ORH = @embedFile("std/compression.orh");
 const COMPRESS_ZIG = @embedFile("std/compression.zig");
 const XML_ORH      = @embedFile("std/xml.orh");
 const XML_ZIG      = @embedFile("std/xml.zig");
+const CSV_ORH      = @embedFile("std/csv.orh");
+const CSV_ZIG      = @embedFile("std/csv.zig");
+const TESTING_ORH  = @embedFile("std/testing.orh");
+const TESTING_ZIG  = @embedFile("std/testing.zig");
+const NET_ORH      = @embedFile("std/net.orh");
+const NET_ZIG      = @embedFile("std/net.zig");
+const HTTP_ORH     = @embedFile("std/http.orh");
+const HTTP_ZIG     = @embedFile("std/http.zig");
+const REGEX_ORH    = @embedFile("std/regex.orh");
+const REGEX_ZIG    = @embedFile("std/regex.zig");
 
 /// Write an embedded file to .orh-cache/std/ if it doesn't already exist
 fn writeStdFile(dir: []const u8, name: []const u8, content: []const u8, allocator: std.mem.Allocator) !void {
@@ -432,6 +442,16 @@ fn ensureStdFiles(allocator: std.mem.Allocator) !void {
         .{ .name = "compression.zig", .content = COMPRESS_ZIG },
         .{ .name = "xml.orh",         .content = XML_ORH },
         .{ .name = "xml.zig",         .content = XML_ZIG },
+        .{ .name = "csv.orh",         .content = CSV_ORH },
+        .{ .name = "csv.zig",         .content = CSV_ZIG },
+        .{ .name = "testing.orh",     .content = TESTING_ORH },
+        .{ .name = "testing.zig",     .content = TESTING_ZIG },
+        .{ .name = "net.orh",         .content = NET_ORH },
+        .{ .name = "net.zig",         .content = NET_ZIG },
+        .{ .name = "http.orh",        .content = HTTP_ORH },
+        .{ .name = "http.zig",        .content = HTTP_ZIG },
+        .{ .name = "regex.orh",       .content = REGEX_ORH },
+        .{ .name = "regex.zig",       .content = REGEX_ZIG },
     };
 
     for (files) |f| {

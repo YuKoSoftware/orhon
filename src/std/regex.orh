@@ -1,0 +1,37 @@
+module regex
+
+// regex — pattern matching for Orhon programs
+// Import with: import std::regex
+//
+// Supported syntax:
+//   .         any character (except newline)
+//   *  +  ?   quantifiers (zero+, one+, zero/one)
+//   ^  $      anchors (start, end)
+//   [abc]     character class
+//   [a-z]     character range
+//   [^abc]    negated class
+//   \d \w \s  digit, word, whitespace shortcuts
+//   \D \W \S  negated shortcuts
+//   (...)     grouping
+//   |         alternation
+//   \         escape special characters
+
+// Test if pattern matches the entire text
+
+bridge func match(pattern: String, text: String) bool
+
+// Find first match in text
+
+bridge func find(pattern: String, text: String) (Error | String)
+
+// Find all non-overlapping matches (newline-separated)
+
+bridge func findAll(pattern: String, text: String) (Error | String)
+
+// Replace first match
+
+bridge func replace(pattern: String, text: String, replacement: String) (Error | String)
+
+// Replace all matches
+
+bridge func replaceAll(pattern: String, text: String, replacement: String) (Error | String)

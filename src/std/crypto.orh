@@ -37,3 +37,9 @@ bridge func encrypt(plaintext: String, key: String) (Error | String)
 // Decrypt base64-encoded blob with a 32-byte key
 
 bridge func decrypt(ciphertext: String, key: String) (Error | String)
+
+// ── Identifiers ──
+
+// Generate a UUID v4 (random, cryptographically secure)
+
+bridge func uuid() String

@@ -1,0 +1,21 @@
+module csv
+
+// csv — CSV parsing for Orhon programs
+// Import with: import std::csv
+// Handles quoted fields, embedded commas, and newlines within quotes.
+
+// Get a field value by row and column (0-indexed)
+
+bridge func getField(source: String, row: i32, col: i32) (Error | String)
+
+// Get an entire row as tab-separated fields
+
+bridge func getRow(source: String, row: i32) (Error | String)
+
+// Number of rows in CSV data
+
+bridge func rowCount(source: String) i32
+
+// Number of columns (from first row)
+
+bridge func colCount(source: String) i32

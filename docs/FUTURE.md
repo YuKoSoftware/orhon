@@ -19,10 +19,11 @@ the main dispatch path.
 **Type narrowing:** `extractNarrowing` pre-computes `IfNarrowing` (then/else/post types).
 **Interpolation hoisting:** `temp_var`/`injected_defer` injected nodes in blocks.
 
-**Remaining cleanup (no bugs driving this):**
-- Migrate struct/enum member codegen to MirNode path
-- Eliminate `type_narrowed_vars` map (stamp narrowed_to on descendant MirNodes)
-- Delete AST-path codegen functions once all callers use MIR
+**Cleanup (v0.5.4):** All statement/expression codegen migrated to MIR path — struct/enum
+members, match, for, destruct, test bodies, thread bodies. `stampNarrowing()` stamps
+`narrowed_to` on MirNode descendants during lowering. MIR codegen path is fully
+self-contained — no `type_narrowed_vars` map, no fallthrough to AST-path functions.
+AST-path codegen retained only for unit tests (which build raw AST without MIR setup).
 
 ### ~~Threading — `thread` keyword + `Handle(T)`~~ (implemented v0.5.0)
 
@@ -105,9 +106,30 @@ Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.
 
 ## Priority 4 — Future Architecture
 
-### MIR Phase 4 — SSA + Optimization
+### MIR Phase 4 — Optimization + Caching
 
-Flatten the MirNode tree to basic blocks with SSA form. Add optimization passes: dead code elimination, constant folding, inlining decisions. Codegen reads the SSA IR.
+Selective optimization passes — only where Orhon has type knowledge that Zig/LLVM lacks.
+Inspired by vnmakarov/MIR's philosophy: pick high-impact passes, skip what the downstream compiler already handles.
+
+**4a — SSA construction.** Flatten MirNode tree to basic blocks, build SSA form using Braun's
+algorithm (simple, no dominance frontiers needed). Each value gets a single definition, phi
+nodes at join points. This is the foundation — all subsequent passes run on SSA form.
+
+**4b — Inlining.** Identify inline candidates: bridge wrappers, single-expression functions,
+generated coercion wrappers. Substitute at call sites. SSA makes substitution clean (no
+variable name collisions). Reduces emitted Zig volume and gives LLVM better input.
+
+**4c — Dead code elimination.** Trivial on SSA: if an SSA value has no uses, delete it.
+Reachability analysis from entry points, skip emission of unreachable code. Less emitted
+Zig = faster Zig compilation.
+
+**4d — Type-aware constant folding.** Fold `@type(x) == T` when statically known, eliminate
+redundant wrap/unwrap coercion chains, simplify coercion sequences. Single definitions mean
+constants propagate in one pass.
+
+**4e — MIR caching.** Binary serialization/deserialization of SSA IR per module. Cache
+invalidation via file content hashing. Skip annotation + lowering for unchanged modules on
+incremental rebuilds.
 
 ---
 
@@ -120,10 +142,17 @@ The MIR annotator (pass 10) walks the AST + resolver type_map to produce a NodeM
 MIR is the single source of truth for type information in codegen. Eliminated all AST type inspection functions (`isErrorUnionType`, `isNullUnionType`, `isArbitraryUnion`), the `arb_union_vars` hashmap, and 4 function return type tracking fields. Added `var_types` registry, `current_func_node` tracking, and `funcReturnTypeClass()`/`funcReturnMembers()` helpers. Codegen queries MIR for all type decisions. Only `narrowed_vars` remains (legitimate runtime scope state from `is` checks).
 
 ### Phase 3 — Coercion Pass + Typed Tree (implemented)
-Coercion annotation pass complete for all 5 coercion types. MirLowerer builds a full MirNode tree from AST + NodeMap. Codegen walks the MirNode tree for top-level → block → statement → expression dispatch, reading `type_class`/`coercion`/`resolved_type` directly from MirNode instead of hash-querying NodeMap. MirNode accessors (`body()`, `condition()`, `lhs()`, `rhs()`, `getCallee()`, `callArgs()`, etc.) make child layout self-documenting. `extractNarrowing` pre-computes `IfNarrowing` with then/else/post types. MirLowerer injects `temp_var`/`injected_defer` nodes for interpolation hoisting. AST-path functions retained for struct/enum member codegen and unit tests without MIR setup.
+Coercion annotation pass complete for all 5 coercion types. MirLowerer builds a full MirNode tree from AST + NodeMap. Codegen walks the MirNode tree for top-level → block → statement → expression dispatch, reading `type_class`/`coercion`/`resolved_type` directly from MirNode instead of hash-querying NodeMap. MirNode accessors (`body()`, `condition()`, `lhs()`, `rhs()`, `getCallee()`, `callArgs()`, etc.) make child layout self-documenting. `extractNarrowing` pre-computes `IfNarrowing` with then/else/post types. MirLowerer injects `temp_var`/`injected_defer` nodes for interpolation hoisting.
 
-### Phase 4 — SSA + Optimization
-Flatten the MirNode tree to basic blocks with SSA form. Add optimization passes: dead code elimination, constant folding, inlining decisions. Codegen reads the SSA IR.
+**v0.5.4 cleanup:** All codegen migrated to MIR path. Struct/enum members iterate MirNode children (`field_def`, `enum_variant_def`). Match, for, destruct, test, thread — all use MirNode tree. `stampNarrowing()` stamps `narrowed_to` on descendant MirNodes during lowering (if_stmt then/else/post, match arms). MIR codegen is fully self-contained — no runtime `type_narrowed_vars` map, no AST-path fallthrough. AST-path functions retained only for unit tests.
+
+### Phase 4 — Optimization + Caching
+Selective optimization passes — only where Orhon has type knowledge that Zig/LLVM lacks. Inspired by vnmakarov/MIR's philosophy: pick high-impact passes, skip what the downstream compiler already handles.
+4a: SSA construction (Braun's algorithm, basic blocks, phi nodes — foundation for all passes).
+4b: Inlining (bridge wrappers, single-expression functions, coercion wrappers).
+4c: Dead code elimination (trivial on SSA — unused values, unreachable code).
+4d: Type-aware constant folding (static @type checks, redundant coercion chain elimination).
+4e: MIR caching (binary serialization per module, file-hash invalidation for incremental builds).
 
 ---
 

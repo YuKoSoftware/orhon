@@ -1680,15 +1680,23 @@ test "full pipeline - hello world" {
     try prop_checker.check(ast);
     try std.testing.expect(!reporter.hasErrors());
 
-    // MIR
+    // MIR annotation + lowering
     var mir_annotator = mir.MirAnnotator.init(alloc, &reporter, &decl_collector.table, &type_resolver.type_map);
     defer mir_annotator.deinit();
     try mir_annotator.annotate(ast);
     try std.testing.expect(!reporter.hasErrors());
+    var mir_lowerer = mir.MirLowerer.init(alloc, &mir_annotator.node_map, &mir_annotator.union_registry, &decl_collector.table, &mir_annotator.var_types);
+    defer mir_lowerer.deinit();
+    const mir_root = try mir_lowerer.lower(ast);
 
     // Codegen
     var cg = codegen.CodeGen.init(alloc, &reporter, true);
     defer cg.deinit();
+    cg.decls = &decl_collector.table;
+    cg.node_map = &mir_annotator.node_map;
+    cg.union_registry = &mir_annotator.union_registry;
+    cg.var_types = &mir_annotator.var_types;
+    cg.mir_root = mir_root;
     try cg.generate(ast, "main");
     try std.testing.expect(!reporter.hasErrors());
 
@@ -1704,10 +1712,9 @@ test "full pipeline - hello world" {
 
 test "codegen - var never reassigned becomes const" {
     const alloc = std.testing.allocator;
-
-    // 'a' is never reassigned — should become const
-    // 'b' is reassigned — should stay var
-    const source =
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    const output = try codegenSource(alloc,
         \\module main
         \\
         \\func main() void {
@@ -1716,33 +1723,13 @@ test "codegen - var never reassigned becomes const" {
         \\    b = 3
         \\}
         \\
-    ;
-
-    var lex = lexer.Lexer.init(source);
-    var tokens = try lex.tokenize(alloc);
-    defer tokens.deinit(alloc);
-
-    var reporter = errors.Reporter.init(alloc, .debug);
-    defer reporter.deinit();
-
-    var p = parser.Parser.init(tokens.items, alloc, &reporter);
-    defer p.deinit();
-    const ast = try p.parseProgram();
-
-    var decl_collector = declarations.DeclCollector.init(alloc, &reporter);
-    defer decl_collector.deinit();
-    try decl_collector.collect(ast);
-
-    var cg = codegen.CodeGen.init(alloc, &reporter, true);
-    defer cg.deinit();
-    try cg.generate(ast, "main");
-
-    const output = cg.getOutput();
+    , &reporter);
+    defer alloc.free(output);
     try std.testing.expect(std.mem.indexOf(u8, output, "const a: i32 = 1;") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "var b: i32 = 2;") != null);
 }
 
-/// Parse source and run codegen only (no analysis passes).
+/// Full pipeline test helper: source → lex → parse → declarations → resolve → MIR → codegen → Zig.
 /// Returns owned output slice — caller must free.
 fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *errors.Reporter) ![]const u8 {
     var lex = lexer.Lexer.init(source);
@@ -1754,8 +1741,25 @@ fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *errors
     var decl_collector = declarations.DeclCollector.init(alloc, reporter);
     defer decl_collector.deinit();
     try decl_collector.collect(ast);
+    // Type resolution
+    var type_resolver = resolver.TypeResolver.init(alloc, &decl_collector.table, reporter);
+    defer type_resolver.deinit();
+    try type_resolver.resolve(ast);
+    // MIR annotation + lowering
+    var mir_annotator = mir.MirAnnotator.init(alloc, reporter, &decl_collector.table, &type_resolver.type_map);
+    defer mir_annotator.deinit();
+    try mir_annotator.annotate(ast);
+    var mir_lowerer = mir.MirLowerer.init(alloc, &mir_annotator.node_map, &mir_annotator.union_registry, &decl_collector.table, &mir_annotator.var_types);
+    defer mir_lowerer.deinit();
+    const mir_root = try mir_lowerer.lower(ast);
+    // Codegen with full MIR context
     var cg = codegen.CodeGen.init(alloc, reporter, true);
     defer cg.deinit();
+    cg.decls = &decl_collector.table;
+    cg.node_map = &mir_annotator.node_map;
+    cg.union_registry = &mir_annotator.union_registry;
+    cg.var_types = &mir_annotator.var_types;
+    cg.mir_root = mir_root;
     try cg.generate(ast, "main");
     return try alloc.dupe(u8, cg.getOutput());
 }

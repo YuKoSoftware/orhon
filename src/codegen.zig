@@ -32,7 +32,6 @@ pub const CodeGen = struct {
     all_decls: ?*std.StringHashMap(*declarations.DeclTable), // all module decl tables for cross-module default args
     source_file: []const u8,     // anchor file path for location reporting
     module_builds: ?*const std.StringHashMapUnmanaged(module.BuildType), // imported module → build type
-    type_narrowed_vars: std.StringHashMapUnmanaged([]const u8), // var name → narrowed type (from `is` checks)
     // MIR annotation table — Phase 1+2 typed annotation pass
     node_map: ?*const mir.NodeMap = null,
     union_registry: ?*const mir.UnionRegistry = null,
@@ -127,7 +126,6 @@ pub const CodeGen = struct {
             .locs = null,
             .source_file = "",
             .module_builds = null,
-            .type_narrowed_vars = .{},
         };
     }
 
@@ -157,7 +155,6 @@ pub const CodeGen = struct {
         self.type_strings.deinit(self.allocator);
         self.output.deinit(self.allocator);
         self.reassigned_vars.deinit(self.allocator);
-        self.type_narrowed_vars.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -213,17 +210,11 @@ pub const CodeGen = struct {
 
         try self.emit("\n");
 
-        // Generate top-level declarations — prefer MIR tree when available
-        if (self.mir_root) |root| {
-            for (root.children) |m| {
-                try self.generateTopLevelMir(m);
-                try self.emit("\n");
-            }
-        } else {
-            for (ast.program.top_level) |node| {
-                try self.generateTopLevel(node);
-                try self.emit("\n");
-            }
+        // Generate top-level declarations from MIR tree
+        const root = self.mir_root orelse return error.CompileError;
+        for (root.children) |m| {
+            try self.generateTopLevelMir(m);
+            try self.emit("\n");
         }
     }
 
@@ -245,9 +236,6 @@ pub const CodeGen = struct {
         return try self.allocTypeStr("_{s}", .{orhon_name});
     }
 
-    /// Check if a variable name is a tracked error union variable
-
-
     /// Check if an expression is known to be a string (literal, interpolation, or MIR-typed)
     fn isStringExpr(self: *const CodeGen, node: *parser.Node) bool {
         return switch (node.*) {
@@ -255,72 +243,6 @@ pub const CodeGen = struct {
             else => self.getTypeClass(node) == .string,
         };
     }
-
-    /// Info about an `x is T` / `x is not T` condition
-    const IsCheckInfo = struct {
-        var_name: []const u8,
-        var_node: *parser.Node,
-        type_name: []const u8,
-        is_positive: bool, // true for `is`, false for `is not`
-    };
-
-    /// Extract `is` check info from an if-condition.
-    /// Returns info if the condition is `x is T` or `x is not T` on an arb union var.
-    fn extractIsCheck(self: *const CodeGen, cond: *parser.Node) ?IsCheckInfo {
-        if (cond.* != .binary_expr) return null;
-        const b = cond.binary_expr;
-        const is_eq = std.mem.eql(u8, b.op, "==");
-        const is_ne = std.mem.eql(u8, b.op, "!=");
-        if (!is_eq and !is_ne) return null;
-        if (b.left.* != .compiler_func) return null;
-        if (!std.mem.eql(u8, b.left.compiler_func.name, K.Type.TYPE)) return null;
-        if (b.left.compiler_func.args.len == 0) return null;
-        const val_node = b.left.compiler_func.args[0];
-        if (val_node.* != .identifier) return null;
-        if (self.getTypeClass(val_node) != .arbitrary_union) return null;
-        if (b.right.* != .identifier) return null;
-        const rhs = b.right.identifier;
-        if (std.mem.eql(u8, rhs, K.Type.ERROR) or std.mem.eql(u8, rhs, K.Type.NULL)) return null;
-        return .{
-            .var_name = val_node.identifier,
-            .var_node = val_node,
-            .type_name = rhs,
-            .is_positive = is_eq,
-        };
-    }
-
-    /// Compute the remaining type after narrowing one type out of an arbitrary union.
-    /// Returns the single remaining type name, or null if multiple types remain.
-    /// Works with both AST type nodes and MIR resolved types.
-    /// Given union members and an excluded type, find the single remaining non-special member.
-    fn remainingUnionType(members_rt: ?[]const RT, excluded: []const u8) ?[]const u8 {
-        const members = members_rt orelse return null;
-        var remaining: ?[]const u8 = null;
-        for (members) |m| {
-            const n = m.name();
-            if (std.mem.eql(u8, n, excluded)) continue;
-            if (std.mem.eql(u8, n, K.Type.ERROR) or std.mem.eql(u8, n, K.Type.NULL)) continue;
-            if (remaining != null) return null;
-            remaining = n;
-        }
-        return remaining;
-    }
-
-
-    /// Check if a block has an early exit (return, break, continue).
-    fn blockHasEarlyExit(node: *parser.Node) bool {
-        if (node.* != .block) return false;
-        for (node.block.statements) |stmt| {
-            switch (stmt.*) {
-                .return_stmt => return true,
-                .break_stmt => return true,
-                .continue_stmt => return true,
-                else => {},
-            }
-        }
-        return false;
-    }
-
 
     /// Generate a value expression, wrapping it for null union context if needed.
     /// Uses MIR coercion annotations when available, falls back to heuristic.
@@ -345,46 +267,6 @@ pub const CodeGen = struct {
             try self.emit(".{ .some = ");
             try self.generateExpr(value);
             try self.emit(" }");
-        }
-    }
-
-    /// Generate an expression with MIR coercion applied if annotated.
-    /// Used for call arguments where the target type comes from the function signature.
-    fn generateCoercedExpr(self: *CodeGen, value: *parser.Node) anyerror!void {
-        const info = self.getNodeInfo(value) orelse return self.generateExpr(value);
-        const coercion = info.coercion orelse return self.generateExpr(value);
-        switch (coercion) {
-            .array_to_slice => {
-                try self.emit("&");
-                try self.generateExpr(value);
-            },
-            .null_wrap => {
-                if (value.* == .null_literal) {
-                    try self.emit(".{ .none = {} }");
-                } else {
-                    try self.emit(".{ .some = ");
-                    try self.generateExpr(value);
-                    try self.emit(" }");
-                }
-            },
-            .error_wrap => {
-                try self.emit(".{ .ok = ");
-                try self.generateExpr(value);
-                try self.emit(" }");
-            },
-            .arbitrary_union_wrap => {
-                if (info.coerce_tag) |tag| {
-                    try self.emitFmt(".{{ ._{s} = ", .{tag});
-                    try self.generateExpr(value);
-                    try self.emit(" }");
-                } else {
-                    try self.generateExpr(value);
-                }
-            },
-            .optional_unwrap => {
-                try self.generateExpr(value);
-                try self.emit(".some");
-            },
         }
     }
 
@@ -485,22 +367,8 @@ pub const CodeGen = struct {
         }
     }
 
-    fn generateTopLevel(self: *CodeGen, node: *parser.Node) anyerror!void {
-        switch (node.*) {
-            .func_decl => |f| try self.generateFunc(node, f),
-            .struct_decl => |s| try self.generateStruct(s),
-            .enum_decl => |e| try self.generateEnum(e),
-            .bitfield_decl => |b| try self.generateBitfield(b),
-            .const_decl => |v| try self.generateConst(node, v),
-            .var_decl => |v| try self.generateVar(node, v),
-            .compt_decl => |v| try self.generateCompt(v),
-            .test_decl => |t| try self.generateTest(t),
-            else => {},
-        }
-    }
-
-    /// MIR-path top-level dispatch — switches on MirKind, delegates to AST-based generators.
-    /// During migration, sets current_func_mir for type queries, then calls existing generators.
+    /// MIR-path top-level dispatch — switches on MirKind.
+    /// Struct/enum use MirNode children; func/var/test still read AST with MIR context.
     fn generateTopLevelMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
         switch (m.kind) {
             .func => {
@@ -509,8 +377,8 @@ pub const CodeGen = struct {
                 defer self.current_func_mir = prev;
                 try self.generateFunc(m.ast, m.ast.func_decl);
             },
-            .struct_def => try self.generateStruct(m.ast.struct_decl),
-            .enum_def => try self.generateEnum(m.ast.enum_decl),
+            .struct_def => try self.generateStructMir(m),
+            .enum_def => try self.generateEnumMir(m),
             .bitfield_def => try self.generateBitfield(m.ast.bitfield_decl),
             .var_decl => {
                 // var_decl MirKind covers var_decl, const_decl, compt_decl
@@ -521,7 +389,7 @@ pub const CodeGen = struct {
                     else => {},
                 }
             },
-            .test_def => try self.generateTest(m.ast.test_decl),
+            .test_def => try self.generateTestMir(m),
             .import => {}, // imports handled separately in generate()
             else => {},
         }
@@ -615,16 +483,12 @@ pub const CodeGen = struct {
         self.current_func_node = node;
         // Clear per-function tracking maps — each function has its own scope
         const prev_reassigned_vars = self.reassigned_vars;
-        const prev_type_narrowed_vars = self.type_narrowed_vars;
         self.reassigned_vars = .{};
-        self.type_narrowed_vars = .{};
         try collectAssigned(f.body, &self.reassigned_vars, self.allocator);
         defer {
             self.current_func_node = prev_func_node;
             self.reassigned_vars.deinit(self.allocator);
             self.reassigned_vars = prev_reassigned_vars;
-            self.type_narrowed_vars.deinit(self.allocator);
-            self.type_narrowed_vars = prev_type_narrowed_vars;
         }
 
         // pub modifier — always pub for main (Zig requires pub fn main for exe entry)
@@ -688,12 +552,9 @@ pub const CodeGen = struct {
         }
         try self.emit(" ");
 
-        // Body — use MIR block path when available
-        if (self.current_func_mir) |func_mir| {
-            try self.generateBlockMir(func_mir.body());
-        } else {
-            try self.generateBlock(f.body);
-        }
+        // Body — MIR block path
+        const func_mir = self.current_func_mir orelse return error.CompileError;
+        try self.generateBlockMir(func_mir.body());
         try self.emit("\n");
     }
 
@@ -718,16 +579,12 @@ pub const CodeGen = struct {
             const prev_func_node = self.current_func_node;
             self.current_func_node = node;
             const prev_assigned = self.reassigned_vars;
-            const prev_narrowed = self.type_narrowed_vars;
             self.reassigned_vars = .{};
-            self.type_narrowed_vars = .{};
             try collectAssigned(f.body, &self.reassigned_vars, self.allocator);
             defer {
                 self.current_func_node = prev_func_node;
                 self.reassigned_vars.deinit(self.allocator);
                 self.reassigned_vars = prev_assigned;
-                self.type_narrowed_vars.deinit(self.allocator);
-                self.type_narrowed_vars = prev_narrowed;
             }
 
             try self.emitFmt("fn _{s}_body(", .{f.name});
@@ -741,7 +598,8 @@ pub const CodeGen = struct {
                 }
             }
             try self.emitFmt(") {s} ", .{inner_zig});
-            try self.generateBlock(f.body);
+            const func_mir = self.current_func_mir orelse return error.CompileError;
+            try self.generateBlockMir(func_mir.body());
             try self.emit("\n\n");
         }
 
@@ -807,13 +665,14 @@ pub const CodeGen = struct {
     // STRUCTS
     // ============================================================
 
-    fn generateStruct(self: *CodeGen, s: parser.StructDecl) anyerror!void {
+    /// MIR-path struct codegen — iterates MirNode children instead of AST members.
+    fn generateStructMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
+        const s = m.ast.struct_decl;
         if (s.is_bridge) return self.generateBridgeReExport(s.name);
 
         const is_generic = s.type_params.len > 0;
 
         if (is_generic) {
-            // Generic struct: fn Name(comptime T: type) type { return struct { ... }; }
             if (s.is_pub) try self.emit("pub ");
             try self.emitFmt("fn {s}(", .{s.name});
             for (s.type_params, 0..) |param, i| {
@@ -834,9 +693,10 @@ pub const CodeGen = struct {
             self.indent += 1;
         }
 
-        for (s.members) |member| {
-            switch (member.*) {
-                .field_decl => |f| {
+        for (m.children) |child| {
+            switch (child.kind) {
+                .field_def => {
+                    const f = child.ast.field_decl;
                     try self.emitIndent();
                     try self.emitFmt("{s}: {s}", .{ f.name, try self.typeToZig(f.type_annotation) });
                     if (f.default_value) |dv| {
@@ -845,22 +705,32 @@ pub const CodeGen = struct {
                     }
                     try self.emit(",\n");
                 },
-                .func_decl => |f| try self.generateFunc(member, f),
-                .var_decl => |v| {
-                    try self.emitIndent();
-                    try self.emitFmt("var {s}", .{v.name});
-                    if (v.type_annotation) |t| try self.emitFmt(": {s}", .{try self.typeToZig(t)});
-                    try self.emit(" = ");
-                    try self.generateExpr(v.value);
-                    try self.emit(";\n");
+                .func => {
+                    const prev = self.current_func_mir;
+                    self.current_func_mir = child;
+                    defer self.current_func_mir = prev;
+                    try self.generateFunc(child.ast, child.ast.func_decl);
                 },
-                .const_decl => |v| {
-                    try self.emitIndent();
-                    try self.emitFmt("const {s}", .{v.name});
-                    if (v.type_annotation) |t| try self.emitFmt(": {s}", .{try self.typeToZig(t)});
-                    try self.emit(" = ");
-                    try self.generateExpr(v.value);
-                    try self.emit(";\n");
+                .var_decl => {
+                    switch (child.ast.*) {
+                        .var_decl => |v| {
+                            try self.emitIndent();
+                            try self.emitFmt("var {s}", .{v.name});
+                            if (v.type_annotation) |t| try self.emitFmt(": {s}", .{try self.typeToZig(t)});
+                            try self.emit(" = ");
+                            try self.generateExpr(v.value);
+                            try self.emit(";\n");
+                        },
+                        .const_decl => |v| {
+                            try self.emitIndent();
+                            try self.emitFmt("const {s}", .{v.name});
+                            if (v.type_annotation) |t| try self.emitFmt(": {s}", .{try self.typeToZig(t)});
+                            try self.emit(" = ");
+                            try self.generateExpr(v.value);
+                            try self.emit(";\n");
+                        },
+                        else => {},
+                    }
                 },
                 else => {},
             }
@@ -883,27 +753,29 @@ pub const CodeGen = struct {
     // ENUMS
     // ============================================================
 
-    fn generateEnum(self: *CodeGen, e: parser.EnumDecl) anyerror!void {
+    /// MIR-path enum codegen — iterates MirNode children instead of AST members.
+    fn generateEnumMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
+        const e = m.ast.enum_decl;
         if (e.is_pub) try self.emit("pub ");
 
         const backing = try self.typeToZig(e.backing_type);
 
-        // Regular enum
         try self.emitFmt("const {s} = enum({s}) {{\n", .{ e.name, backing });
         self.indent += 1;
 
-        for (e.members) |member| {
-            switch (member.*) {
-                .enum_variant => |v| {
+        for (m.children) |child| {
+            switch (child.kind) {
+                .enum_variant_def => {
+                    const v = child.ast.enum_variant;
                     try self.emitIndent();
-                    if (v.fields.len > 0) {
-                        // Data-carrying variant — generate as tagged union
-                        try self.emitFmt("{s},\n", .{v.name});
-                    } else {
-                        try self.emitFmt("{s},\n", .{v.name});
-                    }
+                    try self.emitFmt("{s},\n", .{v.name});
                 },
-                .func_decl => |f| try self.generateFunc(member, f),
+                .func => {
+                    const prev = self.current_func_mir;
+                    self.current_func_mir = child;
+                    defer self.current_func_mir = prev;
+                    try self.generateFunc(child.ast, child.ast.func_decl);
+                },
                 else => {},
             }
         }
@@ -942,7 +814,6 @@ pub const CodeGen = struct {
         self.indent -= 1;
         try self.emit("};\n");
     }
-
 
     // ============================================================
     // VARIABLE DECLARATIONS
@@ -1001,7 +872,6 @@ pub const CodeGen = struct {
         try self.emitFmt("; _ = &{s};", .{v.name});
     }
 
-
     fn generateCompt(self: *CodeGen, v: parser.VarDecl) anyerror!void {
         // Top-level const is already comptime in Zig, so just emit const.
         if (v.is_pub) try self.emit("pub ");
@@ -1017,13 +887,14 @@ pub const CodeGen = struct {
     // TESTS
     // ============================================================
 
-    fn generateTest(self: *CodeGen, t: parser.TestDecl) anyerror!void {
+    fn generateTestMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
+        const t = m.ast.test_decl;
         try self.emitFmt("test {s} ", .{t.description});
         const prev_reassigned_vars = self.reassigned_vars;
         self.reassigned_vars = .{};
         try collectAssigned(t.body, &self.reassigned_vars, self.allocator);
         self.in_test_block = true;
-        try self.generateBlock(t.body);
+        try self.generateBlockMir(m.body());
         self.in_test_block = false;
         self.reassigned_vars.deinit(self.allocator);
         self.reassigned_vars = prev_reassigned_vars;
@@ -1033,22 +904,6 @@ pub const CodeGen = struct {
     // ============================================================
     // BLOCKS AND STATEMENTS
     // ============================================================
-
-    fn generateBlock(self: *CodeGen, node: *parser.Node) anyerror!void {
-        if (node.* != .block) return;
-        try self.emit("{\n");
-        self.indent += 1;
-
-        for (node.block.statements) |stmt| {
-            try self.emitIndent();
-            try self.generateStatement(stmt);
-            try self.emit("\n");
-        }
-
-        self.indent -= 1;
-        try self.emitIndent();
-        try self.emit("}");
-    }
 
     /// MIR-path block generation — walks MirNode children instead of AST statements.
     /// Handles injected temp_var/injected_defer nodes from MirLowerer.
@@ -1067,427 +922,8 @@ pub const CodeGen = struct {
         try self.emit("}");
     }
 
-    fn generateStatement(self: *CodeGen, node: *parser.Node) anyerror!void {
-        switch (node.*) {
-            .var_decl => |v| {
-                // var → const promotion: warn if never reassigned
-                // Handle(T) variables are always var — methods mutate via *Self
-                const is_handle = if (v.type_annotation) |ta|
-                    ta.* == .type_generic and std.mem.eql(u8, ta.type_generic.name, "Handle")
-                else
-                    false;
-                const is_mutated = is_handle or self.reassigned_vars.contains(v.name);
-                const decl_keyword: []const u8 = if (is_mutated) "var" else "const";
-                if (!is_mutated) {
-                    const msg = try std.fmt.allocPrint(self.allocator,
-                        "'{s}' is declared as var but never reassigned — use const", .{v.name});
-                    defer self.allocator.free(msg);
-                    try self.reporter.warn(.{ .message = msg, .loc = self.nodeLoc(node) });
-                }
-                try self.generateStmtDecl(node, v, decl_keyword);
-            },
-            .const_decl => |v| {
-                try self.generateStmtDecl(node, v, "const");
-            },
-            .destruct_decl => |d| {
-                // String split destructuring:
-                // var before, after = s.split(",")
-                if (d.names.len == 2 and d.value.* == .call_expr) {
-                    const c = d.value.call_expr;
-                    if (c.callee.* == .field_expr) {
-                        const fe = c.callee.field_expr;
-                        if (std.mem.eql(u8, fe.field, "split"))
-                        {
-                            const destruct_idx = self.destruct_counter;
-                            self.destruct_counter += 1;
-                            const decl_keyword = if (d.is_const) "const" else "var";
-                            // const _orhon_sp0_delim = <arg>;
-                            try self.emitFmt("const _orhon_sp{d}_delim = ", .{destruct_idx});
-                            if (c.args.len > 0) try self.generateExpr(c.args[0]);
-                            try self.emit(";\n");
-                            try self.emitIndent();
-                            // const _orhon_sp0_pos = std.mem.indexOf(u8, s, delim);
-                            try self.emitFmt("const _orhon_sp{d}_pos = std.mem.indexOf(u8, ", .{destruct_idx});
-                            try self.generateExpr(fe.object);
-                            try self.emitFmt(", _orhon_sp{d}_delim);\n", .{destruct_idx});
-                            try self.emitIndent();
-                            // const before = if (pos) |_idx| s[0.._idx] else s;
-                            try self.emitFmt("{s} {s} = if (_orhon_sp{d}_pos) |_idx| ", .{ decl_keyword, d.names[0], destruct_idx });
-                            try self.generateExpr(fe.object);
-                            try self.emit("[0.._idx] else ");
-                            try self.generateExpr(fe.object);
-                            try self.emit(";\n");
-                            try self.emitIndent();
-                            // const after = if (pos) |_idx| s[_idx + delim.len..] else "";
-                            try self.emitFmt("{s} {s} = if (_orhon_sp{d}_pos) |_idx| ", .{ decl_keyword, d.names[1], destruct_idx });
-                            try self.generateExpr(fe.object);
-                            try self.emitFmt("[_idx + _orhon_sp{d}_delim.len..] else \"\";", .{destruct_idx});
-                            return;
-                        }
-                    }
-                }
-                // splitAt destructuring:
-                // var left, right = data.splitAt(3)
-                if (d.names.len == 2 and d.value.* == .call_expr) {
-                    const c = d.value.call_expr;
-                    if (c.callee.* == .field_expr) {
-                        const fe = c.callee.field_expr;
-                        if (std.mem.eql(u8, fe.field, "splitAt") and c.args.len == 1) {
-                            const decl_keyword = if (d.is_const) "const" else "var";
-                            const destruct_idx = self.destruct_counter;
-                            self.destruct_counter += 1;
-                            // Force runtime index so Zig returns a slice, not a pointer-to-array
-                            try self.emitFmt("var _orhon_s{d}: usize = @intCast(", .{destruct_idx});
-                            try self.generateExpr(c.args[0]);
-                            try self.emit(");\n");
-                            try self.emitIndent();
-                            try self.emitFmt("_ = &_orhon_s{d};\n", .{destruct_idx});
-                            try self.emitIndent();
-                            try self.emitFmt("{s} {s} = ", .{ decl_keyword, d.names[0] });
-                            try self.generateExpr(fe.object);
-                            try self.emitFmt("[0.._orhon_s{d}];\n", .{destruct_idx});
-                            try self.emitIndent();
-                            try self.emitFmt("{s} {s} = ", .{ decl_keyword, d.names[1] });
-                            try self.generateExpr(fe.object);
-                            try self.emitFmt("[_orhon_s{d}..];", .{destruct_idx});
-                            return;
-                        }
-                    }
-                }
-                // Normal tuple destructuring:
-                // var (a, b) = expr  →  const _orhon_dN = expr; var/const a = _orhon_dN.a; ...
-                const idx = self.destruct_counter;
-                self.destruct_counter += 1;
-                try self.emitFmt("const _orhon_d{d} = ", .{idx});
-                try self.generateExpr(d.value);
-                try self.emit(";");
-                const decl_keyword = if (d.is_const) "const" else "var";
-                for (d.names) |name| {
-                    try self.emit("\n");
-                    try self.emitIndent();
-                    try self.emitFmt("{s} {s} = _orhon_d{d}.{s};", .{ decl_keyword, name, idx, name });
-                }
-            },
-            .compt_decl => |v| {
-                try self.emitFmt("const {s}: {s} = ", .{
-                    v.name,
-                    try self.typeToZig(v.type_annotation orelse return),
-                });
-                try self.generateExpr(v.value);
-                try self.emit(";");
-            },
-            .return_stmt => |r| {
-                try self.emit("return");
-                if (r.value) |v| {
-                    try self.emit(" ");
-                    // Use MIR coercion if available
-                    const coercion = if (self.getNodeInfo(v)) |info| info.coercion else null;
-                    if (coercion) |c| {
-                        switch (c) {
-                            .null_wrap => {
-                                try self.emit(".{ .some = ");
-                                try self.generateExpr(v);
-                                try self.emit(" }");
-                            },
-                            .error_wrap => {
-                                try self.emit(".{ .ok = ");
-                                try self.generateExpr(v);
-                                try self.emit(" }");
-                            },
-                            .arbitrary_union_wrap => {
-                                try self.generateArbitraryUnionWrappedExpr(v, self.funcReturnMembers());
-                            },
-                            .array_to_slice => {
-                                try self.emit("&");
-                                try self.generateExpr(v);
-                            },
-                            .optional_unwrap => {
-                                try self.generateExpr(v);
-                                try self.emit(".some");
-                            },
-                        }
-                    } else {
-                        // No coercion — handle special literals and passthrough
-                        const ret_tc = self.funcReturnTypeClass();
-                        if (ret_tc == .error_union) {
-                            if (v.* == .error_literal) {
-                                try self.generateExpr(v);
-                            } else if (v.* == .identifier and self.isErrorConstant(v.identifier)) {
-                                try self.emit(".{ .err = ");
-                                try self.generateExpr(v);
-                                try self.emit(" }");
-                            } else {
-                                try self.generateExpr(v);
-                            }
-                        } else if (ret_tc == .null_union and v.* == .null_literal) {
-                            try self.emit(".{ .none = {} }");
-                        } else {
-                            try self.generateExpr(v);
-                        }
-                    }
-                }
-                try self.emit(";");
-            },
-            .if_stmt => |i| {
-                try self.emit("if (");
-                try self.generateExpr(i.condition);
-                try self.emit(") ");
-                // Track type narrowing from `is` checks on arbitrary unions
-                const is_info = self.extractIsCheck(i.condition);
-                if (is_info) |info| {
-                    // Inside then-block: positive `is T` narrows to T, negative `is not T` narrows to remaining
-                    const members_rt = self.getUnionMembers(info.var_node) orelse
-                        if (info.var_node.* == .identifier) self.getVarUnionMembers(info.var_node.identifier) else null;
-                    if (info.is_positive) {
-                        try self.type_narrowed_vars.put(self.allocator, info.var_name, info.type_name);
-                    } else if (remainingUnionType(members_rt, info.type_name)) |rem| {
-                        try self.type_narrowed_vars.put(self.allocator, info.var_name, rem);
-                    }
-                }
-                try self.generateBlock(i.then_block);
-                if (is_info) |info| _ = self.type_narrowed_vars.remove(info.var_name);
-                if (i.else_block) |e| {
-                    try self.emit(" else ");
-                    // Inside else-block: opposite narrowing
-                    if (is_info) |info| {
-                        const members_rt = self.getUnionMembers(info.var_node) orelse
-                            if (info.var_node.* == .identifier) self.getVarUnionMembers(info.var_node.identifier) else null;
-                        if (info.is_positive) {
-                            if (remainingUnionType(members_rt, info.type_name)) |rem|
-                                try self.type_narrowed_vars.put(self.allocator, info.var_name, rem);
-                        } else {
-                            try self.type_narrowed_vars.put(self.allocator, info.var_name, info.type_name);
-                        }
-                    }
-                    try self.generateBlock(e);
-                    if (is_info) |info| _ = self.type_narrowed_vars.remove(info.var_name);
-                }
-                // After if with early exit: narrow to the opposite
-                if (is_info) |info| {
-                    if (blockHasEarlyExit(i.then_block)) {
-                        const members_rt = self.getUnionMembers(info.var_node) orelse
-                            if (info.var_node.* == .identifier) self.getVarUnionMembers(info.var_node.identifier) else null;
-                        if (info.is_positive) {
-                            if (remainingUnionType(members_rt, info.type_name)) |rem|
-                                try self.type_narrowed_vars.put(self.allocator, info.var_name, rem);
-                        } else {
-                            try self.type_narrowed_vars.put(self.allocator, info.var_name, info.type_name);
-                        }
-                    }
-                }
-            },
-            .while_stmt => |w| {
-                try self.emit("while (");
-                try self.generateExpr(w.condition);
-                try self.emit(")");
-                if (w.continue_expr) |c| {
-                    try self.emit(" : (");
-                    try self.generateContinueExpr(c);
-                    try self.emit(")");
-                }
-                try self.emit(" ");
-                try self.generateBlock(w.body);
-            },
-            .for_stmt => |f| {
-                const is_range = f.iterable.* == .range_expr;
-                // Array, slice, or range → Zig for
-                const needs_cast = is_range or f.index_var != null;
-                if (f.is_compt) try self.emit("inline ");
-                try self.emit("for (");
-                if (is_range) {
-                    try self.writeRangeExpr(f.iterable.range_expr);
-                } else {
-                    try self.generateExpr(f.iterable);
-                }
-                // Inject 0.. counter when index variable is requested
-                if (f.index_var != null) try self.emit(", 0..");
-                try self.emit(") |");
-                if (is_range) {
-                    // Range produces usize — rename and cast to i32
-                    try self.emitFmt("_orhon_{s}", .{f.captures[0]});
-                } else {
-                    try self.emit(f.captures[0]);
-                }
-                if (f.index_var) |idx| {
-                    // Index from 0.. is usize — rename and cast to i32
-                    try self.emitFmt(", _orhon_{s}", .{idx});
-                }
-                if (needs_cast) {
-                    try self.emit("| {\n");
-                    self.indent += 1;
-                    if (is_range) {
-                        try self.emitIndent();
-                        try self.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ f.captures[0], f.captures[0] });
-                    }
-                    if (f.index_var) |idx| {
-                        try self.emitIndent();
-                        try self.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ idx, idx });
-                    }
-                    for (f.body.block.statements) |stmt| {
-                        try self.emitIndent();
-                        try self.generateStatement(stmt);
-                        try self.emit("\n");
-                    }
-                    self.indent -= 1;
-                    try self.emitIndent();
-                    try self.emit("}");
-                } else {
-                    try self.emit("| ");
-                    try self.generateBlock(f.body);
-                }
-            },
-            .defer_stmt => |d| {
-                try self.emit("defer ");
-                try self.generateBlock(d.body);
-            },
-            .match_stmt => |m| {
-                // String match — Zig has no string switch, desugar to if/else chain
-                const is_string_match = blk: {
-                    for (m.arms) |arm| {
-                        if (arm.* == .match_arm and arm.match_arm.pattern.* == .string_literal)
-                            break :blk true;
-                    }
-                    break :blk false;
-                };
-
-                // Type match — any arm is `Error`, `null`, or value is an arbitrary union
-                // match result { Error => { } i32 => { } }
-                // match user   { null  => { } User => { } }
-                // match val    { i32   => { } f32  => { } }
-                const is_type_match = blk: {
-                    // Check if the match value is an arbitrary union variable
-                    if (self.getTypeClass(m.value) == .arbitrary_union)
-                        break :blk true;
-                    for (m.arms) |arm| {
-                        if (arm.* != .match_arm) continue;
-                        const pat = arm.match_arm.pattern;
-                        if (pat.* == .null_literal) break :blk true;
-                        if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, K.Type.ERROR))
-                            break :blk true;
-                    }
-                    break :blk false;
-                };
-
-                // Determine whether the union is a null union (has `null` arm)
-                // vs an error union (has `Error` arm) — affects which tag non-special arms map to
-                const is_null_union = blk: {
-                    for (m.arms) |arm| {
-                        if (arm.* == .match_arm and arm.match_arm.pattern.* == .null_literal)
-                            break :blk true;
-                    }
-                    break :blk false;
-                };
-
-                if (is_string_match) {
-                    try self.generateStringMatch(m);
-                } else if (is_type_match) {
-                    try self.generateTypeMatch(m, is_null_union);
-                } else {
-
-                try self.emit("switch (");
-                // self in a method is *T in Zig — must dereference for switch
-                if (m.value.* == .identifier and std.mem.eql(u8, m.value.identifier, "self")) {
-                    try self.emit("self.*");
-                } else {
-                    try self.generateExpr(m.value);
-                }
-                try self.emit(") {\n");
-                self.indent += 1;
-                var has_wildcard = false;
-                for (m.arms) |arm| {
-                    if (arm.* == .match_arm) {
-                        try self.emitIndent();
-                        // Check for wildcard pattern (else)
-                        if (arm.match_arm.pattern.* == .identifier and
-                            std.mem.eql(u8, arm.match_arm.pattern.identifier, "else"))
-                        {
-                            has_wildcard = true;
-                            try self.emit("else");
-                        } else if (arm.match_arm.pattern.* == .range_expr) {
-                            // Range pattern: 4..8 in Orhon → 4...8 in Zig switch (inclusive)
-                            const r = arm.match_arm.pattern.range_expr;
-                            try self.generateExpr(r.left);
-                            try self.emit("...");
-                            try self.generateExpr(r.right);
-                        } else {
-                            try self.generateExpr(arm.match_arm.pattern);
-                        }
-                        try self.emit(" => ");
-                        try self.generateBlock(arm.match_arm.body);
-                        try self.emit(",\n");
-                    }
-                }
-                // Zig requires exhaustive switches — add else if no wildcard
-                // But for enum switches, if all variants are handled, else is invalid
-                if (!has_wildcard) {
-                    var is_enum_switch = false;
-                    for (m.arms) |arm| {
-                        if (arm.* == .match_arm and arm.match_arm.pattern.* == .identifier) {
-                            if (self.isEnumVariant(arm.match_arm.pattern.identifier)) {
-                                is_enum_switch = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!is_enum_switch) {
-                        try self.emitIndent();
-                        try self.emit("else => {},\n");
-                    }
-                }
-                self.indent -= 1;
-                try self.emitIndent();
-                try self.emit("}");
-                } // close else (non-string, non-type match)
-            },
-            .break_stmt => try self.emit("break;"),
-            .continue_stmt => try self.emit("continue;"),
-            .assignment => |a| {
-                if (std.mem.eql(u8, a.op, "/=")) {
-                    // x /= y → x = @divTrunc(x, y)
-                    try self.generateExpr(a.left);
-                    try self.emit(" = @divTrunc(");
-                    try self.generateExpr(a.left);
-                    try self.emit(", ");
-                    try self.generateExpr(a.right);
-                    try self.emit(");");
-                } else if (std.mem.eql(u8, a.op, "=") and
-                    self.getTypeClass(a.left) == .null_union)
-                {
-                    // Assignment to null union var → wrap value
-                    try self.generateExpr(a.left);
-                    try self.emit(" = ");
-                    try self.generateNullWrappedExpr(a.right);
-                    try self.emit(";");
-                } else if (std.mem.eql(u8, a.op, "=") and
-                    self.getTypeClass(a.left) == .arbitrary_union)
-                {
-                    // Assignment to arb union var → wrap value
-                    const members_rt = self.getUnionMembers(a.left) orelse
-                        if (a.left.* == .identifier) self.getVarUnionMembers(a.left.identifier) else null;
-                    try self.generateExpr(a.left);
-                    try self.emit(" = ");
-                    try self.generateArbitraryUnionWrappedExpr(a.right, members_rt);
-                    try self.emit(";");
-                } else {
-                    try self.generateExpr(a.left);
-                    try self.emitFmt(" {s} ", .{a.op});
-                    try self.generateExpr(a.right);
-                    try self.emit(";");
-                }
-            },
-            .block => try self.generateBlock(node),
-            else => {
-                // Bare call expression as statement — discard return value so Zig
-                // doesn't error on unused non-void results.  _ = void is also valid.
-                if (node.* == .call_expr) try self.emit("_ = ");
-                try self.generateExpr(node);
-                try self.emit(";");
-            },
-        }
-    }
-
     /// MIR-path statement dispatch — switches on MirKind, reads type info from MirNode.
-    /// Migrated handlers use m.type_class/m.coercion directly; unmigrated handlers delegate to AST.
+    /// All handlers use MirNode tree directly — no AST fallthrough.
     fn generateStatementMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
         switch (m.kind) {
             .var_decl => {
@@ -1574,27 +1010,11 @@ pub const CodeGen = struct {
                 try self.emit("if (");
                 try self.generateExprMir(m.condition());
                 try self.emit(") ");
-                // Use pre-computed narrowing from MirNode
-                if (m.narrowing) |narrowing| {
-                    // then-block narrowing
-                    if (narrowing.then_type) |tt|
-                        try self.type_narrowed_vars.put(self.allocator, narrowing.var_name, tt);
-                }
+                // Narrowing is pre-stamped on MirNode descendants — no map needed
                 if (m.children.len > 1) try self.generateBlockMir(m.thenBlock());
-                if (m.narrowing) |narrowing| _ = self.type_narrowed_vars.remove(narrowing.var_name);
                 if (m.elseBlock()) |else_m| {
                     try self.emit(" else ");
-                    if (m.narrowing) |narrowing| {
-                        if (narrowing.else_type) |et|
-                            try self.type_narrowed_vars.put(self.allocator, narrowing.var_name, et);
-                    }
                     try self.generateBlockMir(else_m);
-                    if (m.narrowing) |narrowing| _ = self.type_narrowed_vars.remove(narrowing.var_name);
-                }
-                // After if with early exit: apply post narrowing
-                if (m.narrowing) |narrowing| {
-                    if (narrowing.post_type) |pt|
-                        try self.type_narrowed_vars.put(self.allocator, narrowing.var_name, pt);
                 }
             },
             .assignment => {
@@ -1630,7 +1050,7 @@ pub const CodeGen = struct {
                     try self.emit(";");
                 }
             },
-            .destruct => try self.generateStatement(m.ast), // complex, stays on AST
+            .destruct => try self.generateDestructMir(m),
             .while_stmt => {
                 const w = m.ast.while_stmt;
                 try self.emit("while (");
@@ -1645,12 +1065,12 @@ pub const CodeGen = struct {
                 // Body is children[1] (not last — continue_expr may follow)
                 try self.generateBlockMir(m.children[1]);
             },
-            .for_stmt => try self.generateStatement(m.ast), // complex range/index, stays on AST
+            .for_stmt => try self.generateForMir(m),
             .defer_stmt => {
                 try self.emit("defer ");
                 try self.generateBlockMir(m.body());
             },
-            .match_stmt => try self.generateStatement(m.ast), // complex dispatch, stays on AST
+            .match_stmt => try self.generateMatchMir(m),
             .break_stmt => try self.emit("break;"),
             .continue_stmt => try self.emit("continue;"),
             .block => try self.generateBlockMir(m),
@@ -1957,7 +1377,7 @@ pub const CodeGen = struct {
                     try self.emit("(");
                     for (c.args, 0..) |arg, i| {
                         if (i > 0) try self.emit(", ");
-                        try self.generateCoercedExpr(arg);
+                        try self.generateExpr(arg);
                     }
                     // Fill in default args if caller passed fewer than the function expects
                     try self.fillDefaultArgs(c);
@@ -1999,12 +1419,9 @@ pub const CodeGen = struct {
                     const obj_tc = self.getTypeClass(f.object);
                     try self.generateExpr(f.object);
                     if (obj_tc == .arbitrary_union) {
-                        // Use narrowed type from `is` checks if available
+                        // Use MIR union members to find the value type
                         if (f.object.* == .identifier) {
-                            if (self.type_narrowed_vars.get(f.object.identifier)) |narrowed| {
-                                try self.emitFmt("._{s}", .{narrowed});
-                            } else if (self.getUnionMembers(f.object) orelse self.getVarUnionMembers(f.object.identifier)) |members| {
-                                // MIR: fall back to first non-error/non-null type
+                            if (self.getUnionMembers(f.object) orelse self.getVarUnionMembers(f.object.identifier)) |members| {
                                 for (members) |m| {
                                     const n = m.name();
                                     if (!std.mem.eql(u8, n, K.Type.ERROR) and !std.mem.eql(u8, n, K.Type.NULL)) {
@@ -2117,8 +1534,7 @@ pub const CodeGen = struct {
     }
 
     /// MIR-path expression dispatch — switches on MirKind, reads type info from MirNode.
-    /// Handlers for binary, call, field_access use m.type_class/m.children directly.
-    /// All other expression kinds delegate to the AST path via generateExpr(m.ast).
+    /// All expression kinds handled via MirNode children — no AST-path fallthrough.
     fn generateExprMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
         switch (m.kind) {
             .binary => {
@@ -2131,11 +1547,12 @@ pub const CodeGen = struct {
                     std.mem.eql(u8, b.left.compiler_func.name, K.Type.TYPE) and
                     b.left.compiler_func.args.len > 0)
                 {
-                    const val_node = b.left.compiler_func.args[0];
+                    // val_mir is the MirNode for the variable being type-checked
+                    const val_mir = m.lhs().children[0];
                     const cmp = if (is_eq) "==" else "!=";
                     if (b.right.* == .null_literal) {
                         try self.emit("(");
-                        try self.generateExpr(val_node);
+                        try self.generateExprMir(val_mir);
                         try self.emitFmt(" {s} .none)", .{cmp});
                         return;
                     }
@@ -2143,22 +1560,21 @@ pub const CodeGen = struct {
                         const rhs = b.right.identifier;
                         if (std.mem.eql(u8, rhs, K.Type.ERROR)) {
                             try self.emit("(");
-                            try self.generateExpr(val_node);
+                            try self.generateExprMir(val_mir);
                             try self.emitFmt(" {s} .err)", .{cmp});
                             return;
                         }
-                        // Use MIR type info from the LHS child (the @type call node)
                         if (m.lhs().type_class == .arbitrary_union or
-                            self.getTypeClass(val_node) == .arbitrary_union)
+                            val_mir.type_class == .arbitrary_union)
                         {
                             try self.emit("(");
-                            try self.generateExpr(val_node);
+                            try self.generateExprMir(val_mir);
                             try self.emitFmt(" {s} ._{s})", .{ cmp, rhs });
                             return;
                         }
                         const zig_rhs = builtins.primitiveToZig(rhs);
                         try self.emit("(@TypeOf(");
-                        try self.generateExpr(val_node);
+                        try self.generateExprMir(val_mir);
                         try self.emitFmt(") {s} {s})", .{ cmp, zig_rhs });
                         return;
                     }
@@ -2235,7 +1651,7 @@ pub const CodeGen = struct {
                 if (c.callee.* == .field_expr) {
                     const obj_mir = m.getCallee().children[0]; // field_access.children[0] = object
                     if (mirGetBitfieldName(obj_mir, self.decls)) |bf_name| {
-                        try self.generateExpr(c.callee);
+                        try self.generateExprMir(m.getCallee());
                         try self.emit("(");
                         for (m.callArgs(), 0..) |arg, i| {
                             if (i > 0) try self.emit(", ");
@@ -2266,7 +1682,6 @@ pub const CodeGen = struct {
                 // String method rewriting: s.method(args) → _str.method(s, args)
                 if (c.callee.* == .field_expr) {
                     const method = c.callee.field_expr.field;
-                    const obj = c.callee.field_expr.object;
                     const obj_mir = m.getCallee().children[0]; // field_access.children[0] = object
                     const is_handle = obj_mir.type_class == .thread_handle;
                     if (!is_handle and (mirIsString(obj_mir) or
@@ -2274,7 +1689,7 @@ pub const CodeGen = struct {
                         std.mem.eql(u8, method, "join")))
                     {
                         try self.emitFmt("_str.{s}(", .{method});
-                        try self.generateExpr(obj);
+                        try self.generateExprMir(obj_mir);
                         for (m.callArgs()) |arg| {
                             try self.emit(", ");
                             try self.generateExprMir(arg);
@@ -2332,7 +1747,7 @@ pub const CodeGen = struct {
                     try self.generateExprMir(obj_mir);
                     if (obj_tc == .arbitrary_union) {
                         if (f.object.* == .identifier) {
-                            if (self.type_narrowed_vars.get(f.object.identifier)) |narrowed| {
+                            if (obj_mir.narrowed_to) |narrowed| {
                                 try self.emitFmt("._{s}", .{narrowed});
                             } else {
                                 const members_rt = if (obj_mir.resolved_type == .union_type) obj_mir.resolved_type.union_type else
@@ -2369,8 +1784,114 @@ pub const CodeGen = struct {
                     try self.emitFmt(".{s}", .{f.field});
                 }
             },
-            // All other expression kinds — delegate to AST path
-            else => try self.generateExpr(m.ast),
+            .literal => {
+                switch (m.ast.*) {
+                    .int_literal => |text| try self.emit(text),
+                    .float_literal => |text| try self.emit(text),
+                    .string_literal => |text| try self.emit(text),
+                    .bool_literal => |b| try self.emit(if (b) "true" else "false"),
+                    .null_literal => try self.emit("null"),
+                    .error_literal => |msg| {
+                        if (self.funcReturnTypeClass() == .error_union) {
+                            try self.emitFmt(".{{ .err = .{{ .message = {s} }} }}", .{msg});
+                        } else {
+                            try self.emitFmt("_rt.OrhonError{{ .message = {s} }}", .{msg});
+                        }
+                    },
+                    else => {},
+                }
+            },
+            .identifier => {
+                const name = m.ast.identifier;
+                if (self.isEnumVariant(name)) {
+                    try self.emitFmt(".{s}", .{name});
+                } else if (self.generic_struct_name) |gsn| {
+                    if (std.mem.eql(u8, name, gsn)) {
+                        try self.emit("@This()");
+                    } else {
+                        try self.emit(builtins.primitiveToZig(name));
+                    }
+                } else {
+                    try self.emit(builtins.primitiveToZig(name));
+                }
+            },
+            .unary => {
+                const u = m.ast.unary_expr;
+                const op = opToZig(u.op);
+                try self.emitFmt("{s}(", .{op});
+                try self.generateExprMir(m.children[0]);
+                try self.emit(")");
+            },
+            .index => {
+                try self.generateExprMir(m.children[0]);
+                try self.emit("[");
+                const index_is_literal = m.ast.index_expr.index.* == .int_literal;
+                if (!index_is_literal) {
+                    try self.emit("@intCast(");
+                    try self.generateExprMir(m.children[1]);
+                    try self.emit(")");
+                } else {
+                    try self.generateExprMir(m.children[1]);
+                }
+                try self.emit("]");
+            },
+            .slice => {
+                const s = m.ast.slice_expr;
+                try self.generateExprMir(m.children[0]);
+                try self.emit("[");
+                if (s.low.* != .int_literal) {
+                    try self.emit("@intCast(");
+                    try self.generateExprMir(m.children[1]);
+                    try self.emit(")");
+                } else {
+                    try self.generateExprMir(m.children[1]);
+                }
+                try self.emit("..");
+                if (s.high.* != .int_literal) {
+                    try self.emit("@intCast(");
+                    try self.generateExprMir(m.children[2]);
+                    try self.emit(")");
+                } else {
+                    try self.generateExprMir(m.children[2]);
+                }
+                try self.emit("]");
+            },
+            .borrow => {
+                try self.emit("&");
+                try self.generateExprMir(m.children[0]);
+            },
+            .interpolation => try self.generateInterpolatedString(m.ast.interpolated_string),
+            .collection => try self.generateCollectionExpr(m.ast.collection_expr),
+            .ptr_expr => try self.generatePtrExpr(m.ast.ptr_expr),
+            .compiler_fn => try self.generateCompilerFunc(m.ast.compiler_func),
+            .array_lit => {
+                try self.emit(".{");
+                for (m.children, 0..) |child, i| {
+                    if (i > 0) try self.emit(", ");
+                    try self.generateExprMir(child);
+                }
+                try self.emit("}");
+            },
+            .tuple_lit => {
+                const t = m.ast.tuple_literal;
+                try self.emit(".{");
+                if (t.is_named) {
+                    for (m.children, 0..) |child, i| {
+                        if (i > 0) try self.emit(", ");
+                        try self.emitFmt(".{s} = ", .{t.field_names[i]});
+                        try self.generateExprMir(child);
+                    }
+                } else {
+                    for (m.children, 0..) |child, i| {
+                        if (i > 0) try self.emit(", ");
+                        try self.generateExprMir(child);
+                    }
+                }
+                try self.emit("}");
+            },
+            .type_expr => try self.generateExpr(m.ast), // type nodes are structural, no sub-expressions
+            .passthrough => try self.generateExpr(m.ast), // structural fallback
+            else => {},
         }
     }
 
@@ -2468,75 +1989,6 @@ pub const CodeGen = struct {
         }
     }
 
-
-    /// Desugar a type match on (Error|T), (null|T), or arbitrary union into a Zig switch.
-    /// match result { Error => { } i32 => { } }
-    /// → switch (result) { .err => { }, .ok => { } }
-    /// match val { i32 => { } f32 => { } }
-    /// → switch (val) { ._i32 => { }, ._f32 => { } }
-    fn generateTypeMatch(self: *CodeGen, m: parser.MatchStmt, is_null_union: bool) anyerror!void {
-        // Detect arbitrary union (no Error/null arms)
-        const is_arbitrary = blk: {
-            for (m.arms) |arm| {
-                if (arm.* != .match_arm) continue;
-                const pat = arm.match_arm.pattern;
-                if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, K.Type.ERROR)) break :blk false;
-                if (pat.* == .null_literal) break :blk false;
-            }
-            break :blk true;
-        };
-
-        try self.emit("switch (");
-        try self.generateExpr(m.value);
-        try self.emit(") {\n");
-        self.indent += 1;
-
-        for (m.arms) |arm| {
-            if (arm.* != .match_arm) continue;
-            const pat = arm.match_arm.pattern;
-            try self.emitIndent();
-
-            if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, K.Type.ERROR)) {
-                // Error arm → .err
-                try self.emit(".err");
-            } else if (pat.* == .null_literal) {
-                // null arm → .none
-                try self.emit(".none");
-            } else if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, "else")) {
-                // catch-all
-                try self.emit("else");
-            } else if (is_arbitrary and pat.* == .identifier) {
-                // Arbitrary union arm: i32 → ._i32
-                try self.emitFmt("._{s}", .{pat.identifier});
-            } else {
-                // The value type arm → .ok (error union) or .some (null union)
-                if (is_null_union) {
-                    try self.emit(".some");
-                } else {
-                    try self.emit(".ok");
-                }
-            }
-
-            try self.emit(" => ");
-            // Set narrowing for the match value inside the arm body
-            const match_var = if (m.value.* == .identifier) m.value.identifier else null;
-            if (match_var) |vname| {
-                if (is_arbitrary and pat.* == .identifier and
-                    !std.mem.eql(u8, pat.identifier, "else"))
-                {
-                    try self.type_narrowed_vars.put(self.allocator, vname, pat.identifier);
-                }
-            }
-            try self.generateBlock(arm.match_arm.body);
-            if (match_var) |vname| _ = self.type_narrowed_vars.remove(vname);
-            try self.emit(",\n");
-        }
-
-        self.indent -= 1;
-        try self.emitIndent();
-        try self.emit("}");
-    }
-
     /// Generate string interpolation using std.fmt.allocPrint.
     /// "hello @{name}, value @{x}!" →
     ///   std.fmt.allocPrint(_rt.alloc, "hello {s}, value {}", .{name, x}) catch unreachable
@@ -2584,21 +2036,276 @@ pub const CodeGen = struct {
         try self.emit("}) catch unreachable");
     }
 
-    /// Desugar a string match into an if/else chain.
-    /// match s { "hello" => { } "world" => { } else => { } }
-    /// → if (std.mem.eql(u8, s, "hello")) { } else if (...) { } else { }
-    fn generateStringMatch(self: *CodeGen, m: parser.MatchStmt) anyerror!void {
+    /// MIR-path for loop codegen.
+    fn generateForMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
+        const f = m.ast.for_stmt;
+        const is_range = f.iterable.* == .range_expr;
+        const needs_cast = is_range or f.index_var != null;
+        if (f.is_compt) try self.emit("inline ");
+        try self.emit("for (");
+        if (is_range) {
+            try self.writeRangeExpr(f.iterable.range_expr);
+        } else {
+            try self.generateExprMir(m.iterable());
+        }
+        if (f.index_var != null) try self.emit(", 0..");
+        try self.emit(") |");
+        if (is_range) {
+            try self.emitFmt("_orhon_{s}", .{f.captures[0]});
+        } else {
+            try self.emit(f.captures[0]);
+        }
+        if (f.index_var) |idx| {
+            try self.emitFmt(", _orhon_{s}", .{idx});
+        }
+        if (needs_cast) {
+            try self.emit("| {\n");
+            self.indent += 1;
+            if (is_range) {
+                try self.emitIndent();
+                try self.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ f.captures[0], f.captures[0] });
+            }
+            if (f.index_var) |idx| {
+                try self.emitIndent();
+                try self.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ idx, idx });
+            }
+            for (m.body().children) |child| {
+                try self.emitIndent();
+                try self.generateStatementMir(child);
+                try self.emit("\n");
+            }
+            self.indent -= 1;
+            try self.emitIndent();
+            try self.emit("}");
+        } else {
+            try self.emit("| ");
+            try self.generateBlockMir(m.body());
+        }
+    }
+
+    /// MIR-path destructuring codegen.
+    fn generateDestructMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
+        const d = m.ast.destruct_decl;
+        // String split destructuring
+        if (d.names.len == 2 and d.value.* == .call_expr) {
+            const c = d.value.call_expr;
+            if (c.callee.* == .field_expr) {
+                const fe = c.callee.field_expr;
+                if (std.mem.eql(u8, fe.field, "split")) {
+                    const destruct_idx = self.destruct_counter;
+                    self.destruct_counter += 1;
+                    const decl_keyword = if (d.is_const) "const" else "var";
+                    try self.emitFmt("const _orhon_sp{d}_delim = ", .{destruct_idx});
+                    if (c.args.len > 0) try self.generateExprMir(m.value().callArgs()[0]);
+                    try self.emit(";\n");
+                    try self.emitIndent();
+                    try self.emitFmt("const _orhon_sp{d}_pos = std.mem.indexOf(u8, ", .{destruct_idx});
+                    try self.generateExprMir(m.value().getCallee().children[0]);
+                    try self.emitFmt(", _orhon_sp{d}_delim);\n", .{destruct_idx});
+                    try self.emitIndent();
+                    try self.emitFmt("{s} {s} = if (_orhon_sp{d}_pos) |_idx| ", .{ decl_keyword, d.names[0], destruct_idx });
+                    try self.generateExprMir(m.value().getCallee().children[0]);
+                    try self.emit("[0.._idx] else ");
+                    try self.generateExprMir(m.value().getCallee().children[0]);
+                    try self.emit(";\n");
+                    try self.emitIndent();
+                    try self.emitFmt("{s} {s} = if (_orhon_sp{d}_pos) |_idx| ", .{ decl_keyword, d.names[1], destruct_idx });
+                    try self.generateExprMir(m.value().getCallee().children[0]);
+                    try self.emitFmt("[_idx + _orhon_sp{d}_delim.len..] else \"\";", .{destruct_idx});
+                    return;
+                }
+            }
+        }
+        // splitAt destructuring
+        if (d.names.len == 2 and d.value.* == .call_expr) {
+            const c = d.value.call_expr;
+            if (c.callee.* == .field_expr) {
+                const fe = c.callee.field_expr;
+                if (std.mem.eql(u8, fe.field, "splitAt") and c.args.len == 1) {
+                    const decl_keyword = if (d.is_const) "const" else "var";
+                    const destruct_idx = self.destruct_counter;
+                    self.destruct_counter += 1;
+                    try self.emitFmt("var _orhon_s{d}: usize = @intCast(", .{destruct_idx});
+                    try self.generateExprMir(m.value().callArgs()[0]);
+                    try self.emit(");\n");
+                    try self.emitIndent();
+                    try self.emitFmt("_ = &_orhon_s{d};\n", .{destruct_idx});
+                    try self.emitIndent();
+                    try self.emitFmt("{s} {s} = ", .{ decl_keyword, d.names[0] });
+                    try self.generateExprMir(m.value().getCallee().children[0]);
+                    try self.emitFmt("[0.._orhon_s{d}];\n", .{destruct_idx});
+                    try self.emitIndent();
+                    try self.emitFmt("{s} {s} = ", .{ decl_keyword, d.names[1] });
+                    try self.generateExprMir(m.value().getCallee().children[0]);
+                    try self.emitFmt("[_orhon_s{d}..];", .{destruct_idx});
+                    return;
+                }
+            }
+        }
+        // Normal tuple destructuring
+        const idx = self.destruct_counter;
+        self.destruct_counter += 1;
+        try self.emitFmt("const _orhon_d{d} = ", .{idx});
+        try self.generateExprMir(m.value());
+        try self.emit(";");
+        const decl_keyword = if (d.is_const) "const" else "var";
+        for (d.names) |name| {
+            try self.emit("\n");
+            try self.emitIndent();
+            try self.emitFmt("{s} {s} = _orhon_d{d}.{s};", .{ decl_keyword, name, idx, name });
+        }
+    }
+
+    /// MIR-path match codegen — dispatches to string, type, or regular switch.
+    fn generateMatchMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
+        const ms = m.ast.match_stmt;
+
+        // String match — Zig has no string switch, desugar to if/else chain
+        const is_string_match = blk: {
+            for (ms.arms) |arm| {
+                if (arm.* == .match_arm and arm.match_arm.pattern.* == .string_literal)
+                    break :blk true;
+            }
+            break :blk false;
+        };
+
+        // Type match — any arm is `Error`, `null`, or value is an arbitrary union
+        const is_type_match = blk: {
+            if (m.value().type_class == .arbitrary_union)
+                break :blk true;
+            for (ms.arms) |arm| {
+                if (arm.* != .match_arm) continue;
+                const pat = arm.match_arm.pattern;
+                if (pat.* == .null_literal) break :blk true;
+                if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, K.Type.ERROR))
+                    break :blk true;
+            }
+            break :blk false;
+        };
+
+        const is_null_union = blk: {
+            for (ms.arms) |arm| {
+                if (arm.* == .match_arm and arm.match_arm.pattern.* == .null_literal)
+                    break :blk true;
+            }
+            break :blk false;
+        };
+
+        if (is_string_match) {
+            try self.generateStringMatchMir(m);
+        } else if (is_type_match) {
+            try self.generateTypeMatchMir(m, is_null_union);
+        } else {
+            // Regular switch
+            try self.emit("switch (");
+            if (ms.value.* == .identifier and std.mem.eql(u8, ms.value.identifier, "self")) {
+                try self.emit("self.*");
+            } else {
+                try self.generateExprMir(m.value());
+            }
+            try self.emit(") {\n");
+            self.indent += 1;
+            var has_wildcard = false;
+            for (m.matchArms()) |arm_mir| {
+                const pat = arm_mir.ast.match_arm.pattern;
+                try self.emitIndent();
+                if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, "else")) {
+                    has_wildcard = true;
+                    try self.emit("else");
+                } else if (pat.* == .range_expr) {
+                    const r = pat.range_expr;
+                    try self.generateExpr(r.left);
+                    try self.emit("...");
+                    try self.generateExpr(r.right);
+                } else {
+                    try self.generateExpr(pat);
+                }
+                try self.emit(" => ");
+                try self.generateBlockMir(arm_mir.body());
+                try self.emit(",\n");
+            }
+            if (!has_wildcard) {
+                var is_enum_switch = false;
+                for (m.matchArms()) |arm_mir| {
+                    const pat = arm_mir.ast.match_arm.pattern;
+                    if (pat.* == .identifier) {
+                        if (self.isEnumVariant(pat.identifier)) {
+                            is_enum_switch = true;
+                            break;
+                        }
+                    }
+                }
+                if (!is_enum_switch) {
+                    try self.emitIndent();
+                    try self.emit("else => {},\n");
+                }
+            }
+            self.indent -= 1;
+            try self.emitIndent();
+            try self.emit("}");
+        }
+    }
+
+    /// MIR-path type match (arbitrary/error/null union switch).
+    fn generateTypeMatchMir(self: *CodeGen, m: *mir.MirNode, is_null_union: bool) anyerror!void {
+        const ms = m.ast.match_stmt;
+        const is_arbitrary = blk: {
+            for (ms.arms) |arm| {
+                if (arm.* != .match_arm) continue;
+                const pat = arm.match_arm.pattern;
+                if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, K.Type.ERROR)) break :blk false;
+                if (pat.* == .null_literal) break :blk false;
+            }
+            break :blk true;
+        };
+
+        try self.emit("switch (");
+        try self.generateExprMir(m.value());
+        try self.emit(") {\n");
+        self.indent += 1;
+
+        for (m.matchArms()) |arm_mir| {
+            const pat = arm_mir.ast.match_arm.pattern;
+            try self.emitIndent();
+
+            if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, K.Type.ERROR)) {
+                try self.emit(".err");
+            } else if (pat.* == .null_literal) {
+                try self.emit(".none");
+            } else if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, "else")) {
+                try self.emit("else");
+            } else if (is_arbitrary and pat.* == .identifier) {
+                try self.emitFmt("._{s}", .{pat.identifier});
+            } else {
+                if (is_null_union) {
+                    try self.emit(".some");
+                } else {
+                    try self.emit(".ok");
+                }
+            }
+
+            try self.emit(" => ");
+            // Narrowing is pre-stamped on arm body MirNodes — no map needed
+            try self.generateBlockMir(arm_mir.body());
+            try self.emit(",\n");
+        }
+
+        self.indent -= 1;
+        try self.emitIndent();
+        try self.emit("}");
+    }
+
+    /// MIR-path string match — desugars to if/else chain.
+    fn generateStringMatchMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
+        const ms = m.ast.match_stmt;
         var first = true;
-        var wildcard_body: ?*parser.Node = null;
+        var wildcard_arm: ?*mir.MirNode = null;
 
-        for (m.arms) |arm| {
-            if (arm.* != .match_arm) continue;
-            const pat = arm.match_arm.pattern;
-            const body = arm.match_arm.body;
+        for (m.matchArms()) |arm_mir| {
+            const pat = arm_mir.ast.match_arm.pattern;
 
-            // Wildcard (else) — save for the final else
             if (pat.* == .identifier and std.mem.eql(u8, pat.identifier, "else")) {
-                wildcard_body = body;
+                wildcard_arm = arm_mir;
                 continue;
             }
 
@@ -2609,28 +2316,25 @@ pub const CodeGen = struct {
                 try self.emit(" else if (std.mem.eql(u8, ");
             }
 
-            // The value being matched
-            if (m.value.* == .identifier and std.mem.eql(u8, m.value.identifier, "self")) {
+            if (ms.value.* == .identifier and std.mem.eql(u8, ms.value.identifier, "self")) {
                 try self.emit("self.*");
             } else {
-                try self.generateExpr(m.value);
+                try self.generateExprMir(m.value());
             }
             try self.emit(", ");
             try self.generateExpr(pat);
             try self.emit(")) ");
-            try self.generateBlock(body);
+            try self.generateBlockMir(arm_mir.body());
         }
 
-        if (wildcard_body) |wb| {
+        if (wildcard_arm) |wa| {
             if (first) {
-                // All arms were wildcards — just emit the body
-                try self.generateBlock(wb);
+                try self.generateBlockMir(wa.body());
             } else {
                 try self.emit(" else ");
-                try self.generateBlock(wb);
+                try self.generateBlockMir(wa.body());
             }
         } else if (!first) {
-            // No wildcard — close with empty else to be safe
             try self.emit(" else {}");
         }
     }
@@ -2848,7 +2552,6 @@ pub const CodeGen = struct {
             }
         }
     }
-
 
     /// Write the allocator argument for an allocating string method.
     /// Last arg is allocator if it's a mem.* call, otherwise default to smp_allocator.
@@ -3119,104 +2822,6 @@ fn isResultValueField(name: []const u8, decls: ?*declarations.DeclTable) bool {
     return false;
 }
 
-test "codegen - simple program" {
-    const alloc = std.testing.allocator;
-    var reporter = errors.Reporter.init(alloc, .debug);
-    defer reporter.deinit();
-
-    var gen = CodeGen.init(alloc, &reporter, true);
-    defer gen.deinit();
-
-    // Build a minimal AST
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const ret_type = try a.create(parser.Node);
-    ret_type.* = .{ .type_named = "void" };
-
-    const block = try a.create(parser.Node);
-    block.* = .{ .block = .{ .statements = &.{} } };
-
-    const func = try a.create(parser.Node);
-    func.* = .{ .func_decl = .{
-        .name = "main",
-        .params = &.{},
-        .return_type = ret_type,
-        .body = block,
-        .is_compt = false,
-        .is_pub = false,
-        .is_bridge = false,
-        .is_thread = false,
-    }};
-
-    const top_level = try a.alloc(*parser.Node, 1);
-    top_level[0] = func;
-
-    const module_node = try a.create(parser.Node);
-    module_node.* = .{ .module_decl = .{ .name = "main" } };
-
-    const prog = try a.create(parser.Node);
-    prog.* = .{ .program = .{
-        .module = module_node,
-        .metadata = &.{},
-        .imports = &.{},
-        .top_level = top_level,
-    }};
-
-    try gen.generate(prog, "main");
-    try std.testing.expect(!reporter.hasErrors());
-    const output = gen.getOutput();
-    try std.testing.expect(output.len > 0);
-    // main must be pub — Zig requires pub fn main for executables
-    try std.testing.expect(std.mem.indexOf(u8, output, "pub fn main()") != null);
-}
-
-test "codegen - runtime import in preamble" {
-    const alloc = std.testing.allocator;
-    var reporter = errors.Reporter.init(alloc, .debug);
-    defer reporter.deinit();
-
-    var gen = CodeGen.init(alloc, &reporter, true);
-    defer gen.deinit();
-
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const ret_type = try a.create(parser.Node);
-    ret_type.* = .{ .type_named = "void" };
-    const block = try a.create(parser.Node);
-    block.* = .{ .block = .{ .statements = &.{} } };
-    const func = try a.create(parser.Node);
-    func.* = .{ .func_decl = .{
-        .name = "main",
-        .params = &.{},
-        .return_type = ret_type,
-        .body = block,
-        .is_compt = false,
-        .is_pub = false,
-        .is_bridge = false,
-        .is_thread = false,
-    }};
-    const top_level = try a.alloc(*parser.Node, 1);
-    top_level[0] = func;
-    const module_node = try a.create(parser.Node);
-    module_node.* = .{ .module_decl = .{ .name = "main" } };
-    const prog = try a.create(parser.Node);
-    prog.* = .{ .program = .{
-        .module = module_node,
-        .metadata = &.{},
-        .imports = &.{},
-        .top_level = top_level,
-    }};
-
-    try gen.generate(prog, "main");
-    try std.testing.expect(!reporter.hasErrors());
-    const output = gen.getOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "@import(\"_orhon_rt\")") != null);
-}
-
 test "codegen - type to zig" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
@@ -3242,177 +2847,3 @@ test "codegen - type to zig" {
     try std.testing.expectEqualStrings("[]i32", slice_zig);
 }
 
-test "codegen - bridge func emits re-export" {
-    const alloc = std.testing.allocator;
-    var reporter = errors.Reporter.init(alloc, .debug);
-    defer reporter.deinit();
-
-    var gen = CodeGen.init(alloc, &reporter, true);
-    defer gen.deinit();
-
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const ret_type = try a.create(parser.Node);
-    ret_type.* = .{ .type_named = "void" };
-
-    // empty block placeholder — bridge func body is never used
-    const empty_block = try a.create(parser.Node);
-    empty_block.* = .{ .block = .{ .statements = &.{} } };
-
-    const func = try a.create(parser.Node);
-    func.* = .{ .func_decl = .{
-        .name = "print",
-        .params = &.{},
-        .return_type = ret_type,
-        .body = empty_block,
-        .is_compt = false,
-        .is_pub = true,
-        .is_bridge = true,
-        .is_thread = false,
-    }};
-
-    const top_level = try a.alloc(*parser.Node, 1);
-    top_level[0] = func;
-
-    const module_node = try a.create(parser.Node);
-    module_node.* = .{ .module_decl = .{ .name = "console" } };
-
-    const prog = try a.create(parser.Node);
-    prog.* = .{ .program = .{
-        .module = module_node,
-        .metadata = &.{},
-        .imports = &.{},
-        .top_level = top_level,
-    }};
-
-    try gen.generate(prog, "console");
-    try std.testing.expect(!reporter.hasErrors());
-
-    // bridge func should re-export from sidecar, not emit a function definition
-    const output = gen.getOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "fn print(") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "console_bridge.zig") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "pub const print =") != null);
-}
-
-test "codegen - scoped import generates correct @import" {
-    const alloc = std.testing.allocator;
-    var reporter = errors.Reporter.init(alloc, .debug);
-    defer reporter.deinit();
-
-    var gen = CodeGen.init(alloc, &reporter, true);
-    defer gen.deinit();
-
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const imp = try a.create(parser.Node);
-    imp.* = .{ .import_decl = .{
-        .path = "console",
-        .scope = "std",
-        .alias = null,
-        .is_c_header = false,
-    }};
-
-    const imports = try a.alloc(*parser.Node, 1);
-    imports[0] = imp;
-
-    const module_node = try a.create(parser.Node);
-    module_node.* = .{ .module_decl = .{ .name = "main" } };
-
-    const prog = try a.create(parser.Node);
-    prog.* = .{ .program = .{
-        .module = module_node,
-        .metadata = &.{},
-        .imports = imports,
-        .top_level = &.{},
-    }};
-
-    try gen.generate(prog, "main");
-    try std.testing.expect(!reporter.hasErrors());
-    const output = gen.getOutput();
-    // alias defaults to module name "console", not scope "std"
-    try std.testing.expect(std.mem.indexOf(u8, output, "const console = @import(\"console.zig\")") != null);
-}
-
-test "codegen - overflow helpers wrap/sat/overflow" {
-    const alloc = std.testing.allocator;
-    var reporter = errors.Reporter.init(alloc, .debug);
-    defer reporter.deinit();
-
-    var gen = CodeGen.init(alloc, &reporter, true);
-    defer gen.deinit();
-
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    // Build: func check(x: i32, y: i32) i32 { return wrap(x + y) }
-    const id_x = try a.create(parser.Node);
-    id_x.* = .{ .identifier = "x" };
-    const id_y = try a.create(parser.Node);
-    id_y.* = .{ .identifier = "y" };
-    const id_x2 = try a.create(parser.Node);
-    id_x2.* = .{ .identifier = "x" };
-    const id_y2 = try a.create(parser.Node);
-    id_y2.* = .{ .identifier = "y" };
-    const id_x3 = try a.create(parser.Node);
-    id_x3.* = .{ .identifier = "x" };
-    const id_y3 = try a.create(parser.Node);
-    id_y3.* = .{ .identifier = "y" };
-
-    const bin_add = try a.create(parser.Node);
-    bin_add.* = .{ .binary_expr = .{ .op = "+", .left = id_x, .right = id_y } };
-    const bin_add2 = try a.create(parser.Node);
-    bin_add2.* = .{ .binary_expr = .{ .op = "+", .left = id_x2, .right = id_y2 } };
-    const bin_add3 = try a.create(parser.Node);
-    bin_add3.* = .{ .binary_expr = .{ .op = "+", .left = id_x3, .right = id_y3 } };
-
-    // wrap(x + y)
-    const wrap_callee = try a.create(parser.Node);
-    wrap_callee.* = .{ .identifier = "wrap" };
-    const wrap_args = try a.alloc(*parser.Node, 1);
-    wrap_args[0] = bin_add;
-    const wrap_call = try a.create(parser.Node);
-    wrap_call.* = .{ .call_expr = .{ .callee = wrap_callee, .args = wrap_args, .arg_names = &.{} } };
-
-    // sat(x + y)
-    const sat_callee = try a.create(parser.Node);
-    sat_callee.* = .{ .identifier = "sat" };
-    const sat_args = try a.alloc(*parser.Node, 1);
-    sat_args[0] = bin_add2;
-    const sat_call = try a.create(parser.Node);
-    sat_call.* = .{ .call_expr = .{ .callee = sat_callee, .args = sat_args, .arg_names = &.{} } };
-
-    // overflow(x + y)
-    const ov_callee = try a.create(parser.Node);
-    ov_callee.* = .{ .identifier = "overflow" };
-    const ov_args = try a.alloc(*parser.Node, 1);
-    ov_args[0] = bin_add3;
-    const ov_call = try a.create(parser.Node);
-    ov_call.* = .{ .call_expr = .{ .callee = ov_callee, .args = ov_args, .arg_names = &.{} } };
-
-    // Verify wrap codegen
-    gen.output.clearRetainingCapacity();
-    try gen.generateExpr(wrap_call);
-    const wrap_out = gen.getOutput();
-    try std.testing.expect(std.mem.indexOf(u8, wrap_out, "+%") != null);
-
-    // Verify sat codegen
-    gen.output.clearRetainingCapacity();
-    try gen.generateExpr(sat_call);
-    const sat_out = gen.getOutput();
-    try std.testing.expect(std.mem.indexOf(u8, sat_out, "+|") != null);
-
-    // Verify overflow codegen uses @addWithOverflow and OrhonResult
-    gen.output.clearRetainingCapacity();
-    try gen.generateExpr(ov_call);
-    const ov_out = gen.getOutput();
-    try std.testing.expect(std.mem.indexOf(u8, ov_out, "@addWithOverflow") != null);
-    try std.testing.expect(std.mem.indexOf(u8, ov_out, "_rt.OrhonResult") != null);
-}
-
-// BRIDGE TODO: string method codegen test removed — string methods now go through bridge

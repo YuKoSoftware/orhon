@@ -1,0 +1,45 @@
+module stream
+
+// stream — in-memory byte buffer for Orhon programs
+// Import with: import std::stream
+
+// Buffer — growable byte buffer with read cursor
+
+bridge struct Buffer {
+
+    // Create an empty buffer
+
+    bridge func create() Buffer
+
+    // Create a buffer initialized with string data
+
+    bridge func fromString(data: String) Buffer
+
+    // Write bytes to end of buffer
+
+    bridge func write(self: &Buffer, data: String) void
+
+    // Read n bytes from current cursor position
+
+    bridge func read(self: &Buffer, n: i32) String
+
+    // Return entire buffer contents as a string
+
+    bridge func toString(self: &Buffer) String
+
+    // Number of bytes in the buffer
+
+    bridge func size(self: &Buffer) i32
+
+    // Reset buffer to empty
+
+    bridge func clear(self: &Buffer) void
+
+    // Move read cursor to position
+
+    bridge func seek(self: &Buffer, pos: i32) void
+
+    // Free buffer memory
+
+    bridge func deinit(self: &Buffer) void
+}

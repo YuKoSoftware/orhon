@@ -1,0 +1,20 @@
+module compression
+
+// compression — gzip and zlib compression for Orhon programs
+// Import with: import std::compression
+
+// Compress data using gzip
+
+bridge func gzipCompress(data: String) (Error | String)
+
+// Decompress gzip data
+
+bridge func gzipDecompress(data: String) (Error | String)
+
+// Compress data using zlib (deflate)
+
+bridge func zlibCompress(data: String) (Error | String)
+
+// Decompress zlib data
+
+bridge func zlibDecompress(data: String) (Error | String)

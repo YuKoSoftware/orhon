@@ -368,6 +368,16 @@ const RANDOM_ORH  = @embedFile("std/random.orh");
 const RANDOM_ZIG  = @embedFile("std/random.zig");
 const ZIGLIB_ORH  = @embedFile("std/ziglib.orh");
 const ZIGLIB_ZIG  = @embedFile("std/ziglib.zig");
+const ENCODING_ORH = @embedFile("std/encoding.orh");
+const ENCODING_ZIG = @embedFile("std/encoding.zig");
+const STREAM_ORH   = @embedFile("std/stream.orh");
+const STREAM_ZIG   = @embedFile("std/stream.zig");
+const CRYPTO_ORH   = @embedFile("std/crypto.orh");
+const CRYPTO_ZIG   = @embedFile("std/crypto.zig");
+const COMPRESS_ORH = @embedFile("std/compression.orh");
+const COMPRESS_ZIG = @embedFile("std/compression.zig");
+const XML_ORH      = @embedFile("std/xml.orh");
+const XML_ZIG      = @embedFile("std/xml.zig");
 
 /// Write an embedded file to .orh-cache/std/ if it doesn't already exist
 fn writeStdFile(dir: []const u8, name: []const u8, content: []const u8, allocator: std.mem.Allocator) !void {
@@ -412,6 +422,16 @@ fn ensureStdFiles(allocator: std.mem.Allocator) !void {
         .{ .name = "random.zig",  .content = RANDOM_ZIG },
         .{ .name = "ziglib.orh",  .content = ZIGLIB_ORH },
         .{ .name = "ziglib.zig",  .content = ZIGLIB_ZIG },
+        .{ .name = "encoding.orh", .content = ENCODING_ORH },
+        .{ .name = "encoding.zig", .content = ENCODING_ZIG },
+        .{ .name = "stream.orh",   .content = STREAM_ORH },
+        .{ .name = "stream.zig",   .content = STREAM_ZIG },
+        .{ .name = "crypto.orh",   .content = CRYPTO_ORH },
+        .{ .name = "crypto.zig",   .content = CRYPTO_ZIG },
+        .{ .name = "compression.orh", .content = COMPRESS_ORH },
+        .{ .name = "compression.zig", .content = COMPRESS_ZIG },
+        .{ .name = "xml.orh",         .content = XML_ORH },
+        .{ .name = "xml.zig",         .content = XML_ZIG },
     };
 
     for (files) |f| {

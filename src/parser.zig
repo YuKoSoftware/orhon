@@ -156,6 +156,7 @@ pub const ImportDecl = struct {
     scope: ?[]const u8,     // "std", "global", or null for project-local
     alias: ?[]const u8,     // rename with `as`
     is_c_header: bool,
+    is_include: bool,       // `include` dumps symbols into namespace
 };
 
 pub const Metadata = struct {
@@ -531,7 +532,7 @@ pub const Parser = struct {
                 continue;
             }
 
-            if (tok.kind == .kw_import) {
+            if (tok.kind == .kw_import or tok.kind == .kw_include) {
                 const imp = try self.parseImport();
                 try imports_list.append(self.alloc(), imp);
                 continue;
@@ -594,7 +595,8 @@ pub const Parser = struct {
     }
 
     fn parseImport(self: *Parser) anyerror!*Node {
-        _ = try self.expect(.kw_import);
+        const keyword = self.advance(); // consume import or include
+        const is_include = keyword.kind == .kw_include;
         self.skipNewlines();
 
         const path_tok = self.peek();
@@ -609,7 +611,14 @@ pub const Parser = struct {
             is_c_header = true;
         } else {
             // Module name — could be bare `name` or scoped `std::name` / `global::name`
-            const first = try self.expect(.identifier);
+            // Accept kw_main so we can give a proper error message below
+            const first = blk: {
+                const tok = self.peek();
+                if (tok.kind == .identifier or tok.kind == .kw_main) {
+                    break :blk self.advance();
+                }
+                break :blk try self.expect(.identifier);
+            };
 
             if (self.check(.scope)) {
                 // Scoped import: std::alpha or global::utils
@@ -636,8 +645,18 @@ pub const Parser = struct {
             }
         }
 
+        // Block importing main — main is not a library
+        if (std.mem.eql(u8, path, "main")) {
+            const msg = "cannot import 'main' — main is the entry point, not a library";
+            try self.reporter.report(.{
+                .message = msg,
+                .loc = .{ .file = "", .line = keyword.line, .col = keyword.col },
+            });
+            return error.ParseError;
+        }
+
         var alias: ?[]const u8 = null;
-        if (self.check(.kw_as)) {
+        if (!is_include and self.check(.kw_as)) {
             _ = self.advance();
             const alias_tok = try self.expect(.identifier);
             alias = alias_tok.text;
@@ -649,6 +668,7 @@ pub const Parser = struct {
             .scope = scope,
             .alias = alias,
             .is_c_header = is_c_header,
+            .is_include = is_include,
         }});
     }
 
@@ -2329,6 +2349,7 @@ fn tokenFriendlyName(kind: lexer.TokenKind) []const u8 {
         .kw_struct => "struct",
         .kw_enum => "enum",
         .kw_import => "import",
+        .kw_include => "include",
         .kw_module => "module",
         .kw_pub => "pub",
         .kw_test => "test",

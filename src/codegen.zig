@@ -346,24 +346,55 @@ pub const CodeGen = struct {
         if (node.* != .import_decl) return;
         const imp = node.import_decl;
 
-        // Alias defaults to the module name (last segment of path)
-        const alias = imp.alias orelse imp.path;
-
         if (imp.is_c_header) {
+            const alias = imp.alias orelse imp.path;
             try self.emitLineFmt("// WARNING: C header import\nconst {s} = @cImport(@cInclude({s}));", .{ alias, imp.path });
-        } else {
-            // Check if the imported module is a lib target — if so, use build-system
-            // module name (no .zig extension) since it's provided via addImport in build.zig
-            const is_lib = if (self.module_builds) |mb| blk: {
-                const bt = mb.get(imp.path) orelse break :blk false;
-                break :blk bt == .static or bt == .dynamic;
-            } else false;
+            return;
+        }
 
-            if (is_lib) {
-                try self.emitLineFmt("const {s} = @import(\"{s}\");", .{ alias, imp.path });
-            } else {
-                try self.emitLineFmt("const {s} = @import(\"{s}.zig\");", .{ alias, imp.path });
+        // Check if the imported module is a lib target — if so, use build-system
+        // module name (no .zig extension) since it's provided via addImport in build.zig
+        const is_lib = if (self.module_builds) |mb| blk: {
+            const bt = mb.get(imp.path) orelse break :blk false;
+            break :blk bt == .static or bt == .dynamic;
+        } else false;
+
+        const ext = if (is_lib) "" else ".zig";
+
+        if (imp.is_include) {
+            // include — dump all symbols into local namespace via individual re-exports
+            const hidden = try std.fmt.allocPrint(self.allocator, "_included_{s}", .{imp.path});
+            defer self.allocator.free(hidden);
+            try self.emitLineFmt("const {s} = @import(\"{s}{s}\");", .{ hidden, imp.path, ext });
+            // Re-export each known declaration from the included module
+            if (self.all_decls) |ad| {
+                if (ad.get(imp.path)) |dt| {
+                    var func_iter = dt.funcs.iterator();
+                    while (func_iter.next()) |entry| {
+                        try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
+                    }
+                    var struct_iter = dt.structs.iterator();
+                    while (struct_iter.next()) |entry| {
+                        try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
+                    }
+                    var enum_iter = dt.enums.iterator();
+                    while (enum_iter.next()) |entry| {
+                        try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
+                    }
+                    var bitfield_iter = dt.bitfields.iterator();
+                    while (bitfield_iter.next()) |entry| {
+                        try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
+                    }
+                    var var_iter = dt.vars.iterator();
+                    while (var_iter.next()) |entry| {
+                        try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
+                    }
+                }
             }
+        } else {
+            // import — namespaced access
+            const alias = imp.alias orelse imp.path;
+            try self.emitLineFmt("const {s} = @import(\"{s}{s}\");", .{ alias, imp.path, ext });
         }
     }
 

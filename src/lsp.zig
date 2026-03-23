@@ -161,7 +161,7 @@ fn buildInitializeResult(allocator: std.mem.Allocator, id: std.json.Value) ![]u8
     try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
     try writeJsonValue(&buf, allocator, id);
     try buf.appendSlice(allocator,
-        \\,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},"hoverProvider":true,"definitionProvider":true,"documentSymbolProvider":true,"completionProvider":{"triggerCharacters":["."]},"referencesProvider":true,"renameProvider":{"prepareProvider":false},"signatureHelpProvider":{"triggerCharacters":["(", ","]},"documentFormattingProvider":true,"workspaceSymbolProvider":true,"documentHighlightProvider":true,"foldingRangeProvider":true,"inlayHintProvider":true,"codeActionProvider":true},"serverInfo":{"name":"orhon-lsp","version":"0.7.2"}}}
+        \\,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},"hoverProvider":true,"definitionProvider":true,"documentSymbolProvider":true,"completionProvider":{"triggerCharacters":["."]},"referencesProvider":true,"renameProvider":{"prepareProvider":false},"signatureHelpProvider":{"triggerCharacters":["(", ","]},"documentFormattingProvider":true,"workspaceSymbolProvider":true,"documentHighlightProvider":true,"foldingRangeProvider":true,"inlayHintProvider":true,"codeActionProvider":true},"serverInfo":{"name":"orhon-lsp","version":"0.7.3"}}}
     );
 
     return allocator.dupe(u8, buf.items);
@@ -1178,7 +1178,8 @@ fn builtinDetail(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
         .{ "struct", "(keyword) composite data type" },
         .{ "enum", "(keyword) enumerated type" },
         .{ "bitfield", "(keyword) bit-level flag type" },
-        .{ "import", "(keyword) import a module" },
+        .{ "import", "(keyword) import a module (namespaced)" },
+        .{ "include", "(keyword) include a module (flat, dumps symbols into scope)" },
         .{ "module", "(keyword) module declaration" },
         .{ "pub", "(keyword) public visibility modifier" },
         .{ "defer", "(keyword) execute on scope exit" },
@@ -3085,7 +3086,7 @@ fn classifyToken(kind: lexer.TokenKind) TokenClassification {
     return switch (kind) {
         // Keywords
         .kw_func, .kw_var, .kw_const, .kw_struct, .kw_enum, .kw_bitfield,
-        .kw_module, .kw_import, .kw_pub, .kw_bridge, .kw_compt, .kw_test,
+        .kw_module, .kw_import, .kw_include, .kw_pub, .kw_bridge, .kw_compt, .kw_test,
         .kw_if, .kw_else, .kw_for, .kw_while, .kw_return, .kw_match,
         .kw_break, .kw_continue, .kw_defer, .kw_thread, .kw_any,
         .kw_and, .kw_or, .kw_not, .kw_as, .kw_is, .kw_cast,

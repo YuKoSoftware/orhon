@@ -248,7 +248,7 @@ pub const Resolver = struct {
                 defer file.close();
                 const content = try file.readToEndAlloc(arena_alloc, 10 * 1024 * 1024);
 
-                // Non-anchor files must not contain metadata (#name, #build, etc.)
+                // Non-anchor files must not contain metadata or bridge declarations
                 if (file_idx > 0) {
                     var lines_iter = std.mem.splitSequence(u8, content, "\n");
                     while (lines_iter.next()) |line| {
@@ -259,6 +259,18 @@ pub const Resolver = struct {
                             const msg = try std.fmt.allocPrint(self.allocator,
                                 "metadata (#{s}...) only allowed in anchor file '{s}.orh', found in '{s}'",
                                 .{ trimmed_line[1..@min(trimmed_line.len, 10)], mod_name, file_path });
+                            defer self.allocator.free(msg);
+                            try self.reporter.report(.{ .message = msg });
+                            break;
+                        }
+                        // bridge declarations only allowed in anchor file
+                        if ((std.mem.startsWith(u8, trimmed_line, "bridge ") or
+                            std.mem.startsWith(u8, trimmed_line, "pub bridge ")) and
+                            !std.mem.startsWith(u8, trimmed_line, "//"))
+                        {
+                            const msg = try std.fmt.allocPrint(self.allocator,
+                                "bridge declarations only allowed in anchor file '{s}.orh', found in '{s}'",
+                                .{ mod_name, file_path });
                             defer self.allocator.free(msg);
                             try self.reporter.report(.{ .message = msg });
                             break;

@@ -555,6 +555,72 @@ pub const MirNode = struct {
     injected_name: ?[]const u8 = null,
     /// Pre-computed type narrowing for if_stmt with `is` checks.
     narrowing: ?IfNarrowing = null,
+
+    // ── Child accessors ─────────────────────────────────────
+    // Named access into children[] so codegen doesn't use raw indices.
+    // Child layout per kind documented in MirLowerer.lowerNode().
+
+    /// Last child — body block for func, test_def, defer_stmt, match_arm.
+    pub fn body(self: *const MirNode) *MirNode {
+        return self.children[self.children.len - 1];
+    }
+
+    /// children[0] — condition for if_stmt, while_stmt.
+    pub fn condition(self: *const MirNode) *MirNode {
+        return self.children[0];
+    }
+
+    /// children[1] — then block for if_stmt.
+    pub fn thenBlock(self: *const MirNode) *MirNode {
+        return self.children[1];
+    }
+
+    /// children[2] if exists — else block for if_stmt.
+    pub fn elseBlock(self: *const MirNode) ?*MirNode {
+        if (self.children.len > 2) return self.children[2];
+        return null;
+    }
+
+    /// children[0] — left operand for binary, assignment.
+    pub fn lhs(self: *const MirNode) *MirNode {
+        return self.children[0];
+    }
+
+    /// children[1] — right operand for binary, assignment.
+    pub fn rhs(self: *const MirNode) *MirNode {
+        return self.children[1];
+    }
+
+    /// children[0] — callee for call.
+    pub fn getCallee(self: *const MirNode) *MirNode {
+        return self.children[0];
+    }
+
+    /// children[1..] — arguments for call.
+    pub fn callArgs(self: *const MirNode) []*MirNode {
+        return self.children[1..];
+    }
+
+    /// children[0] — value for var_decl, return_stmt, destruct.
+    pub fn value(self: *const MirNode) *MirNode {
+        return self.children[0];
+    }
+
+    /// children[0] — iterable for for_stmt.
+    pub fn iterable(self: *const MirNode) *MirNode {
+        return self.children[0];
+    }
+
+    /// children[0..len-1] — params for func (everything except last child = body).
+    pub fn params(self: *const MirNode) []*MirNode {
+        if (self.children.len == 0) return &.{};
+        return self.children[0 .. self.children.len - 1];
+    }
+
+    /// children[1..] — match arms for match_stmt (children[0] = value).
+    pub fn matchArms(self: *const MirNode) []*MirNode {
+        return self.children[1..];
+    }
 };
 
 /// MIR node kinds — grouped from 52 AST kinds.
@@ -724,7 +790,7 @@ pub const MirLowerer = struct {
                 if (i.else_block) |e| try children.append(self.allocator, try self.lowerNode(e));
                 mir_node.children = try children.toOwnedSlice(self.allocator);
                 // Pre-compute type narrowing from `is` checks
-                mir_node.narrowing = extractNarrowing(i.condition);
+                mir_node.narrowing = self.extractNarrowing(i.condition, i.then_block);
             },
             .while_stmt => |w| {
                 var children = std.ArrayListUnmanaged(*MirNode){};
@@ -988,26 +1054,66 @@ pub const MirLowerer = struct {
     }
 
     /// Extract type narrowing info from an if-condition.
-    fn extractNarrowing(condition: *parser.Node) ?IfNarrowing {
-        // Pattern: `x is T` → binary_expr with op "is"
-        if (condition.* == .binary_expr) {
-            const b = condition.binary_expr;
-            if (std.mem.eql(u8, b.op, "is")) {
-                if (b.left.* == .identifier) {
-                    const type_name = switch (b.right.*) {
-                        .type_named => |n| n,
-                        .type_primitive => |n| n,
-                        .identifier => |n| n,
-                        else => return null,
-                    };
-                    return .{
-                        .var_name = b.left.identifier,
-                        .then_type = type_name,
-                    };
-                }
+    /// Matches the desugared form: `@type(x) == T` / `@type(x) != T`
+    /// (parser desugars `x is T` into `compiler_func("type", [x]) == T`)
+    fn extractNarrowing(self: *const MirLowerer, condition: *parser.Node, then_block: *parser.Node) ?IfNarrowing {
+        if (condition.* != .binary_expr) return null;
+        const b = condition.binary_expr;
+        const is_eq = std.mem.eql(u8, b.op, "==");
+        const is_ne = std.mem.eql(u8, b.op, "!=");
+        if (!is_eq and !is_ne) return null;
+        if (b.left.* != .compiler_func) return null;
+        if (!std.mem.eql(u8, b.left.compiler_func.name, K.Type.TYPE)) return null;
+        if (b.left.compiler_func.args.len == 0) return null;
+        const val_node = b.left.compiler_func.args[0];
+        if (val_node.* != .identifier) return null;
+        // Check if the variable is an arbitrary union via MIR annotation
+        const info = self.node_map.get(val_node) orelse
+            if (self.var_types.get(val_node.identifier)) |vi| vi else return null;
+        if (info.type_class != .arbitrary_union) return null;
+        // Get the type name from RHS
+        const type_name: []const u8 = switch (b.right.*) {
+            .identifier => |n| n,
+            .null_literal => K.Type.NULL,
+            else => return null,
+        };
+        // Skip Error/null checks — those are error/null union narrowing, not arb union
+        if (std.mem.eql(u8, type_name, K.Type.ERROR) or std.mem.eql(u8, type_name, K.Type.NULL))
+            return null;
+        // Compute remaining type for opposite branch
+        const members_rt = if (info.resolved_type == .union_type) info.resolved_type.union_type else null;
+        const remaining = remainingUnionType(members_rt, type_name);
+        const has_early_exit = blockHasEarlyExit(then_block);
+        return .{
+            .var_name = val_node.identifier,
+            .then_type = if (is_eq) type_name else remaining,
+            .else_type = if (is_eq) remaining else type_name,
+            .post_type = if (has_early_exit) (if (is_eq) remaining else type_name) else null,
+        };
+    }
+
+    fn remainingUnionType(members_rt: ?[]const RT, excluded: []const u8) ?[]const u8 {
+        const members = members_rt orelse return null;
+        var remaining: ?[]const u8 = null;
+        for (members) |m| {
+            const n = m.name();
+            if (std.mem.eql(u8, n, excluded)) continue;
+            if (std.mem.eql(u8, n, K.Type.ERROR) or std.mem.eql(u8, n, K.Type.NULL)) continue;
+            if (remaining != null) return null;
+            remaining = n;
+        }
+        return remaining;
+    }
+
+    fn blockHasEarlyExit(node: *parser.Node) bool {
+        if (node.* != .block) return false;
+        for (node.block.statements) |stmt| {
+            switch (stmt.*) {
+                .return_stmt, .break_stmt, .continue_stmt => return true,
+                else => {},
             }
         }
-        return null;
+        return false;
     }
 };
 

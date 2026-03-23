@@ -6,21 +6,23 @@
 
 These unblock open bugs and enable major features.
 
-### MIR Phase 3 — Coercion Pass (started)
+### ~~MIR Phase 3 — Coercion Pass + MirNode Tree~~ (implemented v0.5.3)
 
 MIR annotator compares types at call sites, declarations, and return statements,
-marking coercion fields on AST nodes. Codegen reads coercion annotations to emit
-transformations. Core `detectCoercion()` function centralizes all type mismatch logic.
+marking coercion fields on AST nodes. MirLowerer builds a typed MirNode tree that
+codegen walks instead of the AST. Codegen reads type info directly from MirNode
+(`type_class`, `coercion`, `resolved_type`) — no more NodeMap hash lookups for
+the main dispatch path.
 
-**Done:**
-- Array-to-slice coercion: `coercion = .array_to_slice` → `&` prefix in call args
-- Map.get() optional: bridge returns `OrhonNullable(V)` instead of `?V`
-- `null_wrap`, `error_wrap`, `arbitrary_union_wrap`, `optional_unwrap` coercion detection
-- Coercion annotations for call args, declarations, and return statements
-- Codegen uses coercions for call args (`generateCoercedExpr`) and returns
+**Coercions:** array_to_slice, null_wrap, error_wrap, arbitrary_union_wrap, optional_unwrap.
+**MirNode tree:** Top-level → block → statement → expression dispatch all on MirKind.
+**Type narrowing:** `extractNarrowing` pre-computes `IfNarrowing` (then/else/post types).
+**Interpolation hoisting:** `temp_var`/`injected_defer` injected nodes in blocks.
 
-**Remaining:**
-- Full MirNode tree lowering (replace all AST access in codegen)
+**Remaining cleanup (no bugs driving this):**
+- Migrate struct/enum member codegen to MirNode path
+- Eliminate `type_narrowed_vars` map (stamp narrowed_to on descendant MirNodes)
+- Delete AST-path codegen functions once all callers use MIR
 
 ### ~~Threading — `thread` keyword + `Handle(T)`~~ (implemented v0.5.0)
 
@@ -117,8 +119,8 @@ The MIR annotator (pass 10) walks the AST + resolver type_map to produce a NodeM
 ### Phase 2 — Single Source of Truth (implemented)
 MIR is the single source of truth for type information in codegen. Eliminated all AST type inspection functions (`isErrorUnionType`, `isNullUnionType`, `isArbitraryUnion`), the `arb_union_vars` hashmap, and 4 function return type tracking fields. Added `var_types` registry, `current_func_node` tracking, and `funcReturnTypeClass()`/`funcReturnMembers()` helpers. Codegen queries MIR for all type decisions. Only `narrowed_vars` remains (legitimate runtime scope state from `is` checks).
 
-### Phase 3 — Coercion Pass + Typed Tree (in progress)
-Coercion annotation pass complete for all 5 coercion types: `array_to_slice`, `null_wrap`, `error_wrap`, `arbitrary_union_wrap`, `optional_unwrap`. Core `detectCoercion()` centralizes type mismatch logic. MIR annotates coercions at call sites (`annotateCallCoercions`), declarations (`annotateDeclCoercions`), and return statements (`annotateReturnCoercions`). Codegen uses `generateCoercedExpr` for call args and MIR coercions for return values. Next: lower the full NodeMap into a proper `MirNode` tree with its own node types.
+### Phase 3 — Coercion Pass + Typed Tree (implemented)
+Coercion annotation pass complete for all 5 coercion types. MirLowerer builds a full MirNode tree from AST + NodeMap. Codegen walks the MirNode tree for top-level → block → statement → expression dispatch, reading `type_class`/`coercion`/`resolved_type` directly from MirNode instead of hash-querying NodeMap. MirNode accessors (`body()`, `condition()`, `lhs()`, `rhs()`, `getCallee()`, `callArgs()`, etc.) make child layout self-documenting. `extractNarrowing` pre-computes `IfNarrowing` with then/else/post types. MirLowerer injects `temp_var`/`injected_defer` nodes for interpolation hoisting. AST-path functions retained for struct/enum member codegen and unit tests without MIR setup.
 
 ### Phase 4 — SSA + Optimization
 Flatten the MirNode tree to basic blocks with SSA form. Add optimization passes: dead code elimination, constant folding, inlining decisions. Codegen reads the SSA IR.

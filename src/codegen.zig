@@ -210,9 +210,17 @@ pub const CodeGen = struct {
         try self.emit("const _str = @import(\"_orhon_str\");\n");
         try self.emit("const _collections = @import(\"_orhon_collections\");\n");
 
-        // Generate imports (always from AST — MirNode tree doesn't carry imports separately)
+        // Generate imports — deduplicate across files in the same module
+        // (multiple .orh files can import the same dependency)
+        var seen_imports = std.StringHashMap(void).init(self.allocator);
+        defer seen_imports.deinit();
         for (ast.program.imports) |imp| {
-            try self.generateImport(imp);
+            if (imp.* != .import_decl) continue;
+            const alias = imp.import_decl.alias orelse imp.import_decl.path;
+            const gop = try seen_imports.getOrPut(alias);
+            if (!gop.found_existing) {
+                try self.generateImport(imp);
+            }
         }
 
         try self.emit("\n");

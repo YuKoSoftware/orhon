@@ -936,7 +936,8 @@ pub const CodeGen = struct {
 
     fn generateTestMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
         const t = m.ast.test_decl;
-        try self.emitFmt("test {s} ", .{t.description});
+        const description = m.name orelse t.description;
+        try self.emitFmt("test {s} ", .{description});
         const prev_reassigned_vars = self.reassigned_vars;
         self.reassigned_vars = .{};
         try collectAssigned(t.body, &self.reassigned_vars, self.allocator);
@@ -1936,7 +1937,7 @@ pub const CodeGen = struct {
                 }
             },
             .identifier => {
-                const name = m.ast.identifier;
+                const name = m.name orelse m.ast.identifier;
                 if (self.isEnumVariant(name)) {
                     try self.emitFmt(".{s}", .{name});
                 } else if (self.generic_struct_name) |gsn| {
@@ -1950,8 +1951,7 @@ pub const CodeGen = struct {
                 }
             },
             .unary => {
-                const u = m.ast.unary_expr;
-                const op = opToZig(u.op);
+                const op = opToZig(m.op orelse m.ast.unary_expr.op);
                 try self.emitFmt("{s}(", .{op});
                 try self.generateExprMir(m.children[0]);
                 try self.emit(")");

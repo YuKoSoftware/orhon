@@ -33,7 +33,7 @@ pub fn classifyType(t: RT) TypeClass {
         .error_union => .error_union,
         .null_union => .null_union,
         .union_type => .arbitrary_union,
-        .primitive => |n| if (std.mem.eql(u8, n, K.Type.STRING)) .string else .plain,
+        .primitive => |p| if (p == .string) .string else .plain,
         .generic => |g| {
             if (std.mem.eql(u8, g.name, "RawPtr") or std.mem.eql(u8, g.name, "VolatilePtr"))
                 return .raw_ptr;
@@ -536,7 +536,9 @@ pub const MirAnnotator = struct {
 /// MIR node — carries type info inline, replaces AST + NodeMap pair.
 /// Back-pointer to AST for string data (names, operators, literal values).
 pub const MirNode = struct {
-    /// Original AST node — for names, operators, literal values, source locations.
+    /// Original AST node — transitional back-pointer for incremental migration.
+    /// Codegen should prefer self-contained fields below; ast will be removed
+    /// once all accesses are migrated.
     ast: *parser.Node,
     /// Resolved type of this node.
     resolved_type: RT,
@@ -555,6 +557,27 @@ pub const MirNode = struct {
     injected_name: ?[]const u8 = null,
     /// Pre-computed type narrowing for if_stmt with `is` checks.
     narrowing: ?IfNarrowing = null,
+
+    // ── Self-contained data fields ──────────────────────────
+    // These carry the essential data from the AST node so codegen
+    // doesn't need to read through the ast back-pointer.
+
+    /// Name: func name, struct name, enum name, var name, identifier, test description, param name.
+    name: ?[]const u8 = null,
+    /// Operator: binary op, unary op, assignment op.
+    op: ?[]const u8 = null,
+    /// Literal value text: int, float, string literals.
+    literal: ?[]const u8 = null,
+    /// Bool literal value.
+    bool_val: bool = false,
+    /// Public visibility flag.
+    is_pub: bool = false,
+    /// Bridge declaration flag.
+    is_bridge: bool = false,
+    /// Thread function flag.
+    is_thread: bool = false,
+    /// Compile-time declaration flag.
+    is_compt: bool = false,
 
     // ── Child accessors ─────────────────────────────────────
     // Named access into children[] so codegen doesn't use raw indices.
@@ -741,6 +764,9 @@ pub const MirLowerer = struct {
             .kind = kind,
             .children = &.{},
         };
+
+        // Populate self-contained data fields from AST
+        populateData(mir_node, node);
 
         // Lower children based on AST node kind
         switch (node.*) {
@@ -988,7 +1014,7 @@ pub const MirLowerer = struct {
                 const temp = try self.allocator.create(MirNode);
                 temp.* = .{
                     .ast = interp_node,
-                    .resolved_type = RT{ .primitive = K.Type.STRING },
+                    .resolved_type = RT{ .primitive = .string },
                     .type_class = .string,
                     .kind = .temp_var,
                     .children = &.{},
@@ -1168,6 +1194,103 @@ pub const MirLowerer = struct {
 };
 
 /// Map AST node kind to MIR node kind.
+/// Populate the self-contained data fields from the AST node.
+/// Called once during lowering — these fields never change after.
+fn populateData(m: *MirNode, node: *parser.Node) void {
+    switch (node.*) {
+        .func_decl => |f| {
+            m.name = f.name;
+            m.is_pub = f.is_pub;
+            m.is_bridge = f.is_bridge;
+            m.is_thread = f.is_thread;
+            m.is_compt = f.is_compt;
+        },
+        .struct_decl => |s| {
+            m.name = s.name;
+            m.is_pub = s.is_pub;
+            m.is_bridge = s.is_bridge;
+        },
+        .enum_decl => |e| {
+            m.name = e.name;
+            m.is_pub = e.is_pub;
+        },
+        .bitfield_decl => |b| {
+            m.name = b.name;
+            m.is_pub = b.is_pub;
+        },
+        .var_decl, .const_decl => |v| {
+            m.name = v.name;
+            m.is_pub = v.is_pub;
+            m.is_bridge = v.is_bridge;
+        },
+        .compt_decl => |v| {
+            m.name = v.name;
+            m.is_pub = v.is_pub;
+            m.is_compt = true;
+        },
+        .test_decl => |t| {
+            m.name = t.description;
+        },
+        .param => |p| {
+            m.name = p.name;
+        },
+        .field_decl => |f| {
+            m.name = f.name;
+            m.is_pub = f.is_pub;
+        },
+        .enum_variant => |v| {
+            m.name = v.name;
+        },
+        .identifier => |name| {
+            m.name = name;
+        },
+        .binary_expr => |b| {
+            m.op = b.op;
+        },
+        .unary_expr => |u| {
+            m.op = u.op;
+        },
+        .assignment => |a| {
+            m.op = a.op;
+        },
+        .range_expr => {
+            m.op = "..";
+        },
+        .int_literal => |v| {
+            m.literal = v;
+        },
+        .float_literal => |v| {
+            m.literal = v;
+        },
+        .string_literal => |v| {
+            m.literal = v;
+        },
+        .bool_literal => |v| {
+            m.bool_val = v;
+            m.literal = if (v) "true" else "false";
+        },
+        .error_literal => |v| {
+            m.literal = v;
+        },
+        .null_literal => {
+            m.literal = "null";
+        },
+        .field_expr => |f| {
+            m.name = f.field;
+        },
+        .import_decl => |i| {
+            m.name = i.path;
+        },
+        .for_stmt => |f| {
+            m.is_compt = f.is_compt;
+        },
+        .compiler_func => |cf| {
+            m.name = cf.name;
+        },
+        else => {},
+    }
+}
+
 fn astToMirKind(node: *parser.Node) MirKind {
     return switch (node.*) {
         .func_decl => .func,
@@ -1217,16 +1340,16 @@ fn astToMirKind(node: *parser.Node) MirKind {
 // ── Tests ───────────────────────────────────────────────────
 
 test "classifyType - primitives" {
-    try std.testing.expectEqual(TypeClass.plain, classifyType(RT{ .primitive = "i32" }));
-    try std.testing.expectEqual(TypeClass.plain, classifyType(RT{ .primitive = "bool" }));
-    try std.testing.expectEqual(TypeClass.string, classifyType(RT{ .primitive = K.Type.STRING }));
+    try std.testing.expectEqual(TypeClass.plain, classifyType(RT{ .primitive = .i32 }));
+    try std.testing.expectEqual(TypeClass.plain, classifyType(RT{ .primitive = .bool }));
+    try std.testing.expectEqual(TypeClass.string, classifyType(RT{ .primitive = .string }));
 }
 
 test "classifyType - unions" {
     const alloc = std.testing.allocator;
     const inner = try alloc.create(RT);
     defer alloc.destroy(inner);
-    inner.* = RT{ .primitive = "i32" };
+    inner.* = RT{ .primitive = .i32 };
     try std.testing.expectEqual(TypeClass.error_union, classifyType(RT{ .error_union = inner }));
     try std.testing.expectEqual(TypeClass.null_union, classifyType(RT{ .null_union = inner }));
 }
@@ -1303,7 +1426,7 @@ test "var_types - populated from var_decl" {
     defer annotator.deinit();
 
     // Manually insert a var_types entry to verify the registry works
-    const info = NodeInfo{ .resolved_type = RT{ .primitive = "i32" }, .type_class = .plain };
+    const info = NodeInfo{ .resolved_type = RT{ .primitive = .i32 }, .type_class = .plain };
     try annotator.var_types.put(alloc, "x", info);
     try std.testing.expectEqual(@as(usize, 1), annotator.var_types.count());
 
@@ -1316,10 +1439,10 @@ test "detectCoercion - null_wrap" {
     const alloc = std.testing.allocator;
     const inner = try alloc.create(RT);
     defer alloc.destroy(inner);
-    inner.* = RT{ .primitive = "i32" };
+    inner.* = RT{ .primitive = .i32 };
 
     // Plain → null union → null_wrap
-    const r1 = MirAnnotator.detectCoercion(RT{ .primitive = "i32" }, RT{ .null_union = inner });
+    const r1 = MirAnnotator.detectCoercion(RT{ .primitive = .i32 }, RT{ .null_union = inner });
     try std.testing.expectEqual(Coercion.null_wrap, r1.kind.?);
 
     // null_union → null_union → no coercion
@@ -1335,10 +1458,10 @@ test "detectCoercion - error_wrap" {
     const alloc = std.testing.allocator;
     const inner = try alloc.create(RT);
     defer alloc.destroy(inner);
-    inner.* = RT{ .primitive = "i32" };
+    inner.* = RT{ .primitive = .i32 };
 
     // Plain → error union → error_wrap
-    const r1 = MirAnnotator.detectCoercion(RT{ .primitive = "i32" }, RT{ .error_union = inner });
+    const r1 = MirAnnotator.detectCoercion(RT{ .primitive = .i32 }, RT{ .error_union = inner });
     try std.testing.expectEqual(Coercion.error_wrap, r1.kind.?);
 
     // error_union → error_union → no coercion
@@ -1354,11 +1477,11 @@ test "detectCoercion - arbitrary_union_wrap" {
     const alloc = std.testing.allocator;
     const inner = try alloc.create(RT);
     defer alloc.destroy(inner);
-    inner.* = RT{ .primitive = "i32" };
+    inner.* = RT{ .primitive = .i32 };
 
     // Plain → union_type → arbitrary_union_wrap with tag
-    const members = &[_]RT{ RT{ .primitive = "i32" }, RT{ .primitive = "String" } };
-    const r1 = MirAnnotator.detectCoercion(RT{ .primitive = "i32" }, RT{ .union_type = members });
+    const members = &[_]RT{ RT{ .primitive = .i32 }, RT{ .primitive = .string } };
+    const r1 = MirAnnotator.detectCoercion(RT{ .primitive = .i32 }, RT{ .union_type = members });
     try std.testing.expectEqual(Coercion.arbitrary_union_wrap, r1.kind.?);
     try std.testing.expectEqualStrings("i32", r1.tag.?);
 
@@ -1371,10 +1494,10 @@ test "detectCoercion - optional_unwrap" {
     const alloc = std.testing.allocator;
     const inner = try alloc.create(RT);
     defer alloc.destroy(inner);
-    inner.* = RT{ .primitive = "i32" };
+    inner.* = RT{ .primitive = .i32 };
 
     // null_union → plain → optional_unwrap
-    const r1 = MirAnnotator.detectCoercion(RT{ .null_union = inner }, RT{ .primitive = "i32" });
+    const r1 = MirAnnotator.detectCoercion(RT{ .null_union = inner }, RT{ .primitive = .i32 });
     try std.testing.expectEqual(Coercion.optional_unwrap, r1.kind.?);
 }
 
@@ -1382,17 +1505,17 @@ test "detectCoercion - unknown types" {
     const alloc = std.testing.allocator;
     const inner = try alloc.create(RT);
     defer alloc.destroy(inner);
-    inner.* = RT{ .primitive = "i32" };
+    inner.* = RT{ .primitive = .i32 };
 
     // Unknown source → no coercion
     const r1 = MirAnnotator.detectCoercion(RT.unknown, RT{ .null_union = inner });
     try std.testing.expect(r1.kind == null);
 
     // Unknown destination → no coercion
-    const r2 = MirAnnotator.detectCoercion(RT{ .primitive = "i32" }, RT.unknown);
+    const r2 = MirAnnotator.detectCoercion(RT{ .primitive = .i32 }, RT.unknown);
     try std.testing.expect(r2.kind == null);
 
     // Same type → no coercion
-    const r3 = MirAnnotator.detectCoercion(RT{ .primitive = "i32" }, RT{ .primitive = "i32" });
+    const r3 = MirAnnotator.detectCoercion(RT{ .primitive = .i32 }, RT{ .primitive = .i32 });
     try std.testing.expect(r3.kind == null);
 }

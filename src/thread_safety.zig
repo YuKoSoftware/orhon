@@ -6,6 +6,7 @@ const std = @import("std");
 const parser = @import("parser.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
+const sema = @import("sema.zig");
 
 /// Tracks which variables have been moved into threads
 pub const ThreadSafetyChecker = struct {
@@ -13,21 +14,17 @@ pub const ThreadSafetyChecker = struct {
     declared_threads: std.StringHashMap(void), // thread names declared in current scope
     joined_threads: std.StringHashMap(void), // thread names that had .value or .wait()
     consumed_threads: std.StringHashMap(void), // threads whose .value has been consumed (move)
-    reporter: *errors.Reporter,
+    ctx: *const sema.SemanticContext,
     allocator: std.mem.Allocator,
-    locs: ?*const parser.LocMap,
-    file_offsets: []const module.FileOffset,
 
-    pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter) ThreadSafetyChecker {
+    pub fn init(allocator: std.mem.Allocator, ctx: *const sema.SemanticContext) ThreadSafetyChecker {
         return .{
             .moved_to_thread = std.StringHashMap([]const u8).init(allocator),
             .declared_threads = std.StringHashMap(void).init(allocator),
             .joined_threads = std.StringHashMap(void).init(allocator),
             .consumed_threads = std.StringHashMap(void).init(allocator),
-            .reporter = reporter,
+            .ctx = ctx,
             .allocator = allocator,
-            .locs = null,
-            .file_offsets = &.{},
         };
     }
 
@@ -36,16 +33,6 @@ pub const ThreadSafetyChecker = struct {
         self.declared_threads.deinit();
         self.joined_threads.deinit();
         self.consumed_threads.deinit();
-    }
-
-    fn nodeLoc(self: *const ThreadSafetyChecker, node: *parser.Node) ?errors.SourceLoc {
-        if (self.locs) |l| {
-            if (l.get(node)) |loc| {
-                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
-                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
-            }
-        }
-        return null;
     }
 
     pub fn check(self: *ThreadSafetyChecker, ast: *parser.Node) !void {
@@ -224,7 +211,7 @@ pub const ThreadSafetyChecker = struct {
                                 "thread '{s}' .value already consumed — .value is a move, can only be called once",
                                 .{name});
                             defer self.allocator.free(msg);
-                            try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(expr) });
+                            try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(expr) });
                             return;
                         }
                         try self.joined_threads.put(name, {});
@@ -255,7 +242,7 @@ pub const ThreadSafetyChecker = struct {
                     "thread '{s}' must be joined before scope exit — use .value or .wait()",
                     .{thread_name});
                 defer self.allocator.free(msg);
-                try self.reporter.report(.{ .message = msg });
+                try self.ctx.reporter.report(.{ .message = msg });
             }
         }
     }
@@ -268,7 +255,7 @@ pub const ThreadSafetyChecker = struct {
                         "use of '{s}' after it was moved into thread '{s}'",
                         .{ name, thread_name });
                     defer self.allocator.free(msg);
-                    try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                    try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
                 }
             },
             .binary_expr => |b| {
@@ -432,7 +419,11 @@ test "thread safety - use after move into thread" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = ThreadSafetyChecker.init(alloc, &reporter);
+    const declarations = @import("declarations.zig");
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Simulate: data moved into thread, then used after
@@ -448,7 +439,11 @@ test "thread safety - clean state" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = ThreadSafetyChecker.init(alloc, &reporter);
+    const declarations = @import("declarations.zig");
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     var id = parser.Node{ .identifier = "x" };
@@ -461,7 +456,11 @@ test "thread safety - unjoined thread is error" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = ThreadSafetyChecker.init(alloc, &reporter);
+    const declarations = @import("declarations.zig");
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Simulate: thread declared but not joined
@@ -475,7 +474,11 @@ test "thread safety - joined thread is ok" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = ThreadSafetyChecker.init(alloc, &reporter);
+    const declarations = @import("declarations.zig");
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Simulate: thread declared and joined
@@ -490,7 +493,11 @@ test "thread safety - second .value call is error" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = ThreadSafetyChecker.init(alloc, &reporter);
+    const declarations = @import("declarations.zig");
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     try checker.declared_threads.put("t", {});
@@ -514,7 +521,11 @@ test "thread safety - collectUsedVars walks if/while/for" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = ThreadSafetyChecker.init(alloc, &reporter);
+    const declarations = @import("declarations.zig");
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Build: if(flag) { return data }
@@ -556,7 +567,11 @@ test "thread safety - collectUsedVars walks unary and index" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = ThreadSafetyChecker.init(alloc, &reporter);
+    const declarations = @import("declarations.zig");
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Build: -x

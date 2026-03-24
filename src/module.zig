@@ -49,6 +49,8 @@ pub const Module = struct {
     ast_arena: ?std.heap.ArenaAllocator, // owns the AST memory; null until parsed
     locs: ?parser.LocMap,     // AST node → source location map
     file_offsets: []FileOffset, // maps combined-buffer lines → original files
+    has_bridges: bool = false, // true if module has bridge declarations (detected during parsing)
+    sidecar_path: ?[]const u8 = null, // validated .zig sidecar path (set during parsing if has_bridges)
 };
 /// The module resolver
 pub const Resolver = struct {
@@ -234,6 +236,82 @@ pub const Resolver = struct {
         return try self.allocator.dupe(u8, content[start..end]);
     }
 
+    /// Pre-scan all .orh files for import statements (text-level, no full parse).
+    /// Discovers std imports and adds them to the module map so parseModules only
+    /// needs one pass. Replaces the two-pass parse hack.
+    pub fn preScanImports(self: *Resolver) !void {
+        // Collect existing module files to scan
+        var files_to_scan = std.ArrayListUnmanaged([]const u8){};
+        defer files_to_scan.deinit(self.allocator);
+        {
+            var it = self.modules.iterator();
+            while (it.next()) |entry| {
+                for (entry.value_ptr.files) |f| {
+                    try files_to_scan.append(self.allocator, f);
+                }
+            }
+        }
+
+        for (files_to_scan.items) |file_path| {
+            const file = std.fs.cwd().openFile(file_path, .{}) catch continue;
+            defer file.close();
+            // Read just the first 4KB — imports are always at the top
+            var buf: [4096]u8 = undefined;
+            const n = file.readAll(&buf) catch continue;
+            const content = buf[0..n];
+
+            var lines_iter = std.mem.splitSequence(u8, content, "\n");
+            while (lines_iter.next()) |line| {
+                const trimmed = std.mem.trimLeft(u8, line, " \t");
+                // Quick check: line starts with "import "
+                if (!std.mem.startsWith(u8, trimmed, "import ")) continue;
+                const after_import = std.mem.trimLeft(u8, trimmed["import ".len..], " \t");
+                // Check for std:: prefix
+                if (std.mem.startsWith(u8, after_import, "std::")) {
+                    const mod_part = after_import["std::".len..];
+                    // Extract module name (stop at whitespace, newline, or end)
+                    var end: usize = 0;
+                    while (end < mod_part.len and mod_part[end] != ' ' and
+                        mod_part[end] != '\n' and mod_part[end] != '\r' and
+                        mod_part[end] != '\t') : (end += 1)
+                    {}
+                    if (end == 0) continue;
+                    const std_mod_name = mod_part[0..end];
+                    // Skip std::mem (compiler built-in, no .orh file)
+                    if (std.mem.eql(u8, std_mod_name, "mem")) continue;
+                    // Add std module if not already known
+                    if (!self.modules.contains(std_mod_name)) {
+                        const scope_dir = try std.fs.path.join(self.allocator, &.{ cache.CACHE_DIR, "std" });
+                        defer self.allocator.free(scope_dir);
+                        const orh_path = try std.fmt.allocPrint(self.allocator,
+                            "{s}/{s}.orh", .{ scope_dir, std_mod_name });
+                        // Verify the file exists before adding
+                        std.fs.cwd().access(orh_path, .{}) catch {
+                            self.allocator.free(orh_path);
+                            continue;
+                        };
+                        // Dupe the name — it points into a stack buffer
+                        const duped_name = try self.allocator.dupe(u8, std_mod_name);
+                        const files = try self.allocator.alloc([]const u8, 1);
+                        files[0] = orh_path;
+                        try self.modules.put(duped_name, .{
+                            .name = duped_name,
+                            .files = files,
+                            .imports = &.{},
+                            .imports_owned = false,
+                            .is_root = false,
+                            .build_type = .none,
+                            .ast = null,
+                            .ast_arena = null,
+                            .locs = null,
+                            .file_offsets = &.{},
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     /// Parse all modules and extract their imports
     pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
         // Collect module names first — we can't iterate the HashMap while mutating it
@@ -391,6 +469,14 @@ pub const Resolver = struct {
             mod.ast = build_result.node;
             mod.locs = build_result.ctx.locs;
 
+            // Report syntax errors from error recovery (skipped tokens)
+            for (build_result.ctx.syntax_errors.items) |err| {
+                try self.reporter.report(.{
+                    .message = err.message,
+                    .loc = .{ .file = "", .line = err.line, .col = err.col },
+                });
+            }
+
             // Extract imports — scan scoped ones from std/ or global/
             var imports: std.ArrayListUnmanaged([]const u8) = .{};
             for (build_result.node.program.imports) |imp| {
@@ -542,6 +628,47 @@ pub const Resolver = struct {
                     } else {
                         mod.build_type = .exe;
                     }
+                }
+            }
+
+            // Detect bridge declarations — scan AST top-level for bridge func/const/struct
+            for (build_result.node.program.top_level) |node| {
+                const is_bridge = switch (node.*) {
+                    .func_decl => |f| f.is_bridge,
+                    .const_decl, .var_decl => |v| v.is_bridge,
+                    .struct_decl => |s| s.is_bridge,
+                    else => false,
+                };
+                if (is_bridge) {
+                    mod.has_bridges = true;
+                    // Find anchor directory and validate sidecar exists
+                    var anchor_dir: []const u8 = ".";
+                    for (mod.files) |file| {
+                        const stem = std.fs.path.stem(file);
+                        if (std.mem.eql(u8, stem, mod_name)) {
+                            anchor_dir = std.fs.path.dirname(file) orelse ".";
+                            break;
+                        }
+                    }
+                    const sidecar = try std.fmt.allocPrint(self.allocator,
+                        "{s}/{s}.zig", .{ anchor_dir, mod_name });
+                    std.fs.cwd().access(sidecar, .{}) catch {
+                        const bridge_name = switch (node.*) {
+                            .func_decl => |f| f.name,
+                            .const_decl, .var_decl => |v| v.name,
+                            .struct_decl => |s| s.name,
+                            else => "unknown",
+                        };
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "bridge '{s}': missing sidecar file '{s}'",
+                            .{ bridge_name, sidecar });
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg });
+                        self.allocator.free(sidecar);
+                        break;
+                    };
+                    mod.sidecar_path = sidecar;
+                    break;
                 }
             }
         }

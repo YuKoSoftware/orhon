@@ -13,6 +13,7 @@ const ownership = @import("ownership.zig");
 const borrow = @import("borrow.zig");
 const thread_safety = @import("thread_safety.zig");
 const propagation = @import("propagation.zig");
+const sema = @import("sema.zig");
 const mir = @import("mir.zig");
 const codegen = @import("codegen.zig");
 const zig_runner = @import("zig_runner.zig");
@@ -939,23 +940,13 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
     try comp_cache.loadTimestamps();
     try comp_cache.loadDeps();
 
-    // Parse all modules — two passes to catch std imports discovered during parsing.
-    // First pass parses project modules and discovers std imports (adds them to map).
-    // Second pass parses the newly discovered std modules.
+    // Pre-scan imports to discover std modules before full parsing.
+    // This avoids the need for a second parse pass.
+    try mod_resolver.preScanImports();
+
+    // Parse all modules — single pass (std modules already in module map)
     try mod_resolver.parseModules(allocator);
     if (reporter.hasErrors()) return null;
-    // Second pass: only if new modules were added (std imports)
-    {
-        var has_unparsed = false;
-        var check_it = mod_resolver.modules.iterator();
-        while (check_it.next()) |entry| {
-            if (entry.value_ptr.ast == null) { has_unparsed = true; break; }
-        }
-        if (has_unparsed) {
-            try mod_resolver.parseModules(allocator);
-            if (reporter.hasErrors()) return null;
-        }
-    }
 
     // Scan and parse any #dep directories declared in the root module
     try mod_resolver.scanAndParseDeps(allocator, cli.source_dir);
@@ -1070,37 +1061,34 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         try type_resolver.resolve(ast);
         if (reporter.hasErrors()) return null;
 
+        // ── Shared context for validation passes 6–9 ───────────
+        const sema_ctx = sema.SemanticContext{
+            .allocator = allocator,
+            .reporter = reporter,
+            .decls = &decl_collector.table,
+            .locs = locs_ptr,
+            .file_offsets = file_offsets,
+        };
+
         // ── Pass 6: Ownership Analysis ─────────────────────────
-        var ownership_checker = ownership.OwnershipChecker.init(allocator, reporter);
-        ownership_checker.locs = locs_ptr;
-        ownership_checker.file_offsets = file_offsets;
-        ownership_checker.decls = &decl_collector.table;
+        var ownership_checker = ownership.OwnershipChecker.init(allocator, &sema_ctx);
         try ownership_checker.check(ast);
         if (reporter.hasErrors()) return null;
 
         // ── Pass 7: Borrow Checking ────────────────────────────
-        var borrow_checker = borrow.BorrowChecker.init(allocator, reporter);
+        var borrow_checker = borrow.BorrowChecker.init(allocator, &sema_ctx);
         defer borrow_checker.deinit();
-        borrow_checker.locs = locs_ptr;
-        borrow_checker.file_offsets = file_offsets;
-        borrow_checker.decls = &decl_collector.table;
-
         try borrow_checker.check(ast);
         if (reporter.hasErrors()) return null;
 
         // ── Pass 8: Thread Safety ──────────────────────────────
-        var thread_checker = thread_safety.ThreadSafetyChecker.init(allocator, reporter);
+        var thread_checker = thread_safety.ThreadSafetyChecker.init(allocator, &sema_ctx);
         defer thread_checker.deinit();
-        thread_checker.locs = locs_ptr;
-        thread_checker.file_offsets = file_offsets;
-
         try thread_checker.check(ast);
         if (reporter.hasErrors()) return null;
 
         // ── Pass 9: Error Propagation ──────────────────────────
-        var prop_checker = propagation.PropagationChecker.init(allocator, reporter, &decl_collector.table);
-        prop_checker.locs = locs_ptr;
-        prop_checker.file_offsets = file_offsets;
+        var prop_checker = propagation.PropagationChecker.init(allocator, &sema_ctx);
         try prop_checker.check(ast);
         if (reporter.hasErrors()) return null;
 
@@ -1122,44 +1110,17 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         defer mir_lowerer.deinit();
         const mir_root = try mir_lowerer.lower(ast);
 
-        // ── Extern Sidecar Validation ──────────────────────────
-        // If the module has bridge declarations, a paired .zig sidecar
-        // must exist next to the anchor .orh file.
-        if (collectBridgeNames(ast, allocator)) |bridge_names| {
-            defer {
-                for (bridge_names) |n| allocator.free(n);
-                allocator.free(bridge_names);
+        // ── Bridge Sidecar Copy ─────────────────────────────────
+        // Validation already happened during module resolution (pass 3).
+        // Here we just copy the validated sidecar to the generated dir.
+        if (mod_ptr.has_bridges) {
+            if (mod_ptr.sidecar_path) |sidecar_src| {
+                try cache.ensureGeneratedDir();
+                const sidecar_dst = try std.fmt.allocPrint(allocator, "{s}/{s}_bridge.zig", .{ cache.GENERATED_DIR, mod_name });
+                defer allocator.free(sidecar_dst);
+                try std.fs.cwd().copyFile(sidecar_src, std.fs.cwd(), sidecar_dst, .{});
             }
-            if (bridge_names.len > 0) {
-                // Find the anchor file — the one whose stem matches the module name
-                var anchor_dir: ?[]const u8 = null;
-                for (mod_ptr.files) |file| {
-                    const stem = std.fs.path.stem(file);
-                    if (std.mem.eql(u8, stem, mod_name)) {
-                        anchor_dir = std.fs.path.dirname(file) orelse ".";
-                        break;
-                    }
-                }
-                const dir = anchor_dir orelse (if (mod_ptr.files.len > 0) std.fs.path.dirname(mod_ptr.files[0]) orelse "." else ".");
-                const sidecar_src = try std.fmt.allocPrint(allocator, "{s}/{s}.zig", .{ dir, mod_name });
-                defer allocator.free(sidecar_src);
-                std.fs.cwd().access(sidecar_src, .{}) catch {
-                    const first_name = bridge_names[0];
-                    const msg = try std.fmt.allocPrint(allocator,
-                        "bridge '{s}': missing sidecar file '{s}'",
-                        .{ first_name, sidecar_src });
-                    defer allocator.free(msg);
-                    try reporter.report(.{ .message = msg });
-                };
-                if (!reporter.hasErrors()) {
-                    // Sidecar exists — copy as <mod>_bridge.zig so generated <mod>.zig can @import it
-                    try cache.ensureGeneratedDir();
-                    const sidecar_dst = try std.fmt.allocPrint(allocator, "{s}/{s}_bridge.zig", .{ cache.GENERATED_DIR, mod_name });
-                    defer allocator.free(sidecar_dst);
-                    try std.fs.cwd().copyFile(sidecar_src, std.fs.cwd(), sidecar_dst, .{});
-                }
-            }
-        } else |_| {}
+        }
         if (reporter.hasErrors()) return null;
 
         // ── Pass 11: Zig Code Generation ───────────────────────
@@ -1913,25 +1874,34 @@ test "full pipeline - hello world" {
     try type_resolver.resolve(ast);
     try std.testing.expect(!reporter.hasErrors());
 
+    // Shared context for validation passes
+    const sema_ctx = sema.SemanticContext{
+        .allocator = alloc,
+        .reporter = &reporter,
+        .decls = &decl_collector.table,
+        .locs = null,
+        .file_offsets = &.{},
+    };
+
     // Ownership check
-    var ownership_checker = ownership.OwnershipChecker.init(alloc, &reporter);
+    var ownership_checker = ownership.OwnershipChecker.init(alloc, &sema_ctx);
     try ownership_checker.check(ast);
     try std.testing.expect(!reporter.hasErrors());
 
     // Borrow check
-    var borrow_checker = borrow.BorrowChecker.init(alloc, &reporter);
+    var borrow_checker = borrow.BorrowChecker.init(alloc, &sema_ctx);
     defer borrow_checker.deinit();
     try borrow_checker.check(ast);
     try std.testing.expect(!reporter.hasErrors());
 
     // Thread safety
-    var thread_checker = thread_safety.ThreadSafetyChecker.init(alloc, &reporter);
+    var thread_checker = thread_safety.ThreadSafetyChecker.init(alloc, &sema_ctx);
     defer thread_checker.deinit();
     try thread_checker.check(ast);
     try std.testing.expect(!reporter.hasErrors());
 
     // Propagation
-    var prop_checker = propagation.PropagationChecker.init(alloc, &reporter, null);
+    var prop_checker = propagation.PropagationChecker.init(alloc, &sema_ctx);
     try prop_checker.check(ast);
     try std.testing.expect(!reporter.hasErrors());
 

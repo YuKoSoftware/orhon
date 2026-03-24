@@ -9,6 +9,7 @@ const errors = @import("errors.zig");
 const K = @import("constants.zig");
 const types = @import("types.zig");
 const module = @import("module.zig");
+const sema = @import("sema.zig");
 
 /// A tracked union variable — needs handling before scope exit
 pub const UnionVar = struct {
@@ -77,30 +78,14 @@ pub const PropagationScope = struct {
 
 /// The propagation checker
 pub const PropagationChecker = struct {
-    reporter: *errors.Reporter,
+    ctx: *const sema.SemanticContext,
     allocator: std.mem.Allocator,
-    decls: ?*declarations.DeclTable,
-    locs: ?*const parser.LocMap,
-    file_offsets: []const module.FileOffset,
 
-    pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter, decls: ?*declarations.DeclTable) PropagationChecker {
+    pub fn init(allocator: std.mem.Allocator, ctx: *const sema.SemanticContext) PropagationChecker {
         return .{
-            .reporter = reporter,
+            .ctx = ctx,
             .allocator = allocator,
-            .decls = decls,
-            .locs = null,
-            .file_offsets = &.{},
         };
-    }
-
-    fn nodeLoc(self: *const PropagationChecker, node: *parser.Node) ?errors.SourceLoc {
-        if (self.locs) |l| {
-            if (l.get(node)) |loc| {
-                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
-                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
-            }
-        }
-        return null;
     }
 
     pub fn check(self: *PropagationChecker, ast: *parser.Node) !void {
@@ -172,14 +157,14 @@ pub const PropagationChecker = struct {
                 // Annotation takes priority
                 const is_union = from_annotation orelse from_value;
                 if (is_union) |is_error| {
-                    const loc = self.nodeLoc(node);
+                    const loc = self.ctx.nodeLoc(node);
                     try scope.define(v.name, is_error, if (loc) |l| l.line else 0, if (loc) |l| l.col else 0);
                 }
                 // Assignment propagation: var y = x where x is a tracked union
                 if (from_annotation == null and from_value == null) {
                     if (v.value.* == .identifier) {
                         if (scope.isTracked(v.value.identifier)) |tracked| {
-                            const loc = self.nodeLoc(node);
+                            const loc = self.ctx.nodeLoc(node);
                             try scope.define(v.name, tracked.is_error_union, if (loc) |l| l.line else 0, if (loc) |l| l.col else 0);
                         }
                     }
@@ -196,7 +181,7 @@ pub const PropagationChecker = struct {
                         if (scope.isTracked(name) != null) {
                             scope.resetHandled(name, is_error);
                         } else {
-                            const loc = self.nodeLoc(node);
+                            const loc = self.ctx.nodeLoc(node);
                             try scope.define(name, is_error, if (loc) |l| l.line else 0, if (loc) |l| l.col else 0);
                         }
                     }
@@ -206,7 +191,7 @@ pub const PropagationChecker = struct {
                             if (scope.isTracked(name) != null) {
                                 scope.resetHandled(name, tracked.is_error_union);
                             } else {
-                                const loc = self.nodeLoc(node);
+                                const loc = self.ctx.nodeLoc(node);
                                 try scope.define(name, tracked.is_error_union, if (loc) |l| l.line else 0, if (loc) |l| l.col else 0);
                             }
                         }
@@ -267,7 +252,7 @@ pub const PropagationChecker = struct {
             .compt_decl => |v| {
                 const from_value = try self.exprReturnsUnion(v.value);
                 if (from_value) |is_error| {
-                    const loc = self.nodeLoc(node);
+                    const loc = self.ctx.nodeLoc(node);
                     try scope.define(v.name, is_error, if (loc) |l| l.line else 0, if (loc) |l| l.col else 0);
                 }
             },
@@ -300,7 +285,7 @@ pub const PropagationChecker = struct {
                                 "unsafe unwrap of {s} union '{s}' — check with 'is' or 'match' first",
                                 .{ kind, name });
                             defer self.allocator.free(msg);
-                            try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                            try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
                         }
                     }
                 }
@@ -360,7 +345,7 @@ pub const PropagationChecker = struct {
     fn exprReturnsUnion(self: *PropagationChecker, node: *parser.Node) anyerror!?bool {
         switch (node.*) {
             .call_expr => |c| {
-                if (self.decls) |decls| {
+                {
                     const func_name = if (c.callee.* == .identifier)
                         c.callee.identifier
                     else if (c.callee.* == .field_expr)
@@ -369,7 +354,7 @@ pub const PropagationChecker = struct {
                         null;
 
                     if (func_name) |fname| {
-                        if (decls.funcs.get(fname)) |sig| {
+                        if (self.ctx.decls.funcs.get(fname)) |sig| {
                             if (sig.return_type.isErrorUnion()) return true;
                             if (sig.return_type.isNullUnion()) return false;
                         }
@@ -394,7 +379,7 @@ pub const PropagationChecker = struct {
                 } else {
                     const kind = if (uvar.is_error_union) K.Type.ERROR else K.Type.NULL;
                     const loc: ?errors.SourceLoc = if (uvar.line > 0) blk: {
-                        const resolved = module.resolveFileLoc(self.file_offsets, uvar.line);
+                        const resolved = module.resolveFileLoc(self.ctx.file_offsets, uvar.line);
                         break :blk .{ .file = resolved.file, .line = resolved.line, .col = uvar.col };
                     } else
                         null;
@@ -402,7 +387,7 @@ pub const PropagationChecker = struct {
                         "unhandled {s} union '{s}' — enclosing function cannot propagate",
                         .{ kind, uvar.name });
                     defer self.allocator.free(msg);
-                    try self.reporter.report(.{ .message = msg, .loc = loc });
+                    try self.ctx.reporter.report(.{ .message = msg, .loc = loc });
                 }
             }
         }
@@ -467,7 +452,10 @@ test "propagation - handled error union" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = PropagationChecker.init(alloc, &reporter, null);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = PropagationChecker.init(alloc, &ctx);
 
     var scope = PropagationScope.init(alloc, null, true);
     defer scope.deinit();
@@ -485,7 +473,10 @@ test "propagation - unhandled in non-propagating function" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = PropagationChecker.init(alloc, &reporter, null);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = PropagationChecker.init(alloc, &ctx);
 
     // Function that returns void — cannot propagate
     var scope = PropagationScope.init(alloc, null, false);
@@ -504,7 +495,7 @@ test "propagation - ResolvedType detects Error and null unions" {
     // Error union
     const inner = try alloc.create(types.ResolvedType);
     defer alloc.destroy(inner);
-    inner.* = .{ .primitive = "i32" };
+    inner.* = .{ .primitive = .i32 };
     const err_union = types.ResolvedType{ .error_union = inner };
     try std.testing.expect(err_union.isErrorUnion());
     try std.testing.expect(!err_union.isNullUnion());
@@ -515,9 +506,9 @@ test "propagation - ResolvedType detects Error and null unions" {
     try std.testing.expect(!null_union.isErrorUnion());
 
     // Plain type — not a union
-    const plain = types.ResolvedType{ .primitive = "i32" };
+    const plain = types.ResolvedType{ .primitive = .i32 };
     try std.testing.expect(!plain.isUnion());
-    const void_t = types.ResolvedType{ .primitive = "void" };
+    const void_t = types.ResolvedType{ .primitive = .void };
     try std.testing.expect(!void_t.isUnion());
 }
 
@@ -564,7 +555,7 @@ test "propagation - call expr resolved via decl table" {
     // Build an error_union ResolvedType: (Error | i32)
     const inner = try alloc.create(types.ResolvedType);
     defer alloc.destroy(inner);
-    inner.* = .{ .primitive = "i32" };
+    inner.* = .{ .primitive = .i32 };
 
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -585,7 +576,8 @@ test "propagation - call expr resolved via decl table" {
         .is_thread = false,
     });
 
-    var checker = PropagationChecker.init(alloc, &reporter, &decl_table);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = PropagationChecker.init(alloc, &ctx);
 
     // Build a call_expr node: divide()
     var callee = parser.Node{ .identifier = "divide" };
@@ -606,7 +598,10 @@ test "propagation - is not check marks union as handled" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = PropagationChecker.init(alloc, &reporter, null);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = PropagationChecker.init(alloc, &ctx);
 
     // Function that returns void — cannot propagate
     var scope = PropagationScope.init(alloc, null, false);
@@ -642,7 +637,10 @@ test "propagation - return marks union as handled" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = PropagationChecker.init(alloc, &reporter, null);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = PropagationChecker.init(alloc, &ctx);
 
     var scope = PropagationScope.init(alloc, null, true);
     defer scope.deinit();
@@ -664,7 +662,10 @@ test "propagation - assignment propagation tracks union" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = PropagationChecker.init(alloc, &reporter, null);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = PropagationChecker.init(alloc, &ctx);
 
     var scope = PropagationScope.init(alloc, null, false);
     defer scope.deinit();
@@ -698,7 +699,7 @@ test "propagation - reassignment resets handled status" {
 
     const inner = try alloc.create(types.ResolvedType);
     defer alloc.destroy(inner);
-    inner.* = .{ .primitive = "i32" };
+    inner.* = .{ .primitive = .i32 };
 
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -718,7 +719,8 @@ test "propagation - reassignment resets handled status" {
         .is_thread = false,
     });
 
-    var checker = PropagationChecker.init(alloc, &reporter, &decl_table);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = PropagationChecker.init(alloc, &ctx);
 
     var scope = PropagationScope.init(alloc, null, false);
     defer scope.deinit();
@@ -747,7 +749,10 @@ test "propagation - compound condition handles multiple unions" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = PropagationChecker.init(alloc, &reporter, null);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = PropagationChecker.init(alloc, &ctx);
 
     var scope = PropagationScope.init(alloc, null, false);
     defer scope.deinit();

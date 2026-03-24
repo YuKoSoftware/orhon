@@ -5,6 +5,131 @@ const std = @import("std");
 const parser = @import("parser.zig");
 const K = @import("constants.zig");
 
+/// Primitive type enum — replaces string-based primitive type identification.
+/// Exhaustive switching, zero-cost comparison, no typo risk.
+pub const Primitive = enum {
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    isize,
+    usize,
+    f16,
+    bf16,
+    f32,
+    f64,
+    f128,
+    bool,
+    string,
+    void,
+    @"type",
+    /// Unresolved integer literal — resolved to concrete type by bitsize
+    numeric_literal,
+    /// Unresolved float literal — resolved to concrete type by bitsize
+    float_literal,
+
+    /// Convert from AST/source name string. Returns null for non-primitive names.
+    pub fn fromName(n: []const u8) ?Primitive {
+        const map = std.StaticStringMap(Primitive).initComptime(.{
+            .{ "i8", .i8 },
+            .{ "i16", .i16 },
+            .{ "i32", .i32 },
+            .{ "i64", .i64 },
+            .{ "i128", .i128 },
+            .{ "u8", .u8 },
+            .{ "u16", .u16 },
+            .{ "u32", .u32 },
+            .{ "u64", .u64 },
+            .{ "u128", .u128 },
+            .{ "isize", .isize },
+            .{ "usize", .usize },
+            .{ "f16", .f16 },
+            .{ "bf16", .bf16 },
+            .{ "f32", .f32 },
+            .{ "f64", .f64 },
+            .{ "f128", .f128 },
+            .{ "bool", .bool },
+            .{ "String", .string },
+            .{ "void", .void },
+            .{ "type", .@"type" },
+            .{ "numeric_literal", .numeric_literal },
+            .{ "float_literal", .float_literal },
+        });
+        return map.get(n);
+    }
+
+    /// Convert to the Orhon source name string.
+    pub fn toName(self: Primitive) []const u8 {
+        return switch (self) {
+            .i8 => "i8",
+            .i16 => "i16",
+            .i32 => "i32",
+            .i64 => "i64",
+            .i128 => "i128",
+            .u8 => "u8",
+            .u16 => "u16",
+            .u32 => "u32",
+            .u64 => "u64",
+            .u128 => "u128",
+            .isize => "isize",
+            .usize => "usize",
+            .f16 => "f16",
+            .bf16 => "bf16",
+            .f32 => "f32",
+            .f64 => "f64",
+            .f128 => "f128",
+            .bool => "bool",
+            .string => "String",
+            .void => "void",
+            .@"type" => "type",
+            .numeric_literal => "numeric_literal",
+            .float_literal => "float_literal",
+        };
+    }
+
+    /// Convert to the Zig equivalent type name.
+    pub fn toZig(self: Primitive) []const u8 {
+        return switch (self) {
+            .string => "[]const u8",
+            .void => "void",
+            .bool => "bool",
+            .@"type" => "type",
+            .numeric_literal => "comptime_int",
+            .float_literal => "comptime_float",
+            // All others map 1:1 to Zig
+            else => self.toName(),
+        };
+    }
+
+    pub fn isInteger(self: Primitive) bool {
+        return switch (self) {
+            .i8, .i16, .i32, .i64, .i128,
+            .u8, .u16, .u32, .u64, .u128,
+            .isize, .usize,
+            => true,
+            else => false,
+        };
+    }
+
+    pub fn isFloat(self: Primitive) bool {
+        return switch (self) {
+            .f16, .bf16, .f32, .f64, .f128 => true,
+            else => false,
+        };
+    }
+
+    pub fn isNumeric(self: Primitive) bool {
+        return self.isInteger() or self.isFloat() or
+            self == .numeric_literal or self == .float_literal;
+    }
+};
+
 /// Ownership state of a variable — used by ownership analysis pass
 pub const OwnershipState = enum {
     owned, // this scope owns the value
@@ -17,7 +142,7 @@ pub const OwnershipState = enum {
 /// from AST type nodes so downstream passes don't need string matching.
 pub const ResolvedType = union(enum) {
     /// Primitive types: i32, f64, bool, String, void, etc.
-    primitive: []const u8,
+    primitive: Primitive,
     /// User-defined types: struct/enum/bitfield names
     named: []const u8,
     /// Error type
@@ -112,7 +237,7 @@ pub const ResolvedType = union(enum) {
     /// String representation for backwards compatibility and error messages
     pub fn name(self: ResolvedType) []const u8 {
         return switch (self) {
-            .primitive => |n| n,
+            .primitive => |p| p.toName(),
             .named => |n| n,
             .err => "Error",
             .null_type => "null",
@@ -136,7 +261,9 @@ pub const ResolvedType = union(enum) {
 pub fn resolveTypeNode(alloc: std.mem.Allocator, node: *parser.Node) anyerror!ResolvedType {
     return switch (node.*) {
         .type_named => |n| classifyNamed(n),
-        .type_primitive => |p| .{ .primitive = p },
+        .type_primitive => |p| blk: {
+            break :blk if (Primitive.fromName(p)) |prim| ResolvedType{ .primitive = prim } else ResolvedType.unknown;
+        },
 
         .type_slice => |elem| {
             const inner = try alloc.create(ResolvedType);
@@ -204,7 +331,7 @@ fn classifyNamed(n: []const u8) ResolvedType {
     if (std.mem.eql(u8, n, K.Type.ERROR)) return .err;
     if (std.mem.eql(u8, n, K.Type.NULL)) return .null_type;
     // Check primitives
-    if (isPrimitiveName(n)) return .{ .primitive = n };
+    if (Primitive.fromName(n)) |prim| return .{ .primitive = prim };
     // Everything else is a named type (struct/enum/bitfield/etc.)
     return .{ .named = n };
 }
@@ -238,21 +365,15 @@ fn resolveUnion(alloc: std.mem.Allocator, members: []*parser.Node) !ResolvedType
 
 /// Check if a name is a primitive type (copy semantics)
 pub fn isPrimitiveName(n: []const u8) bool {
-    const primitives = [_][]const u8{
-        "i8",    "i16",  "i32",  "i64",  "i128",
-        "u8",    "u16",  "u32",  "u64",  "u128",
-        "isize", "usize",
-        "f16",   "bf16", "f32",  "f64",  "f128",
-        "bool",  K.Type.STRING, K.Type.VOID,
-    };
-    for (primitives) |p| {
-        if (std.mem.eql(u8, n, p)) return true;
+    if (Primitive.fromName(n)) |p| {
+        // numeric_literal and float_literal are pseudo-types, not user-facing primitives
+        return p != .numeric_literal and p != .float_literal and p != .@"type";
     }
     return false;
 }
 
 test "resolvedtype - primitive detection" {
-    const t_i32 = ResolvedType{ .primitive = "i32" };
+    const t_i32 = ResolvedType{ .primitive = .i32 };
     try std.testing.expect(t_i32.isPrimitive());
 
     const t_struct = ResolvedType{ .named = "Player" };
@@ -264,7 +385,7 @@ test "resolvedtype - union detection" {
 
     const inner = try alloc.create(ResolvedType);
     defer alloc.destroy(inner);
-    inner.* = .{ .primitive = "i32" };
+    inner.* = .{ .primitive = .i32 };
 
     const err_union = ResolvedType{ .error_union = inner };
     try std.testing.expect(err_union.isErrorUnion());
@@ -278,7 +399,7 @@ test "resolvedtype - union detection" {
 }
 
 test "resolvedtype - name for error messages" {
-    const t = ResolvedType{ .primitive = "i32" };
+    const t = ResolvedType{ .primitive = .i32 };
     try std.testing.expectEqualStrings("i32", t.name());
 
     const e = ResolvedType{ .err = {} };

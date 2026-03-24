@@ -14,6 +14,7 @@ const ownership = @import("ownership.zig");
 const borrow = @import("borrow.zig");
 const thread_safety = @import("thread_safety.zig");
 const propagation = @import("propagation.zig");
+const sema = @import("sema.zig");
 const errors = @import("errors.zig");
 const cache = @import("cache.zig");
 const types = @import("types.zig");
@@ -334,7 +335,7 @@ fn findProjectRoot(file_path: []const u8) ?[]const u8 {
 
 fn formatType(allocator: std.mem.Allocator, t: types.ResolvedType) ![]u8 {
     return switch (t) {
-        .primitive => |n| allocator.dupe(u8, n),
+        .primitive => |p| allocator.dupe(u8, p.toName()),
         .named => |n| allocator.dupe(u8, n),
         .err => allocator.dupe(u8, "Error"),
         .null_type => allocator.dupe(u8, "null"),
@@ -550,35 +551,34 @@ fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Analysis
 
         if (reporter.errors.items.len > errors_before) continue;
 
+        // Shared context for validation passes
+        const sema_ctx = sema.SemanticContext{
+            .allocator = allocator,
+            .reporter = &reporter,
+            .decls = &dc.table,
+            .locs = locs_ptr,
+            .file_offsets = file_offsets,
+        };
+
         // Pass 6: Ownership
-        var oc = ownership.OwnershipChecker.init(allocator, &reporter);
-        oc.locs = locs_ptr;
-        oc.file_offsets = file_offsets;
-        oc.decls = &dc.table;
+        var oc = ownership.OwnershipChecker.init(allocator, &sema_ctx);
         oc.check(ast) catch {};
         if (reporter.errors.items.len > errors_before) continue;
 
         // Pass 7: Borrow Checking
-        var bc = borrow.BorrowChecker.init(allocator, &reporter);
+        var bc = borrow.BorrowChecker.init(allocator, &sema_ctx);
         defer bc.deinit();
-        bc.locs = locs_ptr;
-        bc.file_offsets = file_offsets;
-        bc.decls = &dc.table;
         bc.check(ast) catch {};
         if (reporter.errors.items.len > errors_before) continue;
 
         // Pass 8: Thread Safety
-        var tc = thread_safety.ThreadSafetyChecker.init(allocator, &reporter);
+        var tc = thread_safety.ThreadSafetyChecker.init(allocator, &sema_ctx);
         defer tc.deinit();
-        tc.locs = locs_ptr;
-        tc.file_offsets = file_offsets;
         tc.check(ast) catch {};
         if (reporter.errors.items.len > errors_before) continue;
 
         // Pass 9: Error Propagation
-        var prop_checker = propagation.PropagationChecker.init(allocator, &reporter, &dc.table);
-        prop_checker.locs = locs_ptr;
-        prop_checker.file_offsets = file_offsets;
+        var prop_checker = propagation.PropagationChecker.init(allocator, &sema_ctx);
         prop_checker.check(ast) catch {};
     }
 

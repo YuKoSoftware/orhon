@@ -9,6 +9,7 @@ const builtins = @import("builtins.zig");
 const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
+const sema = @import("sema.zig");
 
 /// Ownership state for a variable in current scope
 pub const VarState = struct {
@@ -72,19 +73,13 @@ pub const OwnershipScope = struct {
 
 /// The ownership checker
 pub const OwnershipChecker = struct {
-    reporter: *errors.Reporter,
+    ctx: *const sema.SemanticContext,
     allocator: std.mem.Allocator,
-    locs: ?*const parser.LocMap,
-    file_offsets: []const module.FileOffset,
-    decls: ?*declarations.DeclTable,
 
-    pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter) OwnershipChecker {
+    pub fn init(allocator: std.mem.Allocator, ctx: *const sema.SemanticContext) OwnershipChecker {
         return .{
-            .reporter = reporter,
+            .ctx = ctx,
             .allocator = allocator,
-            .locs = null,
-            .file_offsets = &.{},
-            .decls = null,
         };
     }
 
@@ -92,16 +87,15 @@ pub const OwnershipChecker = struct {
     /// Returns true if primitive, false if non-primitive, null if unknown.
     /// Check if a variable's type is a known struct in DeclTable
     fn isKnownStruct(self: *const OwnershipChecker, scope: *OwnershipScope, obj_name: []const u8) bool {
-        const decls = self.decls orelse return false;
         const var_state = scope.getState(obj_name) orelse return false;
         if (var_state.type_name.len > 0) {
-            return decls.structs.contains(var_state.type_name);
+            return self.ctx.decls.structs.contains(var_state.type_name);
         }
         return false;
     }
 
     fn lookupFieldType(self: *const OwnershipChecker, scope: *OwnershipScope, obj_name: []const u8, field_name: []const u8) ?bool {
-        const decls = self.decls orelse return null;
+        const decls = self.ctx.decls;
         const var_state = scope.getState(obj_name) orelse return null;
 
         // Use the variable's type name to find the struct in DeclTable
@@ -143,16 +137,6 @@ pub const OwnershipChecker = struct {
             },
             else => return false,
         }
-    }
-
-    fn nodeLoc(self: *const OwnershipChecker, node: *parser.Node) ?errors.SourceLoc {
-        if (self.locs) |l| {
-            if (l.get(node)) |loc| {
-                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
-                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
-            }
-        }
-        return null;
     }
 
     /// Check ownership rules in a program AST
@@ -374,7 +358,7 @@ pub const OwnershipChecker = struct {
                         const msg = try std.fmt.allocPrint(self.allocator,
                             "use of moved value '{s}'", .{name});
                         defer self.allocator.free(msg);
-                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                        try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
                     }
                     // If not a borrow and not primitive, this is a move
                     if (!is_borrow and !state.is_primitive and state.state == .owned) {
@@ -429,7 +413,7 @@ pub const OwnershipChecker = struct {
                                         "cannot move field '{s}' out of '{s}' — structs are atomic ownership units",
                                         .{ f.field, obj_name });
                                     defer self.allocator.free(msg);
-                                    try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                                    try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
                                 }
                             } else if (self.isKnownStruct(scope, obj_name)) {
                                 // Known struct but field not found — conservative error
@@ -437,7 +421,7 @@ pub const OwnershipChecker = struct {
                                     "cannot move field '{s}' out of '{s}' — structs are atomic ownership units",
                                     .{ f.field, obj_name });
                                 defer self.allocator.free(msg);
-                                try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                                try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
                             }
                             // Unknown type (union unwrap, etc.) — skip check
                         }
@@ -563,8 +547,11 @@ test "ownership - use after move detected" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -587,8 +574,11 @@ test "ownership - primitive always copies" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -611,8 +601,11 @@ test "ownership - string is copy type" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -632,8 +625,11 @@ test "ownership - copy borrows without moving" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -658,8 +654,11 @@ test "ownership - move marks as moved" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -690,12 +689,12 @@ test "ownership - primitive field access allowed" {
     defer decl_table.deinit();
 
     const fields = try alloc.alloc(declarations.FieldSig, 2);
-    fields[0] = .{ .name = "x", .type_ = .{ .primitive = "f32" }, .has_default = false, .is_pub = true };
-    fields[1] = .{ .name = "y", .type_ = .{ .primitive = "f32" }, .has_default = false, .is_pub = true };
+    fields[0] = .{ .name = "x", .type_ = .{ .primitive = .f32 }, .has_default = false, .is_pub = true };
+    fields[1] = .{ .name = "y", .type_ = .{ .primitive = .f32 }, .has_default = false, .is_pub = true };
     try decl_table.structs.put("Vec2", .{ .name = "Vec2", .fields = fields, .is_pub = true });
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
-    checker.decls = &decl_table;
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -727,8 +726,8 @@ test "ownership - non-primitive field move rejected" {
     fields[0] = .{ .name = "inner", .type_ = .{ .named = "Other" }, .has_default = false, .is_pub = false };
     try decl_table.structs.put("Container", .{ .name = "Container", .fields = fields, .is_pub = false });
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
-    checker.decls = &decl_table;
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -751,8 +750,11 @@ test "ownership - struct field borrow allowed" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -775,8 +777,11 @@ test "ownership - if branch moves conservatively" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -826,8 +831,11 @@ test "ownership - assignment restores ownership" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -860,8 +868,11 @@ test "ownership - type inference from literal values" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
@@ -891,8 +902,11 @@ test "ownership - match arm merging is conservative" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
 
-    var checker = OwnershipChecker.init(alloc, &reporter);
+    var checker = OwnershipChecker.init(alloc, &ctx);
 
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();

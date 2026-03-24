@@ -19,12 +19,21 @@ const LocMap = parser.LocMap;
 // BUILD CONTEXT
 // ============================================================
 
+/// Syntax error collected during AST building (from error recovery).
+pub const SyntaxError = struct {
+    message: []const u8,
+    line: usize,
+    col: usize,
+};
+
 pub const BuildContext = struct {
     tokens: []const Token,
     arena: std.heap.ArenaAllocator,
     locs: LocMap,
     current_pos: usize = 0, // token position for source location tracking
     owns_arena: bool = true,
+    /// Syntax errors from error recovery (skipped tokens)
+    syntax_errors: std.ArrayListUnmanaged(SyntaxError) = .{},
 
     pub fn init(tokens: []const Token, backing_allocator: std.mem.Allocator) BuildContext {
         return .{
@@ -45,8 +54,21 @@ pub const BuildContext = struct {
     }
 
     pub fn deinit(self: *BuildContext) void {
+        self.syntax_errors.deinit(self.arena.child_allocator);
         self.locs.deinit();
         if (self.owns_arena) self.arena.deinit();
+    }
+
+    /// Record a syntax error from error recovery (token skip).
+    pub fn reportError(self: *BuildContext, message: []const u8, pos: usize) void {
+        const tok = if (pos < self.tokens.len) self.tokens[pos] else null;
+        const line = if (tok) |t| t.line else 0;
+        const col = if (tok) |t| t.col else 0;
+        self.syntax_errors.append(self.arena.child_allocator, .{
+            .message = message,
+            .line = line,
+            .col = col,
+        }) catch {};
     }
 
     fn alloc(self: *BuildContext) std.mem.Allocator {
@@ -340,6 +362,15 @@ fn buildProgram(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
                 }
             } else if (std.mem.eql(u8, r, "top_level_decl")) {
                 try top_level_list.append(ctx.alloc(), try buildNode(ctx, child));
+            } else if (std.mem.eql(u8, r, "error_skip")) {
+                // Error recovery: report the skipped tokens as a syntax error
+                const start = child.start_pos;
+                const tok = if (start < ctx.tokens.len) ctx.tokens[start] else null;
+                if (tok) |t| {
+                    const msg = try std.fmt.allocPrint(ctx.alloc(), "unexpected '{s}'", .{t.text});
+                    ctx.reportError(msg, start);
+                }
+                // Don't add to AST — skipped tokens are discarded
             }
         }
     }

@@ -215,7 +215,7 @@ pub const TypeResolver = struct {
                             std.mem.eql(u8, param.param.type_annotation.type_named, "type");
                         if (is_type_param) {
                             has_type_param = true;
-                            try func_scope.define(param.param.name, .{ .primitive = "type" });
+                            try func_scope.define(param.param.name, .{ .primitive = .@"type" });
                         } else {
                             try self.validateType(param.param.type_annotation, &func_scope);
                             const t = try types.resolveTypeNode(self.decls.typeAllocator(), param.param.type_annotation);
@@ -246,7 +246,7 @@ pub const TypeResolver = struct {
                         const is_tp = param.param.type_annotation.* == .type_named and
                             std.mem.eql(u8, param.param.type_annotation.type_named, "type");
                         if (is_tp) {
-                            try struct_scope.define(param.param.name, .{ .primitive = "type" });
+                            try struct_scope.define(param.param.name, .{ .primitive = .@"type" });
                         }
                     }
                 }
@@ -286,8 +286,8 @@ pub const TypeResolver = struct {
                     val_type;
                 if (v.type_annotation == null) {
                     if (val_type == .primitive and
-                        (std.mem.eql(u8, val_type.primitive, "numeric_literal") or
-                        std.mem.eql(u8, val_type.primitive, "float_literal")))
+                        (val_type.primitive == .numeric_literal or
+                        val_type.primitive == .float_literal))
                     {
                         try self.reporter.report(.{
                             .message = "numeric literal requires explicit type or #bitsize",
@@ -325,8 +325,8 @@ pub const TypeResolver = struct {
                         val_type;
                     if (v.type_annotation == null) {
                         if (val_type == .primitive and
-                            (std.mem.eql(u8, val_type.primitive, "numeric_literal") or
-                            std.mem.eql(u8, val_type.primitive, "float_literal")))
+                            (val_type.primitive == .numeric_literal or
+                            val_type.primitive == .float_literal))
                         {
                             try self.reporter.report(.{
                                 .message = "numeric literal requires explicit type or #bitsize",
@@ -377,7 +377,7 @@ pub const TypeResolver = struct {
             },
             .if_stmt => |i| {
                 const cond_type = try self.resolveExpr(i.condition, scope);
-                if (cond_type == .primitive and !std.mem.eql(u8, cond_type.primitive, "bool") and
+                if (cond_type == .primitive and cond_type.primitive != .bool and
                     cond_type != .unknown and cond_type != .inferred)
                 {
                     const msg = try std.fmt.allocPrint(self.allocator,
@@ -390,7 +390,7 @@ pub const TypeResolver = struct {
             },
             .while_stmt => |w| {
                 const cond_type = try self.resolveExpr(w.condition, scope);
-                if (cond_type == .primitive and !std.mem.eql(u8, cond_type.primitive, "bool") and
+                if (cond_type == .primitive and cond_type.primitive != .bool and
                     cond_type != .unknown and cond_type != .inferred)
                 {
                     const msg = try std.fmt.allocPrint(self.allocator,
@@ -410,7 +410,7 @@ pub const TypeResolver = struct {
                 // Infer capture type from iterable
                 const capture_type = inferCaptureType(f.iterable, iter_type);
                 for (f.captures) |v| try for_scope.define(v, capture_type);
-                if (f.index_var) |idx| try for_scope.define(idx, RT{ .primitive = "usize" });
+                if (f.index_var) |idx| try for_scope.define(idx, RT{ .primitive = .usize });
                 self.loop_depth += 1;
                 defer self.loop_depth -= 1;
                 try self.resolveNode(f.body, &for_scope);
@@ -478,16 +478,16 @@ pub const TypeResolver = struct {
     fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!RT {
         return switch (node.*) {
             .int_literal => if (self.bitsize) |bs| switch (bs) {
-                32 => RT{ .primitive = "i32" },
-                64 => RT{ .primitive = "i64" },
-                else => RT{ .primitive = "numeric_literal" },
-            } else RT{ .primitive = "numeric_literal" },
+                32 => RT{ .primitive = .i32 },
+                64 => RT{ .primitive = .i64 },
+                else => RT{ .primitive = .numeric_literal },
+            } else RT{ .primitive = .numeric_literal },
             .float_literal => if (self.bitsize) |bs| switch (bs) {
-                32 => RT{ .primitive = "f32" },
-                64 => RT{ .primitive = "f64" },
-                else => RT{ .primitive = "float_literal" },
-            } else RT{ .primitive = "float_literal" },
-            .string_literal => RT{ .primitive = K.Type.STRING },
+                32 => RT{ .primitive = .f32 },
+                64 => RT{ .primitive = .f64 },
+                else => RT{ .primitive = .float_literal },
+            } else RT{ .primitive = .float_literal },
+            .string_literal => RT{ .primitive = .string },
             .interpolated_string => |interp| {
                 // Resolve inner expressions so they appear in type_map
                 for (interp.parts) |part| {
@@ -496,9 +496,9 @@ pub const TypeResolver = struct {
                         .literal => {},
                     }
                 }
-                return RT{ .primitive = K.Type.STRING };
+                return RT{ .primitive = .string };
             },
-            .bool_literal => RT{ .primitive = "bool" },
+            .bool_literal => RT{ .primitive = .bool },
             .null_literal => RT.null_type,
             .error_literal => RT.err,
 
@@ -523,7 +523,7 @@ pub const TypeResolver = struct {
                     std.mem.eql(u8, b.op, "<") or
                     std.mem.eql(u8, b.op, ">") or
                     std.mem.eql(u8, b.op, "<=") or
-                    std.mem.eql(u8, b.op, ">=")) return RT{ .primitive = "bool" };
+                    std.mem.eql(u8, b.op, ">=")) return RT{ .primitive = .bool };
                 if (std.mem.eql(u8, b.op, "++")) return left;
                 return left;
             },
@@ -612,9 +612,9 @@ pub const TypeResolver = struct {
                 // Reject indexing non-indexable types (bool, void, etc.)
                 if (obj_type == .primitive) {
                     const tn = obj_type.primitive;
-                    if (std.mem.eql(u8, tn, "bool") or std.mem.eql(u8, tn, "void")) {
+                    if (tn == .bool or tn == .void) {
                         const msg = try std.fmt.allocPrint(self.allocator,
-                            "cannot index into type '{s}'", .{tn});
+                            "cannot index into type '{s}'", .{tn.toName()});
                         defer self.allocator.free(msg);
                         try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
                     }
@@ -635,12 +635,12 @@ pub const TypeResolver = struct {
                     const t = try self.resolveExpr(arg, scope);
                     if (idx == 0) first_arg_type = t;
                 }
-                if (std.mem.eql(u8, cf.name, "size") or std.mem.eql(u8, cf.name, "align")) return RT{ .primitive = "usize" };
-                if (std.mem.eql(u8, cf.name, "typeid")) return RT{ .primitive = "usize" };
-                if (std.mem.eql(u8, cf.name, "typename")) return RT{ .primitive = K.Type.STRING };
-                if (std.mem.eql(u8, cf.name, "typeOf")) return RT{ .primitive = K.Type.TYPE };
-                if (std.mem.eql(u8, cf.name, "assert")) return RT{ .primitive = "void" };
-                if (std.mem.eql(u8, cf.name, "swap")) return RT{ .primitive = "void" };
+                if (std.mem.eql(u8, cf.name, "size") or std.mem.eql(u8, cf.name, "align")) return RT{ .primitive = .usize };
+                if (std.mem.eql(u8, cf.name, "typeid")) return RT{ .primitive = .usize };
+                if (std.mem.eql(u8, cf.name, "typename")) return RT{ .primitive = .string };
+                if (std.mem.eql(u8, cf.name, "typeOf")) return RT{ .primitive = .@"type" };
+                if (std.mem.eql(u8, cf.name, "assert")) return RT{ .primitive = .void };
+                if (std.mem.eql(u8, cf.name, "swap")) return RT{ .primitive = .void };
                 // cast(T, x) → returns T (first arg is the target type)
                 if (std.mem.eql(u8, cf.name, "cast")) {
                     if (cf.args.len >= 1 and cf.args[0].* == .identifier) {
@@ -648,7 +648,7 @@ pub const TypeResolver = struct {
                     }
                     if (cf.args.len >= 1 and cf.args[0].* == .type_named) {
                         const tn = cf.args[0].type_named;
-                        if (types.isPrimitiveName(tn)) return RT{ .primitive = tn };
+                        if (types.Primitive.fromName(tn)) |prim| return RT{ .primitive = prim };
                         return RT{ .named = tn };
                     }
                 }
@@ -880,8 +880,8 @@ pub const TypeResolver = struct {
         if (actual == .unknown or actual == .inferred) return;
         if (expected == .unknown or expected == .inferred) return;
         // Block []u8 → String coercion
-        if (expected == .primitive and std.mem.eql(u8, expected.primitive, K.Type.STRING) and
-            actual == .slice and actual.slice.* == .primitive and std.mem.eql(u8, actual.slice.primitive, "u8"))
+        if (expected == .primitive and expected.primitive == .string and
+            actual == .slice and actual.slice.* == .primitive and actual.slice.primitive == .u8)
         {
             try self.reporter.report(.{
                 .message = "cannot assign '[]u8' to 'String' — use str.fromBytes() for explicit conversion",
@@ -916,9 +916,9 @@ pub const TypeResolver = struct {
             const param_type = sig.params[i].type_;
             const arg_type = arg_types[i];
             // Reject []u8 passed as String
-            if (param_type == .primitive and std.mem.eql(u8, param_type.primitive, K.Type.STRING)) {
+            if (param_type == .primitive and param_type.primitive == .string) {
                 if (arg_type == .slice) {
-                    if (arg_type.slice.* == .primitive and std.mem.eql(u8, arg_type.slice.primitive, "u8")) {
+                    if (arg_type.slice.* == .primitive and arg_type.slice.primitive == .u8) {
                         const msg = try std.fmt.allocPrint(self.allocator,
                             "cannot pass '[]u8' as 'String' — use str.fromBytes() for explicit conversion",
                             .{});
@@ -929,8 +929,8 @@ pub const TypeResolver = struct {
             }
             // Reject String passed as []u8
             if (param_type == .slice) {
-                if (param_type.slice.* == .primitive and std.mem.eql(u8, param_type.slice.primitive, "u8")) {
-                    if (arg_type == .primitive and std.mem.eql(u8, arg_type.primitive, K.Type.STRING)) {
+                if (param_type.slice.* == .primitive and param_type.slice.primitive == .u8) {
+                    if (arg_type == .primitive and arg_type.primitive == .string) {
                         const msg = try std.fmt.allocPrint(self.allocator,
                             "cannot pass 'String' as '[]u8' — use str.toBytes() for explicit conversion",
                             .{});
@@ -946,10 +946,10 @@ pub const TypeResolver = struct {
 /// Infer the element type for for-loop captures from the iterable.
 fn inferCaptureType(iterable: *parser.Node, iter_type: RT) RT {
     // Range expressions produce integers
-    if (iterable.* == .range_expr) return RT{ .primitive = "usize" };
+    if (iterable.* == .range_expr) return RT{ .primitive = .usize };
     // String iteration produces u8 characters
-    if (iter_type == .primitive and std.mem.eql(u8, iter_type.primitive, K.Type.STRING))
-        return RT{ .primitive = "u8" };
+    if (iter_type == .primitive and iter_type.primitive == .string)
+        return RT{ .primitive = .u8 };
     // Slice/array of known type — element type is the inner type
     if (iter_type == .slice) return iter_type.slice.*;
     if (iter_type == .array) return iter_type.array.elem.*;
@@ -977,14 +977,14 @@ fn typesCompatible(a: RT, b: RT) bool {
     // Unresolved type params are compatible with anything — resolved at compile time by Zig
     if (isTypeParam(a) or isTypeParam(b)) return true;
     // Numeric literals are compatible with any integer type
-    if (a == .primitive and std.mem.eql(u8, a.primitive, "numeric_literal") and
-        b == .primitive and isIntegerType(b.primitive)) return true;
+    if (a == .primitive and a.primitive == .numeric_literal and
+        b == .primitive and b.primitive.isInteger()) return true;
     // Float literals are compatible with any float type
-    if (a == .primitive and std.mem.eql(u8, a.primitive, "float_literal") and
-        b == .primitive and isFloatType(b.primitive)) return true;
+    if (a == .primitive and a.primitive == .float_literal and
+        b == .primitive and b.primitive.isFloat()) return true;
     // Integer-to-integer and float-to-float are compatible (Zig handles coercion)
-    if (a == .primitive and b == .primitive and isIntegerType(a.primitive) and isIntegerType(b.primitive)) return true;
-    if (a == .primitive and b == .primitive and isFloatType(a.primitive) and isFloatType(b.primitive)) return true;
+    if (a == .primitive and b == .primitive and a.primitive.isInteger() and b.primitive.isInteger()) return true;
+    if (a == .primitive and b == .primitive and a.primitive.isFloat() and b.primitive.isFloat()) return true;
     // Error unions accept their inner type, Error, or unresolved literals
     if (b == .error_union) return a == .err or a == .inferred or a == .unknown or
         std.mem.eql(u8, a_name, b.error_union.name()) or isLiteralCompatible(a, b.error_union.*);
@@ -1022,21 +1022,9 @@ fn typesCompatible(a: RT, b: RT) bool {
 fn isLiteralCompatible(val: RT, target: RT) bool {
     if (val != .primitive) return false;
     if (target != .primitive) return false;
-    if (std.mem.eql(u8, val.primitive, "numeric_literal") and isIntegerType(target.primitive)) return true;
-    if (std.mem.eql(u8, val.primitive, "float_literal") and isFloatType(target.primitive)) return true;
+    if (val.primitive == .numeric_literal and target.primitive.isInteger()) return true;
+    if (val.primitive == .float_literal and target.primitive.isFloat()) return true;
     return false;
-}
-
-fn isIntegerType(name: []const u8) bool {
-    return std.mem.eql(u8, name, "i8") or std.mem.eql(u8, name, "i16") or
-        std.mem.eql(u8, name, "i32") or std.mem.eql(u8, name, "i64") or
-        std.mem.eql(u8, name, "u8") or std.mem.eql(u8, name, "u16") or
-        std.mem.eql(u8, name, "u32") or std.mem.eql(u8, name, "u64") or
-        std.mem.eql(u8, name, "usize");
-}
-
-fn isFloatType(name: []const u8) bool {
-    return std.mem.eql(u8, name, "f32") or std.mem.eql(u8, name, "f64");
 }
 
 test "resolver init" {
@@ -1210,7 +1198,7 @@ test "resolver - function return type resolves" {
         .name = "add",
         .params = &.{},
         .param_nodes = &.{},
-        .return_type = .{ .primitive = "i32" },
+        .return_type = .{ .primitive = .i32 },
         .return_type_node = ret_node,
         .is_compt = false,
         .is_pub = false,
@@ -1248,8 +1236,8 @@ test "resolver - struct field type resolves" {
     defer decl_table.deinit();
 
     const fields = try alloc.alloc(declarations.FieldSig, 2);
-    fields[0] = .{ .name = "x", .type_ = .{ .primitive = "f32" }, .has_default = false, .is_pub = true };
-    fields[1] = .{ .name = "y", .type_ = .{ .primitive = "f32" }, .has_default = false, .is_pub = true };
+    fields[0] = .{ .name = "x", .type_ = .{ .primitive = .f32 }, .has_default = false, .is_pub = true };
+    fields[1] = .{ .name = "y", .type_ = .{ .primitive = .f32 }, .has_default = false, .is_pub = true };
     try decl_table.structs.put("Point", .{
         .name = "Point",
         .fields = fields,
@@ -1327,7 +1315,7 @@ test "resolver - compiler func cast resolves to target type" {
     defer resolver.deinit();
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
-    try scope.define("x", RT{ .primitive = "i32" });
+    try scope.define("x", RT{ .primitive = .i32 });
 
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -1426,7 +1414,7 @@ test "resolver - struct constructor resolves to named type" {
     defer decl_table.deinit();
 
     const fields = try alloc.alloc(declarations.FieldSig, 1);
-    fields[0] = .{ .name = "x", .type_ = .{ .primitive = "i32" }, .has_default = false, .is_pub = true };
+    fields[0] = .{ .name = "x", .type_ = .{ .primitive = .i32 }, .has_default = false, .is_pub = true };
     try decl_table.structs.put("Point", .{ .name = "Point", .fields = fields, .is_pub = true });
 
     var reporter = errors.Reporter.init(alloc, .debug);

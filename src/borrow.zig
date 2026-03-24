@@ -9,6 +9,7 @@ const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const K = @import("constants.zig");
 const module = @import("module.zig");
+const sema = @import("sema.zig");
 
 /// A borrow record — tracks active borrows
 /// `field` is null for whole-variable borrows, non-null for field-level borrows.
@@ -22,35 +23,19 @@ pub const Borrow = struct {
 /// The borrow checker
 pub const BorrowChecker = struct {
     active_borrows: std.ArrayListUnmanaged(Borrow),
-    reporter: *errors.Reporter,
+    ctx: *const sema.SemanticContext,
     allocator: std.mem.Allocator,
     scope_depth: usize,
-    locs: ?*const parser.LocMap,
-    file_offsets: []const module.FileOffset,
-    decls: ?*declarations.DeclTable,
     current_node: ?*parser.Node,
 
-    pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter) BorrowChecker {
+    pub fn init(allocator: std.mem.Allocator, ctx: *const sema.SemanticContext) BorrowChecker {
         return .{
             .active_borrows = .{},
-            .reporter = reporter,
+            .ctx = ctx,
             .allocator = allocator,
             .scope_depth = 0,
-            .locs = null,
-            .file_offsets = &.{},
-            .decls = null,
             .current_node = null,
         };
-    }
-
-    fn nodeLoc(self: *const BorrowChecker, node: *parser.Node) ?errors.SourceLoc {
-        if (self.locs) |l| {
-            if (l.get(node)) |loc| {
-                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
-                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
-            }
-        }
-        return null;
     }
 
     pub fn deinit(self: *BorrowChecker) void {
@@ -130,9 +115,9 @@ pub const BorrowChecker = struct {
                 if (r.value) |val| {
                     // Cannot return a reference — only owned values
                     if (val.* == .borrow_expr) {
-                        try self.reporter.report(.{
+                        try self.ctx.reporter.report(.{
                             .message = "cannot return a reference — functions can only return owned values",
-                            .loc = self.nodeLoc(node),
+                            .loc = self.ctx.nodeLoc(node),
                         });
                     }
                     try self.checkExpr(val);
@@ -208,8 +193,8 @@ pub const BorrowChecker = struct {
                         const obj_name = fe.object.identifier;
                         const method_name = fe.field;
                         // Look up method to check self parameter mutability
-                        if (self.decls) |decls| {
-                            if (decls.funcs.get(method_name)) |sig| {
+                        {
+                            if (self.ctx.decls.funcs.get(method_name)) |sig| {
                                 if (sig.params.len > 0 and std.mem.eql(u8, sig.params[0].name, "self")) {
                                     const self_node = sig.param_nodes[0];
                                     if (self_node.* == .param) {
@@ -285,17 +270,17 @@ pub const BorrowChecker = struct {
             if (!std.mem.eql(u8, b.variable, name) or !b.is_mutable) continue;
             if (!pathsOverlap(b.field, field)) continue;
 
-            const loc = if (self.current_node) |cn| self.nodeLoc(cn) else null;
+            const loc = if (self.current_node) |cn| self.ctx.nodeLoc(cn) else null;
             if (field) |f| {
                 const msg = try std.fmt.allocPrint(self.allocator,
                     "cannot use '{s}.{s}' while it is mutably borrowed", .{ name, f });
                 defer self.allocator.free(msg);
-                try self.reporter.report(.{ .message = msg, .loc = loc });
+                try self.ctx.reporter.report(.{ .message = msg, .loc = loc });
             } else {
                 const msg = try std.fmt.allocPrint(self.allocator,
                     "cannot use '{s}' while it is mutably borrowed", .{name});
                 defer self.allocator.free(msg);
-                try self.reporter.report(.{ .message = msg, .loc = loc });
+                try self.ctx.reporter.report(.{ .message = msg, .loc = loc });
             }
             return;
         }
@@ -309,7 +294,7 @@ pub const BorrowChecker = struct {
             if (!pathsOverlap(existing.field, field)) continue;
 
             if (is_mutable or existing.is_mutable) {
-                const loc = if (self.current_node) |cn| self.nodeLoc(cn) else null;
+                const loc = if (self.current_node) |cn| self.ctx.nodeLoc(cn) else null;
                 const label = borrowLabel(variable, field);
                 const msg = try std.fmt.allocPrint(self.allocator,
                     "cannot borrow '{s}' as {s}: already borrowed as {s}",
@@ -319,7 +304,7 @@ pub const BorrowChecker = struct {
                         if (existing.is_mutable) "mutable" else "immutable",
                     });
                 defer self.allocator.free(msg);
-                try self.reporter.report(.{ .message = msg, .loc = loc });
+                try self.ctx.reporter.report(.{ .message = msg, .loc = loc });
                 return;
             }
             // Multiple immutable borrows are fine
@@ -411,7 +396,10 @@ test "borrow checker - no conflict immutable borrows" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Two immutable borrows of same variable — OK
@@ -425,7 +413,10 @@ test "borrow checker - mutable conflicts immutable" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Immutable borrow then mutable — conflict
@@ -439,7 +430,10 @@ test "borrow checker - cannot return reference" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     var inner = parser.Node{ .identifier = "x" };
@@ -455,7 +449,10 @@ test "borrow checker - mutable borrow via var &T type" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // First: immutable borrow
@@ -482,7 +479,10 @@ test "borrow checker - const &T borrow is immutable" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Two const &T borrows — should be fine
@@ -517,7 +517,10 @@ test "borrow checker - cannot use while mutably borrowed" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Mutable borrow of x
@@ -534,7 +537,10 @@ test "borrow checker - scope drops borrows" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Borrow at depth 1
@@ -557,7 +563,10 @@ test "borrow checker - sibling field borrows do not conflict" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Mutable borrow of p.name and p.health — different fields, no conflict
@@ -571,7 +580,10 @@ test "borrow checker - same field mutable borrow conflicts" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Two mutable borrows of same field — conflict
@@ -585,7 +597,10 @@ test "borrow checker - whole variable borrow conflicts with field borrow" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Whole variable borrow then field borrow — conflict
@@ -599,7 +614,10 @@ test "borrow checker - field access while sibling mutably borrowed" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Mutable borrow of p.name
@@ -617,7 +635,10 @@ test "borrow checker - field access while same field mutably borrowed" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Mutable borrow of p.name
@@ -635,7 +656,10 @@ test "borrow checker - bare variable access while field mutably borrowed" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Mutable borrow of p.name
@@ -652,7 +676,10 @@ test "borrow checker - field borrow from borrow_expr field_expr" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var checker = BorrowChecker.init(alloc, &reporter);
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
     // Simulate: var ref: var &String = &p.name

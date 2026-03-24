@@ -29,7 +29,17 @@
 # ============================================================
 
 program
-    <- _ module_decl (_ (doc_block / metadata / import_decl / top_level))* _ EOF
+    <- _ module_decl (_ (doc_block / metadata / import_decl / top_level / error_skip))* _ EOF
+
+# Error recovery: skip tokens until the next top-level declaration keyword or EOF.
+# This allows the parser to continue past syntax errors and report multiple errors.
+error_skip
+    <- (!top_level_start !EOF .)+
+
+# Token lookahead for top-level declaration starts (used by error_skip to resync)
+top_level_start
+    <- 'func' / 'pub' / 'struct' / 'enum' / 'bitfield' / 'const' / 'var'
+     / 'thread' / 'compt' / 'bridge' / 'test' / 'import' / '#'
 
 module_decl
     <- doc_block? 'module' (IDENTIFIER / 'main') NL

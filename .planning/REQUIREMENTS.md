@@ -23,7 +23,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### LSP Hardening
 
-- [ ] **LSP-01**: Wrap `runAnalysis()` in per-request ArenaAllocator to prevent unbounded memory growth during long editing sessions
+- [x] **LSP-01**: Wrap `runAnalysis()` in per-request ArenaAllocator to prevent unbounded memory growth during long editing sessions
 - [x] **LSP-02**: Replace fixed 1024-byte header line buffer in `readMessage()` with dynamic allocation or larger compile-time constant
 - [x] **LSP-03**: Add upper bound on content-length header to prevent OOM from malicious or oversized requests
 
@@ -62,7 +62,7 @@ Deferred to future milestones. Tracked but not in current roadmap.
 | MEM-02 | Phase 2 | Complete |
 | MEM-03 | Phase 2 | Complete |
 | MEM-04 | Phase 2 | Complete |
-| LSP-01 | Phase 3 | Pending |
+| LSP-01 | Phase 3 | Complete |
 | LSP-02 | Phase 3 | Complete |
 | LSP-03 | Phase 3 | Complete |
 

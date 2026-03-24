@@ -346,39 +346,54 @@ pub const Resolver = struct {
             var tokens = try lex.tokenize(alloc);
             defer tokens.deinit(alloc);
 
-            var rep = errors.Reporter.init(alloc, .debug);
-            defer rep.deinit();
+            // PEG engine: grammar validation + capture + AST building
+            const peg_mod = @import("peg.zig");
 
-            // Use initWithArena so the parser allocates AST nodes into mod.ast_arena.
-            // Do NOT call p.deinit() — that would free mod.ast_arena.
-            // After parsing, move the arena back out of the parser into the module.
-            var p = parser.Parser.initWithArena(tokens.items, mod.ast_arena.?, alloc, &rep);
+            var grammar = peg_mod.loadGrammar(alloc) catch {
+                try self.reporter.report(.{ .message = "internal: could not load PEG grammar" });
+                continue;
+            };
+            defer grammar.deinit();
 
-            const ast = p.parseProgram() catch {
-                // Propagate errors then free the arena since we won't store the AST
-                for (rep.errors.items) |err| {
-                    try self.reporter.report(err);
-                }
-                // Move the arena back so we can deinit it cleanly
-                mod.ast_arena = p.arena;
+            // Validate and capture
+            var engine = peg_mod.CaptureEngine.init(&grammar, tokens.items, alloc);
+            defer engine.deinit();
+
+            const cap = engine.captureProgram() orelse {
+                // Parse failed — report error with location from validation engine
+                var val_engine = peg_mod.Engine.init(&grammar, tokens.items, alloc);
+                defer val_engine.deinit();
+                _ = val_engine.matchRule("program", 0);
+                const err_info = val_engine.getError();
+                const msg = try std.fmt.allocPrint(alloc, "unexpected '{s}'", .{err_info.found});
+                defer alloc.free(msg);
+                try self.reporter.report(.{
+                    .message = msg,
+                    .loc = .{ .file = "", .line = err_info.line, .col = err_info.col },
+                });
                 if (mod.ast_arena) |*a| a.deinit();
                 mod.ast_arena = null;
-                p.locs.deinit();
                 mod.locs = null;
                 continue;
             };
 
-            // Move the arena and locs from parser back into the module
-            mod.ast_arena = p.arena;
-            mod.ast = ast;
+            // Build AST into the module's arena
+            const build_result = peg_mod.buildASTWithArena(&cap, tokens.items, mod.ast_arena.?, alloc) catch {
+                try self.reporter.report(.{ .message = "internal: AST builder failed" });
+                if (mod.ast_arena) |*a| a.deinit();
+                mod.ast_arena = null;
+                mod.locs = null;
+                continue;
+            };
 
-            // Move locs into module — file paths stay as "" from parser
-            // Later passes use the module's file list for error reporting
-            mod.locs = p.locs;
+            // Move arena and locs into module
+            mod.ast_arena = build_result.ctx.arena;
+            mod.ast = build_result.node;
+            mod.locs = build_result.ctx.locs;
 
             // Extract imports — scan scoped ones from std/ or global/
             var imports: std.ArrayListUnmanaged([]const u8) = .{};
-            for (ast.program.imports) |imp| {
+            for (build_result.node.program.imports) |imp| {
                 const decl = imp.import_decl;
                 if (decl.is_c_header) continue;
 
@@ -512,7 +527,7 @@ pub const Resolver = struct {
             }
 
             // Check if root module (has build declaration in metadata)
-            for (ast.program.metadata) |meta| {
+            for (build_result.node.program.metadata) |meta| {
                 if (std.mem.eql(u8, meta.metadata.field, "build")) {
                     mod.is_root = true;
                     if (meta.metadata.value.* == .identifier) {

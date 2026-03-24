@@ -19,7 +19,9 @@ pub const ParseError = engine_mod.ParseError;
 pub const CaptureEngine = capture_mod.CaptureEngine;
 pub const CaptureNode = capture_mod.CaptureNode;
 pub const BuildContext = builder_mod.BuildContext;
+pub const BuildResult = builder_mod.BuildResult;
 pub const buildAST = builder_mod.buildAST;
+pub const buildASTWithArena = builder_mod.buildASTWithArena;
 pub const parseGrammar = grammar_mod.parseGrammar;
 
 /// The embedded Orhon PEG grammar source

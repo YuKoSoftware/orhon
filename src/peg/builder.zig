@@ -7,11 +7,13 @@
 const std = @import("std");
 const parser = @import("../parser.zig");
 const lexer = @import("../lexer.zig");
+const errors = @import("../errors.zig");
 const capture_mod = @import("capture.zig");
 const CaptureNode = capture_mod.CaptureNode;
 const Node = parser.Node;
 const Token = lexer.Token;
 const TokenKind = lexer.TokenKind;
+const LocMap = parser.LocMap;
 
 // ============================================================
 // BUILD CONTEXT
@@ -20,16 +22,31 @@ const TokenKind = lexer.TokenKind;
 pub const BuildContext = struct {
     tokens: []const Token,
     arena: std.heap.ArenaAllocator,
+    locs: LocMap,
+    current_pos: usize = 0, // token position for source location tracking
+    owns_arena: bool = true,
 
     pub fn init(tokens: []const Token, backing_allocator: std.mem.Allocator) BuildContext {
         return .{
             .tokens = tokens,
             .arena = std.heap.ArenaAllocator.init(backing_allocator),
+            .locs = LocMap.init(backing_allocator),
+        };
+    }
+
+    /// Initialize with an external arena (caller owns it — do NOT call deinit).
+    pub fn initWithArena(tokens: []const Token, arena: std.heap.ArenaAllocator, backing_allocator: std.mem.Allocator) BuildContext {
+        return .{
+            .tokens = tokens,
+            .arena = arena,
+            .locs = LocMap.init(backing_allocator),
+            .owns_arena = false,
         };
     }
 
     pub fn deinit(self: *BuildContext) void {
-        self.arena.deinit();
+        self.locs.deinit();
+        if (self.owns_arena) self.arena.deinit();
     }
 
     fn alloc(self: *BuildContext) std.mem.Allocator {
@@ -39,6 +56,21 @@ pub const BuildContext = struct {
     fn newNode(self: *BuildContext, node: Node) !*Node {
         const n = try self.alloc().create(Node);
         n.* = node;
+        // Record source location from current_pos
+        if (self.current_pos < self.tokens.len) {
+            const tok = self.tokens[self.current_pos];
+            try self.locs.put(n, .{ .file = "", .line = tok.line, .col = tok.col });
+        }
+        return n;
+    }
+
+    fn newNodeAt(self: *BuildContext, node: Node, pos: usize) !*Node {
+        const n = try self.alloc().create(Node);
+        n.* = node;
+        if (pos < self.tokens.len) {
+            const tok = self.tokens[pos];
+            try self.locs.put(n, .{ .file = "", .line = tok.line, .col = tok.col });
+        }
         return n;
     }
 };
@@ -47,9 +79,21 @@ pub const BuildContext = struct {
 // PUBLIC API
 // ============================================================
 
+pub const BuildResult = struct {
+    node: *Node,
+    ctx: BuildContext,
+};
+
 /// Build an AST from a capture tree.
-pub fn buildAST(cap: *const CaptureNode, tokens: []const Token, allocator: std.mem.Allocator) !struct { node: *Node, ctx: BuildContext } {
+pub fn buildAST(cap: *const CaptureNode, tokens: []const Token, allocator: std.mem.Allocator) !BuildResult {
     var ctx = BuildContext.init(tokens, allocator);
+    const node = try buildNode(&ctx, cap);
+    return .{ .node = node, .ctx = ctx };
+}
+
+/// Build an AST using an external arena (for integration with module.zig).
+pub fn buildASTWithArena(cap: *const CaptureNode, tokens: []const Token, arena: std.heap.ArenaAllocator, allocator: std.mem.Allocator) !BuildResult {
+    var ctx = BuildContext.initWithArena(tokens, arena, allocator);
     const node = try buildNode(&ctx, cap);
     return .{ .node = node, .ctx = ctx };
 }
@@ -62,6 +106,9 @@ pub fn buildAST(cap: *const CaptureNode, tokens: []const Token, allocator: std.m
 /// builders or passes through transparent rules.
 fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     const rule = cap.rule orelse return error.NoRule;
+
+    // Track position for source location recording
+    ctx.current_pos = cap.start_pos;
 
     // Dispatch to rule-specific builders
     if (std.mem.eql(u8, rule, "program")) return buildProgram(ctx, cap);
@@ -84,6 +131,8 @@ fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     if (std.mem.eql(u8, rule, "enum_decl")) return buildEnumDecl(ctx, cap);
     if (std.mem.eql(u8, rule, "field_decl")) return buildFieldDecl(ctx, cap);
     if (std.mem.eql(u8, rule, "enum_variant")) return buildEnumVariant(ctx, cap);
+    if (std.mem.eql(u8, rule, "bitfield_decl")) return buildBitfieldDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "destruct_decl")) return buildDestructDecl(ctx, cap);
     if (std.mem.eql(u8, rule, "test_decl")) return buildTestDecl(ctx, cap);
     if (std.mem.eql(u8, rule, "import_decl")) return buildImport(ctx, cap);
     if (std.mem.eql(u8, rule, "metadata")) return buildMetadata(ctx, cap);
@@ -427,6 +476,12 @@ fn buildParam(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 fn buildConstDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // const_decl <- 'const' IDENTIFIER destruct_tail TERM
     //            / 'const' IDENTIFIER (':' type)? '=' expr TERM
+
+    // Check for destructuring: const a, b = expr
+    if (cap.findChild("destruct_tail")) |dt| {
+        return buildDestructFromTail(ctx, cap, dt, true);
+    }
+
     const name_pos = cap.start_pos + 1; // after 'const'
     const name = tokenText(ctx, name_pos);
 
@@ -446,7 +501,11 @@ fn buildConstDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 }
 
 fn buildVarDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // Same structure as const_decl
+    // Check for destructuring: var a, b = expr
+    if (cap.findChild("destruct_tail")) |dt| {
+        return buildDestructFromTail(ctx, cap, dt, false);
+    }
+
     const name_pos = cap.start_pos + 1;
     const name = tokenText(ctx, name_pos);
 
@@ -585,6 +644,74 @@ fn buildEnumVariant(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     const name = tokenText(ctx, cap.start_pos);
     const fields = try buildChildrenByRule(ctx, cap, "param");
     return ctx.newNode(.{ .enum_variant = .{ .name = name, .fields = fields } });
+}
+
+fn buildDestructDecl(_: *BuildContext, _: *const CaptureNode) !*Node {
+    return error.DestructNotReached; // handled by buildDestructFromTail
+}
+
+fn buildDestructFromTail(ctx: *BuildContext, cap: *const CaptureNode, dt: *const CaptureNode, is_const: bool) !*Node {
+    // destruct_tail <- (',' IDENTIFIER)+ '=' expr
+    // First name is after 'const'/'var' keyword
+    const first_name = tokenText(ctx, cap.start_pos + 1);
+    var names = std.ArrayListUnmanaged([]const u8){};
+    try names.append(ctx.alloc(), first_name);
+    // Collect additional names from comma-separated identifiers in destruct_tail
+    for (dt.start_pos..dt.end_pos) |i| {
+        if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
+            try names.append(ctx.alloc(), ctx.tokens[i].text);
+        }
+    }
+    // Value is the expr child
+    var value: *Node = try ctx.newNode(.{ .int_literal = "0" });
+    if (dt.findChild("expr")) |e| {
+        value = try buildNode(ctx, e);
+    } else {
+        // expr might be a sibling of destruct_tail in the const_decl capture
+        if (cap.findChild("expr")) |e| {
+            value = try buildNode(ctx, e);
+        }
+    }
+    return ctx.newNode(.{ .destruct_decl = .{
+        .names = try names.toOwnedSlice(ctx.alloc()),
+        .is_const = is_const,
+        .value = value,
+    } });
+}
+
+fn buildBitfieldDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    // bitfield_decl <- 'bitfield' '(' type ')' IDENTIFIER '{' _ bitfield_body _ '}'
+    const backing = if (cap.findChild("type")) |t| try buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "u32" });
+
+    // Name is the identifier after ')'
+    var name: []const u8 = "";
+    for (cap.start_pos..cap.end_pos) |i| {
+        if (i > 0 and i < ctx.tokens.len and ctx.tokens[i].kind == .identifier and ctx.tokens[i - 1].kind == .rparen) {
+            name = ctx.tokens[i].text;
+            break;
+        }
+    }
+
+    // Collect flag names (just identifiers inside the body)
+    var members = std.ArrayListUnmanaged([]const u8){};
+    // Find the lbrace, then collect identifiers until rbrace
+    var in_body = false;
+    for (cap.start_pos..cap.end_pos) |i| {
+        if (i < ctx.tokens.len) {
+            if (ctx.tokens[i].kind == .lbrace) { in_body = true; continue; }
+            if (ctx.tokens[i].kind == .rbrace) break;
+            if (in_body and ctx.tokens[i].kind == .identifier) {
+                try members.append(ctx.alloc(), ctx.tokens[i].text);
+            }
+        }
+    }
+
+    return ctx.newNode(.{ .bitfield_decl = .{
+        .name = name,
+        .backing_type = backing,
+        .members = try members.toOwnedSlice(ctx.alloc()),
+        .is_pub = false,
+    } });
 }
 
 fn buildTestDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {

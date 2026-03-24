@@ -11,7 +11,7 @@ Source (.orh)
     ↓
 1.  Lexer           — raw text → tokens
     ↓
-2.  Parser          — tokens → AST
+2.  PEG Parser      — tokens → AST (grammar-driven, src/orhon.peg)
     ↓
 3.  Module Resolution
     — group files by module name
@@ -81,7 +81,14 @@ One file per pipeline pass. Tests are Zig `test` blocks in each file.
 src/
     main.zig                // entry point, CLI, orchestrator
     lexer.zig               // pass 1
-    parser.zig              // pass 2  + AST types
+    orhon.peg               // pass 2  — PEG grammar (formal syntax spec)
+    parser.zig              // AST type definitions (Node, NodeKind, structs)
+    peg/                    // PEG engine
+        grammar.zig         //   .peg file parser
+        engine.zig          //   packrat matching engine
+        capture.zig         //   capture tree builder
+        builder.zig         //   capture tree → AST node conversion
+        token_map.zig       //   grammar literals → TokenKind mapping
     module.zig              // pass 3
     declarations.zig        // pass 4
     resolver.zig            // pass 5

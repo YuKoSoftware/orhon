@@ -71,7 +71,7 @@ try std.testing.expectEqual(NodeKind.var_decl, node.*); // WRONG
 ```
 
 ### `main` is a keyword — `kw_main` not `.identifier`
-Any parser code accepting a name must handle `kw_main` alongside `.identifier`.
+The grammar handles this: `func_name <- IDENTIFIER / 'main'`.
 
 ### Reporter owns all message strings — always `defer free` after `report()`
 ```zig
@@ -80,11 +80,11 @@ defer self.allocator.free(msg);
 try self.reporter.report(.{ .message = msg });
 ```
 
-### Parser invariants
-- `advance()` always skips newlines first — never add manual `skipNewlines()` before it
-- `check()` is pure — no side effects, never advances position
-- `check(.newline)` can never return true
-- `eat(kind)` — consume if matches. Use instead of `check()` + `advance()`
+### PEG grammar is the source of truth for syntax
+All syntax rules live in `src/orhon.peg`. To add a new language feature:
+1. Add the grammar rule to `orhon.peg`
+2. Add the AST builder in `src/peg/builder.zig`
+3. The engine (`src/peg/engine.zig`) handles matching automatically
 
 ### Zig multiline strings — `\\` not `\`
 ```zig

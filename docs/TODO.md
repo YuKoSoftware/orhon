@@ -72,43 +72,15 @@ Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.
 
 ## Architecture
 
-### PEG Grammar — Replace Hand-Written Parser
+### PEG Parser — Error Recovery
 
-**Decision:** Replace the hand-written recursive descent parser with a PEG (Parsing
-Expression Grammar) driven parser. The grammar file becomes the single source of truth
-for all valid Orhon syntax.
+The PEG parser currently stops at the first error. Add error recovery so users get
+multiple errors at once: skip to the next `}` or newline and keep parsing.
 
-**Why PEG over alternatives:**
-- **No ambiguity by design** — ordered choice means exactly one parse path, always
-- **Handles operator precedence naturally** — layered rules, no shift/reduce conflicts
-- **Newlines as terminators** — explicit token control, fits Orhon's no-semicolon design
-- **Human readable** — grammar rules read like the language spec itself
+### PEG Parser — Syntax Documentation Generator
 
-**Why not CFG/ANTLR/tree-sitter:**
-- CFG (yacc/bison) needs separate lexer, can have ambiguity conflicts, more ceremony
-- ANTLR is Java-based tooling, heavy, overkill
-- Tree-sitter is for incremental editor reparsing, not compilation
-
-**Benefits:**
-- Grammar file replaces ~2000 lines of hand-written parser code
-- Watertight by construction — if it's not in the grammar, it cannot parse
-- New features = add a grammar rule, done. No touching multiple parser functions
-- Grammar file doubles as the formal language spec — no drift between docs and code
-- Downstream stages (MIR, codegen) can trust AST shape without defensive checks
-- Clean pipeline: grammar handles syntax, MIR handles semantics, no overlap
-- Velocity increases over time instead of decreasing
-- Syntax changes become trivial — edit one rule, not scattered parser functions
-
-**Pipeline with PEG:**
-1. **Grammar parser** — rejects anything structurally wrong (syntax)
-2. **MIR** — rejects anything semantically wrong (types, scopes, lifetimes)
-3. **Codegen** — straightforward translation, zero defensive checks
-
-**Implementation plan:**
-1. Write `src/orhon.peg` — formal PEG grammar matching current parser exactly
-2. Build a small PEG engine in Zig that reads the grammar and produces the same AST
-3. Run both parsers side by side, verify identical output on all test fixtures
-4. Swap out the old parser, delete the hand-written parsing functions
+Auto-generate a formatted syntax reference from `src/orhon.peg`. Each rule name
+becomes a section heading, alternatives become the documented forms.
 
 ### MIR Phase 4 — Optimization + Caching
 

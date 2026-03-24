@@ -203,12 +203,9 @@ pub const CodeGen = struct {
         if (ast.* != .program) return;
         self.module_name = module_name;
 
-        // File header
+        // File header — only Zig std, no runtime libraries
         try self.emitFmt("// generated from module {s} — do not edit\n", .{module_name});
         try self.emit("const std = @import(\"std\");\n");
-        try self.emit("const _rt = @import(\"_orhon_rt\");\n");
-        try self.emit("const _str = @import(\"_orhon_str\");\n");
-        try self.emit("const _collections = @import(\"_orhon_collections\");\n");
 
         // Generate imports — deduplicate across files in the same module
         // (multiple .orh files can import the same dependency)
@@ -1234,9 +1231,17 @@ pub const CodeGen = struct {
         if (m.type_class == .error_union) {
             try self.generateExprMir(m.value());
         } else if (m.type_class == .null_union) {
-            try self.generateCoercedExprMir(m.value());
+            const val = m.value();
+            if (val.literal_kind == .null_lit) {
+                try self.emit(".{ .none = {} }");
+            } else {
+                try self.generateCoercedExprMir(val);
+            }
         } else if (m.type_class == .arbitrary_union) {
             try self.generateCoercedExprMir(m.value());
+        } else if (m.value().kind == .type_expr) {
+            // Type in expression position = default constructor (.{})
+            try self.emit(".{}");
         } else {
             try self.generateExprMir(m.value());
         }
@@ -1466,9 +1471,16 @@ pub const CodeGen = struct {
         if (m.type_class == .error_union) {
             try self.generateExprMir(val_m);
         } else if (m.type_class == .null_union) {
-            try self.generateCoercedExprMir(val_m);
+            if (val_m.literal_kind == .null_lit) {
+                try self.emit(".{ .none = {} }");
+            } else {
+                try self.generateCoercedExprMir(val_m);
+            }
         } else if (m.type_class == .arbitrary_union) {
             try self.generateCoercedExprMir(val_m);
+        } else if (val_m.kind == .type_expr) {
+            // Type in expression position = default constructor (.{})
+            try self.emit(".{}");
         } else {
             const prev_ctx = self.type_ctx;
             self.type_ctx = m.type_annotation;
@@ -3419,7 +3431,7 @@ pub const CodeGen = struct {
     fn typeToZig(self: *CodeGen, node: *parser.Node) ![]const u8 {
         return switch (node.*) {
             .type_named => |name| {
-                if (std.mem.eql(u8, name, K.Type.ERROR)) return "_rt.OrhonError";
+                if (std.mem.eql(u8, name, K.Type.ERROR)) return "struct { message: []const u8 }";
                 // Inside a generic struct, self-references use @This()
                 if (self.generic_struct_name) |gsn| {
                     if (std.mem.eql(u8, name, gsn)) return "@This()";
@@ -3450,8 +3462,8 @@ pub const CodeGen = struct {
                             !std.mem.eql(u8, t.type_named, K.Type.NULL))
                         {
                             const inner = try self.typeToZig(t);
-                            if (has_error) break :blk try self.allocTypeStr("_rt.OrhonResult({s})", .{inner});
-                            if (has_null) break :blk try self.allocTypeStr("_rt.OrhonNullable({s})", .{inner});
+                            if (has_error) break :blk try self.allocTypeStr("union(enum) {{ ok: {s}, err: struct {{ message: []const u8 }} }}", .{inner});
+                            if (has_null) break :blk try self.allocTypeStr("union(enum) {{ some: {s}, none: void }}", .{inner});
                         }
                     }
                 }

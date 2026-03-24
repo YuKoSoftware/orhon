@@ -38,30 +38,16 @@ const a: Vec2(f64) = Vec2(f64)(x: 1.0, y: 2.0)
 const b: Vec2(f64) = a.add(a)   // ERROR: use of moved value 'a'
 ```
 
-### Codegen — tester module fails to compile (cross-module codegen)
+### Codegen — tester module fails to compile (cross-module codegen) — partially fixed v0.9.6
 
-The tester module (`test/fixtures/tester.orh`) fails with multiple Zig compilation errors
-when built as a separate module. Errors include undeclared identifiers in for-loop index
-contexts and type mismatches for null union assignments. The same code compiles when
-inlined into the main module.
+~~For-loop index variables, destructure name leaking, named tuple types, null literal
+wrapping~~ — all fixed. Remaining: pointer constructors and collection constructors
+being migrated to `.new()`/`.cast()` method-style syntax (no more type-as-value).
 
-Errors observed:
-- `tester.zig: error: use of undeclared identifier 'i'` — for-loop with index variable
-  generates code referencing `i` without declaring it in the loop capture
-- `tester.zig: error: expected type 'OrhonNullable(i32)', found '@TypeOf(null)'` — null
-  literal assignment to a nullable type not wrapped correctly in cross-module context
+### Module — sidecar path leaked (`error(gpa)`) — fixed v0.9.6
 
-Fix: investigate codegen differences between main-module and cross-module paths for
-for-loop index captures and null union literal wrapping.
-
-### Module — sidecar path leaked (`error(gpa)`)
-
-`module.zig:660` allocates a sidecar path string with `allocPrint` that is stored in
-`mod.sidecar_path` on success but never freed when the module is cleaned up. Shows as
-`error(gpa): memory address ... leaked` in library and multi-target builds.
-
-Fix: track sidecar_path ownership and free during module cleanup, or use the module's
-arena allocator.
+~~`module.zig:660` allocates a sidecar path string that is never freed.~~ Fixed: freed
+in `Resolver.deinit()`.
 
 ### `orhon test` — output format mismatch
 
@@ -104,6 +90,46 @@ Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.
 ---
 
 ## Architecture
+
+### Runtime Library Removal
+
+**Decision: no runtime libraries. Zero.** The compiler does not inject any hardcoded
+imports. The only hardcoded import is `const std = @import("std");`.
+
+**What was removed:**
+- `_orhon_collections` — collections are now a normal bridge module (`import std::collections`
+  or `include std::collections` to bring List/Map/Set into scope)
+- `_orhon_str` — string ops are a normal bridge module (`import std::str`)
+- `_orhon_rt` — **removed entirely**. No runtime library.
+
+**What still needs cleanup (v0.9.6):**
+- Revert hacky codegen workarounds introduced while fighting the old system:
+  `type_expr → .{}` hack, `ptr_expr` builder conversion hack, partial `_rt.` inlining
+- Remove all remaining `_rt.`, `_str.`, `_collections.` references from codegen
+- String method rewriting (`s.method()` → `str.method(s)`) should use the user's
+  import name, not a hardcoded `_str`
+
+**Nullable and Error types — need proper language-level design:**
+
+`(null | T)` and `(Error | T)` are currently implemented as wrapper types from the
+runtime library (`OrhonNullable(T)`, `OrhonResult(T)`, `OrhonError`). With the runtime
+gone, these need to become proper language-level types:
+
+- **Nullable `(null | T)`** — needs a first-class type representation. The codegen should
+  emit the Zig union directly (e.g. `union(enum) { some: T, none: void }`) or we introduce
+  a proper `Nullable(T)` / `?T` keyword/syntax that the compiler handles natively.
+- **Error `(Error | T)`** — same. Either emit raw Zig unions inline or introduce proper
+  `Result(T)` / `Error` as language-level types the compiler knows about.
+- **Error type itself** — currently `struct { message: []const u8 }`. Should this be a
+  language keyword/builtin type, or user-defined?
+- **Thread handles** — `Handle(T)` needs to move to `std::thread` bridge module or become
+  a language-level construct.
+- **Allocator** — currently `_rt.alloc` (page_allocator). Needs a proper strategy: user
+  imports an allocator, or the language provides a default through `std::mem`.
+- **Type ID** — `typeid(x)` can emit `@intFromPtr(@typeName(@TypeOf(x)).ptr)` inline.
+
+These are design decisions, not just refactoring — the semantics of null and error handling
+are core to the language identity.
 
 ### PEG Parser — Error Recovery ✓
 

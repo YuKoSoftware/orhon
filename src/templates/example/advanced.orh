@@ -7,7 +7,7 @@ import std::console
 // List(T) — growable array
 
 func list_demo() i32 {
-    var items: List(i32) = List(i32)
+    var items: List(i32) = List(i32).new()
     defer { items.free() }
     items.add(10)
     items.add(20)
@@ -18,7 +18,7 @@ func list_demo() i32 {
 // Map(K, V) — key-value store
 
 func map_demo() i32 {
-    var scores: Map(String, i32) = Map(String, i32)
+    var scores: Map(String, i32) = Map(String, i32).new()
     defer { scores.free() }
     scores.put("alice", 42)
     scores.put("bob", 99)
@@ -29,7 +29,7 @@ func map_demo() i32 {
 // Map.get returns (null | V)
 
 func map_get_demo() i32 {
-    var m: Map(String, i32) = Map(String, i32)
+    var m: Map(String, i32) = Map(String, i32).new()
     defer { m.free() }
     m.put("x", 77)
     const result: (null | i32) = m.get("x")
@@ -42,7 +42,7 @@ func map_get_demo() i32 {
 // Set(T) — unique elements
 
 func set_demo() i32 {
-    var seen: Set(i32) = Set(i32)
+    var seen: Set(i32) = Set(i32).new()
     defer { seen.free() }
     seen.add(5)
     seen.add(5)

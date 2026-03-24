@@ -321,6 +321,10 @@ pub const MirAnnotator = struct {
             .assignment => |a| {
                 try self.annotateNode(a.left);
                 try self.annotateNode(a.right);
+                // Coerce RHS when assigning to a null_union or error_union variable
+                if (self.lookupType(a.left)) |lhs_type| {
+                    try self.annotateDeclCoercions(a.right, lhs_type);
+                }
             },
 
             .test_decl => |td| {
@@ -447,7 +451,17 @@ pub const MirAnnotator = struct {
     /// Detect coercions for variable/const declarations.
     /// When the declared type differs from the value type, mark the value node.
     fn annotateDeclCoercions(self: *MirAnnotator, value: *parser.Node, decl_type: RT) !void {
-        const val_type = self.lookupType(value) orelse return;
+        const val_type = self.lookupType(value) orelse {
+            // null_literal has no type in the type_map — handle directly
+            if (value.* == .null_literal and classifyType(decl_type) == .null_union) {
+                try self.node_map.put(self.allocator, value, .{
+                    .resolved_type = .null_type,
+                    .type_class = .plain,
+                    .coercion = .null_wrap,
+                });
+            }
+            return;
+        };
         const coercion = detectCoercion(val_type, decl_type);
         if (coercion.kind) |kind| {
             try self.node_map.put(self.allocator, value, .{
@@ -493,6 +507,20 @@ pub const MirAnnotator = struct {
             return .{ .kind = .error_wrap };
         // Plain → arbitrary union
         if (dst == .union_type and src != .union_type) {
+            // For numeric/float literals, find the matching member type in the union
+            if (src == .primitive and src.primitive == .numeric_literal) {
+                for (dst.union_type) |member| {
+                    if (member == .primitive and member.primitive.isInteger()) {
+                        return .{ .kind = .arbitrary_union_wrap, .tag = member.name() };
+                    }
+                }
+            } else if (src == .primitive and src.primitive == .float_literal) {
+                for (dst.union_type) |member| {
+                    if (member == .primitive and member.primitive.isFloat()) {
+                        return .{ .kind = .arbitrary_union_wrap, .tag = member.name() };
+                    }
+                }
+            }
             return .{ .kind = .arbitrary_union_wrap, .tag = src.name() };
         }
         // Null union → plain (optional unwrap)

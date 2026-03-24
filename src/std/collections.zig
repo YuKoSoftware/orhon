@@ -16,6 +16,10 @@ pub fn List(comptime T: type) type {
 
         const Self = @This();
 
+        pub fn new() Self {
+            return .{};
+        }
+
         pub fn add(self: *Self, item: T) void {
             self.inner.append(self.alloc, item) catch {};
         }
@@ -65,6 +69,10 @@ pub fn Map(comptime K: type, comptime V: type) type {
         alloc: std.mem.Allocator = default_alloc,
 
         const Self = @This();
+
+        pub fn new() Self {
+            return .{};
+        }
 
         pub fn put(self: *Self, key: K, value: V) void {
             self.inner.put(self.alloc, key, value) catch {};
@@ -121,6 +129,10 @@ pub fn Set(comptime T: type) type {
         alloc: std.mem.Allocator = default_alloc,
 
         const Self = @This();
+
+        pub fn new() Self {
+            return .{};
+        }
 
         pub fn add(self: *Self, item: T) void {
             self.inner.put(self.alloc, item, {}) catch {};

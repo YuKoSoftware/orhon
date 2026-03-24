@@ -689,20 +689,20 @@ test "cast float" {
 
 pub func raw_ptr_read() i32 {
     var x: i32 = 99
-    const raw: RawPtr(i32) = RawPtr(i32, &x)
+    const raw: RawPtr(i32) = RawPtr(i32).cast(&x)
     x = raw[0]
     return x
 }
 
 pub func raw_ptr_index() i32 {
     const arr: [3]i32 = [1, 2, 3]
-    const raw: RawPtr(i32) = RawPtr(i32, &arr)
+    const raw: RawPtr(i32) = RawPtr(i32).cast(&arr)
     return raw[1]
 }
 
 pub func safe_ptr_read() i32 {
     const x: i32 = 77
-    const p: Ptr(i32) = Ptr(i32, &x)
+    const p: Ptr(i32) = Ptr(i32).cast(&x)
     return p.value
 }
 
@@ -845,7 +845,7 @@ test "arb value match" {
 // ─── Collections ────────────────────────────────────────────
 
 pub func test_list() i32 {
-    var items: List(i32) = List(i32)
+    var items: List(i32) = List(i32).new()
     defer { items.free() }
     items.add(10)
     items.add(20)
@@ -854,7 +854,7 @@ pub func test_list() i32 {
 }
 
 pub func test_list_len() i32 {
-    var items: List(i32) = List(i32)
+    var items: List(i32) = List(i32).new()
     defer { items.free() }
     items.add(10)
     items.add(20)
@@ -863,7 +863,7 @@ pub func test_list_len() i32 {
 }
 
 pub func test_map() i32 {
-    var scores: Map(String, i32) = Map(String, i32)
+    var scores: Map(String, i32) = Map(String, i32).new()
     defer { scores.free() }
     scores.put("alice", 42)
     scores.put("bob", 99)
@@ -874,7 +874,7 @@ pub func test_map() i32 {
 }
 
 pub func test_set() i32 {
-    var seen: Set(i32) = Set(i32)
+    var seen: Set(i32) = Set(i32).new()
     defer { seen.free() }
     seen.add(5)
     seen.add(5)
@@ -890,7 +890,7 @@ pub func test_set() i32 {
 // for over Map yields (key, value) tuples
 
 pub func test_map_iter() i32 {
-    var m: Map(i32, i32) = Map(i32, i32)
+    var m: Map(i32, i32) = Map(i32, i32).new()
     defer { m.free() }
     m.put(1, 10)
     m.put(2, 20)
@@ -903,7 +903,7 @@ pub func test_map_iter() i32 {
 // Set: has + add
 
 pub func test_set_iter() i32 {
-    var seen: Set(i32) = Set(i32)
+    var seen: Set(i32) = Set(i32).new()
     defer { seen.free() }
     seen.add(3)
     seen.add(7)
@@ -929,7 +929,7 @@ pub func test_split_at() i32 {
 // List add + get
 
 pub func test_split_list() i32 {
-    var items: List(i32) = List(i32)
+    var items: List(i32) = List(i32).new()
     defer { items.free() }
     items.add(10)
     items.add(20)
@@ -962,7 +962,7 @@ pub func test_overflow_ok() i32 {
 // Default allocator (SMP) — collections use it implicitly
 
 pub func test_alloc_default() i32 {
-    var items: List(i32) = List(i32)
+    var items: List(i32) = List(i32).new()
     defer { items.free() }
     items.add(100)
     items.add(200)
@@ -1278,7 +1278,7 @@ bitfield(u32) Perms {
 // Map.get returns (null | V) — test value extraction
 
 pub func test_map_get() i32 {
-    var m: Map(String, i32) = Map(String, i32)
+    var m: Map(String, i32) = Map(String, i32).new()
     defer { m.free() }
     m.put("x", 77)
     const result: (null | i32) = m.get("x")

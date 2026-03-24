@@ -688,8 +688,9 @@ fn buildDestructFromTail(ctx: *BuildContext, cap: *const CaptureNode, dt: *const
     const first_name = tokenText(ctx, cap.start_pos + 1);
     var names = std.ArrayListUnmanaged([]const u8){};
     try names.append(ctx.alloc(), first_name);
-    // Collect additional names from comma-separated identifiers in destruct_tail
+    // Collect additional names from comma-separated identifiers in destruct_tail (before '=')
     for (dt.start_pos..dt.end_pos) |i| {
+        if (i < ctx.tokens.len and ctx.tokens[i].kind == .assign) break;
         if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
             try names.append(ctx.alloc(), ctx.tokens[i].text);
         }
@@ -959,10 +960,15 @@ fn buildFor(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
             }
         }
     }
+    // If two captures, the second is the index variable
+    var index_var: ?[]const u8 = null;
+    if (captures.items.len >= 2) {
+        index_var = captures.pop();
+    }
     return ctx.newNode(.{ .for_stmt = .{
         .iterable = iterable,
         .captures = try captures.toOwnedSlice(ctx.alloc()),
-        .index_var = null,
+        .index_var = index_var,
         .body = body,
         .is_compt = false,
         .is_tuple_capture = false,
@@ -1314,6 +1320,21 @@ fn buildGenericType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // Collect type/expr args from generic_arg_list -> type_or_expr -> type/expr
     var args_list = std.ArrayListUnmanaged(*Node){};
     try collectGenericArgs(ctx, cap, &args_list);
+    // Pointer constructors: RawPtr(T, &x), SafePtr(T, &x), VolatilePtr(T, &x), Ptr(T, &x)
+    const is_ptr = std.mem.eql(u8, name, "RawPtr") or std.mem.eql(u8, name, "SafePtr") or
+        std.mem.eql(u8, name, "VolatilePtr") or std.mem.eql(u8, name, "Ptr");
+    if (is_ptr and args_list.items.len == 2) {
+        // PEG parses &x as ref_type (type_ptr) in type_or_expr context — convert to borrow_expr
+        var addr = args_list.items[1];
+        if (addr.* == .type_ptr) {
+            addr = try ctx.newNode(.{ .borrow_expr = addr.type_ptr.elem });
+        }
+        return ctx.newNode(.{ .ptr_expr = .{
+            .kind = name,
+            .type_arg = args_list.items[0],
+            .addr_arg = addr,
+        } });
+    }
     return ctx.newNode(.{ .type_generic = .{ .name = name, .args = try args_list.toOwnedSlice(ctx.alloc()) } });
 }
 
@@ -1355,7 +1376,7 @@ fn buildParenType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // Check for void: ()
     if (cap.end_pos - cap.start_pos <= 2) return ctx.newNode(.{ .type_named = "void" });
 
-    // Check for union: multiple type children with | separators
+    // Collect type children
     var type_children = std.ArrayListUnmanaged(*Node){};
     for (cap.children) |*child| {
         if (child.rule) |r| {
@@ -1364,6 +1385,28 @@ fn buildParenType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
             }
         }
     }
+
+    // Check for named tuple: IDENTIFIER ':' type pattern (not union with '|')
+    var named_fields = std.ArrayListUnmanaged(parser.NamedTypeField){};
+    var type_idx: usize = 0;
+    var i = cap.start_pos;
+    while (i + 1 < cap.end_pos and i + 1 < ctx.tokens.len) : (i += 1) {
+        if (ctx.tokens[i].kind == .identifier and ctx.tokens[i + 1].kind == .colon) {
+            if (type_idx < type_children.items.len) {
+                try named_fields.append(ctx.alloc(), .{
+                    .name = ctx.tokens[i].text,
+                    .type_node = type_children.items[type_idx],
+                    .default = null,
+                });
+                type_idx += 1;
+            }
+        }
+    }
+    if (named_fields.items.len > 0 and named_fields.items.len == type_children.items.len) {
+        return ctx.newNode(.{ .type_tuple_named = try named_fields.toOwnedSlice(ctx.alloc()) });
+    }
+
+    // Union: multiple type children with | separators
     if (type_children.items.len > 1) {
         return ctx.newNode(.{ .type_union = try type_children.toOwnedSlice(ctx.alloc()) });
     }
@@ -1394,10 +1437,19 @@ fn buildArrayType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 fn buildFuncType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // func_type <- 'func' '(' _ type_list _ ')' type
     var params = std.ArrayListUnmanaged(*Node){};
-    // The type children are the param types + return type (last one)
+    // Collect param types from type_list child, plus return type (direct type child)
     for (cap.children) |*child| {
         if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "type")) {
+            if (std.mem.eql(u8, r, "type_list")) {
+                // Param types are nested inside type_list
+                for (child.children) |*tc| {
+                    if (tc.rule) |tr| {
+                        if (std.mem.eql(u8, tr, "type")) {
+                            try params.append(ctx.alloc(), try buildNode(ctx, tc));
+                        }
+                    }
+                }
+            } else if (std.mem.eql(u8, r, "type")) {
                 try params.append(ctx.alloc(), try buildNode(ctx, child));
             }
         }

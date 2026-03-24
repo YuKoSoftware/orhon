@@ -84,6 +84,8 @@ pub const Resolver = struct {
                 for (mod.imports) |imp| self.allocator.free(imp);
                 self.allocator.free(mod.imports);
             }
+            // Free sidecar path (allocated with allocPrint in bridge detection)
+            if (mod.sidecar_path) |sp| self.allocator.free(sp);
         }
         self.modules.deinit();
     }

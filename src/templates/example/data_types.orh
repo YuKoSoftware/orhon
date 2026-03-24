@@ -82,7 +82,7 @@ func compound_demo() i32 {
 
 func read_via_ptr(n: i32) i32 {
     const x: i32 = n
-    const p: Ptr(i32) = Ptr(i32, &x)
+    const p: Ptr(i32) = Ptr(i32).cast(&x)
     return p.value
 }
 

@@ -27,7 +27,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Qualified generic types like `math.Vec2(f64)` fail with a clear error when the target type does not exist in the referenced module
   3. Passing a const struct to a function by value does not trigger a spurious ownership-move error
   4. `orhon test` actually runs test blocks and reports the correct passed/failed count
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Fix ownership const-as-copy (BUG-03) and orhon test output (BUG-04)
+- [ ] 01-02-PLAN.md — Fix cross-module const & passing (BUG-01) and qualified generic validation (BUG-02)
 
 ### Phase 2: Memory & Error Safety
 **Goal**: The compiler and stdlib have no silent error suppression or unrecovered memory leaks
@@ -57,6 +61,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Compiler Bug Fixes | 0/TBD | Not started | - |
+| 1. Compiler Bug Fixes | 0/2 | Not started | - |
 | 2. Memory & Error Safety | 0/TBD | Not started | - |
 | 3. LSP Hardening | 0/TBD | Not started | - |

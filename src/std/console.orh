@@ -6,42 +6,42 @@ module console
 
 // Print a String — no newline added
 
-bridge func print(msg: String) void
+pub bridge func print(msg: String) void
 
 // Print a String followed by a newline
 
-bridge func println(msg: String) void
+pub bridge func println(msg: String) void
 
 // Flush buffered output — println flushes automatically, use after print
 
-bridge func flush() void
+pub bridge func flush() void
 
 // Print to stderr — for debugging
 
-bridge func debugPrint(msg: String) void
+pub bridge func debugPrint(msg: String) void
 
 // Read one line from stdin — returns Error on EOF or read failure
 
-bridge func get() (Error | String)
+pub bridge func get() (Error | String)
 
 // Check if stdout supports colored output (true for terminals, false for pipes/files)
 
-bridge func supportsColor() bool
+pub bridge func supportsColor() bool
 
 // ANSI color constants — use with print/println: console.print(console.RED ++ "error" ++ console.RESET)
 
-bridge const RESET: String
-bridge const BOLD: String
-bridge const DIM: String
-bridge const UNDERLINE: String
+pub bridge const RESET: String
+pub bridge const BOLD: String
+pub bridge const DIM: String
+pub bridge const UNDERLINE: String
 
-bridge const RED: String
-bridge const GREEN: String
-bridge const YELLOW: String
-bridge const BLUE: String
-bridge const MAGENTA: String
-bridge const CYAN: String
-bridge const WHITE: String
+pub bridge const RED: String
+pub bridge const GREEN: String
+pub bridge const YELLOW: String
+pub bridge const BLUE: String
+pub bridge const MAGENTA: String
+pub bridge const CYAN: String
+pub bridge const WHITE: String
 
 // Print a message with a color prefix and automatic reset
 

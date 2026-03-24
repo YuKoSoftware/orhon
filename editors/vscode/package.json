@@ -2,7 +2,7 @@
   "name": "orhon",
   "displayName": "Orhon",
   "description": "Language support for Orhon — syntax highlighting, diagnostics, hover, completion, references, rename, formatting, and more",
-  "version": "0.7.9",
+  "version": "0.8.0",
   "publisher": "YuKoSoftware",
   "license": "MIT",
   "engines": {

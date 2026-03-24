@@ -18,20 +18,20 @@ module regex
 
 // Test if pattern matches entire text
 
-bridge func matches(pattern: String, text: String) bool
+pub bridge func matches(pattern: String, text: String) bool
 
 // Find first match in text
 
-bridge func find(pattern: String, text: String) (Error | String)
+pub bridge func find(pattern: String, text: String) (Error | String)
 
 // Find all non-overlapping matches (newline-separated)
 
-bridge func findAll(pattern: String, text: String) (Error | String)
+pub bridge func findAll(pattern: String, text: String) (Error | String)
 
 // Replace first match
 
-bridge func replace(pattern: String, text: String, replacement: String) (Error | String)
+pub bridge func replace(pattern: String, text: String, replacement: String) (Error | String)
 
 // Replace all matches
 
-bridge func replaceAll(pattern: String, text: String, replacement: String) (Error | String)
+pub bridge func replaceAll(pattern: String, text: String, replacement: String) (Error | String)

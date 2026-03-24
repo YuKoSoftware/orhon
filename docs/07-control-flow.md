@@ -1,5 +1,23 @@
 # Control Flow
 
+## `if` / `elif` / `else` — Conditional Branching
+
+```
+if (x > 10) {
+    doA()
+} elif (x > 5) {
+    doB()
+} elif (x > 0) {
+    doC()
+} else {
+    doD()
+}
+```
+
+`elif` chains are syntactic sugar for nested if/else — each `elif` produces a nested `if` in the AST. Use `match` for multi-way branching on values or types.
+
+Note: `else if` (two keywords) is not supported — use `elif`.
+
 ## `for` — Iteration
 
 Used for iterating over collections and ranges. `for` is the only loop for iteration — never used for conditions.

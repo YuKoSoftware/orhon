@@ -5,7 +5,7 @@ module stream
 
 // Buffer — growable byte buffer with read cursor
 
-bridge struct Buffer {
+pub bridge struct Buffer {
 
     // Create an empty buffer
 

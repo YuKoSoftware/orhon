@@ -8,6 +8,7 @@ const parser = @import("parser.zig");
 const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const K = @import("constants.zig");
+const module = @import("module.zig");
 
 /// A borrow record — tracks active borrows
 /// `field` is null for whole-variable borrows, non-null for field-level borrows.
@@ -25,7 +26,7 @@ pub const BorrowChecker = struct {
     allocator: std.mem.Allocator,
     scope_depth: usize,
     locs: ?*const parser.LocMap,
-    source_file: []const u8,
+    file_offsets: []const module.FileOffset,
     decls: ?*declarations.DeclTable,
     current_node: ?*parser.Node,
 
@@ -36,7 +37,7 @@ pub const BorrowChecker = struct {
             .allocator = allocator,
             .scope_depth = 0,
             .locs = null,
-            .source_file = "",
+            .file_offsets = &.{},
             .decls = null,
             .current_node = null,
         };
@@ -45,7 +46,8 @@ pub const BorrowChecker = struct {
     fn nodeLoc(self: *const BorrowChecker, node: *parser.Node) ?errors.SourceLoc {
         if (self.locs) |l| {
             if (l.get(node)) |loc| {
-                return .{ .file = self.source_file, .line = loc.line, .col = loc.col };
+                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
+                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
             }
         }
         return null;

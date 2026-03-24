@@ -967,9 +967,9 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
             continue;
         }
 
-        // Get source location map and file path for error reporting
+        // Get source location map and file offsets for error reporting
         const locs_ptr: ?*const parser.LocMap = if (mod_ptr.locs) |*l| l else null;
-        const source_file: []const u8 = if (mod_ptr.files.len > 0) mod_ptr.files[0] else "";
+        const file_offsets = mod_ptr.file_offsets;
 
         // Snapshot warning count to capture new warnings from this module
         const warn_start = reporter.warnings.items.len;
@@ -979,7 +979,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         decl_collector.* = declarations.DeclCollector.init(allocator, reporter);
         try decl_collector_ptrs.append(allocator, decl_collector);
         decl_collector.locs = locs_ptr;
-        decl_collector.source_file = source_file;
+        decl_collector.file_offsets = file_offsets;
 
         try decl_collector.collect(ast);
         if (reporter.hasErrors()) return null;
@@ -989,7 +989,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         var type_resolver = resolver.TypeResolver.init(allocator, &decl_collector.table, reporter);
         defer type_resolver.deinit();
         type_resolver.locs = locs_ptr;
-        type_resolver.source_file = source_file;
+        type_resolver.file_offsets = file_offsets;
 
         try type_resolver.resolve(ast);
         if (reporter.hasErrors()) return null;
@@ -997,7 +997,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         // ── Pass 6: Ownership Analysis ─────────────────────────
         var ownership_checker = ownership.OwnershipChecker.init(allocator, reporter);
         ownership_checker.locs = locs_ptr;
-        ownership_checker.source_file = source_file;
+        ownership_checker.file_offsets = file_offsets;
         ownership_checker.decls = &decl_collector.table;
         try ownership_checker.check(ast);
         if (reporter.hasErrors()) return null;
@@ -1006,7 +1006,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         var borrow_checker = borrow.BorrowChecker.init(allocator, reporter);
         defer borrow_checker.deinit();
         borrow_checker.locs = locs_ptr;
-        borrow_checker.source_file = source_file;
+        borrow_checker.file_offsets = file_offsets;
         borrow_checker.decls = &decl_collector.table;
 
         try borrow_checker.check(ast);
@@ -1016,7 +1016,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         var thread_checker = thread_safety.ThreadSafetyChecker.init(allocator, reporter);
         defer thread_checker.deinit();
         thread_checker.locs = locs_ptr;
-        thread_checker.source_file = source_file;
+        thread_checker.file_offsets = file_offsets;
 
         try thread_checker.check(ast);
         if (reporter.hasErrors()) return null;
@@ -1024,7 +1024,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         // ── Pass 9: Error Propagation ──────────────────────────
         var prop_checker = propagation.PropagationChecker.init(allocator, reporter, &decl_collector.table);
         prop_checker.locs = locs_ptr;
-        prop_checker.source_file = source_file;
+        prop_checker.file_offsets = file_offsets;
         try prop_checker.check(ast);
         if (reporter.hasErrors()) return null;
 
@@ -1093,7 +1093,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         cg.decls = &decl_collector.table;
         cg.all_decls = &all_module_decls;
         cg.locs = locs_ptr;
-        cg.source_file = source_file;
+        cg.file_offsets = file_offsets;
         cg.module_builds = &module_builds;
         cg.node_map = &mir_annotator.node_map;
         cg.union_registry = &mir_annotator.union_registry;
@@ -1306,6 +1306,8 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
             var build_type: []const u8 = "exe";
             var project_name: []const u8 = "";
             var project_version: ?[3]u64 = null;
+            var link_libs: std.ArrayListUnmanaged([]const u8) = .{};
+            defer link_libs.deinit(allocator);
             if (mod.ast) |ast| {
                 for (ast.program.metadata) |meta| {
                     if (std.mem.eql(u8, meta.metadata.field, "build")) {
@@ -1326,12 +1328,22 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
                     if (std.mem.eql(u8, meta.metadata.field, "version")) {
                         project_version = module.extractVersion(meta.metadata.value);
                     }
+                    if (std.mem.eql(u8, meta.metadata.field, "linkC")) {
+                        if (meta.metadata.value.* == .string_literal) {
+                            const raw = meta.metadata.value.string_literal;
+                            const lib_name = if (raw.len >= 2 and raw[0] == '"')
+                                raw[1 .. raw.len - 1]
+                            else
+                                raw;
+                            try link_libs.append(allocator, lib_name);
+                        }
+                    }
                 }
             }
 
             const binary_name = if (project_name.len > 0) project_name else mod.name;
 
-            try runner.generateBuildZig(mod.name, build_type, binary_name, project_version);
+            try runner.generateBuildZig(mod.name, build_type, binary_name, project_version, link_libs.items);
 
             for (cli.targets.items) |build_target| {
                 const target_str = build_target.toZigTriple();

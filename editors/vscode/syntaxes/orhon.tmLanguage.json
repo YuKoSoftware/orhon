@@ -95,7 +95,7 @@
       "patterns": [
         {
           "name": "keyword.control.orhon",
-          "match": "\\b(if|else|for|while|match|return|break|continue|defer)\\b"
+          "match": "\\b(if|elif|else|for|while|match|return|break|continue|defer)\\b"
         },
         {
           "name": "keyword.declaration.orhon",

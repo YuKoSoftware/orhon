@@ -5,50 +5,50 @@ module fs
 
 // Read entire file as String
 
-bridge func readFile(path: String) (Error | String)
+pub bridge func readFile(path: String) (Error | String)
 
 // Write String to file (creates or overwrites)
 
-bridge func writeFile(path: String, content: String) (Error | void)
+pub bridge func writeFile(path: String, content: String) (Error | void)
 
 // Append String to file
 
-bridge func appendFile(path: String, content: String) (Error | void)
+pub bridge func appendFile(path: String, content: String) (Error | void)
 
 // Check if path exists
 
-bridge func exists(path: String) bool
+pub bridge func exists(path: String) bool
 
 // Delete a file
 
-bridge func remove(path: String) (Error | void)
+pub bridge func remove(path: String) (Error | void)
 
 // File size in bytes
 
-bridge func fileSize(path: String) (Error | i64)
+pub bridge func fileSize(path: String) (Error | i64)
 
 // Create directory (and parents)
 
-bridge func mkdir(path: String) (Error | void)
+pub bridge func mkdir(path: String) (Error | void)
 
 // List directory entries
 
-bridge func readDir(path: String) (Error | String)
+pub bridge func readDir(path: String) (Error | String)
 
 // ── Path Operations ──
 
 // Join two path segments
 
-bridge func joinPath(a: String, b: String) String
+pub bridge func joinPath(a: String, b: String) String
 
 // Parent directory of a path
 
-bridge func dirname(path: String) String
+pub bridge func dirname(path: String) String
 
 // Filename component of a path
 
-bridge func basename(path: String) String
+pub bridge func basename(path: String) String
 
 // File extension (including the dot)
 
-bridge func extension(path: String) String
+pub bridge func extension(path: String) String

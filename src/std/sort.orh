@@ -5,24 +5,24 @@ module sort
 
 // Sort a slice of i32 in ascending order (returns new sorted slice)
 
-bridge func intAsc(items: any) any
+pub bridge func intAsc(items: any) any
 
 // Sort a slice of i32 in descending order (returns new sorted slice)
 
-bridge func intDesc(items: any) any
+pub bridge func intDesc(items: any) any
 
 // Sort a slice of f64 in ascending order
 
-bridge func floatAsc(items: any) any
+pub bridge func floatAsc(items: any) any
 
 // Sort a slice of f64 in descending order
 
-bridge func floatDesc(items: any) any
+pub bridge func floatDesc(items: any) any
 
 // Sort a slice of String in ascending order (lexicographic)
 
-bridge func strAsc(items: any) any
+pub bridge func strAsc(items: any) any
 
 // Reverse a slice
 
-bridge func reverse(items: any) any
+pub bridge func reverse(items: any) any

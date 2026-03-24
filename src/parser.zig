@@ -658,6 +658,13 @@ pub const Parser = struct {
             return self.newNode(.{ .metadata = .{ .field = "dep", .value = path, .extra = version_node } });
         }
 
+        if (std.mem.eql(u8, field_tok.text, "linkC")) {
+            // #linkC "libname"
+            const lib_name = try self.parseExpr(); // string literal
+            try self.expectNewlineOrEof();
+            return self.newNode(.{ .metadata = .{ .field = "linkC", .value = lib_name } });
+        }
+
         _ = try self.expect(.assign);
         const value = try self.parseExpr();
         try self.expectNewlineOrEof();
@@ -910,7 +917,8 @@ pub const Parser = struct {
             try self.collectDocComments();
             if (self.check(.rbrace)) break;
             const member_doc = self.takePendingDoc();
-            const member = try self.parseBridgeDecl(false);
+            const member_pub = self.eat(.kw_pub);
+            const member = try self.parseBridgeDecl(member_pub);
             attachDoc(member, member_doc);
             try members.append(self.alloc(), member);
             self.skipNewlines();
@@ -1399,13 +1407,24 @@ pub const Parser = struct {
     }
 
     fn parseIf(self: *Parser) anyerror!*Node {
-        _ = try self.expect(.kw_if);
+        // Accept both `if` and `elif` — elif is syntactic sugar for chained else-if
+        if (!self.check(.kw_if) and !self.check(.kw_elif)) {
+            const tok = self.peek();
+            try self.reporter.report(.{
+                .message = "expected 'if' or 'elif'",
+                .loc = .{ .file = "", .line = tok.line, .col = tok.col },
+            });
+            return error.ParseError;
+        }
+        _ = self.advance();
         _ = try self.expect(.lparen);
         const condition = try self.parseExpr();
         _ = try self.expect(.rparen);
         const then_block = try self.parseBlock();
         var else_block: ?*Node = null;
-        if (self.check(.kw_else)) {
+        if (self.check(.kw_elif)) {
+            else_block = try self.parseIf();
+        } else if (self.check(.kw_else)) {
             _ = self.advance();
             else_block = try self.parseBlock();
         }
@@ -2456,6 +2475,7 @@ fn tokenFriendlyName(kind: lexer.TokenKind) []const u8 {
         .kw_const => "const",
         .kw_return => "return",
         .kw_if => "if",
+        .kw_elif => "elif",
         .kw_else => "else",
         .kw_while => "while",
         .kw_for => "for",
@@ -2686,6 +2706,58 @@ test "parser - if else" {
     try std.testing.expectEqual(@as(usize, 1), prog.program.top_level.len);
 }
 
+test "parser - elif chain" {
+    const alloc = std.testing.allocator;
+    var lex = lexer.Lexer.init((
+        \\module main
+        \\func check(x: i32) void {
+        \\if(x > 10) {
+        \\var a: i32 = 1
+        \\} elif(x > 5) {
+        \\var a: i32 = 2
+        \\} elif(x > 0) {
+        \\var a: i32 = 3
+        \\} else {
+        \\var a: i32 = 4
+        \\}
+        \\}
+        \\
+    ));
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var p = Parser.init(tokens.items, alloc, &reporter);
+    defer p.deinit();
+
+    const prog = try p.parseProgram();
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expectEqual(@as(usize, 1), prog.program.top_level.len);
+
+    // The func should contain one if_stmt with nested elif chain
+    const func = prog.program.top_level[0].func_decl;
+    const body = func.body.block.statements;
+    try std.testing.expectEqual(@as(usize, 1), body.len);
+    try std.testing.expect(body[0].* == .if_stmt);
+
+    // First elif produces a nested if_stmt as else_block
+    const outer_if = body[0].if_stmt;
+    try std.testing.expect(outer_if.else_block != null);
+    try std.testing.expect(outer_if.else_block.?.* == .if_stmt);
+
+    // Second elif produces another nested if_stmt
+    const mid_if = outer_if.else_block.?.if_stmt;
+    try std.testing.expect(mid_if.else_block != null);
+    try std.testing.expect(mid_if.else_block.?.* == .if_stmt);
+
+    // Final else is a block
+    const inner_if = mid_if.else_block.?.if_stmt;
+    try std.testing.expect(inner_if.else_block != null);
+    try std.testing.expect(inner_if.else_block.?.* == .block);
+}
+
 test "parser - struct declaration" {
     const alloc = std.testing.allocator;
     var lex = lexer.Lexer.init((
@@ -2906,6 +2978,30 @@ test "parser - metadata #dep with version" {
     try std.testing.expect(prog.program.metadata.len == 1);
     try std.testing.expectEqualStrings("dep", prog.program.metadata[0].metadata.field);
     try std.testing.expect(prog.program.metadata[0].metadata.extra != null);
+}
+
+test "parser - metadata #linkC" {
+    const alloc = std.testing.allocator;
+    var lex = lexer.Lexer.init((
+        \\module main
+        \\#linkC "SDL3"
+        \\#linkC "pthread"
+        \\
+    ));
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var p = Parser.init(tokens.items, alloc, &reporter);
+    defer p.deinit();
+
+    const prog = try p.parseProgram();
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expectEqual(@as(usize, 2), prog.program.metadata.len);
+    try std.testing.expectEqualStrings("linkC", prog.program.metadata[0].metadata.field);
+    try std.testing.expectEqualStrings("linkC", prog.program.metadata[1].metadata.field);
 }
 
 test "parser - bitfield declaration" {

@@ -7,17 +7,17 @@ module net
 
 // Connect to a TCP server
 
-bridge func tcpConnect(host: String, port: i32) (Error | Connection)
+pub bridge func tcpConnect(host: String, port: i32) (Error | Connection)
 
 // ── TCP Server ──
 
 // Listen for TCP connections on a port
 
-bridge func tcpListen(host: String, port: i32) (Error | Listener)
+pub bridge func tcpListen(host: String, port: i32) (Error | Listener)
 
 // ── Connection ──
 
-bridge struct Connection {
+pub bridge struct Connection {
 
     // Send data over the connection
 
@@ -34,7 +34,7 @@ bridge struct Connection {
 
 // ── Listener ──
 
-bridge struct Listener {
+pub bridge struct Listener {
 
     // Accept a new connection (blocks until one arrives)
 

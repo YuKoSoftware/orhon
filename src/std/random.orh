@@ -5,20 +5,20 @@ module random
 
 // Random integer in range [min, max] (inclusive)
 
-bridge func int(lo: i32, hi: i32) i32
+pub bridge func int(lo: i32, hi: i32) i32
 
 // Random float in range [0.0, 1.0)
 
-bridge func float() f64
+pub bridge func float() f64
 
 // Random float in range [min, max)
 
-bridge func floatRange(lo: f64, hi: f64) f64
+pub bridge func floatRange(lo: f64, hi: f64) f64
 
 // Random bool
 
-bridge func boolean() bool
+pub bridge func boolean() bool
 
 // Seed the generator (0 = use system entropy)
 
-bridge func seed(s: u64) void
+pub bridge func seed(s: u64) void

@@ -5,36 +5,36 @@ module json
 
 // Get a string value at a dot-path ("user.address.city")
 
-bridge func get(source: String, path: String) (Error | String)
+pub bridge func get(source: String, path: String) (Error | String)
 
 // Get an integer value at a dot-path
 
-bridge func getInt(source: String, path: String) (Error | i64)
+pub bridge func getInt(source: String, path: String) (Error | i64)
 
 // Get a float value at a dot-path
 
-bridge func getFloat(source: String, path: String) (Error | f64)
+pub bridge func getFloat(source: String, path: String) (Error | f64)
 
 // Get a boolean value at a dot-path
 
-bridge func getBool(source: String, path: String) (Error | bool)
+pub bridge func getBool(source: String, path: String) (Error | bool)
 
 // Get array elements at a dot-path (newline-separated)
 
-bridge func getArray(source: String, path: String) (Error | String)
+pub bridge func getArray(source: String, path: String) (Error | String)
 
 // Check if a key exists in a JSON string
 
-bridge func hasKey(source: String, key: String) bool
+pub bridge func hasKey(source: String, key: String) bool
 
 // Build JSON from key-value pairs
 
-bridge func object(keys: any, values: any) String
+pub bridge func object(keys: any, values: any) String
 
 // Stringify a value to JSON
 
-bridge func stringify(value: any) String
+pub bridge func stringify(value: any) String
 
 // Pretty-print a JSON string with indentation
 
-bridge func pretty(source: String) (Error | String)
+pub bridge func pretty(source: String) (Error | String)

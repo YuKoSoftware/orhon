@@ -5,28 +5,28 @@ module toml
 
 // Get a string value at a dot-path ("database.host")
 
-bridge func get(source: String, path: String) (Error | String)
+pub bridge func get(source: String, path: String) (Error | String)
 
 // Get an integer value at a dot-path
 
-bridge func getInt(source: String, path: String) (Error | i64)
+pub bridge func getInt(source: String, path: String) (Error | i64)
 
 // Get a float value at a dot-path
 
-bridge func getFloat(source: String, path: String) (Error | f64)
+pub bridge func getFloat(source: String, path: String) (Error | f64)
 
 // Get a boolean value at a dot-path
 
-bridge func getBool(source: String, path: String) (Error | bool)
+pub bridge func getBool(source: String, path: String) (Error | bool)
 
 // Get array elements at a dot-path (newline-separated)
 
-bridge func getArray(source: String, path: String) (Error | String)
+pub bridge func getArray(source: String, path: String) (Error | String)
 
 // Check if a key exists at a dot-path
 
-bridge func hasKey(source: String, path: String) bool
+pub bridge func hasKey(source: String, path: String) bool
 
 // Get all keys in a table (newline-separated)
 
-bridge func getKeys(source: String, table: String) (Error | String)
+pub bridge func getKeys(source: String, table: String) (Error | String)

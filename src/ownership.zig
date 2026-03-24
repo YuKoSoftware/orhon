@@ -8,6 +8,7 @@ const types = @import("types.zig");
 const builtins = @import("builtins.zig");
 const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
+const module = @import("module.zig");
 
 /// Ownership state for a variable in current scope
 pub const VarState = struct {
@@ -74,7 +75,7 @@ pub const OwnershipChecker = struct {
     reporter: *errors.Reporter,
     allocator: std.mem.Allocator,
     locs: ?*const parser.LocMap,
-    source_file: []const u8,
+    file_offsets: []const module.FileOffset,
     decls: ?*declarations.DeclTable,
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter) OwnershipChecker {
@@ -82,7 +83,7 @@ pub const OwnershipChecker = struct {
             .reporter = reporter,
             .allocator = allocator,
             .locs = null,
-            .source_file = "",
+            .file_offsets = &.{},
             .decls = null,
         };
     }
@@ -147,7 +148,8 @@ pub const OwnershipChecker = struct {
     fn nodeLoc(self: *const OwnershipChecker, node: *parser.Node) ?errors.SourceLoc {
         if (self.locs) |l| {
             if (l.get(node)) |loc| {
-                return .{ .file = self.source_file, .line = loc.line, .col = loc.col };
+                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
+                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
             }
         }
         return null;

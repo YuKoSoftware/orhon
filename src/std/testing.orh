@@ -6,24 +6,24 @@ module testing
 
 // Assert a condition is true
 
-bridge func assertTrue(value: bool) void
+pub bridge func assertTrue(value: bool) void
 
 // Assert a condition is false
 
-bridge func assertFalse(value: bool) void
+pub bridge func assertFalse(value: bool) void
 
 // Assert two strings are equal
 
-bridge func assertEq(a: String, b: String) void
+pub bridge func assertEq(a: String, b: String) void
 
 // Assert two strings are not equal
 
-bridge func assertNe(a: String, b: String) void
+pub bridge func assertNe(a: String, b: String) void
 
 // Assert a string contains a substring
 
-bridge func assertContains(text: String, sub: String) void
+pub bridge func assertContains(text: String, sub: String) void
 
 // Unconditional test failure with a message
 
-bridge func fail(msg: String) void
+pub bridge func fail(msg: String) void

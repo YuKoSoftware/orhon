@@ -8,34 +8,34 @@ module simd
 
 // Reduction — collapse a vector to a single value
 
-bridge func reduceAddF32(v: Vector(4, f32)) f32
-bridge func reduceAddF64(v: Vector(2, f64)) f64
-bridge func reduceAddI32(v: Vector(4, i32)) i32
+pub bridge func reduceAddF32(v: Vector(4, f32)) f32
+pub bridge func reduceAddF64(v: Vector(2, f64)) f64
+pub bridge func reduceAddI32(v: Vector(4, i32)) i32
 
-bridge func reduceMulF32(v: Vector(4, f32)) f32
-bridge func reduceMulF64(v: Vector(2, f64)) f64
+pub bridge func reduceMulF32(v: Vector(4, f32)) f32
+pub bridge func reduceMulF64(v: Vector(2, f64)) f64
 
-bridge func reduceMinF32(v: Vector(4, f32)) f32
-bridge func reduceMinF64(v: Vector(2, f64)) f64
-bridge func reduceMinI32(v: Vector(4, i32)) i32
+pub bridge func reduceMinF32(v: Vector(4, f32)) f32
+pub bridge func reduceMinF64(v: Vector(2, f64)) f64
+pub bridge func reduceMinI32(v: Vector(4, i32)) i32
 
-bridge func reduceMaxF32(v: Vector(4, f32)) f32
-bridge func reduceMaxF64(v: Vector(2, f64)) f64
-bridge func reduceMaxI32(v: Vector(4, i32)) i32
+pub bridge func reduceMaxF32(v: Vector(4, f32)) f32
+pub bridge func reduceMaxF64(v: Vector(2, f64)) f64
+pub bridge func reduceMaxI32(v: Vector(4, i32)) i32
 
 // Splat — create a vector where all lanes hold the same value
 
-bridge func splatF32(val: f32) Vector(4, f32)
-bridge func splatF64(val: f64) Vector(2, f64)
-bridge func splatI32(val: i32) Vector(4, i32)
+pub bridge func splatF32(val: f32) Vector(4, f32)
+pub bridge func splatF64(val: f64) Vector(2, f64)
+pub bridge func splatI32(val: i32) Vector(4, i32)
 
 // Wide splat — 8-lane variants
 
-bridge func splatF32x8(val: f32) Vector(8, f32)
-bridge func splatI32x8(val: i32) Vector(8, i32)
+pub bridge func splatF32x8(val: f32) Vector(8, f32)
+pub bridge func splatI32x8(val: i32) Vector(8, i32)
 
 // Reverse — reverse the order of lanes
 
-bridge func reverseF32(v: Vector(4, f32)) Vector(4, f32)
-bridge func reverseF64(v: Vector(2, f64)) Vector(2, f64)
-bridge func reverseI32(v: Vector(4, i32)) Vector(4, i32)
+pub bridge func reverseF32(v: Vector(4, f32)) Vector(4, f32)
+pub bridge func reverseF64(v: Vector(2, f64)) Vector(2, f64)
+pub bridge func reverseI32(v: Vector(4, i32)) Vector(4, i32)

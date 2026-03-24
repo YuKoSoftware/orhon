@@ -20,8 +20,8 @@ The codegen re-exports from the sidecar — pure 1:1 translation, no special cas
 // console.orh — Orhon interface
 module console
 
-bridge func print(msg: String) void
-bridge func println(msg: String) void
+pub bridge func print(msg: String) void
+pub bridge func println(msg: String) void
 ```
 
 ```zig
@@ -177,23 +177,34 @@ pub fn get() GetResult {
 ## Calling C Through Zig
 
 C interop goes through `.zig` bridge files. The `.orh` file exposes a clean Orhon API,
-the `.zig` file handles all C details internally:
+the `.zig` file handles all C details internally.
+
+Use `#linkC` in the anchor file to declare C library dependencies. The compiler
+generates the correct `linkSystemLibrary` + `linkLibC` calls in the build system.
+
+```
+// sdl.orh — clean Orhon interface
+module sdl
+#linkC "SDL3"
+
+pub bridge func init() void
+pub bridge func quit() void
+```
 
 ```zig
-// gtk.zig — Zig handles all C interop
-const c = @cImport(@cInclude("gtk4.h"));
+// sdl.zig — Zig handles all C interop
+const c = @cImport(@cInclude("SDL3/SDL.h"));
 
-pub fn windowNew() *c.GtkWidget {
-    return c.gtk_window_new();
+pub fn init() void {
+    _ = c.SDL_Init(c.SDL_INIT_VIDEO);
+}
+
+pub fn quit() void {
+    c.SDL_Quit();
 }
 ```
 
-```
-// gtk.orh — clean Orhon interface, no C visible
-module gtk
-
-bridge func windowNew() Ptr(u8)
-```
+Multiple `#linkC` directives are allowed if a module wraps more than one C library.
 
 ---
 

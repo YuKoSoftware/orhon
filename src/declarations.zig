@@ -5,6 +5,7 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 const errors = @import("errors.zig");
+const module = @import("module.zig");
 const builtins = @import("builtins.zig");
 const types = @import("types.zig");
 
@@ -140,7 +141,7 @@ pub const DeclCollector = struct {
     reporter: *errors.Reporter,
     allocator: std.mem.Allocator,
     locs: ?*const parser.LocMap,
-    source_file: []const u8,
+    file_offsets: []const module.FileOffset,
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter) DeclCollector {
         return .{
@@ -148,14 +149,15 @@ pub const DeclCollector = struct {
             .reporter = reporter,
             .allocator = allocator,
             .locs = null,
-            .source_file = "",
+            .file_offsets = &.{},
         };
     }
 
     fn nodeLoc(self: *const DeclCollector, node: *parser.Node) ?errors.SourceLoc {
         if (self.locs) |l| {
             if (l.get(node)) |loc| {
-                return .{ .file = self.source_file, .line = loc.line, .col = loc.col };
+                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
+                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
             }
         }
         return null;

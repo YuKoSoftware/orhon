@@ -171,4 +171,14 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 
 ---
 
+## Orhon Framework — Companion Project (read-only)
 
+Location: `/home/yunus/Projects/Orhon/orhon_framework/`
+
+A game/multimedia framework written in pure Orhon that doubles as a real-world
+stress test for the compiler. **Do not modify any files in this project.**
+
+Its primary value to us: bugs discovered while building the framework are logged
+in `docs/bugs.txt` and language design feedback in `docs/ideas.txt`. Read these
+files to understand what compiler issues need fixing, then fix them here in the
+compiler codebase.

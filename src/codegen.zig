@@ -30,7 +30,7 @@ pub const CodeGen = struct {
     locs: ?*const parser.LocMap, // AST node → source location (set by main.zig)
     generic_struct_name: ?[]const u8, // inside a generic struct — name to replace with @This()
     all_decls: ?*std.StringHashMap(*declarations.DeclTable), // all module decl tables for cross-module default args
-    source_file: []const u8,     // anchor file path for location reporting
+    file_offsets: []const module.FileOffset, // combined-line → original file+line
     module_builds: ?*const std.StringHashMapUnmanaged(module.BuildType), // imported module → build type
     // MIR annotation table — Phase 1+2 typed annotation pass
     node_map: ?*const mir.NodeMap = null,
@@ -124,7 +124,7 @@ pub const CodeGen = struct {
             .generic_struct_name = null,
             .all_decls = null,
             .locs = null,
-            .source_file = "",
+            .file_offsets = &.{},
             .module_builds = null,
         };
     }
@@ -132,7 +132,8 @@ pub const CodeGen = struct {
     fn nodeLoc(self: *const CodeGen, node: *parser.Node) ?errors.SourceLoc {
         if (self.locs) |l| {
             if (l.get(node)) |loc| {
-                return .{ .file = self.source_file, .line = loc.line, .col = loc.col };
+                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
+                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
             }
         }
         return null;
@@ -492,9 +493,10 @@ pub const CodeGen = struct {
         };
     }
 
-    /// Emit a re-export for an bridge declaration from the paired sidecar .zig file.
-    fn generateBridgeReExport(self: *CodeGen, name: []const u8) anyerror!void {
-        try self.emitLineFmt("pub const {s} = @import(\"{s}_bridge.zig\").{s};", .{ name, self.module_name, name });
+    /// Emit a re-export for a bridge declaration from the paired sidecar .zig file.
+    fn generateBridgeReExport(self: *CodeGen, name: []const u8, is_pub: bool) anyerror!void {
+        const vis = if (is_pub) "pub " else "";
+        try self.emitLineFmt("{s}const {s} = @import(\"{s}_bridge.zig\").{s};", .{ vis, name, self.module_name, name });
     }
 
     fn generateFunc(self: *CodeGen, node: *parser.Node, f: parser.FuncDecl) anyerror!void {
@@ -502,7 +504,7 @@ pub const CodeGen = struct {
         if (f.is_thread) return self.generateThreadFunc(node, f);
 
         // bridge func — re-export from paired sidecar file
-        if (f.is_bridge) return self.generateBridgeReExport(f.name);
+        if (f.is_bridge) return self.generateBridgeReExport(f.name, f.is_pub);
 
         // Body-less declaration (interface file import) — skip codegen.
         // Never skip main (it can legitimately have an empty body).
@@ -699,7 +701,7 @@ pub const CodeGen = struct {
     /// MIR-path struct codegen — iterates MirNode children instead of AST members.
     fn generateStructMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
         const s = m.ast.struct_decl;
-        if (s.is_bridge) return self.generateBridgeReExport(s.name);
+        if (s.is_bridge) return self.generateBridgeReExport(s.name, s.is_pub);
 
         const is_generic = s.type_params.len > 0;
 
@@ -851,12 +853,12 @@ pub const CodeGen = struct {
     // ============================================================
 
     fn generateConst(self: *CodeGen, node: *parser.Node, v: parser.VarDecl) anyerror!void {
-        if (v.is_bridge) return self.generateBridgeReExport(v.name);
+        if (v.is_bridge) return self.generateBridgeReExport(v.name, v.is_pub);
         return self.generateDecl(node, v, "const");
     }
 
     fn generateVar(self: *CodeGen, node: *parser.Node, v: parser.VarDecl) anyerror!void {
-        if (v.is_bridge) return self.generateBridgeReExport(v.name);
+        if (v.is_bridge) return self.generateBridgeReExport(v.name, v.is_pub);
         return self.generateDecl(node, v, "var");
     }
 

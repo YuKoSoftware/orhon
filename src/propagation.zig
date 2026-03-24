@@ -8,6 +8,7 @@ const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const K = @import("constants.zig");
 const types = @import("types.zig");
+const module = @import("module.zig");
 
 /// A tracked union variable — needs handling before scope exit
 pub const UnionVar = struct {
@@ -80,7 +81,7 @@ pub const PropagationChecker = struct {
     allocator: std.mem.Allocator,
     decls: ?*declarations.DeclTable,
     locs: ?*const parser.LocMap,
-    source_file: []const u8,
+    file_offsets: []const module.FileOffset,
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter, decls: ?*declarations.DeclTable) PropagationChecker {
         return .{
@@ -88,14 +89,15 @@ pub const PropagationChecker = struct {
             .allocator = allocator,
             .decls = decls,
             .locs = null,
-            .source_file = "",
+            .file_offsets = &.{},
         };
     }
 
     fn nodeLoc(self: *const PropagationChecker, node: *parser.Node) ?errors.SourceLoc {
         if (self.locs) |l| {
             if (l.get(node)) |loc| {
-                return .{ .file = self.source_file, .line = loc.line, .col = loc.col };
+                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
+                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
             }
         }
         return null;
@@ -391,9 +393,10 @@ pub const PropagationChecker = struct {
                     // OK — will automatically propagate with trace
                 } else {
                     const kind = if (uvar.is_error_union) K.Type.ERROR else K.Type.NULL;
-                    const loc: ?errors.SourceLoc = if (uvar.line > 0)
-                        .{ .file = self.source_file, .line = uvar.line, .col = uvar.col }
-                    else
+                    const loc: ?errors.SourceLoc = if (uvar.line > 0) blk: {
+                        const resolved = module.resolveFileLoc(self.file_offsets, uvar.line);
+                        break :blk .{ .file = resolved.file, .line = resolved.line, .col = uvar.col };
+                    } else
                         null;
                     const msg = try std.fmt.allocPrint(self.allocator,
                         "unhandled {s} union '{s}' — enclosing function cannot propagate",

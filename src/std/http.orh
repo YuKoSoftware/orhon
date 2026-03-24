@@ -5,34 +5,34 @@ module http
 
 // Send a GET request, return response body
 
-bridge func get(url: String) (Error | String)
+pub bridge func get(url: String) (Error | String)
 
 // Send a POST request with body and content type, return response body
 
-bridge func post(url: String, body: String, contentType: String) (Error | String)
+pub bridge func post(url: String, body: String, contentType: String) (Error | String)
 
 // ── URL Parsing ──
 
 // Get the scheme (http, https)
 
-bridge func urlScheme(url: String) (Error | String)
+pub bridge func urlScheme(url: String) (Error | String)
 
 // Get the host
 
-bridge func urlHost(url: String) (Error | String)
+pub bridge func urlHost(url: String) (Error | String)
 
 // Get the port (returns 0 if not specified)
 
-bridge func urlPort(url: String) (Error | i32)
+pub bridge func urlPort(url: String) (Error | i32)
 
 // Get the path
 
-bridge func urlPath(url: String) (Error | String)
+pub bridge func urlPath(url: String) (Error | String)
 
 // Get the query string (without leading ?)
 
-bridge func urlQuery(url: String) (Error | String)
+pub bridge func urlQuery(url: String) (Error | String)
 
 // Build a URL from components
 
-bridge func urlBuild(scheme: String, host: String, port: i32, path: String, query: String) String
+pub bridge func urlBuild(scheme: String, host: String, port: i32, path: String, query: String) String

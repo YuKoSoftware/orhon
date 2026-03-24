@@ -5,49 +5,49 @@ module system
 
 // Run a command with arguments — returns struct with code, stdout, stderr
 
-bridge func run(cmd: String, args: any) any
+pub bridge func run(cmd: String, args: any) any
 
 // ── Environment ──
 
 // Get an environment variable
 
-bridge func getEnv(name: String) (Error | String)
+pub bridge func getEnv(name: String) (Error | String)
 
 // Set an environment variable
 
-bridge func setEnv(name: String, value: String) (Error | void)
+pub bridge func setEnv(name: String, value: String) (Error | void)
 
 // Check if an environment variable exists
 
-bridge func hasEnv(name: String) bool
+pub bridge func hasEnv(name: String) bool
 
 // Get all environment variables (newline-separated KEY=VALUE pairs)
 
-bridge func allEnv() String
+pub bridge func allEnv() String
 
 // Get current working directory
 
-bridge func cwd() String
+pub bridge func cwd() String
 
 // Exit the process with a status code
 
-bridge func exit(code: i32) void
+pub bridge func exit(code: i32) void
 
 // Register to trap a signal (sets an internal flag on delivery)
 
-bridge func trapSignal(sig: i32) void
+pub bridge func trapSignal(sig: i32) void
 
 // Check whether a trapped signal has been received
 
-bridge func checkSignal(sig: i32) bool
+pub bridge func checkSignal(sig: i32) bool
 
 // Clear a previously received signal flag
 
-bridge func clearSignal(sig: i32) void
+pub bridge func clearSignal(sig: i32) void
 
 // Send a signal to the current process
 
-bridge func raise(sig: i32) void
+pub bridge func raise(sig: i32) void
 
 // Signal constants
 

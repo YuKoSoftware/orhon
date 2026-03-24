@@ -8,6 +8,7 @@ const parser = @import("parser.zig");
 const declarations = @import("declarations.zig");
 const builtins = @import("builtins.zig");
 const errors = @import("errors.zig");
+const module = @import("module.zig");
 const K = @import("constants.zig");
 const types = @import("types.zig");
 
@@ -57,7 +58,7 @@ pub const TypeResolver = struct {
     type_map: std.AutoHashMapUnmanaged(*parser.Node, RT),
     bitsize: ?u16 = null, // from #bitsize metadata
     locs: ?*const parser.LocMap = null,
-    source_file: []const u8 = "",
+    file_offsets: []const module.FileOffset = &.{},
     loop_depth: u32 = 0, // track nesting depth for break/continue validation
     current_return_type: ?RT = null, // expected return type of current function
 
@@ -78,7 +79,8 @@ pub const TypeResolver = struct {
     fn nodeLoc(self: *const TypeResolver, node: *parser.Node) ?errors.SourceLoc {
         if (self.locs) |l| {
             if (l.get(node)) |loc| {
-                return .{ .file = self.source_file, .line = loc.line, .col = loc.col };
+                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
+                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
             }
         }
         return null;

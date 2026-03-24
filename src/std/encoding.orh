@@ -5,16 +5,16 @@ module encoding
 
 // Encode bytes to base64 string
 
-bridge func base64Encode(data: String) String
+pub bridge func base64Encode(data: String) String
 
 // Decode base64 string to bytes
 
-bridge func base64Decode(data: String) (Error | String)
+pub bridge func base64Decode(data: String) (Error | String)
 
 // Encode bytes to lowercase hex string
 
-bridge func hexEncode(data: String) String
+pub bridge func hexEncode(data: String) String
 
 // Decode hex string to bytes
 
-bridge func hexDecode(data: String) (Error | String)
+pub bridge func hexDecode(data: String) (Error | String)

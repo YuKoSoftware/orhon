@@ -8,38 +8,38 @@ module crypto
 
 // SHA-256 hash
 
-bridge func sha256(data: String) String
+pub bridge func sha256(data: String) String
 
 // SHA-512 hash
 
-bridge func sha512(data: String) String
+pub bridge func sha512(data: String) String
 
 // MD5 hash (not cryptographically secure — use for checksums only)
 
-bridge func md5(data: String) String
+pub bridge func md5(data: String) String
 
 // BLAKE3 hash (fast, modern)
 
-bridge func blake3(data: String) String
+pub bridge func blake3(data: String) String
 
 // ── HMAC ──
 
 // HMAC-SHA256 message authentication code (returns hex)
 
-bridge func hmacSha256(data: String, key: String) String
+pub bridge func hmacSha256(data: String, key: String) String
 
 // ── AES-GCM Encryption ──
 
 // Encrypt plaintext with a 32-byte key (returns base64-encoded blob)
 
-bridge func encrypt(plaintext: String, key: String) (Error | String)
+pub bridge func encrypt(plaintext: String, key: String) (Error | String)
 
 // Decrypt base64-encoded blob with a 32-byte key
 
-bridge func decrypt(ciphertext: String, key: String) (Error | String)
+pub bridge func decrypt(ciphertext: String, key: String) (Error | String)
 
 // ── Identifiers ──
 
 // Generate a UUID v4 (random, cryptographically secure)
 
-bridge func uuid() String
+pub bridge func uuid() String

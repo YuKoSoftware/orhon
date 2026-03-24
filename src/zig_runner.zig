@@ -367,7 +367,7 @@ pub const ZigRunner = struct {
     /// Run all test blocks in the generated Zig project
     pub fn runTests(self: *ZigRunner, module_name: []const u8, project_name: []const u8) !bool {
         // Generate build.zig with test step included
-        try self.generateBuildZigWithTests(module_name, "exe", project_name, null);
+        try self.generateBuildZigWithTests(module_name, "exe", project_name, null, &.{});
 
         var args: std.ArrayListUnmanaged([]const u8) = .{};
         defer args.deinit(self.allocator);
@@ -395,8 +395,9 @@ pub const ZigRunner = struct {
         build_type: []const u8,
         project_name: []const u8,
         project_version: ?[3]u64,
+        link_libs: []const []const u8,
     ) !void {
-        return self.generateBuildZigWithTests(module_name, build_type, project_name, project_version);
+        return self.generateBuildZigWithTests(module_name, build_type, project_name, project_version, link_libs);
     }
 
     fn generateBuildZigWithTests(
@@ -405,8 +406,9 @@ pub const ZigRunner = struct {
         build_type: []const u8,
         project_name: []const u8,
         project_version: ?[3]u64,
+        link_libs: []const []const u8,
     ) !void {
-        const content = try buildZigContent(self.allocator, module_name, build_type, project_name, project_version);
+        const content = try buildZigContent(self.allocator, module_name, build_type, project_name, project_version, link_libs);
         defer self.allocator.free(content);
         try cache.writeGeneratedZig("build", content, self.allocator);
     }
@@ -420,6 +422,7 @@ pub fn buildZigContent(
     build_type: []const u8,
     project_name: []const u8,
     project_version: ?[3]u64,
+    link_libs: []const []const u8,
 ) ![]u8 {
     var buf = std.ArrayListUnmanaged(u8){};
     errdefer buf.deinit(allocator);
@@ -521,6 +524,10 @@ pub fn buildZigContent(
         try buf.appendSlice(allocator, lib_chunk);
     }
 
+    // Emit C library linking for the target artifact
+    const artifact_name: []const u8 = if (std.mem.eql(u8, build_type, "exe")) "exe" else "lib";
+    try emitLinkLibs(&buf, allocator, link_libs, artifact_name);
+
     // Always include test step so `orhon test` works
     const test_chunk = try std.fmt.allocPrint(allocator,
         \\    const unit_tests = b.addTest(.{{
@@ -541,12 +548,39 @@ pub fn buildZigContent(
     defer allocator.free(test_chunk);
     try buf.appendSlice(allocator, test_chunk);
 
+    // Link C libraries for tests too
+    try emitLinkLibs(&buf, allocator, link_libs, "unit_tests");
+
     try buf.appendSlice(allocator,
         \\}
         \\
     );
 
     return buf.toOwnedSlice(allocator);
+}
+
+/// Emit linkSystemLibrary + linkLibC calls for an artifact.
+fn emitLinkLibs(
+    buf: *std.ArrayListUnmanaged(u8),
+    allocator: std.mem.Allocator,
+    link_libs: []const []const u8,
+    artifact_name: []const u8,
+) !void {
+    if (link_libs.len == 0) return;
+    for (link_libs) |lib_name| {
+        const chunk = try std.fmt.allocPrint(allocator,
+            \\    {s}.root_module.linkSystemLibrary("{s}", .{{}});
+            \\
+        , .{ artifact_name, lib_name });
+        defer allocator.free(chunk);
+        try buf.appendSlice(allocator, chunk);
+    }
+    const libc_chunk = try std.fmt.allocPrint(allocator,
+        \\    {s}.linkLibC();
+        \\
+    , .{artifact_name});
+    defer allocator.free(libc_chunk);
+    try buf.appendSlice(allocator, libc_chunk);
 }
 
 /// Descriptor for a build target in a multi-target project
@@ -769,7 +803,7 @@ test "zig runner - find zig path format" {
 
 test "buildZigContent - exe" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null);
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addExecutable") != null);
@@ -783,7 +817,7 @@ test "buildZigContent - exe" {
 
 test "buildZigContent - static" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "mylib", "static", "mylib", null);
+    const content = try buildZigContent(alloc, "mylib", "static", "mylib", null, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -797,7 +831,7 @@ test "buildZigContent - static" {
 
 test "buildZigContent - dynamic" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "mylib", "dynamic", "mylib", null);
+    const content = try buildZigContent(alloc, "mylib", "dynamic", "mylib", null, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -809,9 +843,28 @@ test "buildZigContent - dynamic" {
 
 test "buildZigContent - project name in exe artifact" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "calculator", null);
+    const content = try buildZigContent(alloc, "main", "exe", "calculator", null, &.{});
     defer alloc.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "\"calculator\"") != null);
+}
+
+test "buildZigContent - linkC emits linkSystemLibrary and linkLibC" {
+    const alloc = std.testing.allocator;
+    const libs = [_][]const u8{"SDL3"};
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &libs);
+    defer alloc.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary(\"SDL3\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "linkLibC()") != null);
+}
+
+test "buildZigContent - no linkC means no linkLibC" {
+    const alloc = std.testing.allocator;
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{});
+    defer alloc.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "linkLibC") == null);
 }
 
 test "buildZigContentMulti - exe with dynamic lib" {

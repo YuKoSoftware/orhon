@@ -7,72 +7,72 @@ module str
 
 // Search
 
-bridge func contains(s: String, needle: String) bool
-bridge func startsWith(s: String, prefix: String) bool
-bridge func endsWith(s: String, suffix: String) bool
-bridge func indexOf(s: String, needle: String) (null | i32)
-bridge func lastIndexOf(s: String, needle: String) (null | i32)
+pub bridge func contains(s: String, needle: String) bool
+pub bridge func startsWith(s: String, prefix: String) bool
+pub bridge func endsWith(s: String, suffix: String) bool
+pub bridge func indexOf(s: String, needle: String) (null | i32)
+pub bridge func lastIndexOf(s: String, needle: String) (null | i32)
 
 // Case
 
-bridge func toUpper(s: String) String
-bridge func toLower(s: String) String
+pub bridge func toUpper(s: String) String
+pub bridge func toLower(s: String) String
 
 // Transform
 
-bridge func replace(s: String, old: String, new: String) String
-bridge func repeat(s: String, count: i32) String
-bridge func trim(s: String) String
-bridge func trimLeft(s: String) String
-bridge func trimRight(s: String) String
+pub bridge func replace(s: String, old: String, new: String) String
+pub bridge func repeat(s: String, count: i32) String
+pub bridge func trim(s: String) String
+pub bridge func trimLeft(s: String) String
+pub bridge func trimRight(s: String) String
 
 // Join (called on []String)
 
-bridge func join(parts: any, separator: String) String
+pub bridge func join(parts: any, separator: String) String
 
 // Parse
 
-bridge func parseInt(s: String) i32
-bridge func parseFloat(s: String) f64
+pub bridge func parseInt(s: String) i32
+pub bridge func parseFloat(s: String) f64
 
 // Convert
 
-bridge func toString(value: any) String
+pub bridge func toString(value: any) String
 
 // Length (codepoint count, not byte count)
 
-bridge func len(s: String) i32
+pub bridge func len(s: String) i32
 
 // Byte length (raw byte count)
 
-bridge func byteLen(s: String) i32
+pub bridge func byteLen(s: String) i32
 
 // Get the nth codepoint as a string (0-based)
 
-bridge func charAt(s: String, index: i32) String
+pub bridge func charAt(s: String, index: i32) String
 
 // ── Formatting ──
 
 // Pad string on the left to a minimum width
 
-bridge func padLeft(s: String, width: i32, fill: String) String
+pub bridge func padLeft(s: String, width: i32, fill: String) String
 
 // Pad string on the right to a minimum width
 
-bridge func padRight(s: String, width: i32, fill: String) String
+pub bridge func padRight(s: String, width: i32, fill: String) String
 
 // Truncate string to maximum length, adding "..." if truncated
 
-bridge func truncate(s: String, maxLen: i32) String
+pub bridge func truncate(s: String, maxLen: i32) String
 
 // Reverse a string
 
-bridge func reverse(s: String) String
+pub bridge func reverse(s: String) String
 
 // Split a string by separator (newline-separated results)
 
-bridge func splitBy(s: String, sep: String) String
+pub bridge func splitBy(s: String, sep: String) String
 
 // Count occurrences of a substring
 
-bridge func countOccurrences(s: String, sub: String) i32
+pub bridge func countOccurrences(s: String, sub: String) i32

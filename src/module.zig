@@ -12,6 +12,31 @@ const MODULE_KEYWORD = "module ";
 
 pub const BuildType = enum { none, exe, static, dynamic };
 
+/// Maps combined-buffer line numbers back to the original source file + local line.
+/// Each entry marks where a file begins in the combined buffer.
+pub const FileOffset = struct {
+    file: []const u8,       // source file path
+    start_line: usize,      // line number in combined buffer where this file starts (1-based)
+    original_start: usize,  // line number in original file that maps to start_line (1 if no lines stripped, 2 if module line stripped)
+};
+
+/// Resolve a combined-buffer line number to (file_path, local_line).
+pub fn resolveFileLoc(file_offsets: []const FileOffset, combined_line: usize) struct { file: []const u8, line: usize } {
+    if (file_offsets.len == 0) return .{ .file = "", .line = combined_line };
+
+    // Find the last offset whose start_line <= combined_line
+    var best: usize = 0;
+    for (file_offsets, 0..) |off, i| {
+        if (off.start_line <= combined_line) {
+            best = i;
+        } else {
+            break;
+        }
+    }
+    const off = file_offsets[best];
+    return .{ .file = off.file, .line = combined_line - off.start_line + off.original_start };
+}
+
 /// A resolved module — one or more .orh files sharing the same module name
 pub const Module = struct {
     name: []const u8,
@@ -23,6 +48,7 @@ pub const Module = struct {
     ast: ?*parser.Node,       // parsed AST (null if cached/unchanged)
     ast_arena: ?std.heap.ArenaAllocator, // owns the AST memory; null until parsed
     locs: ?parser.LocMap,     // AST node → source location map
+    file_offsets: []FileOffset, // maps combined-buffer lines → original files
 };
 /// The module resolver
 pub const Resolver = struct {
@@ -121,6 +147,7 @@ pub const Resolver = struct {
                 .ast = null,
                 .ast_arena = null,
                 .locs = null,
+                .file_offsets = &.{},
             });
         }
     }
@@ -243,7 +270,11 @@ pub const Resolver = struct {
             // The first file keeps its `module X` declaration; subsequent files
             // have their `module X` line stripped to avoid duplicate declarations.
             var combined = std.ArrayListUnmanaged(u8){};
+            var offsets = std.ArrayListUnmanaged(FileOffset){};
+            var current_line: usize = 1; // 1-based line tracking
             for (mod.files, 0..) |file_path, file_idx| {
+                // Record where this file starts in the combined buffer
+                try offsets.append(arena_alloc, .{ .file = file_path, .start_line = current_line, .original_start = 1 });
                 const file = try std.fs.cwd().openFile(file_path, .{});
                 defer file.close();
                 const content = try file.readToEndAlloc(arena_alloc, 10 * 1024 * 1024);
@@ -278,12 +309,16 @@ pub const Resolver = struct {
                     }
                 }
 
+                const len_before = combined.items.len;
                 if (file_idx > 0) {
                     // Skip the `module X` line from non-first files
                     const trimmed = std.mem.trimLeft(u8, content, " \t");
                     if (std.mem.startsWith(u8, trimmed, MODULE_KEYWORD)) {
                         if (std.mem.indexOfScalar(u8, trimmed, '\n')) |nl| {
                             try combined.appendSlice(arena_alloc, trimmed[nl + 1 ..]);
+                            // The module line was stripped, so the first line in the
+                            // combined buffer corresponds to line 2 of the original file
+                            offsets.items[file_idx].original_start = 2;
                         } else {
                             // File only has the module line — nothing to add
                         }
@@ -294,7 +329,16 @@ pub const Resolver = struct {
                     try combined.appendSlice(arena_alloc, content);
                 }
                 try combined.append(arena_alloc, '\n');
+
+                // Count newlines in appended content to track line position
+                const appended = combined.items[len_before..];
+                for (appended) |c| {
+                    if (c == '\n') current_line += 1;
+                }
             }
+
+            // Store file offset map for error reporting
+            mod.file_offsets = offsets.items;
 
             // Lex — token list is temporary (freed after parsing), but token.text
             // slices point into combined which lives in the arena. Safe.
@@ -439,6 +483,7 @@ pub const Resolver = struct {
                             .ast = null,
                             .ast_arena = null,
                             .locs = null,
+                            .file_offsets = &.{},
                         };
                     } else {
                         self.allocator.free(imp_mod_name);
@@ -705,6 +750,44 @@ fn compareVersions(a: [3]u64, b: [3]u64) i64 {
         if (av > bv) return 1;
     }
     return 0;
+}
+
+test "resolveFileLoc - single file" {
+    const offsets = [_]FileOffset{
+        .{ .file = "src/main.orh", .start_line = 1, .original_start = 1 },
+    };
+    const r = resolveFileLoc(&offsets, 10);
+    try std.testing.expectEqualStrings("src/main.orh", r.file);
+    try std.testing.expectEqual(@as(usize, 10), r.line);
+}
+
+test "resolveFileLoc - multi file" {
+    const offsets = [_]FileOffset{
+        .{ .file = "src/main.orh", .start_line = 1, .original_start = 1 },
+        .{ .file = "src/utils.orh", .start_line = 20, .original_start = 2 }, // module line stripped
+        .{ .file = "src/extra.orh", .start_line = 50, .original_start = 2 },
+    };
+
+    // Line in first file
+    const r1 = resolveFileLoc(&offsets, 5);
+    try std.testing.expectEqualStrings("src/main.orh", r1.file);
+    try std.testing.expectEqual(@as(usize, 5), r1.line);
+
+    // Line in second file (stripped module line, so original_start = 2)
+    const r2 = resolveFileLoc(&offsets, 25);
+    try std.testing.expectEqualStrings("src/utils.orh", r2.file);
+    try std.testing.expectEqual(@as(usize, 7), r2.line); // 25 - 20 + 2 = 7
+
+    // Line in third file
+    const r3 = resolveFileLoc(&offsets, 50);
+    try std.testing.expectEqualStrings("src/extra.orh", r3.file);
+    try std.testing.expectEqual(@as(usize, 2), r3.line); // 50 - 50 + 2 = 2
+}
+
+test "resolveFileLoc - empty offsets" {
+    const r = resolveFileLoc(&.{}, 42);
+    try std.testing.expectEqualStrings("", r.file);
+    try std.testing.expectEqual(@as(usize, 42), r.line);
 }
 
 test "module resolver init" {

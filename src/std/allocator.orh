@@ -6,14 +6,14 @@ module allocator
 
 // SMP — general-purpose, thread-safe allocator (default)
 
-bridge struct SMP {
+pub bridge struct SMP {
     bridge func create() SMP
     bridge func deinit(self: &SMP) void
 }
 
 // Arena — batch allocator, freeAll releases everything at once
 
-bridge struct Arena {
+pub bridge struct Arena {
     bridge func create() Arena
     bridge func freeAll(self: &Arena) void
     bridge func deinit(self: &Arena) void
@@ -21,6 +21,6 @@ bridge struct Arena {
 
 // Page — OS page allocator, simple and fast
 
-bridge struct Page {
+pub bridge struct Page {
     bridge func create() Page
 }

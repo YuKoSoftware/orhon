@@ -161,7 +161,7 @@ fn buildInitializeResult(allocator: std.mem.Allocator, id: std.json.Value) ![]u8
     try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
     try writeJsonValue(&buf, allocator, id);
     try buf.appendSlice(allocator,
-        \\,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},"hoverProvider":true,"definitionProvider":true,"documentSymbolProvider":true,"completionProvider":{"triggerCharacters":["."]},"referencesProvider":true,"renameProvider":{"prepareProvider":false},"signatureHelpProvider":{"triggerCharacters":["(", ","]},"documentFormattingProvider":true,"workspaceSymbolProvider":true,"documentHighlightProvider":true,"foldingRangeProvider":true,"inlayHintProvider":true,"codeActionProvider":true},"serverInfo":{"name":"orhon-lsp","version":"0.7.9"}}}
+        \\,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},"hoverProvider":true,"definitionProvider":true,"documentSymbolProvider":true,"completionProvider":{"triggerCharacters":["."]},"referencesProvider":true,"renameProvider":{"prepareProvider":false},"signatureHelpProvider":{"triggerCharacters":["(", ","]},"documentFormattingProvider":true,"workspaceSymbolProvider":true,"documentHighlightProvider":true,"foldingRangeProvider":true,"inlayHintProvider":true,"codeActionProvider":true},"serverInfo":{"name":"orhon-lsp","version":"0.8.0"}}}
     );
 
     return allocator.dupe(u8, buf.items);
@@ -522,6 +522,7 @@ fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Analysis
         const mod_ptr = mod_resolver.modules.getPtr(mod_name) orelse continue;
         const ast = mod_ptr.ast orelse continue;
         const locs_ptr: ?*const parser.LocMap = if (mod_ptr.locs) |*l| l else null;
+        const file_offsets = mod_ptr.file_offsets;
         const source_file: []const u8 = if (mod_ptr.files.len > 0) mod_ptr.files[0] else "";
         const errors_before = reporter.errors.items.len;
 
@@ -529,7 +530,7 @@ fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Analysis
         var dc = declarations.DeclCollector.init(allocator, &reporter);
         defer dc.deinit();
         dc.locs = locs_ptr;
-        dc.source_file = source_file;
+        dc.file_offsets = file_offsets;
         dc.collect(ast) catch {};
         if (reporter.errors.items.len > errors_before) {
             // Still extract what symbols we can from partial declarations
@@ -541,7 +542,7 @@ fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Analysis
         var tr = resolver.TypeResolver.init(allocator, &dc.table, &reporter);
         defer tr.deinit();
         tr.locs = locs_ptr;
-        tr.source_file = source_file;
+        tr.file_offsets = file_offsets;
         tr.resolve(ast) catch {};
 
         // Extract symbols from DeclTable + AST locations (even if type resolution had errors)
@@ -552,7 +553,7 @@ fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Analysis
         // Pass 6: Ownership
         var oc = ownership.OwnershipChecker.init(allocator, &reporter);
         oc.locs = locs_ptr;
-        oc.source_file = source_file;
+        oc.file_offsets = file_offsets;
         oc.decls = &dc.table;
         oc.check(ast) catch {};
         if (reporter.errors.items.len > errors_before) continue;
@@ -561,7 +562,7 @@ fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Analysis
         var bc = borrow.BorrowChecker.init(allocator, &reporter);
         defer bc.deinit();
         bc.locs = locs_ptr;
-        bc.source_file = source_file;
+        bc.file_offsets = file_offsets;
         bc.decls = &dc.table;
         bc.check(ast) catch {};
         if (reporter.errors.items.len > errors_before) continue;
@@ -570,14 +571,14 @@ fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Analysis
         var tc = thread_safety.ThreadSafetyChecker.init(allocator, &reporter);
         defer tc.deinit();
         tc.locs = locs_ptr;
-        tc.source_file = source_file;
+        tc.file_offsets = file_offsets;
         tc.check(ast) catch {};
         if (reporter.errors.items.len > errors_before) continue;
 
         // Pass 9: Error Propagation
         var prop_checker = propagation.PropagationChecker.init(allocator, &reporter, &dc.table);
         prop_checker.locs = locs_ptr;
-        prop_checker.source_file = source_file;
+        prop_checker.file_offsets = file_offsets;
         prop_checker.check(ast) catch {};
     }
 
@@ -1170,6 +1171,7 @@ fn builtinDetail(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
         .{ "var", "(keyword) mutable variable declaration" },
         .{ "const", "(keyword) immutable variable declaration" },
         .{ "if", "(keyword) conditional branch" },
+        .{ "elif", "(keyword) chained conditional branch" },
         .{ "else", "(keyword) alternative branch" },
         .{ "for", "(keyword) iteration over a collection or range" },
         .{ "while", "(keyword) loop with condition" },
@@ -1966,7 +1968,7 @@ fn buildGeneralCompletionResponse(allocator: std.mem.Allocator, id: std.json.Val
 
     // Keywords
     const keywords = [_][]const u8{
-        "func", "var", "const", "if", "else", "for", "while", "return",
+        "func", "var", "const", "if", "elif", "else", "for", "while", "return",
         "import", "pub", "match", "struct", "enum", "bitfield", "defer",
         "thread", "null", "void", "compt", "any", "module", "test",
         "and", "or", "not", "as", "break", "continue", "true", "false",
@@ -3087,7 +3089,7 @@ fn classifyToken(kind: lexer.TokenKind) TokenClassification {
         // Keywords
         .kw_func, .kw_var, .kw_const, .kw_struct, .kw_enum, .kw_bitfield,
         .kw_module, .kw_import, .kw_include, .kw_pub, .kw_bridge, .kw_compt, .kw_test,
-        .kw_if, .kw_else, .kw_for, .kw_while, .kw_return, .kw_match,
+        .kw_if, .kw_elif, .kw_else, .kw_for, .kw_while, .kw_return, .kw_match,
         .kw_break, .kw_continue, .kw_defer, .kw_thread, .kw_any,
         .kw_and, .kw_or, .kw_not, .kw_as, .kw_is, .kw_cast,
         .kw_copy, .kw_move, .kw_swap, .kw_true, .kw_false, .kw_null,

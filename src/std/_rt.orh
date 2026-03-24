@@ -5,21 +5,21 @@ module _rt
 // Provides internal types and allocators used by compiler features.
 
 // Runtime allocator — used by @{} string interpolation
-bridge func alloc() any
+pub bridge func alloc() any
 
 // Error type — used by (Error | T) unions
-bridge struct OrhonError {
+pub bridge struct OrhonError {
     pub message: String
 }
 
 // Nullable wrapper — used by (null | T) unions
-bridge func OrhonNullable(T: type) type
+pub bridge func OrhonNullable(T: type) type
 
 // Result wrapper — used by (Error | T) unions
-bridge func OrhonResult(T: type) type
+pub bridge func OrhonResult(T: type) type
 
 // Thread handle — used by thread declarations
-bridge func OrhonHandle(T: type) type
+pub bridge func OrhonHandle(T: type) type
 
 // Type identity — used by typeid() builtin
-bridge func orhonTypeId(T: type) any
+pub bridge func orhonTypeId(T: type) any

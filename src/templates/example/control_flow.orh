@@ -10,6 +10,20 @@ func max(a: i32, b: i32) i32 {
     }
 }
 
+// ─── Elif Chains ────────────────────────────────────────────────────────────
+
+// elif chains multi-way branches — use match for value branching
+
+func classify_sign(n: i32) i32 {
+    if(n > 0) {
+        return 1
+    } elif(n < 0) {
+        return 0 - 1
+    } else {
+        return 0
+    }
+}
+
 // ─── While Loops ─────────────────────────────────────────────────────────────
 
 func countdown(n: i32) i32 {
@@ -150,6 +164,12 @@ func find_pair(limit: i32) i32 {
 
 test "max" {
     assert(max(3, 7) == 7)
+}
+
+test "classify sign" {
+    assert(classify_sign(5) == 1)
+    assert(classify_sign(0 - 3) == 0 - 1)
+    assert(classify_sign(0) == 0)
 }
 
 test "countdown" {

@@ -5,16 +5,16 @@ module xml
 
 // Get text content at a dot-path ("root.child.name")
 
-bridge func get(source: String, path: String) (Error | String)
+pub bridge func get(source: String, path: String) (Error | String)
 
 // Get an attribute value at a dot-path
 
-bridge func getAttr(source: String, path: String, attr: String) (Error | String)
+pub bridge func getAttr(source: String, path: String, attr: String) (Error | String)
 
 // Get all matching elements at a dot-path (newline-separated)
 
-bridge func getAll(source: String, path: String) (Error | String)
+pub bridge func getAll(source: String, path: String) (Error | String)
 
 // Check if a tag exists at a dot-path
 
-bridge func hasTag(source: String, path: String) bool
+pub bridge func hasTag(source: String, path: String) bool

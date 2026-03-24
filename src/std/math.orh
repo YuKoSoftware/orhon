@@ -6,38 +6,38 @@ module math
 
 // Basic
 
-bridge func abs(x: any) any
-bridge func min(a: any, b: any) any
-bridge func max(a: any, b: any) any
-bridge func clamp(x: any, lo: any, hi: any) any
+pub bridge func abs(x: any) any
+pub bridge func min(a: any, b: any) any
+pub bridge func max(a: any, b: any) any
+pub bridge func clamp(x: any, lo: any, hi: any) any
 
 // Rounding (float types)
 
-bridge func floor(x: any) any
-bridge func ceil(x: any) any
-bridge func round(x: any) any
+pub bridge func floor(x: any) any
+pub bridge func ceil(x: any) any
+pub bridge func round(x: any) any
 
 // Powers and roots (float types)
 
-bridge func sqrt(x: any) any
-bridge func pow(base: any, exp: any) any
-bridge func log(x: any) any
-bridge func log2(x: any) any
-bridge func log10(x: any) any
-bridge func exp(x: any) any
+pub bridge func sqrt(x: any) any
+pub bridge func pow(base: any, exp: any) any
+pub bridge func log(x: any) any
+pub bridge func log2(x: any) any
+pub bridge func log10(x: any) any
+pub bridge func exp(x: any) any
 
 // Trigonometry (float types)
 
-bridge func sin(x: any) any
-bridge func cos(x: any) any
-bridge func tan(x: any) any
-bridge func asin(x: any) any
-bridge func acos(x: any) any
-bridge func atan(x: any) any
-bridge func atan2(y: any, x: any) any
+pub bridge func sin(x: any) any
+pub bridge func cos(x: any) any
+pub bridge func tan(x: any) any
+pub bridge func asin(x: any) any
+pub bridge func acos(x: any) any
+pub bridge func atan(x: any) any
+pub bridge func atan2(y: any, x: any) any
 
 // Constants
 
-bridge func pi() f64
-bridge func e() f64
-bridge func inf() f64
+pub bridge func pi() f64
+pub bridge func e() f64
+pub bridge func inf() f64

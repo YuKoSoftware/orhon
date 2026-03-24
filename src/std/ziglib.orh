@@ -8,27 +8,27 @@ module ziglib
 
 // Basic function — takes primitives, returns primitive
 
-bridge func add(a: i32, b: i32) i32
+pub bridge func add(a: i32, b: i32) i32
 
 // Function returning String
 
-bridge func greeting(name: String) String
+pub bridge func greeting(name: String) String
 
 // Function returning bool
 
-bridge func isEven(n: i32) bool
+pub bridge func isEven(n: i32) bool
 
 // Function with float
 
-bridge func distance(x: f64, y: f64) f64
+pub bridge func distance(x: f64, y: f64) f64
 
 // Generic function — any param
 
-bridge func identity(val: any) any
+pub bridge func identity(val: any) any
 
 // ─── Extern struct (no type params) ─────────────────────────
 
-bridge struct Counter {
+pub bridge struct Counter {
     bridge func create(start: i32) Counter
     bridge func get(self: const &Counter) i32
     bridge func increment(self: &Counter) void
@@ -37,7 +37,7 @@ bridge struct Counter {
 
 // ─── Extern struct (generic) ────────────────────────────────
 
-bridge struct Box(T: type) {
+pub bridge struct Box(T: type) {
     bridge func create(val: T) Box
     bridge func get(self: const &Box) T
     bridge func set(self: &Box, val: T) void
@@ -45,7 +45,7 @@ bridge struct Box(T: type) {
 
 // ─── Extern struct (two type params) ────────────────────────
 
-bridge struct KV(K: type, V: type) {
+pub bridge struct KV(K: type, V: type) {
     bridge func create(k: K, v: V) KV
     bridge func key(self: const &KV) K
     bridge func val(self: const &KV) V
@@ -53,6 +53,6 @@ bridge struct KV(K: type, V: type) {
 
 // ─── Extern const ───────────────────────────────────────────
 
-bridge func maxSize() i32
+pub bridge func maxSize() i32
 
-bridge func pi() f64
+pub bridge func pi() f64

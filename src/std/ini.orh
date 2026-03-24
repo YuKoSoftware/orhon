@@ -5,16 +5,16 @@ module ini
 
 // Get a value by section and key ("section.key")
 
-bridge func get(source: String, path: String) (Error | String)
+pub bridge func get(source: String, path: String) (Error | String)
 
 // Check if a key exists
 
-bridge func hasKey(source: String, path: String) bool
+pub bridge func hasKey(source: String, path: String) bool
 
 // Get all keys in a section (newline-separated)
 
-bridge func getKeys(source: String, section: String) (Error | String)
+pub bridge func getKeys(source: String, section: String) (Error | String)
 
 // Get all section names (newline-separated)
 
-bridge func getSections(source: String) String
+pub bridge func getSections(source: String) String

@@ -1,0 +1,76 @@
+# Requirements: Orhon Compiler — Bug Fixes & Cleanup
+
+**Defined:** 2026-03-24
+**Core Value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
+
+## v1 Requirements
+
+Requirements for this milestone. Each maps to roadmap phases.
+
+### Bug Fixes
+
+- [ ] **BUG-01**: Cross-module struct method calls emit by-value instead of `const &` — codegen needs imported DeclTables or MIR argument mode annotations
+- [ ] **BUG-02**: Qualified generic types (`math.Vec2(f64)`) pass validation without checking target type exists in referenced module's DeclTable
+- [ ] **BUG-03**: Const struct values incorrectly treated as moved when passed by value to functions — ownership checker should treat by-value passing of const as copy
+- [ ] **BUG-04**: `orhon test` reports 0 passed/0 failed instead of actually running test blocks — debug test command pipeline
+
+### Memory & Error Handling
+
+- [ ] **MEM-01**: String interpolation `@{variable}` allocates temp buffers that are never freed — establish cleanup strategy
+- [ ] **MEM-02**: `catch unreachable` in codegen (lines 655, 688, 2123) crashes on OOM instead of propagating errors through Zig error system
+- [ ] **MEM-03**: 103 `catch {}` instances across 15 stdlib bridge files silently suppress allocation/I/O failures — propagate or apply consistent error strategy
+- [ ] **MEM-04**: Tester module pointer/collection constructors need migration to `.new()`/`.cast()` method-style constructors
+
+### LSP Hardening
+
+- [ ] **LSP-01**: Wrap `runAnalysis()` in per-request ArenaAllocator to prevent unbounded memory growth during long editing sessions
+- [ ] **LSP-02**: Replace fixed 1024-byte header line buffer in `readMessage()` with dynamic allocation or larger compile-time constant
+- [ ] **LSP-03**: Add upper bound on content-length header to prevent OOM from malicious or oversized requests
+
+## v2 Requirements
+
+Deferred to future milestones. Tracked but not in current roadmap.
+
+### Architecture
+
+- **ARCH-01**: Zig IR layer — split codegen into Zig IR structs, lowering pass, and printer
+- **ARCH-02**: Dependency-parallel module compilation via thread pool
+- **ARCH-03**: MIR optimization passes (SSA, inlining, DCE, constant folding)
+- **ARCH-04**: MIR binary serialization and caching
+- **ARCH-05**: PEG syntax documentation auto-generator
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| New language features | Stabilization milestone — no new syntax or semantics |
+| Zig IR refactor | Large architectural change, separate milestone |
+| Parallel compilation | Optimization, not correctness |
+| Tamga companion bugs | External project, different scope |
+| v1.0 release | This milestone prepares for it but doesn't ship it |
+| Formatter improvements | Not a bug, not blocking |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| BUG-01 | TBD | Pending |
+| BUG-02 | TBD | Pending |
+| BUG-03 | TBD | Pending |
+| BUG-04 | TBD | Pending |
+| MEM-01 | TBD | Pending |
+| MEM-02 | TBD | Pending |
+| MEM-03 | TBD | Pending |
+| MEM-04 | TBD | Pending |
+| LSP-01 | TBD | Pending |
+| LSP-02 | TBD | Pending |
+| LSP-03 | TBD | Pending |
+
+**Coverage:**
+- v1 requirements: 11 total
+- Mapped to phases: 0
+- Unmapped: 11 ⚠️
+
+---
+*Requirements defined: 2026-03-24*
+*Last updated: 2026-03-24 after initial definition*

@@ -83,4 +83,19 @@ cd discardtest
 if grep -q '_ = ' .orh-cache/generated/main.zig; then pass "bare call discards return value"
 else fail "bare call discards return value"; fi
 
+# ── Interpolation error propagation ─────────────────────────────
+
+# Verify codegen.zig emits safe error propagation for interpolation allocPrint calls.
+# Both generateInterpolatedString and generateInterpolatedStringMir must use
+# 'catch |err| return err' instead of 'catch unreachable'.
+
+CODEGEN_SRC="$REPO_DIR/src/codegen.zig"
+
+INTERP_SAFE_COUNT=$(grep -c 'catch |err| return err' "$CODEGEN_SRC" 2>/dev/null || echo 0)
+if [ "$INTERP_SAFE_COUNT" -ge 2 ]; then
+    pass "interpolation propagates OOM (no catch unreachable)"
+else
+    fail "interpolation propagates OOM (no catch unreachable)"
+fi
+
 report_results

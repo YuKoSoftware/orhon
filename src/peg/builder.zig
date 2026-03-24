@@ -174,6 +174,7 @@ fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     if (std.mem.eql(u8, rule, "grouped_expr")) return buildGroupedExpr(ctx, cap);
     if (std.mem.eql(u8, rule, "tuple_literal")) return buildTupleLiteral(ctx, cap);
     if (std.mem.eql(u8, rule, "struct_expr")) return buildStructExpr(ctx, cap);
+    if (std.mem.eql(u8, rule, "ptr_cast_expr")) return buildPtrCastExpr(ctx, cap);
 
     // Binary expression tower — all use the same builder
     if (std.mem.eql(u8, rule, "or_expr")) return buildBinaryExpr(ctx, cap, "or");
@@ -1301,6 +1302,35 @@ fn buildPostfixExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     }
 
     return expr;
+}
+
+/// Build ptr_cast_expr: Ptr(T).cast(addr) / RawPtr(T).cast(addr) / VolatilePtr(T).cast(addr)
+/// Grammar: ('Ptr' / 'RawPtr' / 'VolatilePtr') '(' type ')' '.' 'cast' '(' expr ')'
+/// Produces a ptr_expr node — same as the classic Ptr(T, addr) syntax.
+fn buildPtrCastExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    const kind = tokenText(ctx, cap.start_pos);
+    var type_arg: ?*Node = null;
+    var addr_arg: ?*Node = null;
+    for (cap.children) |*child| {
+        if (child.rule) |r| {
+            if (std.mem.eql(u8, r, "type") and type_arg == null) {
+                type_arg = try buildNode(ctx, child);
+            } else if (std.mem.eql(u8, r, "expr") and addr_arg == null) {
+                addr_arg = try buildNode(ctx, child);
+            }
+        }
+    }
+    const t = type_arg orelse return error.MissingTypeArg;
+    var addr = addr_arg orelse return error.MissingAddrArg;
+    // PEG may parse &x as ref_type (type_ptr) in some contexts — convert to borrow_expr
+    if (addr.* == .type_ptr) {
+        addr = try ctx.newNode(.{ .borrow_expr = addr.type_ptr.elem });
+    }
+    return ctx.newNode(.{ .ptr_expr = .{
+        .kind = kind,
+        .type_arg = t,
+        .addr_arg = addr,
+    } });
 }
 
 // ============================================================

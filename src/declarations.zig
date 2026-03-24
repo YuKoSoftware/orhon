@@ -170,6 +170,34 @@ pub const DeclCollector = struct {
     /// Collect all declarations from a parsed AST
     pub fn collect(self: *DeclCollector, ast: *parser.Node) !void {
         if (ast.* != .program) return;
+
+        // Validate: #linkC is only allowed in modules that have bridge declarations.
+        var link_c_node: ?*parser.Node = null;
+        for (ast.program.metadata) |meta| {
+            if (std.mem.eql(u8, meta.metadata.field, "linkC")) {
+                link_c_node = meta;
+                break;
+            }
+        }
+        if (link_c_node != null) {
+            var has_bridge = false;
+            for (ast.program.top_level) |node| {
+                switch (node.*) {
+                    .func_decl => |f| if (f.is_bridge) { has_bridge = true; break; },
+                    .struct_decl => |s| if (s.is_bridge) { has_bridge = true; break; },
+                    .const_decl => |v| if (v.is_bridge) { has_bridge = true; break; },
+                    else => {},
+                }
+            }
+            if (!has_bridge) {
+                try self.reporter.report(.{
+                    .message = "#linkC is only allowed in modules with bridge declarations",
+                    .loc = self.nodeLoc(link_c_node.?),
+                });
+                return;
+            }
+        }
+
         for (ast.program.top_level) |node| {
             try self.collectTopLevel(node);
         }
@@ -564,6 +592,100 @@ test "declaration collector - bridge func is registered" {
     try collector.collect(prog);
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(collector.table.funcs.contains("print"));
+}
+
+test "declaration collector - #linkC without bridge is an error" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // A normal (non-bridge) func
+    const ret_type = try a.create(parser.Node);
+    ret_type.* = .{ .type_named = "void" };
+    const func_node = try a.create(parser.Node);
+    func_node.* = .{ .func_decl = .{
+        .name = "foo",
+        .params = &.{},
+        .return_type = ret_type,
+        .body = undefined,
+        .is_compt = false,
+        .is_pub = true,
+        .is_bridge = false,
+        .is_thread = false,
+    }};
+
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = func_node;
+
+    // #linkC metadata node
+    const lib_name = try a.create(parser.Node);
+    lib_name.* = .{ .string_literal = "\"SDL3\"" };
+    const link_meta = try a.create(parser.Node);
+    link_meta.* = .{ .metadata = .{ .field = "linkC", .value = lib_name } };
+    const metadata = try a.alloc(*parser.Node, 1);
+    metadata[0] = link_meta;
+
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "bad" } };
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{ .module = module_node,
+        .metadata = metadata, .imports = &.{}, .top_level = top_level } };
+
+    var collector = DeclCollector.init(alloc, &reporter);
+    defer collector.deinit();
+
+    try collector.collect(prog);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "declaration collector - #linkC with bridge is allowed" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const ret_type = try a.create(parser.Node);
+    ret_type.* = .{ .type_named = "void" };
+    const func_node = try a.create(parser.Node);
+    func_node.* = .{ .func_decl = .{
+        .name = "init",
+        .params = &.{},
+        .return_type = ret_type,
+        .body = undefined,
+        .is_compt = false,
+        .is_pub = true,
+        .is_bridge = true,
+        .is_thread = false,
+    }};
+
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = func_node;
+
+    const lib_name = try a.create(parser.Node);
+    lib_name.* = .{ .string_literal = "\"SDL3\"" };
+    const link_meta = try a.create(parser.Node);
+    link_meta.* = .{ .metadata = .{ .field = "linkC", .value = lib_name } };
+    const metadata = try a.alloc(*parser.Node, 1);
+    metadata[0] = link_meta;
+
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "sdl" } };
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{ .module = module_node,
+        .metadata = metadata, .imports = &.{}, .top_level = top_level } };
+
+    var collector = DeclCollector.init(alloc, &reporter);
+    defer collector.deinit();
+
+    try collector.collect(prog);
+    try std.testing.expect(!reporter.hasErrors());
 }
 
 /// Check if a name conflicts with a primitive or builtin type name.

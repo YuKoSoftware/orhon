@@ -1308,6 +1308,8 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
             var project_version: ?[3]u64 = null;
             var link_libs: std.ArrayListUnmanaged([]const u8) = .{};
             defer link_libs.deinit(allocator);
+
+            // Collect build/name/version from root module only; collect #linkC from all modules.
             if (mod.ast) |ast| {
                 for (ast.program.metadata) |meta| {
                     if (std.mem.eql(u8, meta.metadata.field, "build")) {
@@ -1336,6 +1338,37 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
                             else
                                 raw;
                             try link_libs.append(allocator, lib_name);
+                        }
+                    }
+                }
+            }
+
+            // Collect #linkC from all non-root modules (bridge modules declare their C deps).
+            var all_mod_it = mod_resolver.modules.iterator();
+            while (all_mod_it.next()) |all_entry| {
+                const dep_mod = all_entry.value_ptr;
+                if (dep_mod.is_root) continue;
+                if (dep_mod.ast) |ast| {
+                    for (ast.program.metadata) |meta| {
+                        if (std.mem.eql(u8, meta.metadata.field, "linkC")) {
+                            if (meta.metadata.value.* == .string_literal) {
+                                const raw = meta.metadata.value.string_literal;
+                                const lib_name = if (raw.len >= 2 and raw[0] == '"')
+                                    raw[1 .. raw.len - 1]
+                                else
+                                    raw;
+                                // Avoid duplicates
+                                var already_listed = false;
+                                for (link_libs.items) |existing| {
+                                    if (std.mem.eql(u8, existing, lib_name)) {
+                                        already_listed = true;
+                                        break;
+                                    }
+                                }
+                                if (!already_listed) {
+                                    try link_libs.append(allocator, lib_name);
+                                }
+                            }
                         }
                     }
                 }

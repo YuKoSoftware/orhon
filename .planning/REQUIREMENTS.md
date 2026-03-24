@@ -18,7 +18,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [x] **MEM-01**: String interpolation `@{variable}` allocates temp buffers that are never freed — establish cleanup strategy
 - [x] **MEM-02**: `catch unreachable` in codegen (lines 655, 688, 2123) crashes on OOM instead of propagating errors through Zig error system
-- [ ] **MEM-03**: 103 `catch {}` instances across 15 stdlib bridge files silently suppress allocation/I/O failures — propagate or apply consistent error strategy
+- [x] **MEM-03**: 103 `catch {}` instances across 15 stdlib bridge files silently suppress allocation/I/O failures — propagate or apply consistent error strategy
 - [x] **MEM-04**: Tester module pointer/collection constructors need migration to `.new()`/`.cast()` method-style constructors
 
 ### LSP Hardening
@@ -60,7 +60,7 @@ Deferred to future milestones. Tracked but not in current roadmap.
 | BUG-04 | Phase 1 | Complete |
 | MEM-01 | Phase 2 | Complete |
 | MEM-02 | Phase 2 | Complete |
-| MEM-03 | Phase 2 | Pending |
+| MEM-03 | Phase 2 | Complete |
 | MEM-04 | Phase 2 | Complete |
 | LSP-01 | Phase 3 | Pending |
 | LSP-02 | Phase 3 | Pending |

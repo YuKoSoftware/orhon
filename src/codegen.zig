@@ -1332,7 +1332,7 @@ pub const CodeGen = struct {
                             .arbitrary_union_wrap => {
                                 try self.generateArbitraryUnionWrappedExprMir(val_m, self.funcReturnMembers());
                             },
-                            .array_to_slice => {
+                            .array_to_slice, .value_to_const_ref => {
                                 try self.emit("&");
                                 try self.generateExprMir(val_m);
                             },
@@ -2409,6 +2409,11 @@ pub const CodeGen = struct {
                 // Native ?T: unwrap → .?
                 try self.generateExprMir(m);
                 try self.emit(".?");
+            },
+            .value_to_const_ref => {
+                // T → *const T: take address for const & parameter passing
+                try self.emit("&");
+                try self.generateExprMir(m);
             },
         }
     }

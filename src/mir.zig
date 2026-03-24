@@ -57,6 +57,7 @@ pub const Coercion = enum {
     error_wrap,
     arbitrary_union_wrap,
     optional_unwrap,
+    value_to_const_ref, // T → &T for const & parameters
 };
 
 // ── Node Info ───────────────────────────────────────────────
@@ -161,6 +162,8 @@ pub const MirAnnotator = struct {
     var_types: std.StringHashMapUnmanaged(NodeInfo),
     /// Current function name — for looking up return type during annotation.
     current_func_name: ?[]const u8 = null,
+    /// All module DeclTables — for cross-module function signature resolution.
+    all_decls: ?*const std.StringHashMap(*declarations.DeclTable) = null,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -526,7 +529,23 @@ pub const MirAnnotator = struct {
         // Null union → plain (optional unwrap)
         if (src == .null_union and dst != .null_union)
             return .{ .kind = .optional_unwrap };
+        // Value → const ref (T → const &T)
+        if (dst == .ptr) {
+            if (std.mem.eql(u8, dst.ptr.kind, "const &")) {
+                if (typesMatch(src, dst.ptr.elem.*)) {
+                    return .{ .kind = .value_to_const_ref };
+                }
+            }
+        }
         return .{ .kind = null };
+    }
+
+    /// Check if two resolved types are structurally equivalent for coercion purposes.
+    fn typesMatch(a: RT, b: RT) bool {
+        if (a == .primitive and b == .primitive) return a.primitive == b.primitive;
+        if (a == .named and b == .named) return std.mem.eql(u8, a.named, b.named);
+        if (a == .generic and b == .generic) return std.mem.eql(u8, a.generic.name, b.generic.name);
+        return false;
     }
 
     const CoercionResult = struct {
@@ -540,9 +559,30 @@ pub const MirAnnotator = struct {
         if (c.callee.* == .identifier) {
             return self.decls.funcs.get(c.callee.identifier);
         }
-        // Module call: module.func_name(args)
+        // Module call: module.func_name(args) or module.Type.method(args)
         if (c.callee.* == .field_expr) {
-            return self.decls.funcs.get(c.callee.field_expr.field);
+            // First try current module's decls by function name
+            const local = self.decls.funcs.get(c.callee.field_expr.field);
+            if (local != null) return local;
+            // Cross-module: module.func_name — object is a plain identifier (module name)
+            if (c.callee.field_expr.object.* == .identifier) {
+                if (self.all_decls) |ad| {
+                    if (ad.get(c.callee.field_expr.object.identifier)) |mod_decls| {
+                        return mod_decls.funcs.get(c.callee.field_expr.field);
+                    }
+                }
+            }
+            // Cross-module: module.Type.method — object is itself a field_expr
+            if (c.callee.field_expr.object.* == .field_expr) {
+                const inner = c.callee.field_expr.object.field_expr;
+                if (inner.object.* == .identifier) {
+                    if (self.all_decls) |ad| {
+                        if (ad.get(inner.object.identifier)) |mod_decls| {
+                            return mod_decls.funcs.get(c.callee.field_expr.field);
+                        }
+                    }
+                }
+            }
         }
         return null;
     }
@@ -1636,4 +1676,77 @@ test "detectCoercion - unknown types" {
     // Same type → no coercion
     const r3 = MirAnnotator.detectCoercion(RT{ .primitive = .i32 }, RT{ .primitive = .i32 });
     try std.testing.expect(r3.kind == null);
+}
+
+test "detectCoercion - value to const ref" {
+    const alloc = std.testing.allocator;
+    const elem = try alloc.create(RT);
+    defer alloc.destroy(elem);
+    elem.* = RT{ .named = "Vec2" };
+
+    // named("Vec2") → const &Vec2 → value_to_const_ref
+    const dst = RT{ .ptr = .{ .kind = "const &", .elem = elem } };
+    const r1 = MirAnnotator.detectCoercion(RT{ .named = "Vec2" }, dst);
+    try std.testing.expectEqual(Coercion.value_to_const_ref, r1.kind.?);
+
+    // named("Vec2") → named("Vec2") → no coercion
+    const r2 = MirAnnotator.detectCoercion(RT{ .named = "Vec2" }, RT{ .named = "Vec2" });
+    try std.testing.expect(r2.kind == null);
+}
+
+test "resolveCallSig - cross-module lookup" {
+    const alloc = std.testing.allocator;
+    var local_decls = declarations.DeclTable.init(alloc);
+    defer local_decls.deinit();
+    var math_decls = declarations.DeclTable.init(alloc);
+    defer math_decls.deinit();
+
+    // Add a function to the math module
+    const params = try alloc.alloc(declarations.ParamSig, 0);
+    defer alloc.free(params);
+    const param_nodes = try alloc.alloc(*parser.Node, 0);
+    defer alloc.free(param_nodes);
+    const ret_node = try alloc.create(parser.Node);
+    defer alloc.destroy(ret_node);
+    ret_node.* = .{ .type_named = "f32" };
+    try math_decls.funcs.put("length", .{
+        .name = "length",
+        .params = params,
+        .param_nodes = param_nodes,
+        .return_type = RT{ .primitive = .f32 },
+        .return_type_node = ret_node,
+        .is_compt = false,
+        .is_pub = true,
+        .is_thread = false,
+    });
+
+    var all_decls = std.StringHashMap(*declarations.DeclTable).init(alloc);
+    defer all_decls.deinit();
+    try all_decls.put("math", &math_decls);
+
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var type_map = std.AutoHashMapUnmanaged(*parser.Node, RT){};
+    defer type_map.deinit(alloc);
+
+    var annotator = MirAnnotator.init(alloc, &reporter, &local_decls, &type_map);
+    defer annotator.deinit();
+    annotator.all_decls = &all_decls;
+
+    // Build a field_expr callee: math.length
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const mod_ident = try a.create(parser.Node);
+    mod_ident.* = .{ .identifier = "math" };
+    const callee = try a.create(parser.Node);
+    callee.* = .{ .field_expr = .{ .object = mod_ident, .field = "length" } };
+    const call_args = try a.alloc(*parser.Node, 0);
+    const call_arg_names = try a.alloc([]const u8, 0);
+    const call: parser.CallExpr = .{ .callee = callee, .args = call_args, .arg_names = call_arg_names };
+
+    const sig = annotator.resolveCallSig(call);
+    try std.testing.expect(sig != null);
+    try std.testing.expectEqualStrings("length", sig.?.name);
 }

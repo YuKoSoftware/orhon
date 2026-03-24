@@ -1086,6 +1086,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         // ── Pass 10: MIR Annotation ─────────────────────────────
         var mir_annotator = mir.MirAnnotator.init(allocator, reporter, &decl_collector.table, &type_resolver.type_map);
         defer mir_annotator.deinit();
+        mir_annotator.all_decls = &all_module_decls;
 
         try mir_annotator.annotate(ast);
         if (reporter.hasErrors()) return null;

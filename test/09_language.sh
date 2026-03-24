@@ -8,10 +8,10 @@ trap cleanup_tmpdir EXIT
 section "Language features (example module)"
 
 cd "$TESTDIR"
-"$ORHON" init langtest >/dev/null 2>&1
+"$ORHON" init langtest >/dev/null 2>&1 || true
 cd "$TESTDIR/langtest"
 
-OUTPUT=$("$ORHON" build 2>&1)
+OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built: bin/langtest"; then
     pass "example module compiles (all features)"
 else
@@ -35,7 +35,7 @@ else
     fail "struct fields"
 fi
 
-BINOUT=$(./bin/langtest 2>&1)
+BINOUT=$(./bin/langtest 2>&1 || true)
 if echo "$BINOUT" | grep -q "hello orhon"; then pass "langtest binary runs"
 else fail "langtest binary runs" "$BINOUT"; fi
 
@@ -47,7 +47,7 @@ cp "$FIXTURES/tester_main.orh" comptest/src/main.orh
 cp "$FIXTURES/tester.orh" comptest/src/tester.orh
 cd "$TESTDIR/comptest"
 
-OUTPUT=$("$ORHON" build 2>&1)
+OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built: bin/comptest"; then
     pass "tester module compiles"
 else

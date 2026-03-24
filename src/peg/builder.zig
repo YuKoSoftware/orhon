@@ -159,6 +159,7 @@ fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     if (std.mem.eql(u8, rule, "import_decl")) return buildImport(ctx, cap);
     if (std.mem.eql(u8, rule, "metadata")) return buildMetadata(ctx, cap);
     if (std.mem.eql(u8, rule, "expr_or_assignment")) return buildExprOrAssignment(ctx, cap);
+    if (std.mem.eql(u8, rule, "assign_expr")) return buildExprOrAssignment(ctx, cap);
 
     // Expression builders
     if (std.mem.eql(u8, rule, "int_literal")) return buildIntLiteral(ctx, cap);

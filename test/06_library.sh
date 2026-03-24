@@ -8,12 +8,12 @@ trap cleanup_tmpdir EXIT
 section "Static library"
 
 cd "$TESTDIR"
-"$ORHON" init testlib >/dev/null 2>&1
+"$ORHON" init testlib >/dev/null 2>&1 || true
 cd "$TESTDIR/testlib"
 
 sed -i 's/#build   = exe/#build   = static/' src/main.orh
 
-OUTPUT=$("$ORHON" build 2>&1)
+OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built: bin/libtestlib.a"; then pass "static: reports success"
 else fail "static: reports success" "$OUTPUT"; fi
 
@@ -37,7 +37,7 @@ section "Dynamic library"
 sed -i 's/#build   = static/#build   = dynamic/' src/main.orh
 rm -rf .orh-cache bin
 
-OUTPUT=$("$ORHON" build 2>&1)
+OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built: bin/libtestlib.so"; then pass "dynamic: reports success"
 else fail "dynamic: reports success" "$OUTPUT"; fi
 
@@ -66,7 +66,7 @@ pub func add(a: i32, b: i32) i32 {
 }
 ORHON
 cd ifacelib
-"$ORHON" build >/dev/null 2>&1
+"$ORHON" build >/dev/null 2>&1 || true
 
 if [ -f bin/ifacelib.orh ]; then pass "iface: library interface generated"
 else fail "iface: library interface generated"; fi
@@ -86,7 +86,7 @@ func main() void {
 ORHON
 cp "$TESTDIR/ifacelib/bin/ifacelib.orh" ifaceuser/src/ifacelib.orh
 cd ifaceuser
-IFACE_OUT=$("$ORHON" build 2>&1)
+IFACE_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$IFACE_OUT" | grep -q "Built:"; then pass "iface: consumer project builds"
 else fail "iface: consumer project builds" "$IFACE_OUT"; fi
 

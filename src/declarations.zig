@@ -211,7 +211,11 @@ pub const DeclCollector = struct {
             .enum_decl => |e| try self.collectEnum(e, loc),
             .bitfield_decl => |b| try self.collectBitfield(b, loc),
             .const_decl => |v| try self.collectVar(v, true, false, loc),
-            .var_decl => |v| try self.collectVar(v, false, false, loc),
+            .var_decl => {
+                const msg = try std.fmt.allocPrint(self.allocator, "module-level 'var' is not allowed — use 'const' for module-level declarations", .{});
+                defer self.allocator.free(msg);
+                try self.reporter.report(.{ .message = msg, .loc = loc });
+            },
             .compt_decl => |v| try self.collectVar(v, true, true, loc),
             else => {},
         }
@@ -225,6 +229,21 @@ pub const DeclCollector = struct {
                     .name = param.param.name,
                     .type_ = try types.resolveTypeNode(self.table.typeAllocator(), param.param.type_annotation),
                 });
+            }
+        }
+
+        // Validate: required params must precede default params
+        var seen_default = false;
+        for (f.params) |param_node| {
+            if (param_node.* == .param) {
+                if (param_node.param.default_value != null) {
+                    seen_default = true;
+                } else if (seen_default) {
+                    const msg = try std.fmt.allocPrint(self.allocator, "parameters with defaults must come after all required parameters in '{s}'", .{f.name});
+                    defer self.allocator.free(msg);
+                    try self.reporter.report(.{ .message = msg, .loc = loc });
+                    break;
+                }
             }
         }
 

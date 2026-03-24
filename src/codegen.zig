@@ -1518,6 +1518,10 @@ pub const CodeGen = struct {
                     try self.emit(mapped);
                 }
             },
+            .type_named => {
+                // Type used as expression value (e.g. generic type arg in Ptr(i32, &x))
+                try self.emit(try self.typeToZig(node));
+            },
             .borrow_expr => |inner| {
                 try self.emit("&");
                 try self.generateExpr(inner);

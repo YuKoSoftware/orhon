@@ -38,6 +38,39 @@ const a: Vec2(f64) = Vec2(f64)(x: 1.0, y: 2.0)
 const b: Vec2(f64) = a.add(a)   // ERROR: use of moved value 'a'
 ```
 
+### Codegen — tester module fails to compile (cross-module codegen)
+
+The tester module (`test/fixtures/tester.orh`) fails with multiple Zig compilation errors
+when built as a separate module. Errors include undeclared identifiers in for-loop index
+contexts and type mismatches for null union assignments. The same code compiles when
+inlined into the main module.
+
+Errors observed:
+- `tester.zig: error: use of undeclared identifier 'i'` — for-loop with index variable
+  generates code referencing `i` without declaring it in the loop capture
+- `tester.zig: error: expected type 'OrhonNullable(i32)', found '@TypeOf(null)'` — null
+  literal assignment to a nullable type not wrapped correctly in cross-module context
+
+Fix: investigate codegen differences between main-module and cross-module paths for
+for-loop index captures and null union literal wrapping.
+
+### Module — sidecar path leaked (`error(gpa)`)
+
+`module.zig:660` allocates a sidecar path string with `allocPrint` that is stored in
+`mod.sidecar_path` on success but never freed when the module is cleaned up. Shows as
+`error(gpa): memory address ... leaked` in library and multi-target builds.
+
+Fix: track sidecar_path ownership and free during module cleanup, or use the module's
+arena allocator.
+
+### `orhon test` — output format mismatch
+
+`orhon test` reports `0 passed, 0 failed` instead of running tests and reporting
+`all tests passed`. The test command generates the test binary but either doesn't run
+the Zig test runner or doesn't parse its output correctly.
+
+Affected: `test/05_compile.sh` — "orhon test — all tests pass" check.
+
 ### Stdlib — string interpolation leaks memory
 
 `@{variable}` interpolation allocates temporary buffers that are never freed. Known

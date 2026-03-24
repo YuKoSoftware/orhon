@@ -13,8 +13,8 @@ cp "$FIXTURES/tester_main.orh" comptest/src/main.orh
 cp "$FIXTURES/tester.orh" comptest/src/tester.orh
 cd "$TESTDIR/comptest"
 
-"$ORHON" build >/dev/null 2>&1
-BINOUT=$(./bin/comptest 2>&1)
+"$ORHON" build >/dev/null 2>&1 || true
+BINOUT=$(./bin/comptest 2>&1 || true)
 
 if echo "$BINOUT" | grep -q "TESTER:DONE"; then pass "tester ran to completion"
 else fail "tester ran to completion" "$BINOUT"; fi

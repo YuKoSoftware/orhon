@@ -15,7 +15,7 @@ cp "$FIXTURES/tester_main.orh" orhontest/src/main.orh
 cp "$FIXTURES/tester.orh" orhontest/src/tester.orh
 cd "$TESTDIR/orhontest"
 
-TEST_OUT=$("$ORHON" test 2>&1)
+TEST_OUT=$("$ORHON" test 2>&1 || true)
 if echo "$TEST_OUT" | grep -q "all tests passed"; then
     pass "orhon test — all tests pass"
 else
@@ -56,9 +56,9 @@ else fail "orhon test — detects failure" "$FAIL_OUT"; fi
 section "orhon build"
 
 cd "$TESTDIR"
-"$ORHON" init buildproj >/dev/null 2>&1
+"$ORHON" init buildproj >/dev/null 2>&1 || true
 cd "$TESTDIR/buildproj"
-OUTPUT=$("$ORHON" build 2>&1)
+OUTPUT=$("$ORHON" build 2>&1 || true)
 
 if echo "$OUTPUT" | grep -q "Built: bin/buildproj"; then pass "reports success"
 else fail "reports success" "$OUTPUT"; fi
@@ -94,7 +94,7 @@ else fail "no unexpected warnings" "got $WARN_COUNT warnings"; fi
 section "orhon run"
 
 rm -rf .orh-cache bin
-OUTPUT=$("$ORHON" run 2>&1)
+OUTPUT=$("$ORHON" run 2>&1 || true)
 
 if echo "$OUTPUT" | grep -q "Built: bin/buildproj"; then pass "builds the project"
 else fail "builds the project" "$OUTPUT"; fi
@@ -106,7 +106,7 @@ else fail "executes the binary" "$OUTPUT"; fi
 
 section "orhon debug"
 
-OUTPUT=$("$ORHON" debug 2>&1)
+OUTPUT=$("$ORHON" debug 2>&1 || true)
 
 if echo "$OUTPUT" | grep -q "=== orhon debug ==="; then pass "shows header"
 else fail "shows header" "$OUTPUT"; fi
@@ -121,7 +121,7 @@ else fail "finds example module" "$OUTPUT"; fi
 
 section "Incremental build"
 
-OUTPUT=$("$ORHON" build 2>&1)
+OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built: bin/buildproj"; then pass "rebuild succeeds"
 else fail "rebuild succeeds" "$OUTPUT"; fi
 

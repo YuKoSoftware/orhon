@@ -8,9 +8,9 @@ trap cleanup_tmpdir EXIT
 section "Generated Zig quality"
 
 cd "$TESTDIR"
-"$ORHON" init gentest >/dev/null 2>&1
+"$ORHON" init gentest >/dev/null 2>&1 || true
 cd "$TESTDIR/gentest"
-"$ORHON" build >/dev/null 2>&1
+"$ORHON" build >/dev/null 2>&1 || true
 
 MAIN_ZIG=".orh-cache/generated/main.zig"
 EXAMPLE_ZIG=".orh-cache/generated/example.zig"
@@ -78,7 +78,7 @@ func main() void {
 }
 ORHON
 cd discardtest
-"$ORHON" build >/dev/null 2>&1
+"$ORHON" build >/dev/null 2>&1 || true
 
 if grep -q '_ = ' .orh-cache/generated/main.zig; then pass "bare call discards return value"
 else fail "bare call discards return value"; fi

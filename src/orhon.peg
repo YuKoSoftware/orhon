@@ -78,6 +78,7 @@ top_level_decl
      / enum_decl
      / bitfield_decl
      / const_decl
+     / var_decl
      / bridge_decl
      / test_decl
 

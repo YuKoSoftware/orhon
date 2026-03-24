@@ -8,7 +8,7 @@ trap cleanup_tmpdir EXIT
 section "Multi-module project"
 
 cd "$TESTDIR"
-"$ORHON" init multimod >/dev/null 2>&1
+"$ORHON" init multimod >/dev/null 2>&1 || true
 cd "$TESTDIR/multimod"
 
 cat > src/utils.orh <<'ORHON'
@@ -30,18 +30,18 @@ func main() void {
 }
 ORHON
 
-OUTPUT=$("$ORHON" build 2>&1)
+OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built: bin/multimod"; then pass "multi-module builds"
 else fail "multi-module builds" "$OUTPUT"; fi
 
-BINOUT=$(./bin/multimod 2>&1)
+BINOUT=$(./bin/multimod 2>&1 || true)
 if echo "$BINOUT" | grep -q "multi-module works"; then pass "multi-module runs"
 else fail "multi-module runs" "$BINOUT"; fi
 
 section "Multi-target: exe + dynamic lib"
 
 cd "$TESTDIR"
-"$ORHON" init dynlink >/dev/null 2>&1
+"$ORHON" init dynlink >/dev/null 2>&1 || true
 cd "$TESTDIR/dynlink"
 
 # Create a dynamic lib module
@@ -69,7 +69,7 @@ ORHON
 # Remove example module (not needed)
 rm -rf src/example
 
-OUTPUT=$("$ORHON" build 2>&1)
+OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built:.*dynlink"; then pass "multi-target: exe built"
 else fail "multi-target: exe built" "$OUTPUT"; fi
 
@@ -88,7 +88,7 @@ else fail "multi-target: no memory leaks" "$(echo "$OUTPUT" | grep 'error(gpa)')
 section "Multi-target: exe + static lib"
 
 cd "$TESTDIR"
-"$ORHON" init statlink >/dev/null 2>&1
+"$ORHON" init statlink >/dev/null 2>&1 || true
 cd "$TESTDIR/statlink"
 
 # Create a static lib module
@@ -115,7 +115,7 @@ ORHON
 
 rm -rf src/example
 
-OUTPUT=$("$ORHON" build 2>&1)
+OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built:.*statlink"; then pass "static-link: exe built"
 else fail "static-link: exe built" "$OUTPUT"; fi
 

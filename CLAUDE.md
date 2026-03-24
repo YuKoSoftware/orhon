@@ -182,3 +182,254 @@ Its primary value to us: bugs discovered while building the framework are logged
 in `docs/bugs.txt` and language design feedback in `docs/ideas.txt`. Read these
 files to understand what compiler issues need fixing, then fix them here in the
 compiler codebase.
+
+<!-- GSD:project-start source:PROJECT.md -->
+## Project
+
+**Orhon Compiler**
+
+Orhon is a compiled, memory-safe programming language that transpiles to Zig. Written in Zig 0.15.x, it targets developers who want Rust-level safety with Zig-level simplicity. The compiler implements a 12-pass pipeline from source to native binary, with ownership tracking, borrow checking, thread safety analysis, and incremental compilation. Currently at v0.9.7.
+
+**Core Value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
+
+### Constraints
+
+- **Language**: Zig 0.15.2+ — all compiler code is Zig, targets Codeberg for references
+- **Architecture**: No runtime libraries — all stdlib through bridge modules, native Zig types only
+- **Testing**: `./testall.sh` is the gate — 11 test stages must pass
+- **Quality**: No hacky workarounds — clean fixes only
+- **Compatibility**: Changes must not break existing `.orh` programs or the example module
+<!-- GSD:project-end -->
+
+<!-- GSD:stack-start source:codebase/STACK.md -->
+## Technology Stack
+
+## Languages
+- Zig 0.15.2+ — all compiler source (`src/*.zig`, `src/peg/*.zig`, `src/std/*.zig`)
+- Orhon (`.orh`) — stdlib bridge declarations (`src/std/*.orh`), example module (`src/templates/`), test fixtures (`test/fixtures/`)
+- JavaScript — VS Code extension client (`editors/vscode/extension.js`)
+- Shell (bash) — test runner scripts (`test/*.sh`, `testall.sh`)
+## Runtime
+- Native binary — no managed runtime; compiles to native via Zig backend
+- Target platforms: linux_x64, linux_arm, win_x64, mac_x64, mac_arm, wasm32-freestanding
+- Zig build system (no external package manager; `build.zig.zon` declares no dependencies)
+- Lockfile: not applicable (zero external Zig dependencies)
+- VS Code extension: npm (`editors/vscode/package-lock.json` present)
+## Frameworks
+- Zig standard library only — no third-party Zig dependencies declared in `build.zig.zon`
+- PEG parsing engine — custom implementation in `src/peg/` (grammar.zig, engine.zig, capture.zig, builder.zig, token_map.zig)
+- Zig built-in `test` blocks — run via `zig build test`
+- Shell-based integration tests — `test/01_unit.sh` through `test/11_errors.sh`
+- `zig build` — compiler and fuzz binary
+- `zig build test` — all unit test blocks across all source files
+- `zig build fuzz` — runs `src/fuzz.zig` random input fuzzer
+- `./testall.sh` — full pipeline test suite
+## Key Dependencies
+- Zig 0.15.2 (system-installed or co-located binary) — the single backend; all cross-compilation, linking, and optimization is delegated to Zig. Discovered at runtime via: 1) same directory as `orhon` binary, 2) global PATH. See `src/zig_runner.zig`.
+- `std.http.Client` (Zig stdlib) — HTTP GET/POST in `src/std/http.zig`
+- `std.net` (Zig stdlib) — TCP client/server in `src/std/net.zig`
+- `std.json` (Zig stdlib) — JSON parse/build in `src/std/json.zig`
+- `std.compress.gzip` (Zig stdlib) — compression in `src/std/compression.zig`
+- `std.crypto` (Zig stdlib) — SHA256/512, MD5, Blake3, HMAC, AES-GCM in `src/std/crypto.zig`
+- `vscode-languageclient` ^9.0.1 — LSP client wrapper (`editors/vscode/`)
+- `@vscode/vsce` ^3.0.0 (devDep) — extension packaging
+## Configuration
+- No `.env` files — compiler has no runtime environment variable requirements
+- Version is baked in at compile time via `build.zig` `addOptions` / `build_options` import
+- Current version: `0.9.3` (defined in `build.zig`; `build.zig.zon` shows `0.8.3` and may be stale)
+- `build.zig` — defines `exe`, `test`, and `fuzz` steps; injects version string as comptime option
+- `build.zig.zon` — package manifest; minimum Zig version `0.15.2`; zero external dependencies
+- Stored in `.orh-cache/` (gitignored) — timestamps, dependency graph, generated `.zig` files
+- Constants in `src/cache.zig`: `CACHE_DIR`, `GENERATED_DIR`, `TIMESTAMPS_FILE`, `DEPS_FILE`, `WARNINGS_FILE`
+## Platform Requirements
+- Zig 0.15.2+ installed globally
+- No other toolchain dependencies for the compiler itself
+- Node.js / npm required only for building the VS Code extension
+- Self-contained native binary (`zig-out/bin/orhon`)
+- Zig binary must be co-located with or accessible on PATH at runtime (for code generation step)
+- Cross-compilation supported: linux_x64, linux_arm, win_x64, mac_x64, mac_arm, wasm
+<!-- GSD:stack-end -->
+
+<!-- GSD:conventions-start source:CONVENTIONS.md -->
+## Conventions
+
+## Naming Patterns
+- `snake_case.zig` for all source files: `codegen.zig`, `zig_runner.zig`, `thread_safety.zig`
+- Subdirectories use `snake_case/` as well: `src/peg/`, `src/std/`
+- `PascalCase` for public structs and enums: `Reporter`, `CodeGen`, `MirAnnotator`, `TypeClass`, `OwnershipScope`
+- `PascalCase` for type aliases: `const RT = types.ResolvedType;`
+- `camelCase` for all methods and free functions: `init`, `deinit`, `hasErrors`, `typeToZig`, `classifyType`, `resolveFileLoc`
+- Verb-first naming for methods: `checkNode`, `checkExpr`, `collectTopLevel`, `generateFunc`, `emitLine`
+- Private helper functions use the same `camelCase`, just without `pub`
+- `snake_case` for fields and local variables: `file_offsets`, `active_borrows`, `decl_table`, `is_debug`
+- Boolean fields start with `is_`, `has_`: `is_pub`, `is_compt`, `is_thread`, `has_bridges`
+- `SCREAMING_SNAKE_CASE` for module-level string/array constants: `BUILTIN_TYPES`, `COMPILER_FUNCS`, `CACHE_DIR`
+- Namespace constants inside structs also `SCREAMING_SNAKE_CASE`: `K.Type.ERROR`, `K.Ptr.VAR_REF`
+- `snake_case` for enum variants: `.owned`, `.moved`, `.error_union`, `.null_union`, `.kw_func`, `.lparen`
+- Exception: token kinds and node kinds use `snake_case` consistently throughout
+## File Structure
+- `// errors.zig — Orhon compiler error formatting`
+- `// codegen.zig — Zig Code Generation pass (pass 11)`
+- `// mir.zig — MIR (Mid-level Intermediate Representation) pass (pass 10)`
+## Import Organization
+- No path aliases used — all imports use relative paths
+- `@import("../lexer.zig")` from subdirectories (e.g. `src/peg/`)
+## Constructor Pattern
+## Error Handling
+## Memory Management
+## Comments
+- Public types and their fields
+- Non-obvious functions
+- Enum variants when the name is not self-explanatory
+- Inline clarification
+- Section headers
+- Pass numbers: `// Ownership & Move Analysis pass (pass 6)`
+## Exported vs Internal
+- Types and structs intended for use across modules
+- `init`, `deinit`, and primary entry-point methods
+- Constants needed elsewhere
+- Internal helper functions: `emit`, `emitFmt`, `emitIndent`, `checkStatement`, `lookupFieldType`
+- Section-internal logic
+## Module Design
+- `errors.zig` → `Reporter`
+- `declarations.zig` → `DeclCollector`, `DeclTable`
+- `ownership.zig` → `OwnershipChecker`, `OwnershipScope`
+- `codegen.zig` → `CodeGen`
+- `mir.zig` → `MirAnnotator`, `MirLowerer`, `UnionRegistry`
+- `types.zig` — `ResolvedType`, `Primitive`, `OwnershipState`
+- `constants.zig` — shared string constants (`K.Type.*`, `K.Ptr.*`)
+- `parser.zig` — AST node types only (no parsing logic)
+<!-- GSD:conventions-end -->
+
+<!-- GSD:architecture-start source:ARCHITECTURE.md -->
+## Architecture
+
+## Pattern Overview
+- One file per pipeline pass — each pass is a self-contained Zig module
+- Passes run sequentially; each pass only proceeds if the previous reported no errors
+- Multiple errors per pass are collected before stopping (not fail-fast)
+- Incremental compilation: unchanged modules skip passes 4–12 and reuse cached `.zig` files
+- Codegen is a pure 1:1 translator — no library knowledge, all stdlib in bridge modules
+- AST uses arena allocation — entire tree freed in one call
+## Layers
+- Purpose: Parse command-line arguments, dispatch to commands, drive the pipeline
+- Location: `src/main.zig`
+- Contains: `Command` enum, `CliArgs` struct, `runPipeline()`, `initProject()`
+- Depends on: Every pass module (lexer through zig_runner)
+- Used by: OS shell invocation
+- Purpose: Turn raw source text into a typed AST
+- Location: `src/lexer.zig`, `src/parser.zig`, `src/orhon.peg`, `src/peg/`
+- Contains: `Lexer`, `TokenKind`, `Node`, `NodeKind`, PEG engine + grammar + builder
+- Depends on: Nothing (lexer is standalone; PEG depends only on lexer)
+- Used by: `module.zig` (parseModules), `lsp.zig`
+- Purpose: Group `.orh` files by module name, build dependency graph, detect circular imports, check incremental cache
+- Location: `src/module.zig`
+- Contains: `Module` struct, `Resolver`, `FileOffset`, `resolveFileLoc()`
+- Depends on: lexer, parser, cache
+- Used by: `main.zig` (runPipeline), `lsp.zig`
+- Purpose: Collect declarations, resolve types, enforce ownership, borrow, thread safety, error propagation
+- Location: `src/declarations.zig`, `src/resolver.zig`, `src/sema.zig`, `src/ownership.zig`, `src/borrow.zig`, `src/thread_safety.zig`, `src/propagation.zig`
+- Contains: `DeclTable`, `DeclCollector`, `TypeResolver`, `SemanticContext`, `OwnershipChecker`, `BorrowChecker`, `ThreadSafetyChecker`, `PropagationChecker`
+- Depends on: parser (AST nodes), types, errors, sema (shared context)
+- Used by: `main.zig` (runPipeline), `lsp.zig`
+- Purpose: Walk AST + resolver type_map to produce a typed annotation table (`NodeMap`). Codegen reads this instead of re-discovering types.
+- Location: `src/mir.zig`
+- Contains: `TypeClass` enum, `NodeInfo`, `NodeMap` (AST node pointer → NodeInfo), `UnionRegistry`, `MirAnnotator`, `MirLowerer`, `MirNode` tree
+- Depends on: parser, declarations, types, errors
+- Used by: `main.zig` (runPipeline), `codegen.zig`
+- Purpose: Pure 1:1 translation of MIR + AST to readable Zig source. One `.zig` file per Orhon module.
+- Location: `src/codegen.zig`
+- Contains: `CodeGen` struct — stateful generator walking the AST with MIR annotation
+- Depends on: parser, mir, declarations, types, errors, builtins
+- Used by: `main.zig` (runPipeline)
+- Purpose: Invoke the Zig compiler on generated `.zig` files to produce final binary
+- Location: `src/zig_runner.zig`
+- Contains: `ZigRunner`, `ZigResult` — discovers Zig binary (adjacent dir or PATH)
+- Depends on: errors, cache, module
+- Used by: `main.zig` (runPipeline)
+- Purpose: Common utilities used across multiple passes
+- Location: `src/types.zig`, `src/errors.zig`, `src/builtins.zig`, `src/constants.zig`, `src/cache.zig`
+- Contains: `ResolvedType`, `Primitive`, `Reporter`, `OrhonError`, `SourceLoc`, `Cache`, language intrinsics
+- Used by: all pass modules
+- Purpose: Orhon `.orh` interface files + Zig `.zig` sidecars for stdlib modules
+- Location: `src/std/`
+- Contains: Paired `.orh`/`.zig` files for each stdlib module (collections, str, json, fs, etc.)
+- Embedded via: `@embedFile` in `main.zig`, extracted to `.orh-cache/std/` at build time
+- Used by: Orhon user code via `import std::X` or `include std::X`
+- `src/formatter.zig` — `orhon fmt` source formatter
+- `src/lsp.zig` — JSON-RPC LSP server (runs passes 1–9, publishes diagnostics, hover, completion, etc.)
+- `src/docgen.zig` — `orhon gendoc` doc generator from `///` comments
+- `src/fuzz.zig` — standalone fuzzer binary for lexer + parser
+## Data Flow
+- `cache.Cache` compares file timestamps at step 3
+- Unchanged modules with unchanged deps skip passes 4–12; cached `.zig` files are reused
+- Cache stored in `.orh-cache/` (timestamps, deps.graph, generated Zig, warnings)
+- `lsp.serve()` runs a JSON-RPC loop over stdio
+- On document change: runs passes 1–9 and publishes diagnostics
+- Passes 10–12 are not run in LSP mode (no codegen, no Zig invocation)
+- No global mutable state — all state flows through explicit structs passed by pointer
+- `Reporter` accumulates errors and warnings; passed through all passes
+- `SemanticContext` holds shared read-only state for passes 6–9
+- Arena allocators own AST memory per module; freed after codegen completes
+## Key Abstractions
+- Purpose: The Orhon AST node type. Tagged union with 77 variants covering all language constructs.
+- Examples: `src/parser.zig` (NodeKind enum, Node union)
+- Pattern: Arena-allocated; `*parser.Node` pointers are stable within a module's parse lifetime
+- Purpose: Fully resolved Orhon type after type resolution pass
+- Examples: `src/types.zig`
+- Pattern: Tagged union — `.primitive(Primitive)`, `.struct_type`, `.enum_type`, `.generic`, `.ptr`, `.null_union`, `.error_union`, `.union_type`, etc.
+- Purpose: Registry of all declared functions, structs, enums, variables in a module
+- Examples: `src/declarations.zig`
+- Pattern: Multiple `StringHashMap` fields keyed by name; passed to all downstream passes
+- Purpose: Read-only shared context for validation passes 6–9
+- Examples: `src/sema.zig`
+- Pattern: Thin struct holding `allocator`, `reporter`, `decls`, `locs`, `file_offsets`; `nodeLoc()` helper resolves combined-buffer lines to original file+line
+- Purpose: Annotation table mapping `*parser.Node → NodeInfo` (resolved type + TypeClass + optional coercion)
+- Examples: `src/mir.zig`
+- Pattern: `std.AutoHashMapUnmanaged`; produced by MirAnnotator, consumed read-only by CodeGen
+- Purpose: Error and warning accumulator used by all passes
+- Examples: `src/errors.zig`
+- Pattern: `report()` appends errors (owns strings); `flush()` prints all at end; `hasErrors()` gates each pass
+- Purpose: Orhon interface (`.orh`) + Zig implementation (`.zig` sidecar) pair
+- Examples: `src/std/collections.orh` + `src/std/collections.zig`
+- Pattern: Orhon `bridge` declarations; codegen re-exports from sidecar; no special-case name mapping in codegen
+## Entry Points
+- Location: `src/main.zig` → `pub fn main()`
+- Triggers: User invoking the `orhon` binary
+- Responsibilities: Allocator setup (DebugAllocator in debug, smp_allocator in release), CLI parse, command dispatch, error flush, process exit
+- Location: `src/main.zig` → `fn runPipeline()`
+- Triggers: `main()` for build/run/test/debug commands
+- Responsibilities: Std file extraction, module resolution, per-module pass execution in topological order, cache update, Zig invocation
+- Location: `src/lsp.zig` → `pub fn serve()`
+- Triggers: `orhon lsp`
+- Responsibilities: JSON-RPC stdio loop, incremental analysis, diagnostic publishing
+- Location: `src/peg.zig` → `loadGrammar()`, `peg/engine.zig` → `Engine.matchRule()`
+- Triggers: Module parsing, `orhon analysis` command
+- Responsibilities: Parse `orhon.peg` grammar, run packrat matching on token stream, build capture tree
+## Error Handling
+- Each pass receives `*errors.Reporter` and calls `reporter.report(.{ .message = msg, .loc = loc })`
+- Error message strings are caller-allocated; `Reporter.report()` dupes and owns them — callers must `defer allocator.free(msg)` before reporting
+- `SourceLoc` carries `file`, `line`, `col`; `SemanticContext.nodeLoc()` resolves combined-buffer positions to original file locations
+- Zig errors (`error.ParseError`, `error.CompileError`) bubble to `main()` which checks them; other errors (`anyerror`) propagate normally
+## Cross-Cutting Concerns
+<!-- GSD:architecture-end -->
+
+<!-- GSD:workflow-start source:GSD defaults -->
+## GSD Workflow Enforcement
+
+Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+
+Use these entry points:
+- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
+- `/gsd:debug` for investigation and bug fixing
+- `/gsd:execute-phase` for planned phase work
+
+Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
+<!-- GSD:workflow-end -->
+
+<!-- GSD:profile-start -->
+## Developer Profile
+
+> Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
+> This section is managed by `generate-claude-profile` -- do not edit manually.
+<!-- GSD:profile-end -->

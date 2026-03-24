@@ -415,31 +415,54 @@ fn buildStructDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     const name_pos = cap.start_pos + 1;
     const name = tokenText(ctx, name_pos);
 
-    const type_params = try buildChildrenByRule(ctx, cap, "param");
+    var type_params_list = std.ArrayListUnmanaged(*Node){};
     var members = std.ArrayListUnmanaged(*Node){};
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "struct_member")) {
-                for (child.children) |*mc| {
-                    try members.append(ctx.alloc(), try buildNode(ctx, mc));
-                }
-            } else if (std.mem.eql(u8, r, "field_decl") or
-                std.mem.eql(u8, r, "func_decl") or
-                std.mem.eql(u8, r, "pub_decl") or
-                std.mem.eql(u8, r, "const_decl") or
-                std.mem.eql(u8, r, "var_decl"))
-            {
-                try members.append(ctx.alloc(), try buildNode(ctx, child));
-            }
-        }
-    }
+
+    // Walk children recursively to find params (from generic_params) and members
+    try collectStructParts(ctx, cap, &type_params_list, &members);
 
     return ctx.newNode(.{ .struct_decl = .{
         .name = name,
-        .type_params = type_params,
+        .type_params = try type_params_list.toOwnedSlice(ctx.alloc()),
         .members = try members.toOwnedSlice(ctx.alloc()),
         .is_pub = false,
     } });
+}
+
+fn collectStructParts(ctx: *BuildContext, cap: *const CaptureNode, type_params: *std.ArrayListUnmanaged(*Node), members: *std.ArrayListUnmanaged(*Node)) anyerror!void {
+    for (cap.children) |*child| {
+        if (child.rule) |r| {
+            if (std.mem.eql(u8, r, "field_decl") or
+                std.mem.eql(u8, r, "func_decl") or
+                std.mem.eql(u8, r, "compt_decl") or
+                std.mem.eql(u8, r, "const_decl") or
+                std.mem.eql(u8, r, "var_decl"))
+            {
+                const node = try buildNode(ctx, child);
+                // Check if parent (struct_member) has a pub token before this child
+                if (hasPubBefore(ctx, cap, child.start_pos)) setPub(node, true);
+                try members.append(ctx.alloc(), node);
+            } else if (std.mem.eql(u8, r, "pub_decl")) {
+                try members.append(ctx.alloc(), try buildNode(ctx, child));
+            } else if (std.mem.eql(u8, r, "param")) {
+                try type_params.append(ctx.alloc(), try buildNode(ctx, child));
+            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM") or std.mem.eql(u8, r, "doc_block")) {
+                // skip
+            } else {
+                // Recurse into wrapper rules (struct_body, struct_member, generic_params, etc.)
+                try collectStructParts(ctx, child, type_params, members);
+            }
+        }
+    }
+}
+
+/// Check if there's a 'pub' token in the capture range before the given position
+fn hasPubBefore(ctx: *BuildContext, cap: *const CaptureNode, before_pos: usize) bool {
+    var i = cap.start_pos;
+    while (i < before_pos and i < ctx.tokens.len) : (i += 1) {
+        if (ctx.tokens[i].kind == .kw_pub) return true;
+    }
+    return false;
 }
 
 fn buildEnumDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
@@ -558,13 +581,16 @@ fn buildBlock(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     for (cap.children) |*child| {
         if (child.rule) |r| {
             if (std.mem.eql(u8, r, "statement")) {
-                // statement is transparent — build its child
+                // statement is transparent — build its actual content child
                 for (child.children) |*sc| {
-                    try stmts.append(ctx.alloc(), try buildNode(ctx, sc));
+                    if (sc.rule) |sr| {
+                        // Skip whitespace/newline rules
+                        if (std.mem.eql(u8, sr, "_") or std.mem.eql(u8, sr, "TERM")) continue;
+                        try stmts.append(ctx.alloc(), try buildNode(ctx, sc));
+                    }
                 }
-            } else {
-                try stmts.append(ctx.alloc(), try buildNode(ctx, child));
             }
+            // Skip _ rules at block level
         }
     }
     return ctx.newNode(.{ .block = .{ .statements = try stmts.toOwnedSlice(ctx.alloc()) } });
@@ -795,11 +821,26 @@ fn buildBinaryExpr(ctx: *BuildContext, cap: *const CaptureNode, _: []const u8) !
 
 fn buildCompareExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // compare_expr <- bitor_expr compare_op bitor_expr / bitor_expr 'is' ... / bitor_expr
-    if (cap.children.len <= 1) {
-        if (cap.children.len == 1) return buildNode(ctx, &cap.children[0]);
+    // Filter out compare_op to get just the operands
+    var operands = std.ArrayListUnmanaged(*const CaptureNode){};
+    var op: []const u8 = "==";
+    for (cap.children) |*child| {
+        if (child.rule) |r| {
+            if (std.mem.eql(u8, r, "compare_op")) {
+                op = tokenText(ctx, child.start_pos);
+            } else if (!std.mem.eql(u8, r, "_") and !std.mem.eql(u8, r, "TERM")) {
+                operands.append(ctx.alloc(), child) catch {};
+            }
+        }
+    }
+    if (operands.items.len <= 1) {
+        if (operands.items.len == 1) return buildNode(ctx, operands.items[0]);
+        if (cap.children.len > 0) return buildNode(ctx, &cap.children[0]);
         return error.NoCompareChildren;
     }
-    return buildBinaryExpr(ctx, cap, "==");
+    const left = try buildNode(ctx, operands.items[0]);
+    const right = try buildNode(ctx, operands.items[1]);
+    return ctx.newNode(.{ .binary_expr = .{ .op = op, .left = left, .right = right } });
 }
 
 fn buildRangeExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {

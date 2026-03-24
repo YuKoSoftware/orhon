@@ -171,9 +171,9 @@ Tests live in the same file as the code they test (Zig `test` blocks).
 
 ---
 
-## Orhon Framework — Companion Project (read-only)
+## Tamga — Companion Project (read-only)
 
-Location: `/home/yunus/Projects/Orhon/orhon_framework/`
+Location: `/home/yunus/Projects/Orhon/tamga/`
 
 A game/multimedia framework written in pure Orhon that doubles as a real-world
 stress test for the compiler. **Do not modify any files in this project.**

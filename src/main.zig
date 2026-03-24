@@ -774,7 +774,14 @@ fn runAnalysis(allocator: std.mem.Allocator, cli: *const CliArgs) !void {
             std.process.exit(1);
         }
     } else {
-        std.debug.print("result: FAIL — could not match program structure\n", .{});
+        const err = engine.getError();
+        std.debug.print("result: FAIL\n", .{});
+        std.debug.print("error at line {d}:{d} — unexpected '{s}' ({s})\n", .{
+            err.line, err.col, err.found, @tagName(err.found_kind),
+        });
+        if (err.expected_rule.len > 0) {
+            std.debug.print("while parsing: {s}\n", .{err.expected_rule});
+        }
         std.process.exit(1);
     }
 }

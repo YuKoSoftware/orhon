@@ -56,11 +56,25 @@ const MemoTable = std.HashMapUnmanaged(MemoKey, MemoEntry, MemoContext, 80);
 // ENGINE
 // ============================================================
 
+/// Error info from the furthest failure point during parsing.
+pub const ParseError = struct {
+    pos: usize, // token index where failure occurred
+    line: usize,
+    col: usize,
+    found: []const u8, // token text at failure point
+    found_kind: TokenKind,
+    expected_rule: []const u8, // rule that was being attempted
+};
+
 pub const Engine = struct {
     grammar: *const Grammar,
     tokens: []const Token,
     memo: MemoTable,
     allocator: std.mem.Allocator,
+    // Error tracking — furthest failure position
+    furthest_pos: usize = 0,
+    furthest_rule: []const u8 = "",
+    furthest_expected: TokenKind = .eof,
 
     pub fn init(grammar: *const Grammar, tokens: []const Token, allocator: std.mem.Allocator) Engine {
         return .{
@@ -73,6 +87,22 @@ pub const Engine = struct {
 
     pub fn deinit(self: *Engine) void {
         self.memo.deinit(self.allocator);
+    }
+
+    /// Get error info after a failed parse.
+    pub fn getError(self: *const Engine) ParseError {
+        const pos = @min(self.furthest_pos, if (self.tokens.len > 0) self.tokens.len - 1 else 0);
+        const tok = if (pos < self.tokens.len) self.tokens[pos] else Token{
+            .kind = .eof, .text = "", .line = 0, .col = 0,
+        };
+        return .{
+            .pos = pos,
+            .line = tok.line,
+            .col = tok.col,
+            .found = tok.text,
+            .found_kind = tok.kind,
+            .expected_rule = self.furthest_rule,
+        };
     }
 
     /// Try to match a named rule at the current position.
@@ -95,6 +125,11 @@ pub const Engine = struct {
 
         // Evaluate
         const result = self.eval(expr, pos);
+
+        // Track rule name for error reporting
+        if (result == null and pos >= self.furthest_pos) {
+            self.furthest_rule = rule_name;
+        }
 
         // Memoize
         self.memo.put(self.allocator, key, if (result) |r|
@@ -123,10 +158,14 @@ pub const Engine = struct {
 
     /// Match a single token by kind
     fn matchToken(self: *Engine, expected: TokenKind, pos: usize) ?MatchResult {
-        if (pos >= self.tokens.len) return null;
+        if (pos >= self.tokens.len) {
+            self.trackFailure(pos, expected);
+            return null;
+        }
         if (self.tokens[pos].kind == expected) {
             return MatchResult{ .end_pos = pos + 1 };
         }
+        self.trackFailure(pos, expected);
         return null;
     }
 
@@ -138,6 +177,13 @@ pub const Engine = struct {
             return MatchResult{ .end_pos = pos + 1 };
         }
         return null;
+    }
+
+    fn trackFailure(self: *Engine, pos: usize, expected: TokenKind) void {
+        if (pos >= self.furthest_pos) {
+            self.furthest_pos = pos;
+            self.furthest_expected = expected;
+        }
     }
 
     /// Evaluate a sequence: all elements must match in order

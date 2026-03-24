@@ -15,6 +15,7 @@ pub const Grammar = grammar_mod.Grammar;
 pub const Expr = grammar_mod.Expr;
 pub const Engine = engine_mod.Engine;
 pub const MatchResult = engine_mod.MatchResult;
+pub const ParseError = engine_mod.ParseError;
 pub const CaptureEngine = capture_mod.CaptureEngine;
 pub const CaptureNode = capture_mod.CaptureNode;
 pub const BuildContext = builder_mod.BuildContext;

@@ -16,6 +16,7 @@ pub const VarState = struct {
     name: []const u8,
     state: types.OwnershipState,
     is_primitive: bool, // primitives always copy, never move
+    is_const: bool, // const values are implicitly copyable (never moved)
     type_name: []const u8, // type name for struct field lookup
 };
 
@@ -42,15 +43,17 @@ pub const OwnershipScope = struct {
             .name = name,
             .state = .owned,
             .is_primitive = is_primitive,
+            .is_const = false,
             .type_name = "",
         });
     }
 
-    pub fn defineTyped(self: *OwnershipScope, name: []const u8, is_primitive: bool, type_name: []const u8) !void {
+    pub fn defineTyped(self: *OwnershipScope, name: []const u8, is_primitive: bool, type_name: []const u8, is_const: bool) !void {
         try self.vars.put(name, .{
             .name = name,
             .state = .owned,
             .is_primitive = is_primitive,
+            .is_const = is_const,
             .type_name = type_name,
         });
     }
@@ -217,7 +220,8 @@ pub const OwnershipChecker = struct {
                     (types.isPrimitiveName(type_name) or builtins.isValueType(type_name))
                 else
                     inferPrimitiveFromValue(v.value, scope);
-                try scope.defineTyped(v.name, is_prim, type_name);
+                const is_const = (node.* == .const_decl or node.* == .compt_decl);
+                try scope.defineTyped(v.name, is_prim, type_name, is_const);
             },
 
             .destruct_decl => |d| {
@@ -360,8 +364,8 @@ pub const OwnershipChecker = struct {
                         defer self.allocator.free(msg);
                         try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
                     }
-                    // If not a borrow and not primitive, this is a move
-                    if (!is_borrow and !state.is_primitive and state.state == .owned) {
+                    // If not a borrow, not primitive, and not const, this is a move
+                    if (!is_borrow and !state.is_primitive and !state.is_const and state.state == .owned) {
                         _ = scope.setState(name, .moved);
                     }
                 }
@@ -699,8 +703,8 @@ test "ownership - primitive field access allowed" {
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
 
-    // Define 'v' as Vec2 (non-primitive struct)
-    try scope.defineTyped("v", false, "Vec2");
+    // Define 'v' as Vec2 (non-primitive struct, var — can be moved)
+    try scope.defineTyped("v", false, "Vec2", false);
 
     // v.x — f32 is primitive, should be allowed (copy)
     var obj = parser.Node{ .identifier = "v" };
@@ -732,8 +736,8 @@ test "ownership - non-primitive field move rejected" {
     var scope = OwnershipScope.init(alloc, null);
     defer scope.deinit();
 
-    // Define 'c' as Container
-    try scope.defineTyped("c", false, "Container");
+    // Define 'c' as Container (var — can be moved)
+    try scope.defineTyped("c", false, "Container", false);
 
     // c.inner — Other is non-primitive, used as move → should error
     var obj = parser.Node{ .identifier = "c" };
@@ -986,4 +990,58 @@ test "ownership - inferPrimitiveFromValue" {
     var callee = parser.Node{ .identifier = "makeStruct" };
     var call = parser.Node{ .call_expr = .{ .callee = &callee, .args = &.{}, .arg_names = &.{} } };
     try std.testing.expect(!inferPrimitiveFromValue(&call, &scope));
+}
+
+test "ownership - const value reuse allowed" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+
+    var checker = OwnershipChecker.init(alloc, &ctx);
+
+    var scope = OwnershipScope.init(alloc, null);
+    defer scope.deinit();
+
+    // Define 'v' as const, non-primitive (struct)
+    try scope.defineTyped("v", false, "Vec2", true);
+
+    // First use — const values are implicitly copyable, not moved
+    var id1 = parser.Node{ .identifier = "v" };
+    try checker.checkExpr(&id1, &scope, false);
+    try std.testing.expect(!reporter.hasErrors()); // first use ok
+
+    // Second use — v should still be owned (const, never marked moved)
+    var id2 = parser.Node{ .identifier = "v" };
+    try checker.checkExpr(&id2, &scope, false);
+    try std.testing.expect(!reporter.hasErrors()); // no use-after-move for const
+}
+
+test "ownership - var value still moves" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+
+    var checker = OwnershipChecker.init(alloc, &ctx);
+
+    var scope = OwnershipScope.init(alloc, null);
+    defer scope.deinit();
+
+    // Define 'v' as var, non-primitive (struct) — is_const = false
+    try scope.defineTyped("v", false, "Vec2", false);
+
+    // First use — moves v
+    var id1 = parser.Node{ .identifier = "v" };
+    try checker.checkExpr(&id1, &scope, false);
+    try std.testing.expect(!reporter.hasErrors()); // first use ok
+
+    // Second use — v is now moved, should error
+    var id2 = parser.Node{ .identifier = "v" };
+    try checker.checkExpr(&id2, &scope, false);
+    try std.testing.expect(reporter.hasErrors()); // use-after-move detected
 }

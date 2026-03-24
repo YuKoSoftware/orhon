@@ -356,7 +356,7 @@ pub const Resolver = struct {
             defer grammar.deinit();
 
             // Validate and capture
-            var engine = peg_mod.CaptureEngine.init(&grammar, tokens.items, alloc);
+            var engine = peg_mod.CaptureEngine.init(&grammar, tokens.items, std.heap.page_allocator);
             defer engine.deinit();
 
             const cap = engine.captureProgram() orelse {

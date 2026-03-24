@@ -523,6 +523,61 @@ fn compareRuntimeFile(path: []const u8) !usize {
     return compareFile(source);
 }
 
+test "compare - combined example module" {
+    const alloc = std.heap.page_allocator;
+    // Simulate combined multi-file module: example + data_types + control_flow + strings + advanced + error_handling
+    // Strip module lines from non-first files (same as module.zig does)
+    const files = [_][]const u8{
+        @embedFile("../templates/example/example.orh"),
+        @embedFile("../templates/example/data_types.orh"),
+        @embedFile("../templates/example/control_flow.orh"),
+        @embedFile("../templates/example/strings.orh"),
+        @embedFile("../templates/example/advanced.orh"),
+        @embedFile("../templates/example/error_handling.orh"),
+    };
+    var combined = std.ArrayListUnmanaged(u8){};
+    for (files, 0..) |content, idx| {
+        if (idx > 0) {
+            // Strip module line
+            if (std.mem.indexOfScalar(u8, content, '\n')) |nl| {
+                combined.appendSlice(alloc, content[nl + 1 ..]) catch {};
+            }
+        } else {
+            combined.appendSlice(alloc, content) catch {};
+        }
+    }
+    const diffs = try compareParsers(combined.items, alloc);
+    if (diffs.len > 0) {
+        for (diffs[0..@min(5, diffs.len)]) |d| {
+            std.debug.print("  DIFF at {s}: old={s} new={s}\n", .{ d.path, d.old_desc, d.new_desc });
+        }
+        if (diffs.len > 5) std.debug.print("  ... and {d} more\n", .{diffs.len - 5});
+    }
+    try std.testing.expectEqual(@as(usize, 0), diffs.len);
+}
+
+test "compare - for loop with range" {
+    const alloc = std.heap.page_allocator;
+    const diffs = try compareParsers(
+        \\module main
+        \\
+        \\func sum(n: i32) i32 {
+        \\    var total: i32 = 0
+        \\    for(0..n) |i| {
+        \\        total += i
+        \\    }
+        \\    return total
+        \\}
+        \\
+    , alloc);
+    if (diffs.len > 0) {
+        for (diffs) |d| {
+            std.debug.print("DIFF at {s}: old={s} new={s}\n", .{ d.path, d.old_desc, d.new_desc });
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 0), diffs.len);
+}
+
 // Example module
 test "compare - example/example.orh" {
     const n = try compareFile(@embedFile("../templates/example/example.orh"));

@@ -3,7 +3,7 @@
 
 const std = @import("std");
 const lexer = @import("lexer.zig");
-const parser = @import("parser.zig");
+const peg_mod = @import("peg.zig");
 const errors = @import("errors.zig");
 
 pub fn main() !void {
@@ -80,15 +80,21 @@ pub fn main() !void {
             return error.FuzzFailure;
         }
 
-        // Parse
+        // Parse (PEG engine)
         var reporter = errors.Reporter.init(alloc, .debug);
         defer reporter.deinit();
-        var p = parser.Parser.init(tokens.items, alloc, &reporter);
-        defer p.deinit();
 
-        if (p.parseProgram()) |_| {
+        var grammar = peg_mod.loadGrammar(alloc) catch {
+            parse_err += 1;
+            continue;
+        };
+        defer grammar.deinit();
+        var engine = peg_mod.Engine.init(&grammar, tokens.items, alloc);
+        defer engine.deinit();
+
+        if (engine.matchAll("program")) {
             parse_ok += 1;
-        } else |_| {
+        } else {
             parse_err += 1;
         }
         passed += 1;

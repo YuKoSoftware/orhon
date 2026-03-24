@@ -1887,14 +1887,18 @@ test "full pipeline - hello world" {
     var tokens = try lex.tokenize(alloc);
     defer tokens.deinit(alloc);
 
-    // Parse
+    // Parse (PEG engine)
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var p = parser.Parser.init(tokens.items, alloc, &reporter);
-    defer p.deinit();
-
-    const ast = try p.parseProgram();
+    var grammar = try peg.loadGrammar(alloc);
+    defer grammar.deinit();
+    var cap_engine = peg.CaptureEngine.init(&grammar, tokens.items, std.heap.page_allocator);
+    defer cap_engine.deinit();
+    const cap = cap_engine.captureProgram() orelse return error.ParseError;
+    var build_result = try peg.buildAST(&cap, tokens.items, alloc);
+    defer build_result.ctx.deinit();
+    const ast = build_result.node;
     try std.testing.expect(!reporter.hasErrors());
 
     // Declaration pass
@@ -1986,9 +1990,14 @@ fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *errors
     var lex = lexer.Lexer.init(source);
     var tokens = try lex.tokenize(alloc);
     defer tokens.deinit(alloc);
-    var p = parser.Parser.init(tokens.items, alloc, reporter);
-    defer p.deinit();
-    const ast = try p.parseProgram();
+    var grammar = try peg.loadGrammar(alloc);
+    defer grammar.deinit();
+    var cap_engine = peg.CaptureEngine.init(&grammar, tokens.items, std.heap.page_allocator);
+    defer cap_engine.deinit();
+    const cap = cap_engine.captureProgram() orelse return error.ParseError;
+    var build_result = try peg.buildAST(&cap, tokens.items, alloc);
+    defer build_result.ctx.deinit();
+    const ast = build_result.node;
     var decl_collector = declarations.DeclCollector.init(alloc, reporter);
     defer decl_collector.deinit();
     try decl_collector.collect(ast);

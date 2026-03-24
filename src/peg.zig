@@ -464,5 +464,4 @@ test {
     _ = @import("peg/token_map.zig");
     _ = @import("peg/capture.zig");
     _ = @import("peg/builder.zig");
-    _ = @import("peg/compare.zig");
 }

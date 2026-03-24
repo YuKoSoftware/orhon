@@ -33,13 +33,14 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - ✓ Qualified generic type validation across modules — Phase 1
 - ✓ Const struct by-value passing without false move errors — Phase 1
 - ✓ Working `orhon test` command with correct output — Phase 1
+- ✓ String interpolation temp buffer cleanup via MIR defer injection — Phase 2
+- ✓ OOM error propagation in codegen (no more `catch unreachable` on allocPrint) — Phase 2
+- ✓ Stdlib `catch {}` sweep: 103 instances classified and fixed/documented — Phase 2
+- ✓ `Ptr(T).cast(addr)` method-style pointer constructors — Phase 2
 
 ### Active
 
 - [ ] Fix all 9 known bugs in docs/TODO.md (4/9 complete after Phase 1)
-- [ ] Clean up 103 `catch {}` silent error suppressions across stdlib
-- [ ] Fix string interpolation memory leaks
-- [ ] Fix `catch unreachable` in generated code (lines 655, 688, 2123 of codegen)
 - [ ] Improve code quality and remove workarounds
 - [ ] Ensure testall.sh passes cleanly after all changes
 
@@ -78,7 +79,7 @@ Key areas of concern from codebase analysis:
 |----------|-----------|---------|
 | Fix bugs before architecture work | Correctness before performance/elegance | — Pending |
 | Scope to TODO.md bugs only | Clear boundary, avoid scope creep | — Pending |
-| Clean up stdlib error handling | 103 catch {} is a safety hazard for a "safe" language compiler | — Pending |
+| Clean up stdlib error handling | 103 catch {} is a safety hazard for a "safe" language compiler | ✓ Phase 2 — Category A documented, Category B fixed |
 
 ## Evolution
 
@@ -98,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after Phase 1 completion*
+*Last updated: 2026-03-24 after Phase 2 completion*

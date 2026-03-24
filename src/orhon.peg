@@ -29,7 +29,7 @@
 # ============================================================
 
 program
-    <- _ module_decl (_ (metadata / import_decl / top_level))* _ EOF
+    <- _ module_decl (_ (doc_block / metadata / import_decl / top_level))* _ EOF
 
 module_decl
     <- doc_block? 'module' (IDENTIFIER / 'main') NL

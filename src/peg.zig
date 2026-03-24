@@ -327,6 +327,126 @@ test "peg - validate program with elif" {
     try std.testing.expect(valid);
 }
 
+// ============================================================
+// FILE-BASED VALIDATION — test against real .orh files
+// ============================================================
+
+fn validateSource(source: []const u8, alloc: std.mem.Allocator) !bool {
+    var lex = lexer.Lexer.init(source);
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+    return validate(tokens.items, alloc);
+}
+
+// Template files (must all pass)
+test "peg - validate templates/main.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("templates/main.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate templates/example/example.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("templates/example/example.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate templates/example/data_types.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("templates/example/data_types.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate templates/example/control_flow.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("templates/example/control_flow.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate templates/example/strings.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("templates/example/strings.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate templates/example/advanced.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("templates/example/advanced.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate templates/example/error_handling.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("templates/example/error_handling.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+// Test fixture files — read at runtime since they're outside src/
+test "peg - validate test/fixtures/tester.orh" {
+    const alloc = std.testing.allocator;
+    const source = std.fs.cwd().readFileAlloc(alloc, "test/fixtures/tester.orh", 1024 * 1024) catch return;
+    defer alloc.free(source);
+    const valid = try validateSource(source, alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate test/fixtures/tester_main.orh" {
+    const alloc = std.testing.allocator;
+    const source = std.fs.cwd().readFileAlloc(alloc, "test/fixtures/tester_main.orh", 1024 * 1024) catch return;
+    defer alloc.free(source);
+    const valid = try validateSource(source, alloc);
+    try std.testing.expect(valid);
+}
+
+// Stdlib bridge files (must all pass)
+test "peg - validate std/console.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("std/console.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate std/collections.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("std/collections.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate std/math.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("std/math.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate std/str.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("std/str.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate std/fs.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("std/fs.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate std/json.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("std/json.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate std/system.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("std/system.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
+test "peg - validate std/time.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("std/time.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
 // Re-export sub-module tests
 test {
     _ = @import("peg/grammar.zig");

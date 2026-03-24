@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.9
 milestone_name: milestone
-status: Ready to execute
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-24T17:54:27.267Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-24T18:00:55.482Z"
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -51,6 +51,7 @@ Plan: 2 of 2
 | Phase 02 P03 | 18 | 2 tasks | 4 files |
 | Phase 02-memory-error-safety P02 | 908 | 2 tasks | 15 files |
 | Phase 03-lsp-hardening P01 | 8 | 2 tasks | 1 files |
+| Phase 03-lsp-hardening P02 | 18 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,8 @@ Recent decisions affecting current work:
 - [Phase 02-memory-error-safety]: Category A I/O catch sites documented with fire-and-forget comments; Category B data builders fixed with catch continue or catch return safe defaults
 - [Phase 03-lsp-hardening]: MAX_HEADER_LINE = 4096 chosen to cover all realistic LSP header values; enlarging from 1024 is the primary fix for LSP-02
 - [Phase 03-lsp-hardening]: MAX_CONTENT_LENGTH = 64 MiB chosen as practical upper bound preventing OOM from malicious payloads (LSP-03)
+- [Phase 03-lsp-hardening]: Pass objects use scratch arena; toDiagnostics and extractSymbols use long-lived allocator for returned results
+- [Phase 03-lsp-hardening]: all_symbols ArrayList backing buffer must be deinited after dupe — not freed by arena since it was allocated via long-lived allocator
 
 ### Pending Todos
 
@@ -83,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T17:54:27.265Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-24T18:00:55.479Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None

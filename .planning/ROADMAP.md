@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Compiler Bug Fixes** - Fix the four codegen/analysis bugs that produce wrong or crashing output (completed 2026-03-24)
 - [ ] **Phase 2: Memory & Error Safety** - Eliminate memory leaks and silent error suppression throughout the compiler and stdlib
-- [ ] **Phase 3: LSP Hardening** - Make the language server memory-safe and robust against large or malicious requests
+- [x] **Phase 3: LSP Hardening** - Make the language server memory-safe and robust against large or malicious requests (completed 2026-03-24)
 
 ## Phase Details
 
@@ -61,7 +61,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md — Harden readMessage with larger header buffer and content-length guard (LSP-02, LSP-03)
-- [ ] 03-02-PLAN.md — Per-request ArenaAllocator in runAnalysis (LSP-01)
+- [x] 03-02-PLAN.md — Per-request ArenaAllocator in runAnalysis (LSP-01)
 
 ## Progress
 
@@ -72,4 +72,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Compiler Bug Fixes | 2/2 | Complete   | 2026-03-24 |
 | 2. Memory & Error Safety | 1/3 | In Progress|  |
-| 3. LSP Hardening | 1/2 | In Progress|  |
+| 3. LSP Hardening | 2/2 | Complete   | 2026-03-24 |

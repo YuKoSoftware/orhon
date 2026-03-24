@@ -2,10 +2,8 @@
 // Recursive backtracking regex engine with basic syntax support.
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── Pattern AST ──
 
@@ -296,25 +294,25 @@ pub fn matches(pattern: []const u8, text: []const u8) bool {
     return end == text.len;
 }
 
-pub fn find(pattern: []const u8, text: []const u8) OrhonResult([]const u8) {
+pub fn find(pattern: []const u8, text: []const u8) anyerror![]const u8 {
     var p = Parser.init(pattern);
-    const regex = p.parseRegex() orelse return .{ .err = .{ .message = "invalid pattern" } };
+    const regex = p.parseRegex() orelse return error.invalid_pattern;
 
     var i: usize = 0;
     while (i <= text.len) : (i += 1) {
         if (matchRegex(regex, text, i)) |end| {
             if (end > i or i == text.len) {
-                return .{ .ok = alloc.dupe(u8, text[i..end]) catch return .{ .err = .{ .message = "out of memory" } } };
+                return alloc.dupe(u8, text[i..end]) catch return error.out_of_memory;
             }
             // Zero-length match at position i — skip to avoid infinite loop
         }
     }
-    return .{ .err = .{ .message = "no match" } };
+    return error.no_match;
 }
 
-pub fn findAll(pattern: []const u8, text: []const u8) OrhonResult([]const u8) {
+pub fn findAll(pattern: []const u8, text: []const u8) anyerror![]const u8 {
     var p = Parser.init(pattern);
-    const regex = p.parseRegex() orelse return .{ .err = .{ .message = "invalid pattern" } };
+    const regex = p.parseRegex() orelse return error.invalid_pattern;
 
     var buf = std.ArrayListUnmanaged(u8){};
     var count: usize = 0;
@@ -330,13 +328,13 @@ pub fn findAll(pattern: []const u8, text: []const u8) OrhonResult([]const u8) {
             }
         }
     }
-    if (count == 0) return .{ .err = .{ .message = "no matches" } };
-    return .{ .ok = buf.items };
+    if (count == 0) return error.no_matches;
+    return buf.items;
 }
 
-pub fn replace(pattern: []const u8, text: []const u8, replacement: []const u8) OrhonResult([]const u8) {
+pub fn replace(pattern: []const u8, text: []const u8, replacement: []const u8) anyerror![]const u8 {
     var p = Parser.init(pattern);
-    const regex = p.parseRegex() orelse return .{ .err = .{ .message = "invalid pattern" } };
+    const regex = p.parseRegex() orelse return error.invalid_pattern;
 
     var i: usize = 0;
     while (i <= text.len) : (i += 1) {
@@ -346,16 +344,16 @@ pub fn replace(pattern: []const u8, text: []const u8, replacement: []const u8) O
                 buf.appendSlice(alloc, text[0..i]) catch {};
                 buf.appendSlice(alloc, replacement) catch {};
                 buf.appendSlice(alloc, text[end..]) catch {};
-                return .{ .ok = buf.items };
+                return buf.items;
             }
         }
     }
-    return .{ .ok = alloc.dupe(u8, text) catch return .{ .err = .{ .message = "out of memory" } } };
+    return alloc.dupe(u8, text) catch return error.out_of_memory;
 }
 
-pub fn replaceAll(pattern: []const u8, text: []const u8, replacement: []const u8) OrhonResult([]const u8) {
+pub fn replaceAll(pattern: []const u8, text: []const u8, replacement: []const u8) anyerror![]const u8 {
     var p = Parser.init(pattern);
-    const regex = p.parseRegex() orelse return .{ .err = .{ .message = "invalid pattern" } };
+    const regex = p.parseRegex() orelse return error.invalid_pattern;
 
     var buf = std.ArrayListUnmanaged(u8){};
     var i: usize = 0;
@@ -370,7 +368,7 @@ pub fn replaceAll(pattern: []const u8, text: []const u8, replacement: []const u8
         buf.append(alloc, text[i]) catch {};
         i += 1;
     }
-    return .{ .ok = if (buf.items.len > 0) buf.items else alloc.dupe(u8, text) catch return .{ .err = .{ .message = "out of memory" } } };
+    return if (buf.items.len > 0) buf.items else alloc.dupe(u8, text) catch return error.out_of_memory;
 }
 
 // ── Tests ──
@@ -450,30 +448,26 @@ test "escape special chars" {
 }
 
 test "find" {
-    const r = find("\\d+", "abc 123 def");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "123"));
+    const r = try find("\\d+", "abc 123 def");
+    try std.testing.expect(std.mem.eql(u8, r, "123"));
 }
 
 test "find no match" {
     const r = find("\\d+", "no numbers here");
-    try std.testing.expect(r == .err);
+    try std.testing.expectError(error.no_match, r);
 }
 
 test "findAll" {
-    const r = findAll("\\d+", "a1b22c333");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "1\n22\n333"));
+    const r = try findAll("\\d+", "a1b22c333");
+    try std.testing.expect(std.mem.eql(u8, r, "1\n22\n333"));
 }
 
 test "replace" {
-    const r = replace("\\d+", "hello 123 world", "NUM");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "hello NUM world"));
+    const r = try replace("\\d+", "hello 123 world", "NUM");
+    try std.testing.expect(std.mem.eql(u8, r, "hello NUM world"));
 }
 
 test "replaceAll" {
-    const r = replaceAll("\\d+", "a1b2c3", "X");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "aXbXcX"));
+    const r = try replaceAll("\\d+", "a1b2c3", "X");
+    try std.testing.expect(std.mem.eql(u8, r, "aXbXcX"));
 }

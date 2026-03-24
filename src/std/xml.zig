@@ -3,10 +3,8 @@
 // self-closing tags. No namespaces, DTD, CDATA, or processing instructions.
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── Internal: Lightweight XML Node ──
 
@@ -238,41 +236,41 @@ fn resolveAll(root: XmlNode, path: []const u8) []const XmlNode {
 
 // ── Public API ──
 
-pub fn get(source: []const u8, path: []const u8) OrhonResult([]const u8) {
+pub fn get(source: []const u8, path: []const u8) anyerror![]const u8 {
     const root = parseDocument(source) orelse {
-        return .{ .err = .{ .message = "invalid XML" } };
+        return error.invalid_xml;
     };
     const node = resolveNode(root, path) orelse {
-        return .{ .err = .{ .message = "path not found" } };
+        return error.path_not_found;
     };
     if (node.text.len > 0) {
-        return .{ .ok = alloc.dupe(u8, node.text) catch return .{ .err = .{ .message = "out of memory" } } };
+        return alloc.dupe(u8, node.text) catch return error.out_of_memory;
     }
-    return .{ .ok = "" };
+    return "";
 }
 
-pub fn getAttr(source: []const u8, path: []const u8, attr: []const u8) OrhonResult([]const u8) {
+pub fn getAttr(source: []const u8, path: []const u8, attr: []const u8) anyerror![]const u8 {
     const root = parseDocument(source) orelse {
-        return .{ .err = .{ .message = "invalid XML" } };
+        return error.invalid_xml;
     };
     const node = resolveNode(root, path) orelse {
-        return .{ .err = .{ .message = "path not found" } };
+        return error.path_not_found;
     };
     for (node.attrs) |a| {
         if (std.mem.eql(u8, a.name, attr)) {
-            return .{ .ok = alloc.dupe(u8, a.value) catch return .{ .err = .{ .message = "out of memory" } } };
+            return alloc.dupe(u8, a.value) catch return error.out_of_memory;
         }
     }
-    return .{ .err = .{ .message = "attribute not found" } };
+    return error.attribute_not_found;
 }
 
-pub fn getAll(source: []const u8, path: []const u8) OrhonResult([]const u8) {
+pub fn getAll(source: []const u8, path: []const u8) anyerror![]const u8 {
     const root = parseDocument(source) orelse {
-        return .{ .err = .{ .message = "invalid XML" } };
+        return error.invalid_xml;
     };
     const nodes = resolveAll(root, path);
     if (nodes.len == 0) {
-        return .{ .err = .{ .message = "no matching elements" } };
+        return error.no_matching_elements;
     }
 
     var buf = std.ArrayListUnmanaged(u8){};
@@ -280,7 +278,7 @@ pub fn getAll(source: []const u8, path: []const u8) OrhonResult([]const u8) {
         if (i > 0) buf.append(alloc, '\n') catch {};
         buf.appendSlice(alloc, node.text) catch {};
     }
-    return .{ .ok = if (buf.items.len > 0) buf.items else "" };
+    return if (buf.items.len > 0) buf.items else "";
 }
 
 pub fn hasTag(source: []const u8, path: []const u8) bool {
@@ -292,30 +290,26 @@ pub fn hasTag(source: []const u8, path: []const u8) bool {
 
 test "get text content" {
     const xml = "<root><name>orhon</name></root>";
-    const result = get(xml, "root.name");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "orhon"));
+    const result = try get(xml, "root.name");
+    try std.testing.expect(std.mem.eql(u8, result, "orhon"));
 }
 
 test "get nested" {
     const xml = "<root><user><name>yunus</name></user></root>";
-    const result = get(xml, "root.user.name");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "yunus"));
+    const result = try get(xml, "root.user.name");
+    try std.testing.expect(std.mem.eql(u8, result, "yunus"));
 }
 
 test "get attribute" {
     const xml = "<root><item id=\"42\">text</item></root>";
-    const result = getAttr(xml, "root.item", "id");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "42"));
+    const result = try getAttr(xml, "root.item", "id");
+    try std.testing.expect(std.mem.eql(u8, result, "42"));
 }
 
 test "getAll repeated elements" {
     const xml = "<root><item>a</item><item>b</item><item>c</item></root>";
-    const result = getAll(xml, "root.item");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "a\nb\nc"));
+    const result = try getAll(xml, "root.item");
+    try std.testing.expect(std.mem.eql(u8, result, "a\nb\nc"));
 }
 
 test "hasTag true" {
@@ -331,39 +325,35 @@ test "hasTag false" {
 test "self-closing tag" {
     const xml = "<root><empty/></root>";
     try std.testing.expect(hasTag(xml, "root.empty"));
-    const result = get(xml, "root.empty");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, ""));
+    const result = try get(xml, "root.empty");
+    try std.testing.expect(std.mem.eql(u8, result, ""));
 }
 
 test "attribute with single quotes" {
     const xml = "<root><item name='test'/></root>";
-    const result = getAttr(xml, "root.item", "name");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "test"));
+    const result = try getAttr(xml, "root.item", "name");
+    try std.testing.expect(std.mem.eql(u8, result, "test"));
 }
 
 test "missing path" {
     const xml = "<root><a>1</a></root>";
     const result = get(xml, "root.b");
-    try std.testing.expect(result == .err);
+    try std.testing.expectError(error.path_not_found, result);
 }
 
 test "invalid xml" {
     const result = get("not xml at all", "root");
-    try std.testing.expect(result == .err);
+    try std.testing.expectError(error.invalid_xml, result);
 }
 
 test "xml declaration skipped" {
     const xml = "<?xml version=\"1.0\"?><root><name>test</name></root>";
-    const result = get(xml, "root.name");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "test"));
+    const result = try get(xml, "root.name");
+    try std.testing.expect(std.mem.eql(u8, result, "test"));
 }
 
 test "comment skipped" {
     const xml = "<!-- comment --><root><name>test</name></root>";
-    const result = get(xml, "root.name");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "test"));
+    const result = try get(xml, "root.name");
+    try std.testing.expect(std.mem.eql(u8, result, "test"));
 }

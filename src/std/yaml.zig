@@ -5,10 +5,8 @@
 //                   merge keys, complex keys, multiple documents.
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── Value Types ──
 
@@ -153,7 +151,7 @@ fn parseSequence(lines: []const Line, pos: *usize, base_indent: usize) Value {
         const after_dash = line.content[2..];
 
         // Check if this sequence item starts a nested mapping: "- key: value"
-        if (findKeyDelimiter(after_dash)) |delim| {
+        if (findKeyDelimiter(after_dash)) |_| {
             // Inline mapping entry as sequence item
             const item_indent = line.indent + 2;
             // Rewrite this line without "- " for the mapping parser
@@ -268,54 +266,54 @@ fn valueToString(val: Value) []const u8 {
 
 // ── Public API ──
 
-pub fn get(source: []const u8, path: []const u8) OrhonResult([]const u8) {
+pub fn get(source: []const u8, path: []const u8) anyerror![]const u8 {
     const root = parseYaml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
     const s = valueToString(val);
-    if (s.len == 0 and val.tag != .string) return .{ .err = .{ .message = "value is not a string" } };
-    return .{ .ok = s };
+    if (s.len == 0 and val.tag != .string) return error.value_is_not_a_string;
+    return s;
 }
 
-pub fn getInt(source: []const u8, path: []const u8) OrhonResult(i64) {
+pub fn getInt(source: []const u8, path: []const u8) anyerror!i64 {
     const root = parseYaml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
     return switch (val.tag) {
-        .integer => .{ .ok = val.integer },
-        .float => .{ .ok = @intFromFloat(val.float) },
-        else => .{ .err = .{ .message = "value is not an integer" } },
+        .integer => val.integer,
+        .float => @intFromFloat(val.float),
+        else => return error.value_is_not_an_integer,
     };
 }
 
-pub fn getFloat(source: []const u8, path: []const u8) OrhonResult(f64) {
+pub fn getFloat(source: []const u8, path: []const u8) anyerror!f64 {
     const root = parseYaml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
     return switch (val.tag) {
-        .float => .{ .ok = val.float },
-        .integer => .{ .ok = @floatFromInt(val.integer) },
-        else => .{ .err = .{ .message = "value is not a float" } },
+        .float => val.float,
+        .integer => @floatFromInt(val.integer),
+        else => return error.value_is_not_a_float,
     };
 }
 
-pub fn getBool(source: []const u8, path: []const u8) OrhonResult(bool) {
+pub fn getBool(source: []const u8, path: []const u8) anyerror!bool {
     const root = parseYaml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
     return switch (val.tag) {
-        .boolean => .{ .ok = val.boolean },
-        else => .{ .err = .{ .message = "value is not a boolean" } },
+        .boolean => val.boolean,
+        else => return error.value_is_not_a_boolean,
     };
 }
 
-pub fn getArray(source: []const u8, path: []const u8) OrhonResult([]const u8) {
+pub fn getArray(source: []const u8, path: []const u8) anyerror![]const u8 {
     const root = parseYaml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
-    if (val.tag != .sequence) return .{ .err = .{ .message = "value is not a sequence" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
+    if (val.tag != .sequence) return error.value_is_not_a_sequence;
 
     var buf = std.ArrayListUnmanaged(u8){};
     for (val.sequence_items, 0..) |item, i| {
         if (i > 0) buf.append(alloc, '\n') catch {};
         buf.appendSlice(alloc, valueToString(item)) catch {};
     }
-    return .{ .ok = if (buf.items.len > 0) buf.items else "" };
+    return if (buf.items.len > 0) buf.items else "";
 }
 
 pub fn hasKey(source: []const u8, path: []const u8) bool {
@@ -323,23 +321,23 @@ pub fn hasKey(source: []const u8, path: []const u8) bool {
     return resolveValue(root, path) != null;
 }
 
-pub fn getKeys(source: []const u8, mapping: []const u8) OrhonResult([]const u8) {
+pub fn getKeys(source: []const u8, mapping: []const u8) anyerror![]const u8 {
     const root = parseYaml(source);
 
     const target = if (mapping.len > 0)
-        resolveValue(root, mapping) orelse return .{ .err = .{ .message = "mapping not found" } }
+        resolveValue(root, mapping) orelse return error.mapping_not_found
     else
         root;
 
-    if (target.tag != .mapping) return .{ .err = .{ .message = "value is not a mapping" } };
+    if (target.tag != .mapping) return error.value_is_not_a_mapping;
 
     var buf = std.ArrayListUnmanaged(u8){};
     for (target.mapping_entries, 0..) |entry, i| {
         if (i > 0) buf.append(alloc, '\n') catch {};
         buf.appendSlice(alloc, entry.key) catch {};
     }
-    if (target.mapping_entries.len == 0) return .{ .err = .{ .message = "mapping not found" } };
-    return .{ .ok = buf.items };
+    if (target.mapping_entries.len == 0) return error.mapping_not_found;
+    return buf.items;
 }
 
 // ── Tests ──
@@ -350,9 +348,8 @@ test "get string" {
         \\  host: "localhost"
         \\  port: 8080
     ;
-    const r = get(yaml, "server.host");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "localhost"));
+    const r = try get(yaml, "server.host");
+    try std.testing.expect(std.mem.eql(u8, r, "localhost"));
 }
 
 test "getInt" {
@@ -360,9 +357,8 @@ test "getInt" {
         \\server:
         \\  port: 8080
     ;
-    const r = getInt(yaml, "server.port");
-    try std.testing.expect(r == .ok);
-    try std.testing.expectEqual(@as(i64, 8080), r.ok);
+    const r = try getInt(yaml, "server.port");
+    try std.testing.expectEqual(@as(i64, 8080), r);
 }
 
 test "getFloat" {
@@ -370,9 +366,8 @@ test "getFloat" {
         \\math:
         \\  pi: 3.14159
     ;
-    const r = getFloat(yaml, "math.pi");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(r.ok > 3.14 and r.ok < 3.15);
+    const r = try getFloat(yaml, "math.pi");
+    try std.testing.expect(r > 3.14 and r < 3.15);
 }
 
 test "getBool" {
@@ -380,9 +375,8 @@ test "getBool" {
         \\app:
         \\  debug: true
     ;
-    const r = getBool(yaml, "app.debug");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(r.ok);
+    const r = try getBool(yaml, "app.debug");
+    try std.testing.expect(r);
 }
 
 test "getBool case variants" {
@@ -390,12 +384,10 @@ test "getBool case variants" {
         \\a: True
         \\b: FALSE
     ;
-    const ra = getBool(yaml, "a");
-    try std.testing.expect(ra == .ok);
-    try std.testing.expect(ra.ok);
-    const rb = getBool(yaml, "b");
-    try std.testing.expect(rb == .ok);
-    try std.testing.expect(!rb.ok);
+    const ra = try getBool(yaml, "a");
+    try std.testing.expect(ra);
+    const rb = try getBool(yaml, "b");
+    try std.testing.expect(!rb);
 }
 
 test "getArray" {
@@ -406,9 +398,8 @@ test "getArray" {
         \\    - language
         \\    - zig
     ;
-    const r = getArray(yaml, "project.tags");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "orhon\nlanguage\nzig"));
+    const r = try getArray(yaml, "project.tags");
+    try std.testing.expect(std.mem.eql(u8, r, "orhon\nlanguage\nzig"));
 }
 
 test "hasKey" {
@@ -427,9 +418,8 @@ test "getKeys" {
         \\  port: 3000
         \\  debug: false
     ;
-    const r = getKeys(yaml, "server");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "host\nport\ndebug"));
+    const r = try getKeys(yaml, "server");
+    try std.testing.expect(std.mem.eql(u8, r, "host\nport\ndebug"));
 }
 
 test "top-level keys" {
@@ -437,9 +427,8 @@ test "top-level keys" {
         \\name: orhon
         \\version: "0.7.6"
     ;
-    const r = get(yaml, "name");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "orhon"));
+    const r = try get(yaml, "name");
+    try std.testing.expect(std.mem.eql(u8, r, "orhon"));
 }
 
 test "null values" {
@@ -447,9 +436,8 @@ test "null values" {
         \\empty: null
         \\tilde: ~
     ;
-    const r = get(yaml, "empty");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "null"));
+    const r = try get(yaml, "empty");
+    try std.testing.expect(std.mem.eql(u8, r, "null"));
 }
 
 test "comments ignored" {
@@ -458,9 +446,8 @@ test "comments ignored" {
         \\main:
         \\  key: value
     ;
-    const r = get(yaml, "main.key");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "value"));
+    const r = try get(yaml, "main.key");
+    try std.testing.expect(std.mem.eql(u8, r, "value"));
 }
 
 test "missing key" {
@@ -468,7 +455,7 @@ test "missing key" {
         \\db:
         \\  host: localhost
     ;
-    try std.testing.expect(get(yaml, "db.port") == .err);
+    try std.testing.expectError(error.key_not_found, get(yaml, "db.port"));
 }
 
 test "deeply nested" {
@@ -478,9 +465,8 @@ test "deeply nested" {
         \\    c:
         \\      d: deep
     ;
-    const r = get(yaml, "a.b.c.d");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "deep"));
+    const r = try get(yaml, "a.b.c.d");
+    try std.testing.expect(std.mem.eql(u8, r, "deep"));
 }
 
 test "integer array" {
@@ -491,9 +477,8 @@ test "integer array" {
         \\    - 443
         \\    - 8080
     ;
-    const r = getArray(yaml, "data.ports");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "80\n443\n8080"));
+    const r = try getArray(yaml, "data.ports");
+    try std.testing.expect(std.mem.eql(u8, r, "80\n443\n8080"));
 }
 
 test "single-quoted string" {
@@ -501,9 +486,8 @@ test "single-quoted string" {
         \\paths:
         \\  root: '/usr/local'
     ;
-    const r = get(yaml, "paths.root");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "/usr/local"));
+    const r = try get(yaml, "paths.root");
+    try std.testing.expect(std.mem.eql(u8, r, "/usr/local"));
 }
 
 test "root-level getKeys" {
@@ -512,7 +496,6 @@ test "root-level getKeys" {
         \\version: "0.7.6"
         \\lang: zig
     ;
-    const r = getKeys(yaml, "");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "name\nversion\nlang"));
+    const r = try getKeys(yaml, "");
+    try std.testing.expect(std.mem.eql(u8, r, "name\nversion\nlang"));
 }

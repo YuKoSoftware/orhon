@@ -2,11 +2,9 @@
 // Raw mode, cursor control, key input, screen buffer, drawing helpers.
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const posix = std.posix;
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 const stdout = std.fs.File{ .handle = posix.STDOUT_FILENO };
 const stdin = std.fs.File{ .handle = posix.STDIN_FILENO };
@@ -15,9 +13,9 @@ const stdin = std.fs.File{ .handle = posix.STDIN_FILENO };
 
 var original_termios: ?posix.termios = null;
 
-pub fn enableRawMode() OrhonResult(void) {
+pub fn enableRawMode() anyerror!void {
     const term = posix.tcgetattr(posix.STDIN_FILENO) catch {
-        return .{ .err = .{ .message = "could not get terminal attributes" } };
+        return error.could_not_get_terminal_attributes;
     };
     original_termios = term;
 
@@ -34,9 +32,8 @@ pub fn enableRawMode() OrhonResult(void) {
     raw.cc[@intFromEnum(posix.system.V.TIME)] = 0;
 
     posix.tcsetattr(posix.STDIN_FILENO, .FLUSH, raw) catch {
-        return .{ .err = .{ .message = "could not set terminal attributes" } };
+        return error.could_not_set_terminal_attributes;
     };
-    return .{ .ok = {} };
 }
 
 pub fn disableRawMode() void {
@@ -244,54 +241,54 @@ pub const Key = struct {
     }
 };
 
-pub fn readKey() OrhonResult(Key) {
+pub fn readKey() anyerror!Key {
     var buf: [8]u8 = undefined;
     const n = stdin.read(&buf) catch {
-        return .{ .err = .{ .message = "read failed" } };
+        return error.read_failed;
     };
-    if (n == 0) return .{ .err = .{ .message = "end of input" } };
+    if (n == 0) return error.end_of_input;
 
     const b = buf[0];
 
     // Enter
     if (b == '\r' or b == '\n') {
-        return .{ .ok = .{ .key_kind = KEY_ENTER, .key_char = "", .is_ctrl = false } };
+        return .{ .key_kind = KEY_ENTER, .key_char = "", .is_ctrl = false };
     }
 
     // Tab
     if (b == '\t') {
-        return .{ .ok = .{ .key_kind = KEY_TAB, .key_char = "", .is_ctrl = false } };
+        return .{ .key_kind = KEY_TAB, .key_char = "", .is_ctrl = false };
     }
 
     // Backspace
     if (b == 127 or b == 8) {
-        return .{ .ok = .{ .key_kind = KEY_BACKSPACE, .key_char = "", .is_ctrl = false } };
+        return .{ .key_kind = KEY_BACKSPACE, .key_char = "", .is_ctrl = false };
     }
 
     // Escape sequences
     if (b == 0x1b) {
         if (n == 1) {
-            return .{ .ok = .{ .key_kind = KEY_ESCAPE, .key_char = "", .is_ctrl = false } };
+            return .{ .key_kind = KEY_ESCAPE, .key_char = "", .is_ctrl = false };
         }
         if (n >= 3 and buf[1] == '[') {
-            return .{ .ok = parseCSI(buf[2..n]) };
+            return parseCSI(buf[2..n]);
         }
         if (n >= 3 and buf[1] == 'O') {
-            return .{ .ok = parseSS3(buf[2]) };
+            return parseSS3(buf[2]);
         }
-        return .{ .ok = .{ .key_kind = KEY_ESCAPE, .key_char = "", .is_ctrl = false } };
+        return .{ .key_kind = KEY_ESCAPE, .key_char = "", .is_ctrl = false };
     }
 
     // Ctrl + letter (bytes 1-26, excluding tab/enter/backspace handled above)
     if (b < 32) {
-        const ch_buf = alloc.alloc(u8, 1) catch return .{ .err = .{ .message = "out of memory" } };
+        const ch_buf = alloc.alloc(u8, 1) catch return error.out_of_memory;
         ch_buf[0] = b + 'a' - 1;
-        return .{ .ok = .{ .key_kind = KEY_CHAR, .key_char = ch_buf, .is_ctrl = true } };
+        return .{ .key_kind = KEY_CHAR, .key_char = ch_buf, .is_ctrl = true };
     }
 
     // Regular printable character
-    const ch_buf = alloc.dupe(u8, buf[0..n]) catch return .{ .err = .{ .message = "out of memory" } };
-    return .{ .ok = .{ .key_kind = KEY_CHAR, .key_char = ch_buf, .is_ctrl = false } };
+    const ch_buf = alloc.dupe(u8, buf[0..n]) catch return error.out_of_memory;
+    return .{ .key_kind = KEY_CHAR, .key_char = ch_buf, .is_ctrl = false };
 }
 
 fn parseCSI(seq: []const u8) Key {
@@ -391,8 +388,8 @@ pub const Screen = struct {
     }
 
     pub fn render(self: *Screen) void {
-        var out_buf: [4096]u8 = undefined;
-        var w = stdout.writer(&out_buf);
+        var out_buf_local: [4096]u8 = undefined;
+        var w = stdout.writer(&out_buf_local);
 
         const total: usize = @intCast(@max(1, self.row_count) * @max(1, self.col_count));
         for (0..total) |i| {

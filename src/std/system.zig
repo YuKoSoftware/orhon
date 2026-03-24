@@ -1,10 +1,8 @@
 // system.zig — OS interaction sidecar for std::system
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── RunResult ──
 
@@ -48,25 +46,24 @@ pub fn run(cmd: []const u8, args: []const []const u8) RunResult {
 
 // ── GetEnv ──
 
-pub fn getEnv(name: []const u8) OrhonResult([]const u8) {
+pub fn getEnv(name: []const u8) anyerror![]const u8 {
     const env = std.process.getEnvMap(alloc) catch {
-        return .{ .err = .{ .message = "could not read environment" } };
+        return error.could_not_read_environment;
     };
     if (env.get(name)) |val| {
-        return .{ .ok = alloc.dupe(u8, val) catch return .{ .err = .{ .message = "out of memory" } } };
+        return alloc.dupe(u8, val) catch return error.out_of_memory;
     }
-    return .{ .err = .{ .message = "environment variable not found" } };
+    return error.environment_variable_not_found;
 }
 
 // ── SetEnv ──
 
-pub fn setEnv(name: []const u8, value: []const u8) OrhonResult(void) {
+pub fn setEnv(name: []const u8, value: []const u8) anyerror!void {
     // Convert to null-terminated strings for POSIX setenv
-    const name_z = alloc.dupeZ(u8, name) catch return .{ .err = .{ .message = "out of memory" } };
-    const value_z = alloc.dupeZ(u8, value) catch return .{ .err = .{ .message = "out of memory" } };
+    const name_z = alloc.dupeZ(u8, name) catch return error.out_of_memory;
+    const value_z = alloc.dupeZ(u8, value) catch return error.out_of_memory;
     const result = std.c.setenv(name_z, value_z, 1);
-    if (result != 0) return .{ .err = .{ .message = "could not set environment variable" } };
-    return .{ .ok = {} };
+    if (result != 0) return error.could_not_set_environment_variable;
 }
 
 // ── HasEnv ──
@@ -164,15 +161,13 @@ test "cwd" {
 }
 
 test "setEnv and getEnv" {
-    const r = setEnv("_ORHON_TEST_VAR", "hello");
-    try std.testing.expect(r == .ok);
-    const g = getEnv("_ORHON_TEST_VAR");
-    try std.testing.expect(g == .ok);
-    try std.testing.expect(std.mem.eql(u8, g.ok, "hello"));
+    try setEnv("_ORHON_TEST_VAR", "hello");
+    const g = try getEnv("_ORHON_TEST_VAR");
+    try std.testing.expect(std.mem.eql(u8, g, "hello"));
 }
 
 test "hasEnv" {
-    _ = setEnv("_ORHON_TEST_HAS", "1");
+    try setEnv("_ORHON_TEST_HAS", "1");
     try std.testing.expect(hasEnv("_ORHON_TEST_HAS"));
     try std.testing.expect(!hasEnv("_ORHON_NONEXISTENT_VAR_12345"));
 }

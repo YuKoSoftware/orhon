@@ -2,10 +2,8 @@
 // Supports dot-path traversal for nested access.
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── Dot-Path Resolver ──
 // Walks a parsed JSON value by splitting path on '.'
@@ -34,111 +32,108 @@ fn resolve(root: std.json.Value, path: []const u8) ?std.json.Value {
     return current;
 }
 
-fn valueToString(val: std.json.Value) OrhonResult([]const u8) {
+fn valueToString(val: std.json.Value) anyerror![]const u8 {
     return switch (val) {
-        .string => |s| .{ .ok = alloc.dupe(u8, s) catch return .{ .err = .{ .message = "out of memory" } } },
-        .integer => |n| .{ .ok = std.fmt.allocPrint(alloc, "{d}", .{n}) catch return .{ .err = .{ .message = "out of memory" } } },
-        .float => |f| .{ .ok = std.fmt.allocPrint(alloc, "{d}", .{f}) catch return .{ .err = .{ .message = "out of memory" } } },
-        .bool => |b| .{ .ok = if (b) "true" else "false" },
-        .null => .{ .ok = "null" },
-        else => .{ .err = .{ .message = "unsupported value type" } },
+        .string => |s| alloc.dupe(u8, s) catch return error.out_of_memory,
+        .integer => |n| std.fmt.allocPrint(alloc, "{d}", .{n}) catch return error.out_of_memory,
+        .float => |f| std.fmt.allocPrint(alloc, "{d}", .{f}) catch return error.out_of_memory,
+        .bool => |b| if (b) "true" else "false",
+        .null => "null",
+        else => return error.unsupported_value_type,
     };
 }
 
 // ── Get ──
 // Extract a value at a dot-path as a string.
 
-pub fn get(source: []const u8, path: []const u8) OrhonResult([]const u8) {
+pub fn get(source: []const u8, path: []const u8) anyerror![]const u8 {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, source, .{}) catch {
-        return .{ .err = .{ .message = "invalid JSON" } };
+        return error.invalid_json;
     };
     defer parsed.deinit();
 
     const val = resolve(parsed.value, path) orelse {
-        return .{ .err = .{ .message = "path not found" } };
+        return error.path_not_found;
     };
     return valueToString(val);
 }
 
 // ── GetInt ──
 
-pub fn getInt(source: []const u8, path: []const u8) OrhonResult(i64) {
+pub fn getInt(source: []const u8, path: []const u8) anyerror!i64 {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, source, .{}) catch {
-        return .{ .err = .{ .message = "invalid JSON" } };
+        return error.invalid_json;
     };
     defer parsed.deinit();
 
     const val = resolve(parsed.value, path) orelse {
-        return .{ .err = .{ .message = "path not found" } };
+        return error.path_not_found;
     };
     return switch (val) {
-        .integer => |n| .{ .ok = n },
-        .float => |f| .{ .ok = @intFromFloat(f) },
-        else => .{ .err = .{ .message = "value is not an integer" } },
+        .integer => |n| n,
+        .float => |f| @intFromFloat(f),
+        else => return error.value_is_not_an_integer,
     };
 }
 
 // ── GetFloat ──
 
-pub fn getFloat(source: []const u8, path: []const u8) OrhonResult(f64) {
+pub fn getFloat(source: []const u8, path: []const u8) anyerror!f64 {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, source, .{}) catch {
-        return .{ .err = .{ .message = "invalid JSON" } };
+        return error.invalid_json;
     };
     defer parsed.deinit();
 
     const val = resolve(parsed.value, path) orelse {
-        return .{ .err = .{ .message = "path not found" } };
+        return error.path_not_found;
     };
     return switch (val) {
-        .float => |f| .{ .ok = f },
-        .integer => |n| .{ .ok = @floatFromInt(n) },
-        else => .{ .err = .{ .message = "value is not a float" } },
+        .float => |f| f,
+        .integer => |n| @floatFromInt(n),
+        else => return error.value_is_not_a_float,
     };
 }
 
 // ── GetBool ──
 
-pub fn getBool(source: []const u8, path: []const u8) OrhonResult(bool) {
+pub fn getBool(source: []const u8, path: []const u8) anyerror!bool {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, source, .{}) catch {
-        return .{ .err = .{ .message = "invalid JSON" } };
+        return error.invalid_json;
     };
     defer parsed.deinit();
 
     const val = resolve(parsed.value, path) orelse {
-        return .{ .err = .{ .message = "path not found" } };
+        return error.path_not_found;
     };
     return switch (val) {
-        .bool => |b| .{ .ok = b },
-        else => .{ .err = .{ .message = "value is not a boolean" } },
+        .bool => |b| b,
+        else => return error.value_is_not_a_boolean,
     };
 }
 
 // ── GetArray ──
 // Returns newline-separated string representations of array elements.
 
-pub fn getArray(source: []const u8, path: []const u8) OrhonResult([]const u8) {
+pub fn getArray(source: []const u8, path: []const u8) anyerror![]const u8 {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, source, .{}) catch {
-        return .{ .err = .{ .message = "invalid JSON" } };
+        return error.invalid_json;
     };
     defer parsed.deinit();
 
     const val = resolve(parsed.value, path) orelse {
-        return .{ .err = .{ .message = "path not found" } };
+        return error.path_not_found;
     };
     return switch (val) {
         .array => |arr| {
             var buf = std.ArrayListUnmanaged(u8){};
             for (arr.items, 0..) |item, i| {
                 if (i > 0) buf.append(alloc, '\n') catch {};
-                const s = valueToString(item);
-                switch (s) {
-                    .ok => |str| buf.appendSlice(alloc, str) catch {},
-                    .err => {},
-                }
+                const s = valueToString(item) catch continue;
+                buf.appendSlice(alloc, s) catch {};
             }
-            return .{ .ok = if (buf.items.len > 0) buf.items else "" };
+            return if (buf.items.len > 0) buf.items else "";
         },
-        else => .{ .err = .{ .message = "value is not an array" } },
+        else => return error.value_is_not_an_array,
     };
 }
 
@@ -205,72 +200,64 @@ pub fn stringify(value: anytype) []const u8 {
 // ── Pretty ──
 // Re-parse and emit with 4-space indentation.
 
-pub fn pretty(source: []const u8) OrhonResult([]const u8) {
+pub fn pretty(source: []const u8) anyerror![]const u8 {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, source, .{}) catch {
-        return .{ .err = .{ .message = "invalid JSON" } };
+        return error.invalid_json;
     };
     defer parsed.deinit();
 
     var buf = std.ArrayListUnmanaged(u8){};
     std.json.stringify(parsed.value, .{ .whitespace = .{ .indent = .{ .space = 4 } } }, buf.writer(alloc)) catch {
-        return .{ .err = .{ .message = "formatting failed" } };
+        return error.formatting_failed;
     };
-    return .{ .ok = buf.items };
+    return buf.items;
 }
 
 // ── Tests ──
 
 test "get top-level string" {
-    const result = get("{\"name\":\"orhon\"}", "name");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "orhon"));
+    const result = try get("{\"name\":\"orhon\"}", "name");
+    try std.testing.expect(std.mem.eql(u8, result, "orhon"));
 }
 
 test "get nested value" {
-    const result = get("{\"user\":{\"name\":\"yunus\"}}", "user.name");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "yunus"));
+    const result = try get("{\"user\":{\"name\":\"yunus\"}}", "user.name");
+    try std.testing.expect(std.mem.eql(u8, result, "yunus"));
 }
 
 test "get deeply nested" {
-    const result = get("{\"a\":{\"b\":{\"c\":\"deep\"}}}", "a.b.c");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "deep"));
+    const result = try get("{\"a\":{\"b\":{\"c\":\"deep\"}}}", "a.b.c");
+    try std.testing.expect(std.mem.eql(u8, result, "deep"));
 }
 
 test "get missing path" {
     const result = get("{\"a\":{\"b\":1}}", "a.c");
-    try std.testing.expect(result == .err);
+    try std.testing.expectError(error.path_not_found, result);
 }
 
 test "getInt" {
-    const result = getInt("{\"count\":42}", "count");
-    try std.testing.expect(result == .ok);
-    try std.testing.expectEqual(@as(i64, 42), result.ok);
+    const result = try getInt("{\"count\":42}", "count");
+    try std.testing.expectEqual(@as(i64, 42), result);
 }
 
 test "getFloat" {
-    const result = getFloat("{\"pi\":3.14}", "pi");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(result.ok > 3.13 and result.ok < 3.15);
+    const result = try getFloat("{\"pi\":3.14}", "pi");
+    try std.testing.expect(result > 3.13 and result < 3.15);
 }
 
 test "getBool" {
-    const result = getBool("{\"active\":true}", "active");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(result.ok);
+    const result = try getBool("{\"active\":true}", "active");
+    try std.testing.expect(result);
 }
 
 test "getArray" {
-    const result = getArray("{\"tags\":[\"a\",\"b\",\"c\"]}", "tags");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "a\nb\nc"));
+    const result = try getArray("{\"tags\":[\"a\",\"b\",\"c\"]}", "tags");
+    try std.testing.expect(std.mem.eql(u8, result, "a\nb\nc"));
 }
 
 test "getArray nested" {
-    const result = getArray("{\"data\":{\"ids\":[1,2,3]}}", "data.ids");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.eql(u8, result.ok, "1\n2\n3"));
+    const result = try getArray("{\"data\":{\"ids\":[1,2,3]}}", "data.ids");
+    try std.testing.expect(std.mem.eql(u8, result, "1\n2\n3"));
 }
 
 test "hasKey" {
@@ -288,12 +275,11 @@ test "object with typed values" {
 }
 
 test "pretty" {
-    const result = pretty("{\"a\":1}");
-    try std.testing.expect(result == .ok);
-    try std.testing.expect(std.mem.indexOf(u8, result.ok, "\n") != null);
+    const result = try pretty("{\"a\":1}");
+    try std.testing.expect(std.mem.indexOf(u8, result, "\n") != null);
 }
 
 test "invalid json" {
     const result = get("not json", "key");
-    try std.testing.expect(result == .err);
+    try std.testing.expectError(error.invalid_json, result);
 }

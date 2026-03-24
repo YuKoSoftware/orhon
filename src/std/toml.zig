@@ -3,10 +3,8 @@
 // Does NOT support: inline tables, datetime, multiline strings, array of tables.
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── Value Types ──
 
@@ -165,54 +163,54 @@ fn valueToString(val: Value) []const u8 {
 
 // ── Public API ──
 
-pub fn get(source: []const u8, path: []const u8) OrhonResult([]const u8) {
+pub fn get(source: []const u8, path: []const u8) anyerror![]const u8 {
     const root = parseToml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
     const s = valueToString(val);
-    if (s.len == 0 and val.tag != .string) return .{ .err = .{ .message = "value is not a string" } };
-    return .{ .ok = s };
+    if (s.len == 0 and val.tag != .string) return error.value_is_not_a_string;
+    return s;
 }
 
-pub fn getInt(source: []const u8, path: []const u8) OrhonResult(i64) {
+pub fn getInt(source: []const u8, path: []const u8) anyerror!i64 {
     const root = parseToml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
     return switch (val.tag) {
-        .integer => .{ .ok = val.integer },
-        .float => .{ .ok = @intFromFloat(val.float) },
-        else => .{ .err = .{ .message = "value is not an integer" } },
+        .integer => val.integer,
+        .float => @intFromFloat(val.float),
+        else => return error.value_is_not_an_integer,
     };
 }
 
-pub fn getFloat(source: []const u8, path: []const u8) OrhonResult(f64) {
+pub fn getFloat(source: []const u8, path: []const u8) anyerror!f64 {
     const root = parseToml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
     return switch (val.tag) {
-        .float => .{ .ok = val.float },
-        .integer => .{ .ok = @floatFromInt(val.integer) },
-        else => .{ .err = .{ .message = "value is not a float" } },
+        .float => val.float,
+        .integer => @floatFromInt(val.integer),
+        else => return error.value_is_not_a_float,
     };
 }
 
-pub fn getBool(source: []const u8, path: []const u8) OrhonResult(bool) {
+pub fn getBool(source: []const u8, path: []const u8) anyerror!bool {
     const root = parseToml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
     return switch (val.tag) {
-        .boolean => .{ .ok = val.boolean },
-        else => .{ .err = .{ .message = "value is not a boolean" } },
+        .boolean => val.boolean,
+        else => return error.value_is_not_a_boolean,
     };
 }
 
-pub fn getArray(source: []const u8, path: []const u8) OrhonResult([]const u8) {
+pub fn getArray(source: []const u8, path: []const u8) anyerror![]const u8 {
     const root = parseToml(source);
-    const val = resolveValue(root, path) orelse return .{ .err = .{ .message = "key not found" } };
-    if (val.tag != .array) return .{ .err = .{ .message = "value is not an array" } };
+    const val = resolveValue(root, path) orelse return error.key_not_found;
+    if (val.tag != .array) return error.value_is_not_an_array;
 
     var buf = std.ArrayListUnmanaged(u8){};
     for (val.array_items, 0..) |item, i| {
         if (i > 0) buf.append(alloc, '\n') catch {};
         buf.appendSlice(alloc, valueToString(item)) catch {};
     }
-    return .{ .ok = if (buf.items.len > 0) buf.items else "" };
+    return if (buf.items.len > 0) buf.items else "";
 }
 
 pub fn hasKey(source: []const u8, path: []const u8) bool {
@@ -220,11 +218,11 @@ pub fn hasKey(source: []const u8, path: []const u8) bool {
     return resolveValue(root, path) != null;
 }
 
-pub fn getKeys(source: []const u8, table: []const u8) OrhonResult([]const u8) {
+pub fn getKeys(source: []const u8, table: []const u8) anyerror![]const u8 {
     const root = parseToml(source);
 
     const prefix = if (table.len > 0)
-        std.fmt.allocPrint(alloc, "{s}.", .{table}) catch return .{ .err = .{ .message = "out of memory" } }
+        std.fmt.allocPrint(alloc, "{s}.", .{table}) catch return error.out_of_memory
     else
         "";
 
@@ -250,8 +248,8 @@ pub fn getKeys(source: []const u8, table: []const u8) OrhonResult([]const u8) {
         buf.appendSlice(alloc, key) catch {};
         key_count += 1;
     }
-    if (key_count == 0) return .{ .err = .{ .message = "table not found" } };
-    return .{ .ok = buf.items };
+    if (key_count == 0) return error.table_not_found;
+    return buf.items;
 }
 
 // ── Tests ──
@@ -262,9 +260,8 @@ test "get string" {
         \\host = "localhost"
         \\port = 8080
     ;
-    const r = get(toml, "server.host");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "localhost"));
+    const r = try get(toml, "server.host");
+    try std.testing.expect(std.mem.eql(u8, r, "localhost"));
 }
 
 test "getInt" {
@@ -272,9 +269,8 @@ test "getInt" {
         \\[server]
         \\port = 8080
     ;
-    const r = getInt(toml, "server.port");
-    try std.testing.expect(r == .ok);
-    try std.testing.expectEqual(@as(i64, 8080), r.ok);
+    const r = try getInt(toml, "server.port");
+    try std.testing.expectEqual(@as(i64, 8080), r);
 }
 
 test "getFloat" {
@@ -282,9 +278,8 @@ test "getFloat" {
         \\[math]
         \\pi = 3.14159
     ;
-    const r = getFloat(toml, "math.pi");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(r.ok > 3.14 and r.ok < 3.15);
+    const r = try getFloat(toml, "math.pi");
+    try std.testing.expect(r > 3.14 and r < 3.15);
 }
 
 test "getBool" {
@@ -292,9 +287,8 @@ test "getBool" {
         \\[app]
         \\debug = true
     ;
-    const r = getBool(toml, "app.debug");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(r.ok);
+    const r = try getBool(toml, "app.debug");
+    try std.testing.expect(r);
 }
 
 test "getArray" {
@@ -302,9 +296,8 @@ test "getArray" {
         \\[project]
         \\tags = ["orhon", "language", "zig"]
     ;
-    const r = getArray(toml, "project.tags");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "orhon\nlanguage\nzig"));
+    const r = try getArray(toml, "project.tags");
+    try std.testing.expect(std.mem.eql(u8, r, "orhon\nlanguage\nzig"));
 }
 
 test "hasKey" {
@@ -323,9 +316,8 @@ test "getKeys" {
         \\port = 3000
         \\debug = false
     ;
-    const r = getKeys(toml, "server");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "host\nport\ndebug"));
+    const r = try getKeys(toml, "server");
+    try std.testing.expect(std.mem.eql(u8, r, "host\nport\ndebug"));
 }
 
 test "top-level keys" {
@@ -333,9 +325,8 @@ test "top-level keys" {
         \\name = "orhon"
         \\version = "0.7.1"
     ;
-    const r = get(toml, "name");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "orhon"));
+    const r = try get(toml, "name");
+    try std.testing.expect(std.mem.eql(u8, r, "orhon"));
 }
 
 test "integer array" {
@@ -343,9 +334,8 @@ test "integer array" {
         \\[data]
         \\ports = [80, 443, 8080]
     ;
-    const r = getArray(toml, "data.ports");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "80\n443\n8080"));
+    const r = try getArray(toml, "data.ports");
+    try std.testing.expect(std.mem.eql(u8, r, "80\n443\n8080"));
 }
 
 test "single-quoted string" {
@@ -353,9 +343,8 @@ test "single-quoted string" {
         \\[paths]
         \\root = '/usr/local'
     ;
-    const r = get(toml, "paths.root");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "/usr/local"));
+    const r = try get(toml, "paths.root");
+    try std.testing.expect(std.mem.eql(u8, r, "/usr/local"));
 }
 
 test "comments ignored" {
@@ -364,9 +353,8 @@ test "comments ignored" {
         \\[main]
         \\key = "value"
     ;
-    const r = get(toml, "main.key");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "value"));
+    const r = try get(toml, "main.key");
+    try std.testing.expect(std.mem.eql(u8, r, "value"));
 }
 
 test "missing key" {
@@ -374,5 +362,5 @@ test "missing key" {
         \\[db]
         \\host = "localhost"
     ;
-    try std.testing.expect(get(toml, "db.port") == .err);
+    try std.testing.expectError(error.key_not_found, get(toml, "db.port"));
 }

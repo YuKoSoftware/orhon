@@ -2,10 +2,8 @@
 // Supports [section] headers, key=value pairs, and # ; comments.
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── Internal: Parse into section→key→value map ──
 
@@ -86,17 +84,17 @@ fn findValue(ini: IniMap, section: []const u8, key: []const u8) ?[]const u8 {
 
 // ── Get ──
 
-pub fn get(source: []const u8, path: []const u8) OrhonResult([]const u8) {
+pub fn get(source: []const u8, path: []const u8) anyerror![]const u8 {
     const dot = std.mem.indexOfScalar(u8, path, '.') orelse {
-        return .{ .err = .{ .message = "path must be section.key" } };
+        return error.path_must_be_section_dot_key;
     };
     const section = path[0..dot];
     const key = path[dot + 1 ..];
     const ini = parseIni(source);
     if (findValue(ini, section, key)) |val| {
-        return .{ .ok = val };
+        return val;
     }
-    return .{ .err = .{ .message = "key not found" } };
+    return error.key_not_found;
 }
 
 // ── HasKey ──
@@ -111,7 +109,7 @@ pub fn hasKey(source: []const u8, path: []const u8) bool {
 
 // ── GetKeys ──
 
-pub fn getKeys(source: []const u8, section: []const u8) OrhonResult([]const u8) {
+pub fn getKeys(source: []const u8, section: []const u8) anyerror![]const u8 {
     const ini = parseIni(source);
     for (ini.sections) |sec| {
         if (std.mem.eql(u8, sec.name, section)) {
@@ -120,10 +118,10 @@ pub fn getKeys(source: []const u8, section: []const u8) OrhonResult([]const u8) 
                 if (i > 0) buf.append(alloc, '\n') catch {};
                 buf.appendSlice(alloc, entry.key) catch {};
             }
-            return .{ .ok = if (buf.items.len > 0) buf.items else "" };
+            return if (buf.items.len > 0) buf.items else "";
         }
     }
-    return .{ .err = .{ .message = "section not found" } };
+    return error.section_not_found;
 }
 
 // ── GetSections ──
@@ -147,12 +145,10 @@ test "get value" {
         \\host = localhost
         \\port = 5432
     ;
-    const r = get(ini, "database.host");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "localhost"));
-    const r2 = get(ini, "database.port");
-    try std.testing.expect(r2 == .ok);
-    try std.testing.expect(std.mem.eql(u8, r2.ok, "5432"));
+    const r = try get(ini, "database.host");
+    try std.testing.expect(std.mem.eql(u8, r, "localhost"));
+    const r2 = try get(ini, "database.port");
+    try std.testing.expect(std.mem.eql(u8, r2, "5432"));
 }
 
 test "hasKey" {
@@ -172,9 +168,8 @@ test "getKeys" {
         \\port = 8080
         \\debug = true
     ;
-    const r = getKeys(ini, "server");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "host\nport\ndebug"));
+    const r = try getKeys(ini, "server");
+    try std.testing.expect(std.mem.eql(u8, r, "host\nport\ndebug"));
 }
 
 test "getSections" {
@@ -195,9 +190,8 @@ test "comments ignored" {
         \\[main]
         \\key = value
     ;
-    const r = get(ini, "main.key");
-    try std.testing.expect(r == .ok);
-    try std.testing.expect(std.mem.eql(u8, r.ok, "value"));
+    const r = try get(ini, "main.key");
+    try std.testing.expect(std.mem.eql(u8, r, "value"));
 }
 
 test "missing key" {
@@ -205,5 +199,5 @@ test "missing key" {
         \\[db]
         \\host = localhost
     ;
-    try std.testing.expect(get(ini, "db.port") == .err);
+    try std.testing.expectError(error.key_not_found, get(ini, "db.port"));
 }

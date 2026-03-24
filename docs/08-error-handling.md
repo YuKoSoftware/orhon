@@ -2,7 +2,7 @@
 
 ## Error Handling
 
-Functions that can fail return a union of `Error` and the success type. No exceptions, no monads — just a union and a type check. An error is a message `String` with a distinct type. If unhandled before scope exit, the compiler rejects the code.
+Functions that can fail return a union of `Error` and the success type. No exceptions, no monads — just a union and a type check. Errors map directly to native Zig error codes. If unhandled before scope exit, the compiler rejects the code.
 
 ```
 const ErrDivByZero = Error("division by zero")
@@ -16,7 +16,7 @@ func divide(a: i32, b: i32) (Error | i32) {
 
 var result: (Error | i32) = divide(10, 0)
 if(result is Error) {
-    console.print(result.Error)    // "division by zero"
+    console.print(result.Error)    // "division_by_zero"
     return
 }
 var value: i32 = result.value      // safe — Error case eliminated
@@ -28,6 +28,10 @@ func readFile(path: String) (Error | String) {
     return Error("could not open file")
 }
 ```
+
+**Note:** `result.Error` returns the error name as a string. The message is sanitized
+to an identifier (spaces become underscores): `Error("division by zero")` produces
+`"division_by_zero"`.
 
 ### Union Unwrap
 
@@ -72,7 +76,7 @@ match(result) {
 
 ## Null Handling
 
-Absence of a value expressed through a union with `null`. `null` is never a standalone value — it only exists inside a union type.
+Absence of a value expressed through a union with `null`. `null` is never a standalone value — it only exists inside a union type. Maps directly to native Zig optionals (`?T`).
 
 The same scope-based rule as error handling applies — a `(null | T)` union must be handled before leaving scope. If not handled, the compiler rejects the code.
 
@@ -96,3 +100,19 @@ match(result) {
     User => { var user: User = result.value }
 }
 ```
+
+---
+
+## Zig Mapping
+
+| Orhon | Zig |
+|-------|-----|
+| `(Error \| T)` | `anyerror!T` |
+| `(null \| T)` | `?T` |
+| `Error("message")` | `error.message_sanitized` |
+| `null` | `null` |
+| `result.value` (error union) | `result catch unreachable` |
+| `result.value` (null union) | `result.?` |
+| `result.Error` | `@errorName(err)` |
+| `result is Error` | `if (result) false else true` |
+| `result is null` | `result == null` |

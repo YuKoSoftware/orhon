@@ -2,37 +2,34 @@
 // Wraps Zig's std.net for TCP client/server.
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── Connection ──
 
 pub const Connection = struct {
     stream: std.net.Stream,
 
-    pub fn send(self: *Connection, data: []const u8) OrhonResult(void) {
+    pub fn send(self: *Connection, data: []const u8) anyerror!void {
         self.stream.writeAll(data) catch {
-            return .{ .err = .{ .message = "send failed" } };
+            return error.send_failed;
         };
-        return .{ .ok = {} };
     }
 
-    pub fn recv(self: *Connection, n: i32) OrhonResult([]const u8) {
+    pub fn recv(self: *Connection, n: i32) anyerror![]const u8 {
         const count: usize = @intCast(@max(0, n));
         const buf = alloc.alloc(u8, count) catch {
-            return .{ .err = .{ .message = "out of memory" } };
+            return error.out_of_memory;
         };
         const bytes_read = self.stream.read(buf) catch {
             alloc.free(buf);
-            return .{ .err = .{ .message = "recv failed" } };
+            return error.recv_failed;
         };
         if (bytes_read == 0) {
             alloc.free(buf);
-            return .{ .ok = "" };
+            return "";
         }
-        return .{ .ok = buf[0..bytes_read] };
+        return buf[0..bytes_read];
     }
 
     pub fn close(self: *Connection) void {
@@ -45,11 +42,11 @@ pub const Connection = struct {
 pub const Listener = struct {
     server: std.net.Server,
 
-    pub fn accept(self: *Listener) OrhonResult(Connection) {
+    pub fn accept(self: *Listener) anyerror!Connection {
         const conn = self.server.accept() catch {
-            return .{ .err = .{ .message = "accept failed" } };
+            return error.accept_failed;
         };
-        return .{ .ok = .{ .stream = conn.stream } };
+        return .{ .stream = conn.stream };
     }
 
     pub fn close(self: *Listener) void {
@@ -59,25 +56,25 @@ pub const Listener = struct {
 
 // ── TCP Connect ──
 
-pub fn tcpConnect(host: []const u8, port: i32) OrhonResult(Connection) {
-    const p: u16 = std.math.cast(u16, port) orelse return .{ .err = .{ .message = "invalid port" } };
+pub fn tcpConnect(host: []const u8, port: i32) anyerror!Connection {
+    const p: u16 = std.math.cast(u16, port) orelse return error.invalid_port;
     const stream = std.net.tcpConnectToHost(alloc, host, p) catch {
-        return .{ .err = .{ .message = "connection failed" } };
+        return error.connection_failed;
     };
-    return .{ .ok = .{ .stream = stream } };
+    return .{ .stream = stream };
 }
 
 // ── TCP Listen ──
 
-pub fn tcpListen(host: []const u8, port: i32) OrhonResult(Listener) {
-    const p: u16 = std.math.cast(u16, port) orelse return .{ .err = .{ .message = "invalid port" } };
+pub fn tcpListen(host: []const u8, port: i32) anyerror!Listener {
+    const p: u16 = std.math.cast(u16, port) orelse return error.invalid_port;
     const address = std.net.Address.resolveIp(host, p) catch {
-        return .{ .err = .{ .message = "could not resolve address" } };
+        return error.could_not_resolve_address;
     };
     const server = address.listen(.{ .reuse_address = true }) catch {
-        return .{ .err = .{ .message = "listen failed" } };
+        return error.listen_failed;
     };
-    return .{ .ok = .{ .server = server } };
+    return .{ .server = server };
 }
 
 // ── Tests ──
@@ -85,9 +82,7 @@ pub fn tcpListen(host: []const u8, port: i32) OrhonResult(Listener) {
 
 test "listen and connect" {
     // Start a listener on a random high port
-    const listen_result = tcpListen("127.0.0.1", 0);
-    try std.testing.expect(listen_result == .ok);
-    var listener = listen_result.ok;
+    var listener = try tcpListen("127.0.0.1", 0);
     defer listener.close();
 
     // Get the actual port assigned
@@ -95,22 +90,16 @@ test "listen and connect" {
     const port = addr.getPort();
 
     // Connect to it
-    const conn_result = tcpConnect("127.0.0.1", @intCast(port));
-    try std.testing.expect(conn_result == .ok);
-    var client = conn_result.ok;
+    var client = try tcpConnect("127.0.0.1", @intCast(port));
     defer client.close();
 
     // Accept the connection
-    const accept_result = listener.accept();
-    try std.testing.expect(accept_result == .ok);
-    var server_conn = accept_result.ok;
+    var server_conn = try listener.accept();
     defer server_conn.close();
 
     // Send and receive
-    const send_result = client.send("hello");
-    try std.testing.expect(send_result == .ok);
+    try client.send("hello");
 
-    const recv_result = server_conn.recv(1024);
-    try std.testing.expect(recv_result == .ok);
-    try std.testing.expect(std.mem.eql(u8, recv_result.ok, "hello"));
+    const recv_result = try server_conn.recv(1024);
+    try std.testing.expect(std.mem.eql(u8, recv_result, "hello"));
 }

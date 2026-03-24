@@ -1,10 +1,8 @@
 // time.zig — time and duration sidecar for std::time
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── Now ──
 
@@ -62,16 +60,16 @@ fn epochFromMs(ms: i64) std.time.epoch.EpochSeconds {
     return .{ .secs = @intCast(@divTrunc(ms, 1000)) };
 }
 
-pub fn parseDate(date: []const u8) OrhonResult(i64) {
+pub fn parseDate(date: []const u8) anyerror!i64 {
     // Parse "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SSZ"
-    if (date.len < 10) return .{ .err = .{ .message = "invalid date format" } };
-    const y = std.fmt.parseInt(i32, date[0..4], 10) catch return .{ .err = .{ .message = "invalid year" } };
-    if (date[4] != '-') return .{ .err = .{ .message = "invalid date format" } };
-    const m = std.fmt.parseInt(u32, date[5..7], 10) catch return .{ .err = .{ .message = "invalid month" } };
-    if (date[7] != '-') return .{ .err = .{ .message = "invalid date format" } };
-    const d = std.fmt.parseInt(u32, date[8..10], 10) catch return .{ .err = .{ .message = "invalid day" } };
+    if (date.len < 10) return error.invalid_date_format;
+    const y = std.fmt.parseInt(i32, date[0..4], 10) catch return error.invalid_year;
+    if (date[4] != '-') return error.invalid_date_format;
+    const m = std.fmt.parseInt(u32, date[5..7], 10) catch return error.invalid_month;
+    if (date[7] != '-') return error.invalid_date_format;
+    const d = std.fmt.parseInt(u32, date[8..10], 10) catch return error.invalid_day;
 
-    if (m < 1 or m > 12 or d < 1 or d > 31) return .{ .err = .{ .message = "date out of range" } };
+    if (m < 1 or m > 12 or d < 1 or d > 31) return error.date_out_of_range;
 
     var h: u32 = 0;
     var min: u32 = 0;
@@ -96,7 +94,7 @@ pub fn parseDate(date: []const u8) OrhonResult(i64) {
     const day_of_year: i64 = @intCast(md[m - 1] + d - 1);
 
     const total_secs = (year_days + day_of_year) * 86400 + @as(i64, h) * 3600 + @as(i64, min) * 60 + @as(i64, sec);
-    return .{ .ok = total_secs * 1000 };
+    return total_secs * 1000;
 }
 
 pub fn year(ms: i64) i32 {
@@ -161,23 +159,20 @@ test "format" {
 }
 
 test "parseDate" {
-    const r = parseDate("1970-01-01");
-    try std.testing.expect(r == .ok);
-    try std.testing.expectEqual(@as(i64, 0), r.ok);
+    const r = try parseDate("1970-01-01");
+    try std.testing.expectEqual(@as(i64, 0), r);
 }
 
 test "parseDate with time" {
-    const r = parseDate("1970-01-01T00:00:01Z");
-    try std.testing.expect(r == .ok);
-    try std.testing.expectEqual(@as(i64, 1000), r.ok);
+    const r = try parseDate("1970-01-01T00:00:01Z");
+    try std.testing.expectEqual(@as(i64, 1000), r);
 }
 
 test "year month day" {
-    const r = parseDate("2026-03-23");
-    try std.testing.expect(r == .ok);
-    try std.testing.expectEqual(@as(i32, 2026), year(r.ok));
-    try std.testing.expectEqual(@as(i32, 3), month(r.ok));
-    try std.testing.expectEqual(@as(i32, 23), day(r.ok));
+    const r = try parseDate("2026-03-23");
+    try std.testing.expectEqual(@as(i32, 2026), year(r));
+    try std.testing.expectEqual(@as(i32, 3), month(r));
+    try std.testing.expectEqual(@as(i32, 23), day(r));
 }
 
 test "weekday" {

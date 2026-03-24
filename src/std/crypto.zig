@@ -2,10 +2,8 @@
 // All hash functions return lowercase hex digest strings.
 
 const std = @import("std");
-const _rt = @import("_orhon_rt");
 
 const alloc = std.heap.page_allocator;
-const OrhonResult = _rt.OrhonResult;
 
 // ── Helpers ──
 
@@ -47,9 +45,9 @@ pub fn hmacSha256(data: []const u8, key: []const u8) []const u8 {
 
 const Aes256Gcm = std.crypto.aead.aes_gcm.Aes256Gcm;
 
-pub fn encrypt(plaintext: []const u8, key: []const u8) OrhonResult([]const u8) {
+pub fn encrypt(plaintext: []const u8, key: []const u8) anyerror![]const u8 {
     if (key.len != 32) {
-        return .{ .err = .{ .message = "key must be exactly 32 bytes" } };
+        return error.key_must_be_exactly_32_bytes;
     }
 
     // Generate random nonce
@@ -60,7 +58,7 @@ pub fn encrypt(plaintext: []const u8, key: []const u8) OrhonResult([]const u8) {
     const ct_len = plaintext.len;
     const blob_len = Aes256Gcm.nonce_length + ct_len + Aes256Gcm.tag_length;
     const blob = alloc.alloc(u8, blob_len) catch {
-        return .{ .err = .{ .message = "out of memory" } };
+        return error.out_of_memory;
     };
 
     // Encrypt in place
@@ -75,33 +73,33 @@ pub fn encrypt(plaintext: []const u8, key: []const u8) OrhonResult([]const u8) {
     const b64_size = std.base64.standard.Encoder.calcSize(blob_len);
     const encoded = alloc.alloc(u8, b64_size) catch {
         alloc.free(blob);
-        return .{ .err = .{ .message = "out of memory" } };
+        return error.out_of_memory;
     };
     _ = std.base64.standard.Encoder.encode(encoded, blob);
     alloc.free(blob);
 
-    return .{ .ok = encoded };
+    return encoded;
 }
 
-pub fn decrypt(ciphertext: []const u8, key: []const u8) OrhonResult([]const u8) {
+pub fn decrypt(ciphertext: []const u8, key: []const u8) anyerror![]const u8 {
     if (key.len != 32) {
-        return .{ .err = .{ .message = "key must be exactly 32 bytes" } };
+        return error.key_must_be_exactly_32_bytes;
     }
 
     // Base64 decode
     const blob_size = std.base64.standard.Decoder.calcSizeForSlice(ciphertext) catch {
-        return .{ .err = .{ .message = "invalid base64" } };
+        return error.invalid_base64;
     };
     const min_size = Aes256Gcm.nonce_length + Aes256Gcm.tag_length;
     if (blob_size < min_size) {
-        return .{ .err = .{ .message = "ciphertext too short" } };
+        return error.ciphertext_too_short;
     }
     const blob = alloc.alloc(u8, blob_size) catch {
-        return .{ .err = .{ .message = "out of memory" } };
+        return error.out_of_memory;
     };
     defer alloc.free(blob);
     std.base64.standard.Decoder.decode(blob, ciphertext) catch {
-        return .{ .err = .{ .message = "invalid base64" } };
+        return error.invalid_base64;
     };
 
     // Split: nonce ++ ciphertext ++ tag
@@ -112,14 +110,14 @@ pub fn decrypt(ciphertext: []const u8, key: []const u8) OrhonResult([]const u8) 
 
     // Decrypt
     const plaintext = alloc.alloc(u8, ct_len) catch {
-        return .{ .err = .{ .message = "out of memory" } };
+        return error.out_of_memory;
     };
     Aes256Gcm.decrypt(plaintext, ct, tag, "", nonce, key[0..32].*) catch {
         alloc.free(plaintext);
-        return .{ .err = .{ .message = "decryption failed — wrong key or corrupted data" } };
+        return error.decryption_failed;
     };
 
-    return .{ .ok = plaintext };
+    return plaintext;
 }
 
 // ── UUID v4 ──
@@ -159,25 +157,22 @@ test "hmacSha256" {
 test "encrypt and decrypt roundtrip" {
     const key = "01234567890123456789012345678901"; // 32 bytes
     const plaintext = "secret message from orhon";
-    const enc = encrypt(plaintext, key);
-    try std.testing.expect(enc == .ok);
-    const dec = decrypt(enc.ok, key);
-    try std.testing.expect(dec == .ok);
-    try std.testing.expect(std.mem.eql(u8, dec.ok, plaintext));
+    const enc = try encrypt(plaintext, key);
+    const dec = try decrypt(enc, key);
+    try std.testing.expect(std.mem.eql(u8, dec, plaintext));
 }
 
 test "encrypt bad key length" {
     const result = encrypt("data", "short");
-    try std.testing.expect(result == .err);
+    try std.testing.expectError(error.key_must_be_exactly_32_bytes, result);
 }
 
 test "decrypt bad key" {
     const key1 = "01234567890123456789012345678901";
     const key2 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345";
-    const enc = encrypt("hello", key1);
-    try std.testing.expect(enc == .ok);
-    const dec = decrypt(enc.ok, key2);
-    try std.testing.expect(dec == .err);
+    const enc = try encrypt("hello", key1);
+    const dec = decrypt(enc, key2);
+    try std.testing.expectError(error.decryption_failed, dec);
 }
 
 test "uuid format" {

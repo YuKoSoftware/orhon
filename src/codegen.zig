@@ -36,6 +36,13 @@ pub const CodeGen = struct {
     // `.value` unwrap when MIR type classification is unavailable (cross-module calls).
     error_narrowed: std.StringHashMapUnmanaged(void) = .{},
     null_narrowed: std.StringHashMapUnmanaged(void) = .{},
+    // Track the captured error variable name per scope for `.Error` → `@errorName()`
+    error_capture_var: std.StringHashMapUnmanaged([]const u8) = .{},
+    // Import alias tracking — use the user's import name instead of hardcoded prefixes
+    str_import_alias: ?[]const u8 = null,
+    str_is_included: bool = false,
+    collections_import_alias: ?[]const u8 = null,
+    collections_is_included: bool = false,
     // MIR annotation table — Phase 1+2 typed annotation pass
     node_map: ?*const mir.NodeMap = null,
     union_registry: ?*const mir.UnionRegistry = null,
@@ -97,6 +104,32 @@ pub const CodeGen = struct {
             }
         }
         return null;
+    }
+
+    /// Sanitize an error message string literal into a Zig error name.
+    /// Strips quotes, replaces spaces/non-identifier chars with underscores.
+    /// "division by zero" → error.division_by_zero
+    fn sanitizeErrorName(self: *CodeGen, msg: []const u8) ![]const u8 {
+        // Strip surrounding quotes if present
+        const raw = if (msg.len >= 2 and msg[0] == '"' and msg[msg.len - 1] == '"')
+            msg[1 .. msg.len - 1]
+        else
+            msg;
+        var buf = std.ArrayListUnmanaged(u8){};
+        defer buf.deinit(self.allocator);
+        for (raw) |ch| {
+            if (std.ascii.isAlphanumeric(ch) or ch == '_') {
+                try buf.append(self.allocator, ch);
+            } else if (ch == ' ' or ch == '-') {
+                if (buf.items.len > 0 and buf.items[buf.items.len - 1] != '_')
+                    try buf.append(self.allocator, '_');
+            }
+        }
+        // Trim trailing underscores
+        while (buf.items.len > 0 and buf.items[buf.items.len - 1] == '_')
+            buf.items.len -= 1;
+        if (buf.items.len == 0) try buf.appendSlice(self.allocator, "unknown_error");
+        return try self.allocTypeStr("{s}", .{buf.items});
     }
 
     /// If a node is typed as a bitfield, return the bitfield name. Uses MIR + decls.
@@ -222,6 +255,9 @@ pub const CodeGen = struct {
 
         try self.emit("\n");
 
+        // Emit _OrhonHandle helper for thread handle types (comptime, zero cost if unused)
+        try self.emit("fn _OrhonHandle(comptime T: type) type { return struct { thread: std.Thread, state: *SharedState, pub const SharedState = struct { result: T = undefined, completed: std.atomic.Value(bool) = std.atomic.Value(bool).init(false) }; const Self = @This(); pub fn getValue(self_h: *Self) T { self_h.thread.join(); const result = self_h.state.result; std.heap.page_allocator.destroy(self_h.state); return result; } pub fn wait(self_h: *Self) void { self_h.thread.join(); } pub fn done(self_h: *const Self) bool { return self_h.state.completed.load(.acquire); } pub fn join(self_h: *Self) void { self_h.thread.join(); std.heap.page_allocator.destroy(self_h.state); } }; }\n\n");
+
         // Generate top-level declarations from MIR tree
         const root = self.mir_root orelse return error.CompileError;
         for (root.children) |m| {
@@ -254,32 +290,6 @@ pub const CodeGen = struct {
             .string_literal, .interpolated_string => true,
             else => self.getTypeClass(node) == .string,
         };
-    }
-
-    /// Generate a value expression, wrapping it for null union context if needed.
-    /// Uses MIR coercion annotations when available, falls back to heuristic.
-    fn generateNullWrappedExpr(self: *CodeGen, value: *parser.Node) anyerror!void {
-        if (value.* == .null_literal) {
-            try self.emit(".{ .none = {} }");
-            return;
-        }
-        // If MIR explicitly says wrap, wrap
-        if (self.getNodeInfo(value)) |info| {
-            if (info.coercion != null and info.coercion.? == .null_wrap) {
-                try self.emit(".{ .some = ");
-                try self.generateExpr(value);
-                try self.emit(" }");
-                return;
-            }
-        }
-        // Heuristic: function calls and values already typed as null union pass through
-        if (self.exprReturnsNullUnion(value)) {
-            try self.generateExpr(value);
-        } else {
-            try self.emit(".{ .some = ");
-            try self.generateExpr(value);
-            try self.emit(" }");
-        }
     }
 
     /// Wrap a value for an arbitrary union: 42 → .{ ._i32 = 42 }
@@ -358,18 +368,6 @@ pub const CodeGen = struct {
         };
     }
 
-    /// Check if an expression already produces a null union value.
-    /// Function calls (positional args) to a function typed as returning a union
-    /// already return OrhonNullable — don't double-wrap.
-    fn exprReturnsNullUnion(self: *const CodeGen, node: *parser.Node) bool {
-        return switch (node.*) {
-            // Positional function calls returning a null union already produce OrhonNullable
-            .call_expr => |c| c.arg_names.len == 0,
-            // A variable typed as null union via MIR
-            else => self.getTypeClass(node) == .null_union,
-        };
-    }
-
     /// Check if an identifier is a declared Error constant
     fn isErrorConstant(self: *const CodeGen, name: []const u8) bool {
         if (self.decls) |decls| {
@@ -400,6 +398,21 @@ pub const CodeGen = struct {
         } else false;
 
         const ext = if (is_lib) "" else ".zig";
+
+        // Track import aliases for str and collections
+        if (std.mem.eql(u8, imp.path, "str")) {
+            if (imp.is_include) {
+                self.str_is_included = true;
+            } else {
+                self.str_import_alias = imp.alias orelse "str";
+            }
+        } else if (std.mem.eql(u8, imp.path, "collections")) {
+            if (imp.is_include) {
+                self.collections_is_included = true;
+            } else {
+                self.collections_import_alias = imp.alias orelse "collections";
+            }
+        }
 
         if (imp.is_include) {
             // include — dump all symbols into local namespace via individual re-exports
@@ -671,7 +684,7 @@ pub const CodeGen = struct {
         self.indent += 1;
 
         try self.emitIndent();
-        try self.emitFmt("const _state = _rt.alloc.create({s}.SharedState) catch unreachable;\n", .{handle_zig});
+        try self.emitFmt("const _state = std.heap.page_allocator.create({s}.SharedState) catch unreachable;\n", .{handle_zig});
         try self.emitIndent();
         try self.emit("_state.* = .{};\n");
 
@@ -861,7 +874,7 @@ pub const CodeGen = struct {
     /// Generate a thread function: body function + spawn wrapper.
     /// `thread worker(n: i32) Handle(i32) { return n * 2 }` generates:
     ///   fn _worker_body(n: i32) i32 { return (n * 2); }
-    ///   fn worker(n: i32) _rt.OrhonHandle(i32) { ... spawn ... }
+    ///   fn worker(n: i32) _OrhonHandle(i32) { ... spawn ... }
     fn generateThreadFunc(self: *CodeGen, node: *parser.Node, f: parser.FuncDecl) anyerror!void {
         // Extract inner type T from Handle(T) return type
         const inner_type = if (f.return_type.* == .type_generic and
@@ -903,7 +916,7 @@ pub const CodeGen = struct {
             try self.emit("\n\n");
         }
 
-        // ── Spawn wrapper: fn name(params) _rt.OrhonHandle(T) { ... } ──
+        // ── Spawn wrapper: fn name(params) _OrhonHandle(T) { ... } ──
         if (f.is_pub) try self.emit("pub ");
         try self.emitFmt("fn {s}(", .{f.name});
         for (f.params, 0..) |param, i| {
@@ -921,7 +934,7 @@ pub const CodeGen = struct {
 
         // Allocate shared state
         try self.emitIndent();
-        try self.emitFmt("const _state = _rt.alloc.create({s}.SharedState) catch unreachable;\n", .{handle_zig});
+        try self.emitFmt("const _state = std.heap.page_allocator.create({s}.SharedState) catch unreachable;\n", .{handle_zig});
         try self.emitIndent();
         try self.emit("_state.* = .{};\n");
 
@@ -1159,13 +1172,10 @@ pub const CodeGen = struct {
             try self.emitFmt(": {s}", .{try self.typeToZig(t)});
         }
         try self.emit(" = ");
-        if (tc == .error_union) {
-            try self.generateExpr(v.value);
-        } else if (tc == .null_union) {
-            try self.generateNullWrappedExpr(v.value);
-        } else if (tc == .arbitrary_union) {
+        if (tc == .arbitrary_union) {
             try self.generateArbitraryUnionWrappedExpr(v.value, self.getUnionMembers(node));
         } else {
+            // Native ?T and anyerror!T — Zig handles coercion, no wrapping needed
             try self.generateExpr(v.value);
         }
         try self.emit(";\n");
@@ -1178,13 +1188,10 @@ pub const CodeGen = struct {
         try self.emitFmt("{s} {s}", .{ decl_keyword, v.name });
         if (v.type_annotation) |t| try self.emitFmt(": {s}", .{try self.typeToZig(t)});
         try self.emit(" = ");
-        if (tc == .error_union) {
-            try self.generateExpr(v.value);
-        } else if (tc == .null_union) {
-            try self.generateNullWrappedExpr(v.value);
-        } else if (tc == .arbitrary_union) {
+        if (tc == .arbitrary_union) {
             try self.generateArbitraryUnionWrappedExpr(v.value, self.getUnionMembers(node));
         } else {
+            // Native ?T and anyerror!T — Zig handles coercion, no wrapping needed
             const prev_ctx = self.type_ctx;
             self.type_ctx = v.type_annotation;
             try self.generateExpr(v.value);
@@ -1228,21 +1235,13 @@ pub const CodeGen = struct {
             try self.emitFmt(": {s}", .{try self.typeToZig(t)});
         }
         try self.emit(" = ");
-        if (m.type_class == .error_union) {
-            try self.generateExprMir(m.value());
-        } else if (m.type_class == .null_union) {
-            const val = m.value();
-            if (val.literal_kind == .null_lit) {
-                try self.emit(".{ .none = {} }");
-            } else {
-                try self.generateCoercedExprMir(val);
-            }
-        } else if (m.type_class == .arbitrary_union) {
+        if (m.type_class == .arbitrary_union) {
             try self.generateCoercedExprMir(m.value());
         } else if (m.value().kind == .type_expr) {
             // Type in expression position = default constructor (.{})
             try self.emit(".{}");
         } else {
+            // Native ?T and anyerror!T — Zig handles coercion, no wrapping needed
             try self.generateExprMir(m.value());
         }
         try self.emit(";\n");
@@ -1326,15 +1325,9 @@ pub const CodeGen = struct {
                     // Use MIR coercion from child MirNode directly
                     if (val_m.coercion) |c| {
                         switch (c) {
-                            .null_wrap => {
-                                try self.emit(".{ .some = ");
+                            // Native ?T and anyerror!T — Zig handles coercion natively
+                            .null_wrap, .error_wrap => {
                                 try self.generateExprMir(val_m);
-                                try self.emit(" }");
-                            },
-                            .error_wrap => {
-                                try self.emit(".{ .ok = ");
-                                try self.generateExprMir(val_m);
-                                try self.emit(" }");
                             },
                             .arbitrary_union_wrap => {
                                 try self.generateArbitraryUnionWrappedExprMir(val_m, self.funcReturnMembers());
@@ -1344,27 +1337,14 @@ pub const CodeGen = struct {
                                 try self.generateExprMir(val_m);
                             },
                             .optional_unwrap => {
+                                // Native ?T: unwrap → .?
                                 try self.generateExprMir(val_m);
-                                try self.emit(".some");
+                                try self.emit(".?");
                             },
                         }
                     } else {
-                        const ret_tc = self.funcReturnTypeClass();
-                        if (ret_tc == .error_union) {
-                            if (val_m.literal_kind == .error_lit) {
-                                try self.generateExprMir(val_m);
-                            } else if (val_m.kind == .identifier and self.isErrorConstant(val_m.name orelse "")) {
-                                try self.emit(".{ .err = ");
-                                try self.generateExprMir(val_m);
-                                try self.emit(" }");
-                            } else {
-                                try self.generateExprMir(val_m);
-                            }
-                        } else if (ret_tc == .null_union and val_m.literal_kind == .null_lit) {
-                            try self.emit(".{ .none = {} }");
-                        } else {
-                            try self.generateExprMir(val_m);
-                        }
+                        // Native ?T and anyerror!T — Zig coerces values automatically
+                        try self.generateExprMir(val_m);
                     }
                 }
                 try self.emit(";");
@@ -1449,7 +1429,7 @@ pub const CodeGen = struct {
             },
             .injected_defer => {
                 if (m.injected_name) |name| {
-                    try self.emitFmt("defer _rt.alloc.free({s});", .{name});
+                    try self.emitFmt("defer std.heap.page_allocator.free({s});", .{name});
                 }
             },
             // Bare expression as statement — discard return value
@@ -1468,20 +1448,13 @@ pub const CodeGen = struct {
         try self.emitFmt("{s} {s}", .{ decl_keyword, var_name });
         if (m.type_annotation) |t| try self.emitFmt(": {s}", .{try self.typeToZig(t)});
         try self.emit(" = ");
-        if (m.type_class == .error_union) {
-            try self.generateExprMir(val_m);
-        } else if (m.type_class == .null_union) {
-            if (val_m.literal_kind == .null_lit) {
-                try self.emit(".{ .none = {} }");
-            } else {
-                try self.generateCoercedExprMir(val_m);
-            }
-        } else if (m.type_class == .arbitrary_union) {
+        if (m.type_class == .arbitrary_union) {
             try self.generateCoercedExprMir(val_m);
         } else if (val_m.kind == .type_expr) {
             // Type in expression position = default constructor (.{})
             try self.emit(".{}");
         } else {
+            // Native ?T and anyerror!T — Zig handles coercion, no wrapping needed
             const prev_ctx = self.type_ctx;
             self.type_ctx = m.type_annotation;
             try self.generateExprMir(val_m);
@@ -1506,13 +1479,9 @@ pub const CodeGen = struct {
             .bool_literal => |b| try self.emit(if (b) "true" else "false"),
             .null_literal => try self.emit("null"),
             .error_literal => |msg| {
-                if (self.funcReturnTypeClass() == .error_union) {
-                    // Inside a function returning (Error | T) → union variant
-                    try self.emitFmt(".{{ .err = .{{ .message = {s} }} }}", .{msg});
-                } else {
-                    // Standalone Error value (const, assignment)
-                    try self.emitFmt("_rt.OrhonError{{ .message = {s} }}", .{msg});
-                }
+                // Error("message") → error.sanitized_name (native Zig error)
+                const name = try self.sanitizeErrorName(msg);
+                try self.emitFmt("error.{s}", .{name});
             },
             .identifier => |name| {
                 if (self.isEnumVariant(name)) {
@@ -1563,8 +1532,8 @@ pub const CodeGen = struct {
                 try self.emit("}");
             },
             .binary_expr => |b| {
-                // `x is Error`   → x == .err    (error union tag check)
-                // `x is null`    → x == .none   (null union tag check)
+                // `x is Error`   → if(x) false else true  (anyerror!T check)
+                // `x is null`    → x == null    (?T check)
                 // `x is T`       → @TypeOf(x) == T  (comptime type check for `any` params)
                 // `x is not ...` → same but with !=
                 const is_eq = std.mem.eql(u8, b.op, "==");
@@ -1581,9 +1550,10 @@ pub const CodeGen = struct {
                         // Record narrowing for `.value` resolution
                         if (val_node.* == .identifier)
                             try self.null_narrowed.put(self.allocator, val_node.identifier, {});
+                        // (null | T) → ?T: x is null → x == null
                         try self.emit("(");
                         try self.generateExpr(val_node);
-                        try self.emitFmt(" {s} .none)", .{cmp});
+                        try self.emitFmt(" {s} null)", .{cmp});
                         return;
                     }
                     if (b.right.* == .identifier) {
@@ -1592,9 +1562,14 @@ pub const CodeGen = struct {
                             // Record narrowing for `.value` resolution
                             if (val_node.* == .identifier)
                                 try self.error_narrowed.put(self.allocator, val_node.identifier, {});
-                            try self.emit("(");
+                            // (Error | T) → anyerror!T: x is Error →
+                            //   if (x) |_| false else |_| true  (for ==)
+                            //   if (x) |_| true else |_| false  (for !=)
+                            const t_val = if (is_eq) "false" else "true";
+                            const f_val = if (is_eq) "true" else "false";
+                            try self.emit("(if (");
                             try self.generateExpr(val_node);
-                            try self.emitFmt(" {s} .err)", .{cmp});
+                            try self.emitFmt(") |_| {s} else |_| {s})", .{ t_val, f_val });
                             return;
                         }
                         // Arbitrary union type check: `val is i32` → `val == ._i32`
@@ -1719,9 +1694,9 @@ pub const CodeGen = struct {
                     }
                 }
                 // ── String method rewriting ──
-                // s.method(args) → _str.method(s, args) when s is a String
-                // x.toString()   → _str.toString(x) for any type
-                // arr.join(sep)  → _str.join(arr, sep) for array/slice join
+                // s.method(args) → str.method(s, args) when s is a String
+                // x.toString()   → str.toString(x) for any type
+                // arr.join(sep)  → str.join(arr, sep) for array/slice join
                 if (c.callee.* == .field_expr) {
                     const method = c.callee.field_expr.field;
                     const obj = c.callee.field_expr.object;
@@ -1730,7 +1705,12 @@ pub const CodeGen = struct {
                         std.mem.eql(u8, method, "toString") or
                         std.mem.eql(u8, method, "join")))
                     {
-                        try self.emitFmt("_str.{s}(", .{method});
+                        if (self.str_is_included) {
+                            try self.emitFmt("{s}(", .{method});
+                        } else {
+                            const prefix = self.str_import_alias orelse "str";
+                            try self.emitFmt("{s}.{s}(", .{ prefix, method });
+                        }
                         try self.generateExpr(obj);
                         for (c.args) |arg| {
                             try self.emit(", ");
@@ -1803,16 +1783,26 @@ pub const CodeGen = struct {
                     try self.generateExpr(f.object);
                     try self.emit("[0]");
                 } else if (std.mem.eql(u8, f.field, K.Type.ERROR)) {
-                    // result.Error → result.err.message (extract error message string)
-                    try self.generateExpr(f.object);
-                    try self.emit(".err.message");
+                    // result.Error → @errorName(captured_err) (native Zig error name)
+                    if (f.object.* == .identifier) {
+                        if (self.error_capture_var.get(f.object.identifier)) |cap| {
+                            try self.emitFmt("@errorName({s})", .{cap});
+                        } else {
+                            // Fallback: should not happen if propagation analysis is correct
+                            try self.generateExpr(f.object);
+                            try self.emit(" catch |_e| @errorName(_e)");
+                        }
+                    } else {
+                        try self.generateExpr(f.object);
+                        try self.emit(" catch |_e| @errorName(_e)");
+                    }
                 } else if (std.mem.eql(u8, f.field, "value") and
                     (self.getTypeClass(f.object) == .arbitrary_union or self.getTypeClass(f.object) == .null_union or self.getTypeClass(f.object) == .error_union))
                 {
-                    // .value unwrap — emit correct Zig field based on union kind
+                    // .value unwrap — emit native Zig unwrap based on union kind
                     const obj_tc = self.getTypeClass(f.object);
-                    try self.generateExpr(f.object);
                     if (obj_tc == .arbitrary_union) {
+                        try self.generateExpr(f.object);
                         // Use MIR union members to find the value type
                         if (f.object.* == .identifier) {
                             if (self.getUnionMembers(f.object) orelse self.getVarUnionMembers(f.object.identifier)) |members| {
@@ -1826,9 +1816,13 @@ pub const CodeGen = struct {
                             }
                         }
                     } else if (obj_tc == .null_union) {
-                        try self.emit(".some");
+                        // (null | T) → ?T: result.value → result.?
+                        try self.generateExpr(f.object);
+                        try self.emit(".?");
                     } else if (obj_tc == .error_union) {
-                        try self.emit(".ok");
+                        // (Error | T) → anyerror!T: result.value → result catch unreachable
+                        try self.generateExpr(f.object);
+                        try self.emit(" catch unreachable");
                     }
                 } else if (self.getTypeClass(f.object) == .arbitrary_union and
                     isResultValueField(f.field, self.decls))
@@ -1839,23 +1833,22 @@ pub const CodeGen = struct {
                 } else if (isResultValueField(f.field, self.decls)) {
                     // Check if the object is a null union variable
                     if (self.getTypeClass(f.object) == .null_union) {
-                        // result.User → result.some (null union access)
+                        // (null | T) → ?T: result.User → result.?
                         try self.generateExpr(f.object);
-                        try self.emit(".some");
+                        try self.emit(".?");
                     } else {
-                        // result.i32 / result.User etc → result.ok (error union access)
+                        // (Error | T) → anyerror!T: result.value → result catch unreachable
                         try self.generateExpr(f.object);
-                        try self.emit(".ok");
+                        try self.emit(" catch unreachable");
                     }
                 } else if (std.mem.eql(u8, f.field, "value") and f.object.* == .identifier) {
                     // Fallback `.value` unwrap using narrowing info from `is Error` / `is null` checks.
-                    // Covers cross-module bridge calls where MIR type class is unavailable.
                     if (self.error_narrowed.contains(f.object.identifier)) {
                         try self.generateExpr(f.object);
-                        try self.emit(".ok");
+                        try self.emit(" catch unreachable");
                     } else if (self.null_narrowed.contains(f.object.identifier)) {
                         try self.generateExpr(f.object);
-                        try self.emit(".some");
+                        try self.emit(".?");
                     } else {
                         try self.generateExpr(f.object);
                         try self.emit(".value");
@@ -1963,9 +1956,10 @@ pub const CodeGen = struct {
                         // Record narrowing for `.value` resolution
                         if (val_mir.kind == .identifier)
                             try self.null_narrowed.put(self.allocator, val_mir.name orelse "", {});
+                        // (null | T) → ?T: x is null → x == null
                         try self.emit("(");
                         try self.generateExprMir(val_mir);
-                        try self.emitFmt(" {s} .none)", .{cmp});
+                        try self.emitFmt(" {s} null)", .{cmp});
                         return;
                     }
                     if (rhs_mir.kind == .identifier) {
@@ -1974,9 +1968,12 @@ pub const CodeGen = struct {
                             // Record narrowing for `.value` resolution
                             if (val_mir.kind == .identifier)
                                 try self.error_narrowed.put(self.allocator, val_mir.name orelse "", {});
-                            try self.emit("(");
+                            // (Error | T) → anyerror!T: x is Error → if/else pattern
+                            const t_val = if (is_eq) "false" else "true";
+                            const f_val = if (is_eq) "true" else "false";
+                            try self.emit("(if (");
                             try self.generateExprMir(val_mir);
-                            try self.emitFmt(" {s} .err)", .{cmp});
+                            try self.emitFmt(") |_| {s} else |_| {s})", .{ t_val, f_val });
                             return;
                         }
                         if (lhs_mir.type_class == .arbitrary_union or
@@ -2133,7 +2130,12 @@ pub const CodeGen = struct {
                         std.mem.eql(u8, method, "toString") or
                         std.mem.eql(u8, method, "join")))
                     {
-                        try self.emitFmt("_str.{s}(", .{method});
+                        if (self.str_is_included) {
+                            try self.emitFmt("{s}(", .{method});
+                        } else {
+                            const prefix = self.str_import_alias orelse "str";
+                            try self.emitFmt("{s}.{s}(", .{ prefix, method });
+                        }
                         try self.generateExprMir(obj_mir);
                         for (call_args) |arg| {
                             try self.emit(", ");
@@ -2196,14 +2198,24 @@ pub const CodeGen = struct {
                     try self.generateExprMir(obj_mir);
                     try self.emit("[0]");
                 } else if (std.mem.eql(u8, field, K.Type.ERROR)) {
-                    // result.Error → result.err.message (extract error message string)
-                    try self.generateExprMir(obj_mir);
-                    try self.emit(".err.message");
+                    // result.Error → @errorName(captured_err) (native Zig error)
+                    if (obj_mir.kind == .identifier) {
+                        const obj_name = obj_mir.name orelse "";
+                        if (self.error_capture_var.get(obj_name)) |cap| {
+                            try self.emitFmt("@errorName({s})", .{cap});
+                        } else {
+                            try self.generateExprMir(obj_mir);
+                            try self.emit(" catch |_e| @errorName(_e)");
+                        }
+                    } else {
+                        try self.generateExprMir(obj_mir);
+                        try self.emit(" catch |_e| @errorName(_e)");
+                    }
                 } else if (std.mem.eql(u8, field, "value") and
                     (obj_tc == .arbitrary_union or obj_tc == .null_union or obj_tc == .error_union))
                 {
-                    try self.generateExprMir(obj_mir);
                     if (obj_tc == .arbitrary_union) {
+                        try self.generateExprMir(obj_mir);
                         if (obj_mir.kind == .identifier) {
                             if (obj_mir.narrowed_to) |narrowed| {
                                 try self.emitFmt("._{s}", .{narrowed});
@@ -2223,30 +2235,36 @@ pub const CodeGen = struct {
                             }
                         }
                     } else if (obj_tc == .null_union) {
-                        try self.emit(".some");
+                        // (null | T) → ?T: result.value → result.?
+                        try self.generateExprMir(obj_mir);
+                        try self.emit(".?");
                     } else if (obj_tc == .error_union) {
-                        try self.emit(".ok");
+                        // (Error | T) → anyerror!T: result.value → result catch unreachable
+                        try self.generateExprMir(obj_mir);
+                        try self.emit(" catch unreachable");
                     }
                 } else if (obj_tc == .arbitrary_union and isResultValueField(field, self.decls)) {
                     try self.generateExprMir(obj_mir);
                     try self.emitFmt("._{s}", .{field});
                 } else if (isResultValueField(field, self.decls)) {
                     if (obj_tc == .null_union) {
+                        // (null | T) → ?T: result.value → result.?
                         try self.generateExprMir(obj_mir);
-                        try self.emit(".some");
+                        try self.emit(".?");
                     } else {
+                        // (Error | T) → anyerror!T: result.value → result catch unreachable
                         try self.generateExprMir(obj_mir);
-                        try self.emit(".ok");
+                        try self.emit(" catch unreachable");
                     }
                 } else if (std.mem.eql(u8, field, "value") and obj_mir.kind == .identifier) {
-                    // Fallback `.value` unwrap using narrowing info from `is Error` / `is null` checks.
+                    // Fallback `.value` unwrap using narrowing info
                     const obj_name = obj_mir.name orelse "";
                     if (self.error_narrowed.contains(obj_name)) {
                         try self.generateExprMir(obj_mir);
-                        try self.emit(".ok");
+                        try self.emit(" catch unreachable");
                     } else if (self.null_narrowed.contains(obj_name)) {
                         try self.generateExprMir(obj_mir);
-                        try self.emit(".some");
+                        try self.emit(".?");
                     } else {
                         try self.generateExprMir(obj_mir);
                         try self.emit(".value");
@@ -2263,12 +2281,10 @@ pub const CodeGen = struct {
                     .bool_lit => try self.emit(if (m.bool_val) "true" else "false"),
                     .null_lit => try self.emit("null"),
                     .error_lit => {
+                        // Error("message") → error.sanitized_name (native Zig error)
                         const msg = m.literal orelse return;
-                        if (self.funcReturnTypeClass() == .error_union) {
-                            try self.emitFmt(".{{ .err = .{{ .message = {s} }} }}", .{msg});
-                        } else {
-                            try self.emitFmt("_rt.OrhonError{{ .message = {s} }}", .{msg});
-                        }
+                        const name = try self.sanitizeErrorName(msg);
+                        try self.emitFmt("error.{s}", .{name});
                     },
                 }
             },
@@ -2376,19 +2392,9 @@ pub const CodeGen = struct {
                 try self.emit("&");
                 try self.generateExprMir(m);
             },
-            .null_wrap => {
-                if (m.literal_kind == .null_lit) {
-                    try self.emit(".{ .none = {} }");
-                } else {
-                    try self.emit(".{ .some = ");
-                    try self.generateExprMir(m);
-                    try self.emit(" }");
-                }
-            },
-            .error_wrap => {
-                try self.emit(".{ .ok = ");
+            // Native ?T and anyerror!T — Zig handles coercion automatically
+            .null_wrap, .error_wrap => {
                 try self.generateExprMir(m);
-                try self.emit(" }");
             },
             .arbitrary_union_wrap => {
                 if (m.coerce_tag) |tag| {
@@ -2400,8 +2406,9 @@ pub const CodeGen = struct {
                 }
             },
             .optional_unwrap => {
+                // Native ?T: unwrap → .?
                 try self.generateExprMir(m);
-                try self.emit(".some");
+                try self.emit(".?");
             },
         }
     }
@@ -2514,9 +2521,9 @@ pub const CodeGen = struct {
 
     /// Generate string interpolation using std.fmt.allocPrint.
     /// "hello @{name}, value @{x}!" →
-    ///   std.fmt.allocPrint(_rt.alloc, "hello {s}, value {}", .{name, x}) catch unreachable
+    ///   std.fmt.allocPrint(std.heap.page_allocator, "hello {s}, value {}", .{name, x}) catch unreachable
     fn generateInterpolatedString(self: *CodeGen, interp: parser.InterpolatedString) anyerror!void {
-        try self.emit("std.fmt.allocPrint(_rt.alloc, \"");
+        try self.emit("std.fmt.allocPrint(std.heap.page_allocator, \"");
         // Build format string
         for (interp.parts) |part| {
             switch (part) {
@@ -2771,6 +2778,82 @@ pub const CodeGen = struct {
             break :blk true;
         };
 
+        const is_error_union = blk: {
+            for (m.matchArms()) |arm_mir| {
+                const pat_m = arm_mir.pattern();
+                if (pat_m.kind == .identifier and std.mem.eql(u8, pat_m.name orelse "", K.Type.ERROR)) break :blk true;
+            }
+            break :blk false;
+        };
+
+        // For native ?T and anyerror!T, use if/else instead of switch
+        if (is_error_union) {
+            // match on anyerror!T → if (val) |_match_val| { ... } else |_match_err| { ... }
+            var value_arm: ?*mir.MirNode = null;
+            var error_arm: ?*mir.MirNode = null;
+            var else_arm: ?*mir.MirNode = null;
+            for (m.matchArms()) |arm_mir| {
+                const pat_m = arm_mir.pattern();
+                const pat_name = pat_m.name orelse "";
+                if (pat_m.kind == .identifier and std.mem.eql(u8, pat_name, K.Type.ERROR)) {
+                    error_arm = arm_mir;
+                } else if (pat_m.kind == .identifier and std.mem.eql(u8, pat_name, "else")) {
+                    else_arm = arm_mir;
+                } else {
+                    value_arm = arm_mir;
+                }
+            }
+            try self.emit("if (");
+            try self.generateExprMir(m.value());
+            try self.emit(") |_match_val| ");
+            if (value_arm orelse else_arm) |arm| {
+                try self.generateBlockMir(arm.body());
+            } else {
+                try self.emit("{}");
+            }
+            try self.emit(" else |_match_err| ");
+            if (error_arm) |arm| {
+                try self.generateBlockMir(arm.body());
+            } else {
+                try self.emit("{}");
+            }
+            return;
+        }
+
+        if (is_null_union) {
+            // match on ?T → if (val) |_match_val| { ... } else { ... }
+            var value_arm: ?*mir.MirNode = null;
+            var null_arm: ?*mir.MirNode = null;
+            var else_arm: ?*mir.MirNode = null;
+            for (m.matchArms()) |arm_mir| {
+                const pat_m = arm_mir.pattern();
+                const pat_name = pat_m.name orelse "";
+                if (pat_m.literal_kind == .null_lit) {
+                    null_arm = arm_mir;
+                } else if (pat_m.kind == .identifier and std.mem.eql(u8, pat_name, "else")) {
+                    else_arm = arm_mir;
+                } else {
+                    value_arm = arm_mir;
+                }
+            }
+            try self.emit("if (");
+            try self.generateExprMir(m.value());
+            try self.emit(") |_match_val| ");
+            if (value_arm orelse else_arm) |arm| {
+                try self.generateBlockMir(arm.body());
+            } else {
+                try self.emit("{}");
+            }
+            try self.emit(" else ");
+            if (null_arm) |arm| {
+                try self.generateBlockMir(arm.body());
+            } else {
+                try self.emit("{}");
+            }
+            return;
+        }
+
+        // Arbitrary union — keep as switch
         try self.emit("switch (");
         try self.generateExprMir(m.value());
         try self.emit(") {\n");
@@ -2781,20 +2864,10 @@ pub const CodeGen = struct {
             const pat_name = pat_m.name orelse "";
             try self.emitIndent();
 
-            if (pat_m.kind == .identifier and std.mem.eql(u8, pat_name, K.Type.ERROR)) {
-                try self.emit(".err");
-            } else if (pat_m.literal_kind == .null_lit) {
-                try self.emit(".none");
-            } else if (pat_m.kind == .identifier and std.mem.eql(u8, pat_name, "else")) {
+            if (pat_m.kind == .identifier and std.mem.eql(u8, pat_name, "else")) {
                 try self.emit("else");
             } else if (is_arbitrary and pat_m.kind == .identifier) {
                 try self.emitFmt("._{s}", .{pat_name});
-            } else {
-                if (is_null_union) {
-                    try self.emit(".some");
-                } else {
-                    try self.emit(".ok");
-                }
             }
 
             try self.emit(" => ");
@@ -2853,7 +2926,7 @@ pub const CodeGen = struct {
 
     /// MIR-path interpolated string — uses interp_parts for literals, children for exprs.
     fn generateInterpolatedStringMir(self: *CodeGen, parts: []const parser.InterpolatedPart, expr_children: []*mir.MirNode) anyerror!void {
-        try self.emit("std.fmt.allocPrint(_rt.alloc, \"");
+        try self.emit("std.fmt.allocPrint(std.heap.page_allocator, \"");
         var expr_idx: usize = 0;
         // Build format string
         for (parts) |part| {
@@ -2948,9 +3021,9 @@ pub const CodeGen = struct {
             if (args.len > 0) try self.generateExprMir(args[0]);
             try self.emit("))");
         } else if (std.mem.eql(u8, cf_name, "typeid")) {
-            try self.emit("_rt.orhonTypeId(@TypeOf(");
+            try self.emit("@intFromPtr(@typeName(@TypeOf(");
             if (args.len > 0) try self.generateExprMir(args[0]);
-            try self.emit("))");
+            try self.emit(")).ptr)");
         } else if (std.mem.eql(u8, cf_name, "cast")) {
             if (args.len >= 2) {
                 const target_type = try self.typeToZig(args[0].ast);
@@ -3054,8 +3127,8 @@ pub const CodeGen = struct {
                 else null;
             if (builtin_name) |builtin| {
                 // overflow(a + b) → (blk: { const _ov = @addWithOverflow(a, b);
-                //   if (_ov[1] != 0) break :blk _rt.OrhonResult(@TypeOf(a)){ .err = .{ .message = "overflow" } }
-                //   else break :blk _rt.OrhonResult(@TypeOf(a)){ .ok = _ov[0] }; })
+                //   if (_ov[1] != 0) break :blk @as(anyerror!@TypeOf(a), error.overflow)
+                //   else break :blk @as(anyerror!@TypeOf(a), _ov[0]); })
                 // When operands are literals, @TypeOf gives comptime_int which Zig rejects.
                 // Use the concrete type from the enclosing decl's type_ctx if available.
                 const left_is_literal = b.left.* == .int_literal or b.left.* == .float_literal;
@@ -3078,17 +3151,13 @@ pub const CodeGen = struct {
                 try self.emit(", ");
                 try self.generateExpr(b.right);
                 if (type_str) |ts| {
-                    try self.emit("); if (_ov[1] != 0) break :blk _rt.OrhonResult(");
-                    try self.emit(ts);
-                    try self.emit("){ .err = .{ .message = \"overflow\" } } else break :blk _rt.OrhonResult(");
-                    try self.emit(ts);
-                    try self.emit("){ .ok = _ov[0] }; })");
+                    try self.emitFmt("); if (_ov[1] != 0) break :blk @as(anyerror!{s}, error.overflow) else break :blk @as(anyerror!{s}, _ov[0]); }})", .{ ts, ts });
                 } else {
-                    try self.emit("); if (_ov[1] != 0) break :blk _rt.OrhonResult(@TypeOf(");
+                    try self.emit("); if (_ov[1] != 0) break :blk @as(anyerror!@TypeOf(");
                     try self.generateExpr(b.left);
-                    try self.emit(")){ .err = .{ .message = \"overflow\" } } else break :blk _rt.OrhonResult(@TypeOf(");
+                    try self.emit("), error.overflow) else break :blk @as(anyerror!@TypeOf(");
                     try self.generateExpr(b.left);
-                    try self.emit(")){ .ok = _ov[0] }; })");
+                    try self.emit("), _ov[0]); })");
                 }
                 return;
             }
@@ -3164,17 +3233,13 @@ pub const CodeGen = struct {
                 try self.emit(", ");
                 try self.generateExprMir(m.rhs());
                 if (type_str) |ts| {
-                    try self.emit("); if (_ov[1] != 0) break :blk _rt.OrhonResult(");
-                    try self.emit(ts);
-                    try self.emit("){ .err = .{ .message = \"overflow\" } } else break :blk _rt.OrhonResult(");
-                    try self.emit(ts);
-                    try self.emit("){ .ok = _ov[0] }; })");
+                    try self.emitFmt("); if (_ov[1] != 0) break :blk @as(anyerror!{s}, error.overflow) else break :blk @as(anyerror!{s}, _ov[0]); }})", .{ ts, ts });
                 } else {
-                    try self.emit("); if (_ov[1] != 0) break :blk _rt.OrhonResult(@TypeOf(");
+                    try self.emit("); if (_ov[1] != 0) break :blk @as(anyerror!@TypeOf(");
                     try self.generateExprMir(m.lhs());
-                    try self.emit(")){ .err = .{ .message = \"overflow\" } } else break :blk _rt.OrhonResult(@TypeOf(");
+                    try self.emit("), error.overflow) else break :blk @as(anyerror!@TypeOf(");
                     try self.generateExprMir(m.lhs());
-                    try self.emit(")){ .ok = _ov[0] }; })");
+                    try self.emit("), _ov[0]); })");
                 }
                 return;
             }
@@ -3237,10 +3302,10 @@ pub const CodeGen = struct {
             if (cf.args.len > 0) try self.generateExpr(cf.args[0]);
             try self.emit("))");
         } else if (std.mem.eql(u8, cf.name, "typeid")) {
-            // typeid(x) → _rt.orhonTypeId(@TypeOf(x))
-            try self.emit("_rt.orhonTypeId(@TypeOf(");
+            // typeid(x) → @intFromPtr(@typeName(@TypeOf(x)).ptr)
+            try self.emit("@intFromPtr(@typeName(@TypeOf(");
             if (cf.args.len > 0) try self.generateExpr(cf.args[0]);
-            try self.emit("))");
+            try self.emit(")).ptr)");
         } else if (std.mem.eql(u8, cf.name, "typeOf")) {
             // typeOf(x) → @TypeOf(x)
             try self.emit("@TypeOf(");
@@ -3431,7 +3496,7 @@ pub const CodeGen = struct {
     fn typeToZig(self: *CodeGen, node: *parser.Node) ![]const u8 {
         return switch (node.*) {
             .type_named => |name| {
-                if (std.mem.eql(u8, name, K.Type.ERROR)) return "struct { message: []const u8 }";
+                if (std.mem.eql(u8, name, K.Type.ERROR)) return "anyerror";
                 // Inside a generic struct, self-references use @This()
                 if (self.generic_struct_name) |gsn| {
                     if (std.mem.eql(u8, name, gsn)) return "@This()";
@@ -3455,15 +3520,15 @@ pub const CodeGen = struct {
                     if (t.* == .type_named and std.mem.eql(u8, t.type_named, K.Type.NULL)) has_null = true;
                 }
                 if (has_error or has_null) {
-                    // Find the non-Error/non-null type
+                    // Native Zig: (Error | T) → anyerror!T, (null | T) → ?T
                     for (u) |t| {
                         if (t.* == .type_named and
                             !std.mem.eql(u8, t.type_named, K.Type.ERROR) and
                             !std.mem.eql(u8, t.type_named, K.Type.NULL))
                         {
                             const inner = try self.typeToZig(t);
-                            if (has_error) break :blk try self.allocTypeStr("union(enum) {{ ok: {s}, err: struct {{ message: []const u8 }} }}", .{inner});
-                            if (has_null) break :blk try self.allocTypeStr("union(enum) {{ some: {s}, none: void }}", .{inner});
+                            if (has_error) break :blk try self.allocTypeStr("anyerror!{s}", .{inner});
+                            if (has_null) break :blk try self.allocTypeStr("?{s}", .{inner});
                         }
                     }
                 }
@@ -3506,10 +3571,10 @@ pub const CodeGen = struct {
                 } else if (std.mem.eql(u8, g.name, "Async")) {
                     break :blk "void"; // Async not yet implemented
                 } else if (std.mem.eql(u8, g.name, "Handle")) {
-                    // Handle(T) → _rt.OrhonHandle(zigT)
+                    // Handle(T) → _OrhonHandle(zigT) (emitted as file-level helper)
                     if (g.args.len > 0) {
                         const inner = try self.typeToZig(g.args[0]);
-                        break :blk try self.allocTypeStr("_rt.OrhonHandle({s})", .{inner});
+                        break :blk try self.allocTypeStr("_OrhonHandle({s})", .{inner});
                     }
                 } else if (std.mem.eql(u8, g.name, "Ptr")) {
                     // Ptr(T) → *const T
@@ -3529,18 +3594,6 @@ pub const CodeGen = struct {
                         const inner = try self.typeToZig(g.args[0]);
                         break :blk try self.allocTypeStr("[*]volatile {s}", .{inner});
                     }
-                } else if (std.mem.eql(u8, g.name, "Ring")) {
-                    if (g.args.len >= 2) {
-                        const inner = try self.typeToZig(g.args[0]);
-                        const size_str = if (g.args[1].* == .int_literal) g.args[1].int_literal else "0";
-                        break :blk try self.allocTypeStr("OrhonRing({s}, {s})", .{ inner, size_str });
-                    }
-                } else if (std.mem.eql(u8, g.name, "ORing")) {
-                    if (g.args.len >= 2) {
-                        const inner = try self.typeToZig(g.args[0]);
-                        const size_str = if (g.args[1].* == .int_literal) g.args[1].int_literal else "0";
-                        break :blk try self.allocTypeStr("OrhonORing({s}, {s})", .{ inner, size_str });
-                    }
                 } else if (std.mem.eql(u8, g.name, "Vector")) {
                     // Vector(N, T) → @Vector(N, T)
                     if (g.args.len >= 2) {
@@ -3549,7 +3602,7 @@ pub const CodeGen = struct {
                         break :blk try self.allocTypeStr("@Vector({s}, {s})", .{ size_str, elem });
                     }
                 }
-                // Collection types → _collections.Name(zigT, ...)
+                // Collection types → use import alias (or bare name if included)
                 const is_collection = std.mem.eql(u8, g.name, "List") or
                     std.mem.eql(u8, g.name, "Map") or
                     std.mem.eql(u8, g.name, "Set");
@@ -3563,7 +3616,11 @@ pub const CodeGen = struct {
                 if (g.args.len > 0) {
                     var buf = std.ArrayListUnmanaged(u8){};
                     defer buf.deinit(self.allocator);
-                    if (is_collection) try buf.appendSlice(self.allocator, "_collections.");
+                    if (is_collection and !self.collections_is_included) {
+                        const prefix = self.collections_import_alias orelse "collections";
+                        try buf.appendSlice(self.allocator, prefix);
+                        try buf.append(self.allocator, '.');
+                    }
                     try buf.appendSlice(self.allocator, g.name);
                     try buf.append(self.allocator, '(');
                     for (g.args, 0..) |arg, ai| {

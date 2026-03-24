@@ -356,8 +356,6 @@ fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: bool) !
 // STD INIT
 // ============================================================
 
-const RT_ORH = @embedFile("std/_rt.orh");
-const RT_ZIG = @embedFile("std/_rt.zig");
 const COLLECTIONS_ORH = @embedFile("std/collections.orh");
 const COLLECTIONS_ZIG = @embedFile("std/collections.zig");
 const ALLOCATOR_ORH = @embedFile("std/allocator.orh");
@@ -431,8 +429,6 @@ fn ensureStdFiles(allocator: std.mem.Allocator) !void {
     try std.fs.cwd().makePath(std_dir);
 
     const files = [_]struct { name: []const u8, content: []const u8 }{
-        .{ .name = "_rt.orh",       .content = RT_ORH },
-        .{ .name = "_rt.zig",       .content = RT_ZIG },
         .{ .name = "collections.orh", .content = COLLECTIONS_ORH },
         .{ .name = "collections.zig", .content = COLLECTIONS_ZIG },
         .{ .name = "allocator.orh", .content = ALLOCATOR_ORH },
@@ -898,11 +894,6 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
 
     // Copy internal bridges to generated dir — always available for all modules
     try cache.ensureGeneratedDir();
-    {
-        const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_rt.zig", .{});
-        defer file.close();
-        try file.writeAll(RT_ZIG);
-    }
     {
         const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_str.zig", .{});
         defer file.close();

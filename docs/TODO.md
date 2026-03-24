@@ -91,45 +91,26 @@ Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.
 
 ## Architecture
 
-### Runtime Library Removal
+### Runtime Library Removal ✓
 
-**Decision: no runtime libraries. Zero.** The compiler does not inject any hardcoded
-imports. The only hardcoded import is `const std = @import("std");`.
+**Done.** Zero runtime libraries. The compiler injects no hardcoded imports. The only
+hardcoded import is `const std = @import("std");`.
 
 **What was removed:**
-- `_orhon_collections` — collections are now a normal bridge module (`import std::collections`
-  or `include std::collections` to bring List/Map/Set into scope)
+- `_orhon_collections` — collections are now a normal bridge module (`import std::collections`)
 - `_orhon_str` — string ops are a normal bridge module (`import std::str`)
-- `_orhon_rt` — **removed entirely**. No runtime library.
+- `_orhon_rt` — **deleted entirely**. `_rt.zig` and `_rt.orh` no longer exist.
+- All `_rt.` references in codegen replaced with native Zig equivalents
+- `_str` and `_collections` hardcoded prefixes replaced with user import aliases
+- `OrhonRing`/`OrhonORing` stubs removed
 
-**What still needs cleanup (v0.9.6):**
-- Revert hacky codegen workarounds introduced while fighting the old system:
-  `type_expr → .{}` hack, `ptr_expr` builder conversion hack, partial `_rt.` inlining
-- Remove all remaining `_rt.`, `_str.`, `_collections.` references from codegen
-- String method rewriting (`s.method()` → `str.method(s)`) should use the user's
-  import name, not a hardcoded `_str`
-
-**Nullable and Error types — need proper language-level design:**
-
-`(null | T)` and `(Error | T)` are currently implemented as wrapper types from the
-runtime library (`OrhonNullable(T)`, `OrhonResult(T)`, `OrhonError`). With the runtime
-gone, these need to become proper language-level types:
-
-- **Nullable `(null | T)`** — needs a first-class type representation. The codegen should
-  emit the Zig union directly (e.g. `union(enum) { some: T, none: void }`) or we introduce
-  a proper `Nullable(T)` / `?T` keyword/syntax that the compiler handles natively.
-- **Error `(Error | T)`** — same. Either emit raw Zig unions inline or introduce proper
-  `Result(T)` / `Error` as language-level types the compiler knows about.
-- **Error type itself** — currently `struct { message: []const u8 }`. Should this be a
-  language keyword/builtin type, or user-defined?
-- **Thread handles** — `Handle(T)` needs to move to `std::thread` bridge module or become
-  a language-level construct.
-- **Allocator** — currently `_rt.alloc` (page_allocator). Needs a proper strategy: user
-  imports an allocator, or the language provides a default through `std::mem`.
-- **Type ID** — `typeid(x)` can emit `@intFromPtr(@typeName(@TypeOf(x)).ptr)` inline.
-
-These are design decisions, not just refactoring — the semantics of null and error handling
-are core to the language identity.
+**Native type mapping (no wrappers):**
+- `(null | T)` → `?T` (native Zig optional)
+- `(Error | T)` → `anyerror!T` (native Zig error union)
+- `Error("msg")` → `error.msg_sanitized` (native Zig error code)
+- `typeid(x)` → `@intFromPtr(@typeName(@TypeOf(x)).ptr)` (inline)
+- Allocator → `std.heap.page_allocator` (inline)
+- `Handle(T)` → `_OrhonHandle(T)` (comptime helper emitted per file)
 
 ### PEG Parser — Error Recovery ✓
 

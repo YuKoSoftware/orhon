@@ -92,6 +92,7 @@ src/
     module.zig              // pass 3
     declarations.zig        // pass 4
     resolver.zig            // pass 5
+    sema.zig                // shared — SemanticContext for passes 6–9
     ownership.zig           // pass 6
     borrow.zig              // pass 7
     thread_safety.zig       // pass 8
@@ -99,7 +100,7 @@ src/
     mir.zig                 // pass 10 — typed annotation pass (TypeClass, NodeMap, UnionRegistry)
     codegen.zig             // pass 11 — pure 1:1 translator
     zig_runner.zig          // pass 12
-    types.zig               // shared — type system
+    types.zig               // shared — type system (Primitive enum, ResolvedType)
     errors.zig              // shared — error formatting
     builtins.zig            // shared — language intrinsics only
     constants.zig           // shared — constants

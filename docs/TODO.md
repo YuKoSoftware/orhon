@@ -72,10 +72,38 @@ Use Zig's built-in `std.testing.fuzz` to fuzz the lexer and parser.
 
 ## Architecture
 
-### PEG Parser — Error Recovery
+### PEG Parser — Error Recovery ✓
 
-The PEG parser currently stops at the first error. Add error recovery so users get
-multiple errors at once: skip to the next `}` or newline and keep parsing.
+~~The PEG parser currently stops at the first error.~~ **Done in v0.9.3.** Grammar-level
+error recovery via `error_skip` + `top_level_start` rules in `orhon.peg`. On top-level
+parse failure, skips bad tokens until the next declaration keyword (`func`, `struct`, etc.)
+and continues parsing. Multiple syntax errors collected via `BuildContext.syntax_errors`.
+
+### MIR — Complete Self-Containment Migration
+
+MirNode now carries self-contained data fields (`name`, `op`, `literal`, `is_pub`, etc.)
+populated during lowering. ~37 `m.ast.*` accesses in `codegen.zig` still read through the
+AST back-pointer. Incrementally migrate each access to use MirNode fields, then remove
+the `ast: *parser.Node` field entirely.
+
+**After migration completes:** split codegen into three layers:
+- **Zig IR** — small explicit representation of target Zig AST (~15-20 node types)
+- **Lowering** (MIR → Zig IR) — coercions, union wrapping, bridge imports
+- **Zig Printer** (Zig IR → text) — trivial pretty-printer (~500 lines)
+
+### Dependency-Parallel Module Compilation
+
+Modules are processed sequentially in topological order. Independent modules (whose deps
+are all complete) could be processed in parallel via a thread pool.
+
+**Prerequisites:**
+- Thread-safe `Reporter` (atomic append to error/warning lists)
+- Per-module allocators (already arena-based, close to ready)
+- Work-stealing queue with dependency tracking
+- Careful DeclTable registration ordering for cross-module refs
+
+The `SemanticContext` refactor (v0.9.3) lays groundwork — each pass now takes a shared
+context rather than wiring individual fields, making per-thread state easier.
 
 ### PEG Parser — Syntax Documentation Generator
 

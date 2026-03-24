@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.9
 milestone_name: milestone
-status: Ready to plan
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-03-24T17:28:25.339Z"
+status: Ready to execute
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-24T17:54:27.267Z"
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 01 — compiler-bug-fixes
+**Current focus:** Phase 03 — lsp-hardening
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
+Phase: 03 (lsp-hardening) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Plan: Not started
 | Phase 01 P01 | 40 | 2 tasks | 5 files |
 | Phase 02 P03 | 18 | 2 tasks | 4 files |
 | Phase 02-memory-error-safety P02 | 908 | 2 tasks | 15 files |
+| Phase 03-lsp-hardening P01 | 8 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [Phase 02-memory-error-safety]: Codegen regression tests check source patterns directly via grep on src/codegen.zig when code paths are not yet reachable from user programs
 - [Phase 02-memory-error-safety]: Dedicated ptr_cast_expr grammar rule instead of extending method_call — cast is a reserved keyword, specific rule is cleaner
 - [Phase 02-memory-error-safety]: Category A I/O catch sites documented with fire-and-forget comments; Category B data builders fixed with catch continue or catch return safe defaults
+- [Phase 03-lsp-hardening]: MAX_HEADER_LINE = 4096 chosen to cover all realistic LSP header values; enlarging from 1024 is the primary fix for LSP-02
+- [Phase 03-lsp-hardening]: MAX_CONTENT_LENGTH = 64 MiB chosen as practical upper bound preventing OOM from malicious payloads (LSP-03)
 
 ### Pending Todos
 
@@ -80,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T17:13:50.625Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-03-24T17:54:27.265Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None

@@ -60,7 +60,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Harden readMessage with larger header buffer and content-length guard (LSP-02, LSP-03)
+- [x] 03-01-PLAN.md — Harden readMessage with larger header buffer and content-length guard (LSP-02, LSP-03)
 - [ ] 03-02-PLAN.md — Per-request ArenaAllocator in runAnalysis (LSP-01)
 
 ## Progress
@@ -72,4 +72,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Compiler Bug Fixes | 2/2 | Complete   | 2026-03-24 |
 | 2. Memory & Error Safety | 1/3 | In Progress|  |
-| 3. LSP Hardening | 0/2 | Not started | - |
+| 3. LSP Hardening | 1/2 | In Progress|  |

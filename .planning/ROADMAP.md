@@ -42,7 +42,12 @@ Plans:
   2. Codegen never panics with `catch unreachable` on OOM — all three sites propagate errors through the Zig error system
   3. All 103 `catch {}` instances across the 15 stdlib bridge files are replaced with explicit propagation or a documented, consistent strategy
   4. Tester module pointer and collection constructors use `.new()`/`.cast()` method-style — no bare type-as-value construction remains
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Fix interpolation catch unreachable in codegen (MEM-01, MEM-02)
+- [ ] 02-02-PLAN.md — Stdlib catch {} sweep across 15 bridge files (MEM-03)
+- [ ] 02-03-PLAN.md — Add Ptr .cast() constructor and migrate tester/example (MEM-04)
 
 ### Phase 3: LSP Hardening
 **Goal**: The language server runs without unbounded memory growth and rejects oversized input safely
@@ -62,5 +67,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Compiler Bug Fixes | 2/2 | Complete   | 2026-03-24 |
-| 2. Memory & Error Safety | 0/TBD | Not started | - |
+| 2. Memory & Error Safety | 0/3 | Not started | - |
 | 3. LSP Hardening | 0/TBD | Not started | - |

@@ -689,20 +689,20 @@ test "cast float" {
 
 pub func raw_ptr_read() i32 {
     var x: i32 = 99
-    const raw: RawPtr(i32) = RawPtr(i32, &x)
+    const raw: RawPtr(i32) = RawPtr(i32).cast(&x)
     x = raw[0]
     return x
 }
 
 pub func raw_ptr_index() i32 {
     const arr: [3]i32 = [1, 2, 3]
-    const raw: RawPtr(i32) = RawPtr(i32, &arr)
+    const raw: RawPtr(i32) = RawPtr(i32).cast(&arr)
     return raw[1]
 }
 
 pub func safe_ptr_read() i32 {
     const x: i32 = 77
-    const p: Ptr(i32) = Ptr(i32, &x)
+    const p: Ptr(i32) = Ptr(i32).cast(&x)
     return p.value
 }
 

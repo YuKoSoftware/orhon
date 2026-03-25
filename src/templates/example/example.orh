@@ -32,6 +32,45 @@ compt func double(n: i32) i32 {
     return n * 2
 }
 
+// ─── Module Metadata Directives ──────────────────────────────────────────────
+
+// These directives go in the module's anchor file (e.g. main.orh):
+//   #name    = "myproject"        — project name
+//   #version = Version(1, 0, 0)   — semantic version
+//   #build   = exe                — build target: exe, lib, staticlib, dynlib
+//   #bitsize = 32                 — default integer/float width (32 or 64)
+
+// ─── Bridge Declarations ──────────────────────────────────────────────────────
+
+// bridge functions declare an Orhon interface backed by a Zig sidecar file.
+// Used in std modules — not typically in user code.
+//
+//   pub bridge func get(source: String, path: String) (Error | String)
+//
+// The compiler pairs the .orh file with a same-name .zig sidecar,
+// re-exporting the Zig implementation through the Orhon type system.
+
+// ─── Defer ───────────────────────────────────────────────────────────────────
+
+// defer executes a statement when the current scope exits.
+// Used for cleanup — freeing resources, closing handles.
+//
+//   var arena = allocator.Arena.create(1024)
+//   defer arena.destroy()
+//   // ... use arena ... freed automatically at scope exit
+
+// ─── Borrowing ───────────────────────────────────────────────────────────────
+
+// const &T — immutable borrow (many allowed simultaneously)
+// &T — mutable borrow (only one at a time)
+// Cannot have both immutable and mutable borrows simultaneously.
+//
+//   func read(data: const &Player) void { }
+//   func modify(data: &Player) void { }
+//
+// const values auto-borrow as const & when passed to functions.
+// No silent deep copies — zero cost.
+
 // ─── Structs ─────────────────────────────────────────────────────────────────
 
 /// A 2D point with x and y coordinates

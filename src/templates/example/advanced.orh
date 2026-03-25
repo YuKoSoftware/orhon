@@ -162,7 +162,45 @@ func split_demo() i32 {
     return total
 }
 
+// ─── Const Auto-Borrow ──────────────────────────────────────────────────────
+
+// const values auto-borrow as const & when passed to functions.
+// No silent deep copies. Use copy() for explicit owned copies.
+
+func read_point(p: Point) f64 {
+    return p.x + p.y
+}
+
+func const_borrow_demo() i32 {
+    const p: Point = Point(x: 3.0, y: 4.0)
+    const sum1: f64 = read_point(p)
+    const sum2: f64 = read_point(p)
+    if (sum1 == sum2) { return 1 }
+    return 0
+}
+
+// ─── Data-Carrying Enums ────────────────────────────────────────────────────
+
+// Enums can carry data per variant (tagged unions):
+//
+//   pub enum Shape {
+//       Circle(radius: f32)
+//       Rectangle(width: f32, height: f32)
+//       Point
+//   }
+//
+//   match shape {
+//       Circle    => { var area = 3.14 * Circle.radius * Circle.radius }
+//       Rectangle => { var area = Rectangle.width * Rectangle.height }
+//       Point     => { }
+//   }
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
+
+test "const auto-borrow" {
+    assert(const_borrow_demo() == 1)
+}
+
 
 test "list" {
     assert(list_demo() == 20)

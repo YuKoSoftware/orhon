@@ -149,7 +149,51 @@ func vector_scale() Vector(4, f32) {
     return v * 2.0
 }
 
+// ─── size / align / typename ─────────────────────────────────────────────────
+
+// size(T) — compile-time byte size of a type
+
+func size_demo() i32 {
+    return size(i32)
+}
+
+// align(T) — compile-time alignment of a type
+
+func align_demo() i32 {
+    return align(i64)
+}
+
+// typename(value) — returns the type name as a string at runtime
+// Example: typename(42) returns "i32"
+
+// ─── Ownership Builtins ───────────────────────────────────────────────────────
+
+// copy(value) — explicit deep copy, bypasses auto-borrow
+// move(value) — explicit move, original becomes invalid
+
+func copy_demo() i32 {
+    const a: [3]i32 = [1, 2, 3]
+    var b: [3]i32 = copy(a)
+    b[0] = 99
+    return b[0]
+}
+
+// swap(a, b) — swaps two values in place
+//   var x: i32 = 10
+//   var y: i32 = 20
+//   swap(x, y)     // x is now 20, y is now 10
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
+
+test "size and align" {
+    assert(size_demo() == 4)
+    assert(align_demo() == 8)
+}
+
+test "copy" {
+    assert(copy_demo() == 99)
+}
+
 
 test "compound assignment" {
     assert(compound_demo() == 19)

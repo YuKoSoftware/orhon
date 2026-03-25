@@ -1128,6 +1128,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         cg.node_map = &mir_annotator.node_map;
         cg.union_registry = &mir_annotator.union_registry;
         cg.var_types = &mir_annotator.var_types;
+        cg.const_ref_params = &mir_annotator.const_ref_params;
         cg.mir_root = mir_root;
 
         try cg.generate(ast, mod_name);

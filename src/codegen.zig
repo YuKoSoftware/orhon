@@ -47,6 +47,8 @@ pub const CodeGen = struct {
     node_map: ?*const mir.NodeMap = null,
     union_registry: ?*const mir.UnionRegistry = null,
     var_types: ?*const std.StringHashMapUnmanaged(mir.NodeInfo) = null,
+    // Const auto-borrow: function name → set of param indices promoted to *const T
+    const_ref_params: ?*const std.StringHashMapUnmanaged(std.AutoHashMapUnmanaged(usize, void)) = null,
     current_func_node: ?*parser.Node = null,
     // MIR tree — Phase 3 lowered tree (available for incremental migration)
     mir_root: ?*mir.MirNode = null,
@@ -76,6 +78,13 @@ pub const CodeGen = struct {
             if (info.resolved_type == .union_type) return info.resolved_type.union_type;
         }
         return null;
+    }
+
+    /// Check if a function parameter should be promoted to *const T for const auto-borrow.
+    fn isPromotedParam(self: *const CodeGen, func_name: []const u8, param_idx: usize) bool {
+        const crp = self.const_ref_params orelse return false;
+        const param_set = crp.get(func_name) orelse return false;
+        return param_set.contains(param_idx);
     }
 
     /// Get the TypeClass of the current function's return type from MIR.
@@ -630,7 +639,12 @@ pub const CodeGen = struct {
             } else if (is_any) {
                 try self.emitFmt("{s}: anytype", .{pname});
             } else {
-                try self.emitFmt("{s}: {s}", .{ pname, try self.typeToZig(pta) });
+                const zig_type = try self.typeToZig(pta);
+                if (self.isPromotedParam(func_name, i)) {
+                    try self.emitFmt("{s}: *const {s}", .{ pname, zig_type });
+                } else {
+                    try self.emitFmt("{s}: {s}", .{ pname, zig_type });
+                }
             }
         }
 
@@ -2238,7 +2252,15 @@ pub const CodeGen = struct {
                         try self.emit("(");
                         for (call_args, 0..) |arg, i| {
                             if (i > 0) try self.emit(", ");
-                            try self.generateCoercedExprMir(arg);
+                            // Const auto-borrow: if param is promoted to *const T and
+                            // the arg has no coercion annotation (var caller), emit &arg.
+                            // Const callers are handled by value_to_const_ref in generateCoercedExprMir.
+                            if (arg.coercion == null and self.isPromotedParam(callee_name, i)) {
+                                try self.emit("&");
+                                try self.generateExprMir(arg);
+                            } else {
+                                try self.generateCoercedExprMir(arg);
+                            }
                         }
                         try self.fillDefaultArgsMir(callee_mir, call_args.len);
                         try self.emit(")");

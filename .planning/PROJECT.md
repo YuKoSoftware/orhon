@@ -43,30 +43,48 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 ### Active
 
-- [ ] Fix all 9 known bugs in docs/TODO.md (4/9 complete after Phase 1)
-- [ ] Improve code quality and remove workarounds
-- [ ] Ensure testall.sh passes cleanly after all changes
+- [ ] Fix tester module codegen — stages 09+10 (100 tests) must pass
+- [ ] Fix cross-module struct ref-passing (BUG-01)
+- [ ] Fix qualified generic type validation (BUG-02)
+- [ ] Sweep remaining 15 `catch unreachable` in codegen.zig
+- [ ] Sweep remaining 28 `catch {}` in stdlib sidecars
+- [ ] Align version numbers across build.zig, build.zig.zon, PROJECT.md
+- [ ] Complete example module with missing language features
+- [ ] Fix string interpolation memory leak (BUG-05)
+- [ ] Ensure testall.sh passes all 11 stages cleanly
 
 ### Out of Scope
 
-- Zig IR layer architecture refactor — deferred to next milestone (large scope, separate concern)
+- Zig IR layer architecture refactor — deferred (large scope, separate concern)
 - Dependency-parallel module compilation — deferred (optimization, not correctness)
 - MIR optimization and caching (SSA, inlining, DCE) — deferred (optimization)
-- New language features — this milestone is stabilization only
-- Tamga companion project bugs — not pulling from external bug lists
-- v1.0 release — this milestone prepares for it but doesn't ship it
+- New language features — this milestone is stabilization and completeness only
+- Tamga companion project modifications — read-only reference
+- MIR residual AST accesses — architectural cleanup deferred
+- PEG syntax doc generator — deferred
+
+## Current Milestone: v0.10 Test Suite & Code Quality
+
+**Goal:** Fix the 100 failing runtime tests, sweep remaining error suppression, and bring the example module + version numbers up to date.
+
+**Target features:**
+- Fix tester module codegen failure (stages 09 + 10)
+- Fix cross-module struct ref-passing and qualified generic validation
+- Sweep remaining `catch unreachable` (15) and `catch {}` (28)
+- Align version numbers
+- Complete example module coverage
+- Fix string interpolation memory leak
 
 ## Context
 
-The compiler has been through rapid development from v0.9.3 to v0.9.7, including a PEG parser migration, MIR self-containment, runtime library removal, and native type adoption. This velocity left behind bugs and code quality debt that need addressing before the next wave of architecture work.
+The v0.9 milestone addressed the worst bugs (ownership const-as-move, `orhon test`, 103 stdlib `catch {}`, LSP hardening) but left the test suite partially broken — stages 09 (language) and 10 (runtime) fail with 100 tests blocked. Root cause is cross-module codegen generating invalid Zig (`type 'i32' has no members`). Additionally, 15 `catch unreachable` remain in codegen and 28 `catch {}` persist in 6 stdlib sidecars (collections, console, tui, fs, stream, system).
 
-Key areas of concern from codebase analysis:
-- `src/codegen.zig` (3720 lines) — monolithic, has `catch unreachable` patterns
-- Stdlib bridge modules — 103 instances of `catch {}` suppressing real errors
-- Cross-module codegen bugs (struct ref-passing, qualified generics)
-- Ownership checker incorrectly treats const values as moved
-- Test runner (`orhon test`) reports 0 passed/failed instead of running
-- String interpolation allocates temp buffers that are never freed
+Key areas of concern:
+- `src/codegen.zig` (3738 lines) — 15 remaining `catch unreachable`, cross-module field access bugs
+- Stdlib sidecars — 28 remaining `catch {}` across 6 files
+- Version drift — build.zig=0.9.3, build.zig.zon=0.8.3, PROJECT.md=v0.9.7
+- Example module missing: RawPtr/VolatilePtr, #bitsize, any generics, typeOf(), include vs import
+- String interpolation temp buffers never freed (BUG-05)
 
 ## Constraints
 
@@ -102,4 +120,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after Phase 3 completion (v0.9 milestone complete)*
+*Last updated: 2026-03-25 after milestone v0.10 start*

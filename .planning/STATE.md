@@ -1,30 +1,32 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.9
-milestone_name: milestone
-status: Milestone complete
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-03-24T18:05:31.244Z"
+milestone: v0.10
+milestone_name: test-suite-code-quality
+status: Defining requirements
+stopped_at: null
+last_updated: "2026-03-25T00:00:00.000Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-24)
+See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 03 — lsp-hardening
+**Current focus:** Defining requirements for v0.10
 
 ## Current Position
 
-Phase: 03
-Plan: Not started
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-25 — Milestone v0.10 started
 
 ## Performance Metrics
 

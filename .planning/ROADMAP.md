@@ -144,7 +144,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 10-01-PLAN.md — Update Tamga Ptr syntax and verify fixtures/docs are current
+- [x] 10-01-PLAN.md — Update Tamga Ptr syntax and verify fixtures/docs are current
 
 #### Phase 11: Full Test Suite Gate
 **Goal**: Every test stage passes, confirming the v0.11 milestone is complete
@@ -172,5 +172,5 @@ Current: 8 → 9 → 10 → 11
 | 7. Full Test Suite Gate | v0.10 | 1/1 | Complete | 2026-03-25 |
 | 8. Const Auto-Borrow | v0.11 | 2/2 | Complete |  |
 | 9. Ptr Syntax Simplification | v0.11 | 2/2 | Complete |  |
-| 10. Compatibility Updates | v0.11 | 0/1 | In Progress | - |
+| 10. Compatibility Updates | v0.11 | 1/1 | Complete   | 2026-03-25 |
 | 11. Full Test Suite Gate | v0.11 | 0/? | Not started | - |

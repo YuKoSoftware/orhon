@@ -22,9 +22,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Compatibility
 
-- [ ] **COMP-01**: Tamga companion project updated for new Ptr syntax and compiles
-- [ ] **COMP-02**: Example module and tester fixtures updated for both changes
-- [ ] **COMP-03**: Language docs updated for both changes
+- [x] **COMP-01**: Tamga companion project updated for new Ptr syntax and compiles
+- [x] **COMP-02**: Example module and tester fixtures updated for both changes
+- [x] **COMP-03**: Language docs updated for both changes
 
 ### Gate
 
@@ -93,9 +93,9 @@ Deferred to future milestones.
 | PTRS-02 | Phase 9 | Complete |
 | PTRS-03 | Phase 9 | Complete |
 | PTRS-04 | Phase 9 | Complete |
-| COMP-01 | Phase 10 | Pending |
-| COMP-02 | Phase 10 | Pending |
-| COMP-03 | Phase 10 | Pending |
+| COMP-01 | Phase 10 | Complete |
+| COMP-02 | Phase 10 | Complete |
+| COMP-03 | Phase 10 | Complete |
 | GATE-01 | Phase 11 | Pending |
 
 **Coverage:**

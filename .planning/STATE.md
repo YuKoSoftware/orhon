@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.11
 milestone_name: Language Simplification
-status: Ready to plan
-stopped_at: Phase 10 context gathered
-last_updated: "2026-03-25T13:27:46.682Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-25T13:42:30.431Z"
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 3
+  total_plans: 5
+  completed_plans: 5
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 09 — ptr-syntax-simplification
+**Current focus:** Phase 10 — compatibility-updates
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
+Phase: 10 (compatibility-updates) — EXECUTING
+Plan: 1 of 1
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Plan: Not started
 | Phase 08-const-auto-borrow P02 | 35 | 2 tasks | 6 files |
 | Phase 09-ptr-syntax-simplification P01 | 3 | 2 tasks | 3 files |
 | Phase 09-ptr-syntax-simplification P02 | 7 | 2 tasks | 7 files |
+| Phase 10-compatibility-updates P01 | 7 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Recent decisions affecting current work:
 - [Phase 09]: Type-directed coercion uses blk pattern inline in each of the 4 declaration functions
 - [Phase 09-ptr-syntax-simplification]: Both ptr_cast_expr and ptr_expr PEG rules removed — type annotation drives coercion
 - [Phase 09-ptr-syntax-simplification]: MirKind.ptr_expr removed alongside all AST references — no stray enum variant left
+- [Phase 10-01]: Updated Tamga bridge sidecars to return anyerror!T instead of custom result unions (required by Phase 9 error union codegen)
+- [Phase 10-01]: Fixed codegen .Error fallback: (if (x) |_| unreachable else |_e| @errorName(_e)) — not x catch |_e| @errorName(_e)
 
 ### Pending Todos
 
@@ -83,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T13:27:46.680Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-compatibility-updates/10-CONTEXT.md
+Last session: 2026-03-25T13:42:30.429Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: None

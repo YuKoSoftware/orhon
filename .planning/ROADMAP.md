@@ -46,7 +46,7 @@ Plans:
 **Plans:** 1/2 plans executed
 
 Plans:
-- [ ] 05-01-PLAN.md — Fix 4 compiler-side catch unreachable in codegen.zig thread spawning (ESUP-01)
+- [x] 05-01-PLAN.md — Fix 4 compiler-side catch unreachable in codegen.zig thread spawning (ESUP-01)
 - [x] 05-02-PLAN.md — Fix 28 catch {} across 6 stdlib sidecar files (ESUP-02)
 
 ### Phase 6: Polish & Completeness

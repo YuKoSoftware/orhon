@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.10
 milestone_name: milestone
-status: Ready to execute
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-03-25T06:56:24.503Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 05-01-PLAN.md (catch unreachable sweep in codegen.zig)
+last_updated: "2026-03-25T07:05:09.892Z"
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -58,6 +58,7 @@ Plan: 2 of 2
 | Phase 04 P02 | 12 | 2 tasks | 1 files |
 | Phase 04 P01 | 35 | 2 tasks | 1 files |
 | Phase 05-error-suppression-sweep P02 | 12 | 2 tasks | 2 files |
+| Phase 05-error-suppression-sweep P01 | 45 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,7 @@ Recent decisions affecting current work:
 - [Phase 04]: Collection .new() detection via type_expr MIR kind — PEG builder transparency strips collection_expr to element type, so .type_expr is the correct check
 - [Phase 05-error-suppression-sweep]: catch |_| {} is invalid Zig 0.15 syntax — catch {} is the only valid error discard; fire-and-forget I/O sites keep catch {} with comments
 - [Phase 05-error-suppression-sweep]: ESUP-02: OOM data-loss fixed in collections (catch return/break) and stream (catch return/catch block); grep=0 unachievable for fire-and-forget sites by design
+- [Phase 05-error-suppression-sweep]: @panic used for thread spawn failures in generated Zig — generated return type is _OrhonHandle(T) not anyerror!, making error propagation incompatible; @panic avoids UB and gives actionable error messages
 
 ### Pending Todos
 
@@ -97,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T06:56:24.500Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-03-25T07:05:09.887Z
+Stopped at: Completed 05-01-PLAN.md (catch unreachable sweep in codegen.zig)
 Resume file: None

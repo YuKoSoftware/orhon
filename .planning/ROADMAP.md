@@ -57,7 +57,11 @@ Plans:
   1. `build.zig`, `build.zig.zon`, and `PROJECT.md` all report the same version string with no drift
   2. A program that uses `@{variable}` string interpolation in a loop does not grow memory unboundedly — temp buffers are freed after each interpolation
   3. The example module compiles successfully and contains working demonstrations of RawPtr/VolatilePtr, `#bitsize`, any generics, `typeOf()`, and `include` vs `import`
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Align version to v0.10.0 and fix string interpolation memory leak (HYGN-01, HYGN-02)
+- [ ] 06-02-PLAN.md — Complete example module with missing feature demonstrations (DOCS-01)
 
 ### Phase 7: Full Test Suite Gate
 **Goal**: Every test stage passes, confirming the milestone is complete
@@ -77,5 +81,5 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 4. Codegen Correctness | 2/2 | Complete   | 2026-03-25 |
 | 5. Error Suppression Sweep | 1/2 | In Progress|  |
-| 6. Polish & Completeness | 0/? | Not started | - |
+| 6. Polish & Completeness | 0/2 | Not started | - |
 | 7. Full Test Suite Gate | 0/? | Not started | - |

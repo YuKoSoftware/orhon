@@ -1693,22 +1693,20 @@ pub const CodeGen = struct {
                     }
                 }
                 // Collection constructor: List(T).new(), Map(K,V).new(), Set(T).new() → .{}
+                // The collection_expr builder is transparent — List(i32) reduces to the
+                // element type_primitive (i32) in the AST. The object is either a
+                // collection_expr (if the builder is updated) or a type_primitive/type_named
+                // (due to transparency). User struct .new() uses identifier (not type node).
                 if (c.callee.* == .field_expr) {
                     const method = c.callee.field_expr.field;
                     const obj = c.callee.field_expr.object;
                     if (std.mem.eql(u8, method, "new") and c.args.len == 0) {
-                        if (obj.* == .call_expr) {
-                            const inner_callee = obj.call_expr.callee;
-                            if (inner_callee.* == .identifier) {
-                                const tname = inner_callee.identifier;
-                                if (std.mem.eql(u8, tname, "List") or
-                                    std.mem.eql(u8, tname, "Map") or
-                                    std.mem.eql(u8, tname, "Set"))
-                                {
-                                    try self.emit(".{}");
-                                    return;
-                                }
-                            }
+                        const is_type_node = obj.* == .collection_expr or
+                            obj.* == .type_primitive or obj.* == .type_named or
+                            obj.* == .type_generic;
+                        if (is_type_node) {
+                            try self.emit(".{}");
+                            return;
                         }
                     }
                 }
@@ -2141,25 +2139,20 @@ pub const CodeGen = struct {
                     }
                 }
                 // Collection constructor: List(T).new(), Map(K,V).new(), Set(T).new() → .{}
-                // per D-01/D-02: these parse as call_expr with field_access callee,
-                // where the object is a generic type instantiation call
+                // The collection_expr builder is transparent — List(i32) reduces to the
+                // element type_primitive (i32) in the AST. So the callee's object has
+                // kind == .type_expr (a type in expression position), not .collection.
+                // Calling .new() with no args on a type in expression position always
+                // means "zero-initialize" — safe because user struct names parse as
+                // .identifier (not .type_expr), so there's no false-positive risk.
                 if (callee_is_field) {
                     const method = callee_mir.name orelse "";
                     if (std.mem.eql(u8, method, "new") and call_args.len == 0) {
                         if (callee_mir.children.len > 0) {
                             const obj_mir = callee_mir.children[0];
-                            if (obj_mir.kind == .call) {
-                                const inner_callee = obj_mir.getCallee();
-                                if (inner_callee.kind == .identifier) {
-                                    const tname = inner_callee.name orelse "";
-                                    if (std.mem.eql(u8, tname, "List") or
-                                        std.mem.eql(u8, tname, "Map") or
-                                        std.mem.eql(u8, tname, "Set"))
-                                    {
-                                        try self.emit(".{}");
-                                        return;
-                                    }
-                                }
+                            if (obj_mir.kind == .type_expr or obj_mir.kind == .collection) {
+                                try self.emit(".{}");
+                                return;
                             }
                         }
                     }

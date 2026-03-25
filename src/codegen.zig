@@ -1692,6 +1692,26 @@ pub const CodeGen = struct {
                         return;
                     }
                 }
+                // Collection constructor: List(T).new(), Map(K,V).new(), Set(T).new() → .{}
+                if (c.callee.* == .field_expr) {
+                    const method = c.callee.field_expr.field;
+                    const obj = c.callee.field_expr.object;
+                    if (std.mem.eql(u8, method, "new") and c.args.len == 0) {
+                        if (obj.* == .call_expr) {
+                            const inner_callee = obj.call_expr.callee;
+                            if (inner_callee.* == .identifier) {
+                                const tname = inner_callee.identifier;
+                                if (std.mem.eql(u8, tname, "List") or
+                                    std.mem.eql(u8, tname, "Map") or
+                                    std.mem.eql(u8, tname, "Set"))
+                                {
+                                    try self.emit(".{}");
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
                 // overflow/wrap/sat builtins
                 if (c.callee.* == .identifier and c.args.len == 1) {
                     const callee_name = c.callee.identifier;
@@ -2118,6 +2138,30 @@ pub const CodeGen = struct {
                         }
                         try self.emit(")");
                         return;
+                    }
+                }
+                // Collection constructor: List(T).new(), Map(K,V).new(), Set(T).new() → .{}
+                // per D-01/D-02: these parse as call_expr with field_access callee,
+                // where the object is a generic type instantiation call
+                if (callee_is_field) {
+                    const method = callee_mir.name orelse "";
+                    if (std.mem.eql(u8, method, "new") and call_args.len == 0) {
+                        if (callee_mir.children.len > 0) {
+                            const obj_mir = callee_mir.children[0];
+                            if (obj_mir.kind == .call) {
+                                const inner_callee = obj_mir.getCallee();
+                                if (inner_callee.kind == .identifier) {
+                                    const tname = inner_callee.name orelse "";
+                                    if (std.mem.eql(u8, tname, "List") or
+                                        std.mem.eql(u8, tname, "Map") or
+                                        std.mem.eql(u8, tname, "Set"))
+                                    {
+                                        try self.emit(".{}");
+                                        return;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 // overflow/wrap/sat builtins

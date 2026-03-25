@@ -43,48 +43,36 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 ### Active
 
-- [x] Fix tester module codegen — stages 09+10 (100 tests) must pass — Phase 4
-- [x] Fix cross-module struct ref-passing (BUG-01) — Phase 4
-- [x] Fix qualified generic type validation (BUG-02) — Phase 4
-- [x] Sweep remaining `catch unreachable` in codegen.zig — Phase 5 (4 compiler-side replaced with @panic)
-- [x] Sweep remaining `catch {}` in stdlib sidecars — Phase 5 (data-loss sites fixed, fire-and-forget I/O retained)
-- [x] Align version numbers to v0.10.0 — Phase 6
-- [x] Complete example module with missing language features — Phase 6
-- [x] Fix string interpolation memory leak (BUG-05) — Phase 6 (defer-free pattern)
-- [x] Ensure testall.sh passes all 11 stages cleanly — Phase 7 (236/236 passed)
+- [ ] Const auto-borrow — `const` values pass as `const &` instead of implicit copy
+- [ ] Ptr syntax simplification — remove `.cast()` and `Ptr(T, &x)`, use type annotation + `&`
+- [ ] Update Tamga companion project for new Ptr syntax
+- [ ] Ensure testall.sh passes all 11 stages after changes
 
 ### Out of Scope
 
 - Zig IR layer architecture refactor — deferred (large scope, separate concern)
 - Dependency-parallel module compilation — deferred (optimization, not correctness)
 - MIR optimization and caching (SSA, inlining, DCE) — deferred (optimization)
-- New language features — this milestone is stabilization and completeness only
-- Tamga companion project modifications — read-only reference
 - MIR residual AST accesses — architectural cleanup deferred
 - PEG syntax doc generator — deferred
+- New language features beyond the two simplifications — this milestone is focused
 
-## Current Milestone: v0.10 Test Suite & Code Quality
+## Current Milestone: v0.11 Language Simplification
 
-**Goal:** Fix the 100 failing runtime tests, sweep remaining error suppression, and bring the example module + version numbers up to date.
+**Goal:** Simplify language semantics with two breaking changes before wider adoption.
 
 **Target features:**
-- Fix tester module codegen failure (stages 09 + 10)
-- Fix cross-module struct ref-passing and qualified generic validation
-- Sweep remaining `catch unreachable` (15) and `catch {}` (28)
-- Align version numbers
-- Complete example module coverage
-- Fix string interpolation memory leak
+- Const auto-borrow — `const` values auto-pass as `const &` instead of implicit copy
+- Ptr syntax simplification — remove `.cast()` and `Ptr(T, &x)`, use `const p: Ptr(T) = &x`
+- Update Tamga companion project for new Ptr syntax
 
 ## Context
 
-The v0.9 milestone addressed the worst bugs (ownership const-as-move, `orhon test`, 103 stdlib `catch {}`, LSP hardening) but left the test suite partially broken — stages 09 (language) and 10 (runtime) fail with 100 tests blocked. Root cause is cross-module codegen generating invalid Zig (`type 'i32' has no members`). Additionally, 15 `catch unreachable` remain in codegen and 28 `catch {}` persist in 6 stdlib sidecars (collections, console, tui, fs, stream, system).
+v0.10 achieved a clean test suite (236/236 pass) and fixed all known bugs. Two design decisions were made during v0.10 review that change language semantics:
 
-Key areas of concern:
-- `src/codegen.zig` (3738 lines) — 15 remaining `catch unreachable`, cross-module field access bugs
-- Stdlib sidecars — 28 remaining `catch {}` across 6 files
-- Version drift — build.zig=0.9.3, build.zig.zon=0.8.3, PROJECT.md=v0.9.7
-- Example module missing: RawPtr/VolatilePtr, #bitsize, any generics, typeOf(), include vs import
-- String interpolation temp buffers never freed (BUG-05)
+1. **Const auto-borrow:** The current `is_const` flag in ownership.zig skips move marking, making all const non-primitive values implicitly copyable with no size limit. This was a quick fix for BUG-03 but creates hidden performance traps — a 4KB const struct silently copies on every by-value pass. The fix: auto-borrow const values as `const &` instead of copying. Affects `src/ownership.zig`, `src/codegen.zig`, `src/mir.zig`.
+
+2. **Ptr syntax simplification:** `Ptr(i32).cast(&x)` is verbose — the type already carries the safety level. New syntax: `const p: Ptr(T) = &x`. Remove `ptr_cast_expr` and `ptr_expr` PEG rules. Pointer construction becomes type-directed coercion in codegen. Affects `src/orhon.peg`, `src/peg/builder.zig`, `src/codegen.zig`, `src/mir.zig`, example module, tester fixtures, docs.
 
 ## Constraints
 
@@ -120,4 +108,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after Phase 7 completion (v0.10 milestone complete)*
+*Last updated: 2026-03-25 after milestone v0.11 start*

@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.10
-milestone_name: milestone
-status: Milestone complete
-stopped_at: Completed 07-01-PLAN.md — all 11 test stages pass, 236 tests, 0 failures
-last_updated: "2026-03-25T08:59:55.724Z"
+milestone: v0.11
+milestone_name: language-simplification
+status: Defining requirements
+stopped_at: null
+last_updated: "2026-03-25T12:00:00.000Z"
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -19,12 +19,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 07 — full-test-suite-gate
+**Current focus:** Defining requirements for v0.11
 
 ## Current Position
 
-Phase: 07
-Plan: Not started
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-25 — Milestone v0.11 started
 
 ## Performance Metrics
 

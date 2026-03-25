@@ -116,3 +116,56 @@ src/
     lsp.zig                 // language server
     std/                    // stdlib bridge modules (module + .zig sidecar)
 ```
+
+---
+
+## Fuzz Testing
+
+The compiler has two fuzz testing mechanisms: Zig's built-in `std.testing.fuzz` framework for the lexer and parser, run via `zig build test`, and a standalone fuzz harness (`src/fuzz.zig`) that runs 50,000 iterations with multiple input strategies via `zig build fuzz`.
+
+### Built-in fuzz tests
+
+These tests use Zig's `std.testing.fuzz` API and are run as part of the normal unit test suite:
+
+- **`src/lexer.zig` — "fuzz lexer":** Feeds arbitrary byte sequences through the lexer's `next()` method one token at a time, verifying the lexer always reaches EOF without panicking regardless of input content.
+- **`src/peg.zig` — "fuzz parser":** Lexes arbitrary input, then runs the PEG engine's `matchAll("program")` on the resulting token stream. Verifies the parser never panics or crashes on random or malformed token streams. A parse failure (match returning false) is expected and normal — only panics are failures.
+
+Run with:
+
+```
+zig build test
+```
+
+### Standalone fuzz harness
+
+Location: `src/fuzz.zig`
+
+Runs 50,000 iterations. Each iteration generates an input buffer using one of five strategies, lexes it, and runs the PEG parser. Tracks per-outcome counts (lex-only, parse-ok, parse-err) and reports a crash count at the end.
+
+**Input strategies:**
+
+| Strategy | Description |
+|----------|-------------|
+| 0 | Pure random bytes — maximum entropy, tests lexer resilience |
+| 1 | Printable ASCII and operator characters — realistic character distributions |
+| 2 | Orhon token fragments assembled randomly — keyword/operator soup |
+| 3 | Valid module prefix (`module test\n`) followed by random alphanumeric body |
+| 4 | Semi-valid program structures (module + func/struct/enum/import templates) followed by random filler — exercises deeper parser paths |
+
+Run with:
+
+```
+zig build fuzz
+```
+
+Output example:
+
+```
+=== Fuzz Results ===
+  iterations: 50000
+  passed:     50000
+  lex-only:   0
+  parse ok:   53
+  parse err:  49947
+  crashes:    0
+```

@@ -26,7 +26,7 @@ pub fn main() !void {
         const buf = try alloc.alloc(u8, len);
         defer alloc.free(buf);
 
-        const strategy = rand.intRangeAtMost(u8, 0, 3);
+        const strategy = rand.intRangeAtMost(u8, 0, 4);
         switch (strategy) {
             0 => rand.bytes(buf),
             1 => {
@@ -60,6 +60,25 @@ pub fn main() !void {
                 @memcpy(buf[0..n], prefix[0..n]);
                 if (buf.len > n) {
                     const cs = "abcdefghijklmnopqrstuvwxyz (){}=:+\n0123456789";
+                    for (buf[n..]) |*b| b.* = cs[rand.intRangeAtMost(usize, 0, cs.len - 1)];
+                }
+            },
+            4 => {
+                // Semi-valid Orhon program structures — exercises deeper parser paths
+                const templates = [_][]const u8{
+                    "module main\nfunc main() void {\n",
+                    "module main\npub struct Foo {\n    pub x: i32\n}\n",
+                    "module main\npub enum(u8) Bar {\n    A\n    B\n}\n",
+                    "module main\nconst X: i32 = 42\n",
+                    "module main\nfunc add(a: i32, b: i32) i32 {\n    return a + b\n}\n",
+                    "module main\nimport std::console\nfunc main() void {\n",
+                    "module main\nvar x: i32 = 0\nfunc f() void {\n    if(x > 0) {\n",
+                };
+                const tmpl = templates[rand.intRangeAtMost(usize, 0, templates.len - 1)];
+                const n = @min(tmpl.len, buf.len);
+                @memcpy(buf[0..n], tmpl[0..n]);
+                if (buf.len > n) {
+                    const cs = "abcdefghijklmnopqrstuvwxyz (){}=:+\n0123456789.,_!<>|&";
                     for (buf[n..]) |*b| b.* = cs[rand.intRangeAtMost(usize, 0, cs.len - 1)];
                 }
             },

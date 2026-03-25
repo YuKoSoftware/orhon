@@ -457,6 +457,23 @@ test "peg - validate std/time.orh" {
     try std.testing.expect(valid);
 }
 
+test "fuzz parser" {
+    try std.testing.fuzz({}, struct {
+        fn run(_: void, input: []const u8) !void {
+            const alloc = std.testing.allocator;
+            var lex = lexer.Lexer.init(input);
+            var tokens = lex.tokenize(alloc) catch return;
+            defer tokens.deinit(alloc);
+            if (tokens.items.len == 0) return;
+            var g = loadGrammar(alloc) catch return;
+            defer g.deinit();
+            var eng = Engine.init(&g, tokens.items, alloc);
+            defer eng.deinit();
+            _ = eng.matchAll("program");
+        }
+    }.run, .{});
+}
+
 // Re-export sub-module tests
 test {
     _ = @import("peg/grammar.zig");

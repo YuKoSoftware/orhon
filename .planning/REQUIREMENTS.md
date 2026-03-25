@@ -86,23 +86,23 @@ Deferred to future milestones.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CBOR-01 | — | Pending |
-| CBOR-02 | — | Pending |
-| CBOR-03 | — | Pending |
-| PTRS-01 | — | Pending |
-| PTRS-02 | — | Pending |
-| PTRS-03 | — | Pending |
-| PTRS-04 | — | Pending |
-| COMP-01 | — | Pending |
-| COMP-02 | — | Pending |
-| COMP-03 | — | Pending |
-| GATE-01 | — | Pending |
+| CBOR-01 | Phase 8 | Pending |
+| CBOR-02 | Phase 8 | Pending |
+| CBOR-03 | Phase 8 | Pending |
+| PTRS-01 | Phase 9 | Pending |
+| PTRS-02 | Phase 9 | Pending |
+| PTRS-03 | Phase 9 | Pending |
+| PTRS-04 | Phase 9 | Pending |
+| COMP-01 | Phase 10 | Pending |
+| COMP-02 | Phase 10 | Pending |
+| COMP-03 | Phase 10 | Pending |
+| GATE-01 | Phase 11 | Pending |
 
 **Coverage:**
 - v0.11 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11
+- Mapped to phases: 11
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-25*
-*Last updated: 2026-03-25 after initial definition*
+*Last updated: 2026-03-25 after roadmap creation*

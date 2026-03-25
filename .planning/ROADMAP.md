@@ -141,7 +141,10 @@ Plans:
   1. Tamga companion project builds without errors under the new Ptr syntax
   2. The example module demonstrates the new `const p: Ptr(T) = &x` syntax and const auto-borrow behavior
   3. Language docs (spec files in `docs/`) reflect the removed `.cast()` syntax and new auto-borrow rule
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 10-01-PLAN.md — Update Tamga Ptr syntax and verify fixtures/docs are current
 
 #### Phase 11: Full Test Suite Gate
 **Goal**: Every test stage passes, confirming the v0.11 milestone is complete
@@ -168,6 +171,6 @@ Current: 8 → 9 → 10 → 11
 | 6. Polish & Completeness | v0.10 | 2/2 | Complete | 2026-03-25 |
 | 7. Full Test Suite Gate | v0.10 | 1/1 | Complete | 2026-03-25 |
 | 8. Const Auto-Borrow | v0.11 | 2/2 | Complete |  |
-| 9. Ptr Syntax Simplification | v0.11 | 1/2 | In Progress|  |
-| 10. Compatibility Updates | v0.11 | 0/? | Not started | - |
+| 9. Ptr Syntax Simplification | v0.11 | 2/2 | Complete |  |
+| 10. Compatibility Updates | v0.11 | 0/1 | In Progress | - |
 | 11. Full Test Suite Gate | v0.11 | 0/? | Not started | - |

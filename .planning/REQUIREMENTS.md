@@ -14,11 +14,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Tester Module
 
-- [ ] **TEST-01**: Tester module compiles end-to-end with zero cross-module codegen errors — test stages 09+10 fully pass
+- [x] **TEST-01**: Tester module compiles end-to-end with zero cross-module codegen errors — test stages 09+10 fully pass
 
 ### Test Reliability
 
-- [ ] **RELY-01**: Intermittent unit test failure diagnosed and fixed — `zig build test` passes reliably across 5 consecutive runs
+- [x] **RELY-01**: Intermittent unit test failure diagnosed and fixed — `zig build test` passes reliably across 5 consecutive runs
 
 ### Gate
 
@@ -55,8 +55,8 @@ Deferred to future milestones.
 |-------------|-------|--------|
 | FUZZ-01 | Phase 12 | Complete |
 | FUZZ-02 | Phase 12 | Complete |
-| TEST-01 | Phase 13 | Pending |
-| RELY-01 | Phase 13 | Pending |
+| TEST-01 | Phase 13 | Complete |
+| RELY-01 | Phase 13 | Complete |
 | GATE-01 | Phase 14 | Pending |
 
 **Coverage:**

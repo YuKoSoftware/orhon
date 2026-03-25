@@ -89,13 +89,13 @@ else fail "for loop codegen"; fi
 if grep -q "std.testing.expect" "$GEN_TESTER" 2>/dev/null; then pass "@assert codegen"
 else fail "@assert codegen"; fi
 
-if grep -q "OrhonNullable" "$GEN_TESTER" 2>/dev/null; then pass "null union codegen"
-else fail "null union codegen"; fi
+if grep -q "?i32" "$GEN_TESTER" 2>/dev/null; then pass "null union codegen (?T)"
+else fail "null union codegen (?T)"; fi
 
-if grep -q ".none" "$GEN_TESTER" 2>/dev/null; then pass "null → .none codegen"
-else fail "null → .none codegen"; fi
+if grep -q "== null" "$GEN_TESTER" 2>/dev/null; then pass "null → == null codegen"
+else fail "null → == null codegen"; fi
 
-if grep -q ".some" "$GEN_TESTER" 2>/dev/null; then pass "value → .some codegen"
-else fail "value → .some codegen"; fi
+if grep -qF '.?' "$GEN_TESTER" 2>/dev/null; then pass "value → .? codegen"
+else fail "value → .? codegen"; fi
 
 report_results

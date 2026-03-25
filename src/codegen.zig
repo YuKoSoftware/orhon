@@ -1998,9 +1998,6 @@ pub const CodeGen = struct {
                 try self.emit("..");
                 try self.generateExpr(r.right);
             },
-            .ptr_expr => |p| {
-                try self.generatePtrExpr(p);
-            },
             .collection_expr => |c| {
                 try self.generateCollectionExpr(c);
             },
@@ -2477,7 +2474,6 @@ pub const CodeGen = struct {
                 }
             },
             .collection => try self.generateCollectionExprMir(m),
-            .ptr_expr => try self.generatePtrExprMir(m),
             .compiler_fn => try self.generateCompilerFuncMir(m),
             .array_lit => {
                 try self.emit(".{");
@@ -3229,47 +3225,6 @@ pub const CodeGen = struct {
         try self.emit(".{}");
     }
 
-    /// MIR-path ptr expr.
-    fn generatePtrExprMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
-        const kind = m.name orelse return;
-        // children = [type_arg, addr_arg]
-        const type_arg = m.children[0];
-        const addr_arg = m.children[1];
-        if (std.mem.eql(u8, kind, "Ptr")) {
-            try self.generateExprMir(addr_arg);
-        } else if (std.mem.eql(u8, kind, "RawPtr")) {
-            if (!self.warned_rawptr) {
-                std.debug.print("WARNING: RawPtr used — unsafe, no bounds checking\n", .{});
-                self.warned_rawptr = true;
-            }
-            const zig_type = try self.typeToZig(type_arg.ast);
-            if (addr_arg.kind == .borrow) {
-                try self.emitFmt("@as([*]{s}, @ptrCast(", .{zig_type});
-                try self.generateExprMir(addr_arg);
-                try self.emit("))");
-            } else {
-                try self.emitFmt("@as([*]{s}, @ptrFromInt(", .{zig_type});
-                try self.generateExprMir(addr_arg);
-                try self.emit("))");
-            }
-        } else if (std.mem.eql(u8, kind, "VolatilePtr")) {
-            if (!self.warned_rawptr) {
-                std.debug.print("WARNING: VolatilePtr used — unsafe, hardware access only\n", .{});
-                self.warned_rawptr = true;
-            }
-            const zig_type = try self.typeToZig(type_arg.ast);
-            if (addr_arg.kind == .borrow) {
-                try self.emitFmt("@as(*volatile {s}, @ptrCast(", .{zig_type});
-                try self.generateExprMir(addr_arg);
-                try self.emit("))");
-            } else {
-                try self.emitFmt("@as(*volatile {s}, @ptrFromInt(", .{zig_type});
-                try self.generateExprMir(addr_arg);
-                try self.emit("))");
-            }
-        }
-    }
-
     /// Type-directed pointer coercion for the MIR path.
     /// Called from generateTopLevelDeclMir and generateStmtDeclMir when type annotation is Ptr/RawPtr/VolatilePtr.
     /// type_node is the first type argument (e.g. i32 from Ptr(i32)); val_m is the value MIR node.
@@ -3678,47 +3633,6 @@ pub const CodeGen = struct {
             }
         } else {
             try self.emitFmt("/* unknown @{s} */", .{cf.name});
-        }
-    }
-
-    fn generatePtrExpr(self: *CodeGen, p: parser.PtrExpr) anyerror!void {
-        if (std.mem.eql(u8, p.kind, "Ptr")) {
-            // Ptr(T, &x) → &x  (safe const pointer, ownership tracked)
-            try self.generateExpr(p.addr_arg);
-        } else if (std.mem.eql(u8, p.kind, "RawPtr")) {
-            if (!self.warned_rawptr) {
-                std.debug.print("WARNING: RawPtr used — unsafe, no bounds checking\n", .{});
-                self.warned_rawptr = true;
-            }
-            const zig_type = try self.typeToZig(p.type_arg);
-            if (p.addr_arg.* == .borrow_expr) {
-                // RawPtr(T, &x) → @as([*]T, @ptrCast(&x))
-                try self.emitFmt("@as([*]{s}, @ptrCast(", .{zig_type});
-                try self.generateExpr(p.addr_arg);
-                try self.emit("))");
-            } else {
-                // RawPtr(T, 0xB8000) → @as([*]T, @ptrFromInt(addr))
-                try self.emitFmt("@as([*]{s}, @ptrFromInt(", .{zig_type});
-                try self.generateExpr(p.addr_arg);
-                try self.emit("))");
-            }
-        } else if (std.mem.eql(u8, p.kind, "VolatilePtr")) {
-            if (!self.warned_rawptr) {
-                std.debug.print("WARNING: VolatilePtr used — unsafe, hardware access only\n", .{});
-                self.warned_rawptr = true;
-            }
-            const zig_type = try self.typeToZig(p.type_arg);
-            if (p.addr_arg.* == .borrow_expr) {
-                // VolatilePtr(T, &x) → @as(*volatile T, @ptrCast(&x))
-                try self.emitFmt("@as(*volatile {s}, @ptrCast(", .{zig_type});
-                try self.generateExpr(p.addr_arg);
-                try self.emit("))");
-            } else {
-                // VolatilePtr(T, 0xFF200000) → @as(*volatile T, @ptrFromInt(addr))
-                try self.emitFmt("@as(*volatile {s}, @ptrFromInt(", .{zig_type});
-                try self.generateExpr(p.addr_arg);
-                try self.emit("))");
-            }
         }
     }
 

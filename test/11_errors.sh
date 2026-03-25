@@ -460,4 +460,16 @@ run_fixture neg_scope fail_scope.orh "module-level.*var.*not allowed\|already de
 # match errors
 run_fixture neg_match fail_match.orh "not a member" "fixture: catches invalid match arm"
 
+# old ptr syntax rejected
+cd "$TESTDIR"
+mkdir -p neg_ptr_cast/src
+cp "$FIXTURES/fail_ptr_cast.orh" neg_ptr_cast/src/main.orh
+cd neg_ptr_cast
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "error\|parse\|unexpected"; then
+    pass "rejects old Ptr(T).cast() syntax"
+else
+    fail "rejects old Ptr(T).cast() syntax" "$NEG_OUT"
+fi
+
 report_results

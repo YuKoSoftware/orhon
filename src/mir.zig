@@ -421,11 +421,6 @@ pub const MirAnnotator = struct {
                 try self.annotateExpr(node);
                 try self.annotateNode(b);
             },
-            .ptr_expr => |p| {
-                try self.annotateExpr(node);
-                try self.annotateNode(p.type_arg);
-                try self.annotateNode(p.addr_arg);
-            },
             .collection_expr => |c| {
                 try self.annotateExpr(node);
                 for (c.type_args) |arg| try self.annotateNode(arg);
@@ -914,7 +909,6 @@ pub const MirKind = enum {
     borrow,
     interpolation,
     collection,
-    ptr_expr,
     compiler_fn,
     array_lit,
     tuple_lit,
@@ -1174,12 +1168,6 @@ pub const MirLowerer = struct {
             },
             .compiler_func => |c| {
                 mir_node.children = try self.lowerSlice(c.args);
-            },
-            .ptr_expr => |p| {
-                var children = std.ArrayListUnmanaged(*MirNode){};
-                try children.append(self.allocator, try self.lowerNode(p.type_arg));
-                try children.append(self.allocator, try self.lowerNode(p.addr_arg));
-                mir_node.children = try children.toOwnedSlice(self.allocator);
             },
             .array_literal => |a| {
                 mir_node.children = try self.lowerSlice(a);
@@ -1574,9 +1562,6 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
         .compiler_func => |cf| {
             m.name = cf.name;
         },
-        .ptr_expr => |p| {
-            m.name = p.kind;
-        },
         else => {},
     }
 }
@@ -1615,7 +1600,6 @@ fn astToMirKind(node: *parser.Node) MirKind {
         .borrow_expr => .borrow,
         .interpolated_string => .interpolation,
         .collection_expr => .collection,
-        .ptr_expr => .ptr_expr,
         .compiler_func => .compiler_fn,
         .array_literal => .array_lit,
         .tuple_literal => .tuple_lit,

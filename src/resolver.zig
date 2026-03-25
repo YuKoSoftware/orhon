@@ -671,12 +671,6 @@ pub const TypeResolver = struct {
                 return elem_type;
             },
 
-            .ptr_expr => |p| {
-                _ = try self.resolveExpr(p.type_arg, scope);
-                _ = try self.resolveExpr(p.addr_arg, scope);
-                return RT{ .named = p.kind };
-            },
-
             .collection_expr => |c| {
                 for (c.type_args) |arg| _ = try self.resolveExpr(arg, scope);
                 if (c.alloc_arg) |a| _ = try self.resolveExpr(a, scope);

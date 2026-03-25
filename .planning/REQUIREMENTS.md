@@ -16,7 +16,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Error Suppression
 
 - [ ] **ESUP-01**: All `catch unreachable` in codegen.zig replaced with proper error propagation (15 instances)
-- [ ] **ESUP-02**: All `catch {}` in stdlib sidecars replaced with proper error handling (28 instances across 6 files)
+- [x] **ESUP-02**: All `catch {}` in stdlib sidecars replaced with proper error handling (28 instances across 6 files)
 
 ### Project Hygiene
 
@@ -88,7 +88,7 @@ Deferred to future milestones. Tracked but not in current roadmap.
 | CGEN-02 | Phase 4 | Complete |
 | CGEN-03 | Phase 4 | Complete |
 | ESUP-01 | Phase 5 | Pending |
-| ESUP-02 | Phase 5 | Pending |
+| ESUP-02 | Phase 5 | Complete |
 | HYGN-01 | Phase 6 | Pending |
 | HYGN-02 | Phase 6 | Pending |
 | DOCS-01 | Phase 6 | Pending |

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.10
 milestone_name: milestone
-status: Ready to plan
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-25T06:36:20.753Z"
+status: Ready to execute
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-25T06:56:24.503Z"
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 04 — codegen-correctness
+**Current focus:** Phase 05 — error-suppression-sweep
 
 ## Current Position
 
-Phase: 05
-Plan: Not started
+Phase: 05 (error-suppression-sweep) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Plan: Not started
 | Phase 03-lsp-hardening P02 | 18 | 2 tasks | 1 files |
 | Phase 04 P02 | 12 | 2 tasks | 1 files |
 | Phase 04 P01 | 35 | 2 tasks | 1 files |
+| Phase 05-error-suppression-sweep P02 | 12 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 04-02]: Instance method cross-module lookup uses struct name from resolved type to find owning module (no false positives)
 - [Phase 04-02]: CGEN-03 qualified generic validation already correct in resolver.zig — no code change needed, two unit tests confirm coverage
 - [Phase 04]: Collection .new() detection via type_expr MIR kind — PEG builder transparency strips collection_expr to element type, so .type_expr is the correct check
+- [Phase 05-error-suppression-sweep]: catch |_| {} is invalid Zig 0.15 syntax — catch {} is the only valid error discard; fire-and-forget I/O sites keep catch {} with comments
+- [Phase 05-error-suppression-sweep]: ESUP-02: OOM data-loss fixed in collections (catch return/break) and stream (catch return/catch block); grep=0 unachievable for fire-and-forget sites by design
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T06:36:20.747Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-error-suppression-sweep/05-CONTEXT.md
+Last session: 2026-03-25T06:56:24.500Z
+Stopped at: Completed 05-02-PLAN.md
+Resume file: None

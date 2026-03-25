@@ -43,11 +43,11 @@ Plans:
   1. `grep -c 'catch unreachable' src/codegen.zig` returns 0 — all 15 instances replaced with explicit error propagation
   2. `grep -rn 'catch {}' src/std/` returns 0 — all 28 instances across the 6 stdlib sidecars replaced with explicit handling or documented fire-and-forget comments
   3. No test stage regresses as a result of the sweep — `./testall.sh` stages 01-10 still pass
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 05-01-PLAN.md — Fix 4 compiler-side catch unreachable in codegen.zig thread spawning (ESUP-01)
-- [ ] 05-02-PLAN.md — Fix 28 catch {} across 6 stdlib sidecar files (ESUP-02)
+- [x] 05-02-PLAN.md — Fix 28 catch {} across 6 stdlib sidecar files (ESUP-02)
 
 ### Phase 6: Polish & Completeness
 **Goal**: Version numbers are consistent, string interpolation does not leak, and the example module documents every implemented feature
@@ -76,6 +76,6 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 4. Codegen Correctness | 2/2 | Complete   | 2026-03-25 |
-| 5. Error Suppression Sweep | 0/2 | In progress | - |
+| 5. Error Suppression Sweep | 1/2 | In Progress|  |
 | 6. Polish & Completeness | 0/? | Not started | - |
 | 7. Full Test Suite Gate | 0/? | Not started | - |

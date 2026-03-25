@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Orhon is a compiled, memory-safe programming language that transpiles to Zig. Written in Zig 0.15.x, it targets developers who want Rust-level safety with Zig-level simplicity. The compiler implements a 12-pass pipeline from source to native binary, with ownership tracking, borrow checking, thread safety analysis, and incremental compilation. Currently at v0.10.0.
+Orhon is a compiled, memory-safe programming language that transpiles to Zig. Written in Zig 0.15.x, it targets developers who want Rust-level safety with Zig-level simplicity. The compiler implements a 12-pass pipeline from source to native binary, with ownership tracking, borrow checking, thread safety analysis, and incremental compilation. Currently at v0.11.0.
 
 ## Core Value
 
@@ -40,13 +40,14 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - ✓ LSP per-request arena memory (no unbounded growth) — Phase 3
 - ✓ LSP header buffer hardening (4096 bytes, truncation detection) — Phase 3
 - ✓ LSP content-length guard (64 MiB cap, rejects oversized payloads) — Phase 3
+- ✓ Const auto-borrow — `const` non-primitives auto-pass as `const &` at call sites — v0.11 Phase 8
+- ✓ Ptr syntax simplification — type annotation + `&` replaces `.cast()` — v0.11 Phase 9
+- ✓ Tamga companion project updated for v0.11 syntax changes — v0.11 Phase 10
+- ✓ Full test suite gate 240/240 — v0.11 Phase 11
 
 ### Active
 
-- [x] Const auto-borrow — `const` values pass as `const &` instead of implicit copy — Phase 8
-- [x] Ptr syntax simplification — remove `.cast()` and `Ptr(T, &x)`, use type annotation + `&` — Phase 9
-- [x] Update Tamga companion project for new Ptr syntax — Phase 10
-- [x] Ensure testall.sh passes all 11 stages after changes — Phase 11 (240/240 passed)
+(Next milestone requirements will be defined via `/gsd:new-milestone`)
 
 ### Out of Scope
 
@@ -57,22 +58,13 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - PEG syntax doc generator — deferred
 - New language features beyond the two simplifications — this milestone is focused
 
-## Current Milestone: v0.11 Language Simplification
+## Current Milestone: Planning next
 
-**Goal:** Simplify language semantics with two breaking changes before wider adoption.
-
-**Target features:**
-- Const auto-borrow — `const` values auto-pass as `const &` instead of implicit copy
-- Ptr syntax simplification — remove `.cast()` and `Ptr(T, &x)`, use `const p: Ptr(T) = &x`
-- Update Tamga companion project for new Ptr syntax
+**Previous:** v0.11 Language Simplification — shipped 2026-03-25
 
 ## Context
 
-v0.10 achieved a clean test suite (236/236 pass) and fixed all known bugs. Two design decisions were made during v0.10 review that change language semantics:
-
-1. **Const auto-borrow:** The current `is_const` flag in ownership.zig skips move marking, making all const non-primitive values implicitly copyable with no size limit. This was a quick fix for BUG-03 but creates hidden performance traps — a 4KB const struct silently copies on every by-value pass. The fix: auto-borrow const values as `const &` instead of copying. Affects `src/ownership.zig`, `src/codegen.zig`, `src/mir.zig`.
-
-2. **Ptr syntax simplification:** `Ptr(i32).cast(&x)` is verbose — the type already carries the safety level. New syntax: `const p: Ptr(T) = &x`. Remove `ptr_cast_expr` and `ptr_expr` PEG rules. Pointer construction becomes type-directed coercion in codegen. Affects `src/orhon.peg`, `src/peg/builder.zig`, `src/codegen.zig`, `src/mir.zig`, example module, tester fixtures, docs.
+v0.11 shipped two breaking semantic changes: const auto-borrow (const values auto-pass as `const &` at call sites, eliminating silent deep copies) and ptr syntax simplification (type annotation + `&` replaces verbose `.cast()` syntax). All fixtures, Tamga companion project, and docs updated. 240/240 tests pass. 35 files changed, 2812 insertions, 256 deletions.
 
 ## Constraints
 
@@ -86,9 +78,12 @@ v0.10 achieved a clean test suite (236/236 pass) and fixed all known bugs. Two d
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Fix bugs before architecture work | Correctness before performance/elegance | — Pending |
-| Scope to TODO.md bugs only | Clear boundary, avoid scope creep | — Pending |
+| Fix bugs before architecture work | Correctness before performance/elegance | ✓ Good — all bugs fixed by v0.10 |
+| Scope to TODO.md bugs only | Clear boundary, avoid scope creep | ✓ Good — kept milestones focused |
 | Clean up stdlib error handling | 103 catch {} is a safety hazard for a "safe" language compiler | ✓ Phase 2 — Category A documented, Category B fixed |
+| Const auto-borrow via MIR annotation | Re-derive const-ness from AST, avoid coupling to ownership checker | ✓ v0.11 Phase 8 — clean separation |
+| Type-directed pointer coercion | Type annotation carries safety level, no need for `.cast()` syntax | ✓ v0.11 Phase 9 — simpler language surface |
+| Breaking changes before wider adoption | No known external users, clean slate opportunity | ✓ v0.11 — both changes landed cleanly |
 
 ## Evolution
 
@@ -108,4 +103,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after Phase 11 completion (v0.11 milestone complete)*
+*Last updated: 2026-03-25 after v0.11 milestone archived*

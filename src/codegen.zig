@@ -697,7 +697,7 @@ pub const CodeGen = struct {
         self.indent += 1;
 
         try self.emitIndent();
-        try self.emitFmt("const _state = std.heap.page_allocator.create({s}.SharedState) catch unreachable;\n", .{handle_zig});
+        try self.emitFmt("const _state = std.heap.page_allocator.create({s}.SharedState) catch return error.OutOfMemory;\n", .{handle_zig});
         try self.emitIndent();
         try self.emit("_state.* = .{};\n");
 
@@ -723,7 +723,7 @@ pub const CodeGen = struct {
             const pname = param_m.name orelse continue;
             try self.emitFmt(", {s}", .{pname});
         }
-        try self.emit(" }) catch unreachable, .state = _state };\n");
+        try self.emit(" }) catch |e| return e, .state = _state };\n");
 
         self.indent -= 1;
         try self.emitIndent();
@@ -947,7 +947,7 @@ pub const CodeGen = struct {
 
         // Allocate shared state
         try self.emitIndent();
-        try self.emitFmt("const _state = std.heap.page_allocator.create({s}.SharedState) catch unreachable;\n", .{handle_zig});
+        try self.emitFmt("const _state = std.heap.page_allocator.create({s}.SharedState) catch return error.OutOfMemory;\n", .{handle_zig});
         try self.emitIndent();
         try self.emit("_state.* = .{};\n");
 
@@ -980,7 +980,7 @@ pub const CodeGen = struct {
                 try self.emitFmt(", {s}", .{param.param.name});
             }
         }
-        try self.emit(" }) catch unreachable, .state = _state };\n");
+        try self.emit(" }) catch |e| return e, .state = _state };\n");
 
         self.indent -= 1;
         try self.emitIndent();

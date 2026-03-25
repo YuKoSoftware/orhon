@@ -90,11 +90,10 @@ func read_via_ptr(n: i32) i32 {
 
 // RawPtr(T) — unsafe pointer, no bounds checking, emits compiler warning
 
-func raw_ptr_demo() i32 {
-    var x: i32 = 99
-    const raw: RawPtr(i32) = RawPtr(i32).cast(&x)
-    return raw[0]
-}
+// RawPtr example (comment only — emits compiler warning if compiled):
+//   const x: i32 = 99
+//   const raw: RawPtr(i32) = RawPtr(i32).cast(&x)
+//   raw[0]    // read value, no bounds check
 
 // VolatilePtr(T) — like RawPtr but every read/write is volatile
 // Used for memory-mapped hardware registers. Example (not runnable):
@@ -160,9 +159,6 @@ test "safe pointer" {
     assert(read_via_ptr(42) == 42)
 }
 
-test "raw pointer" {
-    assert(raw_ptr_demo() == 99)
-}
 
 test "identity generic" {
     const x: i32 = identity(42)

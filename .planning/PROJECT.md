@@ -48,9 +48,9 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - [x] Fix qualified generic type validation (BUG-02) — Phase 4
 - [x] Sweep remaining `catch unreachable` in codegen.zig — Phase 5 (4 compiler-side replaced with @panic)
 - [x] Sweep remaining `catch {}` in stdlib sidecars — Phase 5 (data-loss sites fixed, fire-and-forget I/O retained)
-- [ ] Align version numbers across build.zig, build.zig.zon, PROJECT.md
-- [ ] Complete example module with missing language features
-- [ ] Fix string interpolation memory leak (BUG-05)
+- [x] Align version numbers to v0.10.0 — Phase 6
+- [x] Complete example module with missing language features — Phase 6
+- [x] Fix string interpolation memory leak (BUG-05) — Phase 6 (defer-free pattern)
 - [ ] Ensure testall.sh passes all 11 stages cleanly
 
 ### Out of Scope
@@ -120,4 +120,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after Phase 5 completion*
+*Last updated: 2026-03-25 after Phase 6 completion*

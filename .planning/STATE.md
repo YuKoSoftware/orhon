@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.10
 milestone_name: milestone
-status: Ready to execute
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-25T05:25:59.487Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-25T05:37:49.151Z"
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -56,6 +56,7 @@ Plan: 2 of 2
 | Phase 03-lsp-hardening P01 | 8 | 2 tasks | 1 files |
 | Phase 03-lsp-hardening P02 | 18 | 2 tasks | 1 files |
 | Phase 04 P02 | 12 | 2 tasks | 1 files |
+| Phase 04 P01 | 35 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,7 @@ Recent decisions affecting current work:
 - [Phase 03-lsp-hardening]: all_symbols ArrayList backing buffer must be deinited after dupe — not freed by arena since it was allocated via long-lived allocator
 - [Phase 04-02]: Instance method cross-module lookup uses struct name from resolved type to find owning module (no false positives)
 - [Phase 04-02]: CGEN-03 qualified generic validation already correct in resolver.zig — no code change needed, two unit tests confirm coverage
+- [Phase 04]: Collection .new() detection via type_expr MIR kind — PEG builder transparency strips collection_expr to element type, so .type_expr is the correct check
 
 ### Pending Todos
 
@@ -92,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T05:25:59.482Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-25T05:37:49.146Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None

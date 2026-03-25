@@ -13,7 +13,7 @@ Four phases to complete the v0.10 milestone. Phase 4 fixes the codegen bugs resp
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 4: Codegen Correctness** - Fix the tester module codegen failures that block 100 runtime tests
+- [x] **Phase 4: Codegen Correctness** - Fix the tester module codegen failures that block 100 runtime tests (completed 2026-03-25)
 - [ ] **Phase 5: Error Suppression Sweep** - Replace all remaining silent `catch unreachable` and `catch {}` with proper error propagation
 - [ ] **Phase 6: Polish & Completeness** - Align version numbers, fix string interpolation leak, complete example module coverage
 - [ ] **Phase 7: Full Test Suite Gate** - Verify all 11 test stages pass with zero failures
@@ -29,10 +29,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Cross-module struct methods with `const &` parameters emit `&arg` at every call site in generated Zig
   3. A reference to `math.Vec2(f64)` where `Vec2` does not exist in module `math` produces a clear Orhon-level error before codegen runs
   4. Test stages 09 (language) and 10 (runtime) both pass — 100 tests executed, 0 compilation failures
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 04-01-PLAN.md — Fix collection .new() constructor codegen (CGEN-01)
+- [x] 04-01-PLAN.md — Fix collection .new() constructor codegen (CGEN-01)
 - [x] 04-02-PLAN.md — Fix cross-module ref-passing and qualified generic validation (CGEN-02, CGEN-03)
 
 ### Phase 5: Error Suppression Sweep
@@ -71,7 +71,7 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 4. Codegen Correctness | 0/2 | Planning complete | - |
+| 4. Codegen Correctness | 2/2 | Complete   | 2026-03-25 |
 | 5. Error Suppression Sweep | 0/? | Not started | - |
 | 6. Polish & Completeness | 0/? | Not started | - |
 | 7. Full Test Suite Gate | 0/? | Not started | - |

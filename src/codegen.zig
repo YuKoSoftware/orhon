@@ -1884,13 +1884,16 @@ pub const CodeGen = struct {
                         if (self.error_capture_var.get(f.object.identifier)) |cap| {
                             try self.emitFmt("@errorName({s})", .{cap});
                         } else {
-                            // Fallback: should not happen if propagation analysis is correct
+                            // Fallback: use if/else pattern to capture the error value
+                            // `catch |_e| expr` returns T (not []const u8), so we use the if/else form
+                            try self.emit("(if (");
                             try self.generateExpr(f.object);
-                            try self.emit(" catch |_e| @errorName(_e)");
+                            try self.emit(") |_| unreachable else |_e| @errorName(_e))");
                         }
                     } else {
+                        try self.emit("(if (");
                         try self.generateExpr(f.object);
-                        try self.emit(" catch |_e| @errorName(_e)");
+                        try self.emit(") |_| unreachable else |_e| @errorName(_e))");
                     }
                 } else if (std.mem.eql(u8, f.field, "value") and
                     (self.getTypeClass(f.object) == .arbitrary_union or self.getTypeClass(f.object) == .null_union or self.getTypeClass(f.object) == .error_union))
@@ -2324,12 +2327,15 @@ pub const CodeGen = struct {
                         if (self.error_capture_var.get(obj_name)) |cap| {
                             try self.emitFmt("@errorName({s})", .{cap});
                         } else {
+                            // Use if/else pattern — `catch |_e| expr` returns T, not []const u8
+                            try self.emit("(if (");
                             try self.generateExprMir(obj_mir);
-                            try self.emit(" catch |_e| @errorName(_e)");
+                            try self.emit(") |_| unreachable else |_e| @errorName(_e))");
                         }
                     } else {
+                        try self.emit("(if (");
                         try self.generateExprMir(obj_mir);
-                        try self.emit(" catch |_e| @errorName(_e)");
+                        try self.emit(") |_| unreachable else |_e| @errorName(_e))");
                     }
                 } else if (std.mem.eql(u8, field, "value") and
                     (obj_tc == .arbitrary_union or obj_tc == .null_union or obj_tc == .error_union))

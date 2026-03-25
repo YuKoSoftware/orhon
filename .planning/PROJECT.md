@@ -47,7 +47,9 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 ### Active
 
-(Next milestone requirements will be defined via `/gsd:new-milestone`)
+- [ ] Fuzz testing for lexer and parser — v0.12
+- [ ] Tester module cross-module codegen fix — v0.12
+- [ ] Intermittent unit test failure fix — v0.12
 
 ### Out of Scope
 
@@ -56,9 +58,17 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - MIR optimization and caching (SSA, inlining, DCE) — deferred (optimization)
 - MIR residual AST accesses — architectural cleanup deferred
 - PEG syntax doc generator — deferred
-- New language features beyond the two simplifications — this milestone is focused
+- New language features — this milestone is quality-focused, not feature-focused
+- Architecture refactors — deferred to future milestone
 
-## Current Milestone: Planning next
+## Current Milestone: v0.12 Quality & Polish
+
+**Goal:** Close all remaining bugs, add fuzz testing, and eliminate the intermittent test failure — zero open issues.
+
+**Target features:**
+- Fuzz testing integration for lexer and parser using `std.testing.fuzz`
+- Fix remaining tester module cross-module codegen issues
+- Investigate and fix the intermittent unit test failure
 
 **Previous:** v0.11 Language Simplification — shipped 2026-03-25
 
@@ -103,4 +113,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after v0.11 milestone archived*
+*Last updated: 2026-03-25 after v0.12 milestone started*

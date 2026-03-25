@@ -388,8 +388,6 @@ primary_expr
      / tuple_literal
      / grouped_expr
      / error_literal
-     / ptr_cast_expr
-     / ptr_expr
      / collection_expr
      / struct_expr
      / identifier_expr
@@ -427,15 +425,6 @@ grouped_expr
 # Error literal: Error("message")
 error_literal
     <- 'Error' '(' STRING_LITERAL ')'
-
-# Pointer instantiation (method-style): Ptr(T).cast(addr) / RawPtr(T).cast(addr)
-# Must come before ptr_expr in primary_expr since both start with Ptr/RawPtr/VolatilePtr.
-ptr_cast_expr
-    <- ('Ptr' / 'RawPtr' / 'VolatilePtr') '(' type ')' '.' 'cast' '(' expr ')'
-
-# Pointer instantiation (classic style): Ptr(T, &x) / RawPtr(T, addr) / VolatilePtr(T, addr)
-ptr_expr
-    <- ('Ptr' / 'RawPtr' / 'VolatilePtr') '(' type ',' expr ')'
 
 # Collection constructors
 collection_expr

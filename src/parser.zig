@@ -49,7 +49,6 @@ pub const NodeKind = enum {
     field_expr,
     borrow_expr,
     compiler_func,
-    ptr_expr,
     collection_expr,
     identifier,
     int_literal,
@@ -114,7 +113,6 @@ pub const Node = union(NodeKind) {
     field_expr: FieldExpr,
     borrow_expr: *Node,
     compiler_func: CompilerFunc,
-    ptr_expr: PtrExpr,
     collection_expr: CollectionExpr,
     identifier: []const u8,
     int_literal: []const u8,
@@ -331,12 +329,6 @@ pub const FieldExpr = struct {
 pub const CompilerFunc = struct {
     name: []const u8,
     args: []*Node,
-};
-
-pub const PtrExpr = struct {
-    kind: []const u8, // "Ptr", "RawPtr", "VolatilePtr"
-    type_arg: *Node,
-    addr_arg: *Node,
 };
 
 pub const CollectionExpr = struct {

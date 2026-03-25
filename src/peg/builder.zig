@@ -174,7 +174,6 @@ fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     if (std.mem.eql(u8, rule, "grouped_expr")) return buildGroupedExpr(ctx, cap);
     if (std.mem.eql(u8, rule, "tuple_literal")) return buildTupleLiteral(ctx, cap);
     if (std.mem.eql(u8, rule, "struct_expr")) return buildStructExpr(ctx, cap);
-    if (std.mem.eql(u8, rule, "ptr_cast_expr")) return buildPtrCastExpr(ctx, cap);
 
     // Binary expression tower — all use the same builder
     if (std.mem.eql(u8, rule, "or_expr")) return buildBinaryExpr(ctx, cap, "or");
@@ -1348,35 +1347,6 @@ fn buildPostfixExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     return expr;
 }
 
-/// Build ptr_cast_expr: Ptr(T).cast(addr) / RawPtr(T).cast(addr) / VolatilePtr(T).cast(addr)
-/// Grammar: ('Ptr' / 'RawPtr' / 'VolatilePtr') '(' type ')' '.' 'cast' '(' expr ')'
-/// Produces a ptr_expr node — same as the classic Ptr(T, addr) syntax.
-fn buildPtrCastExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const kind = tokenText(ctx, cap.start_pos);
-    var type_arg: ?*Node = null;
-    var addr_arg: ?*Node = null;
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "type") and type_arg == null) {
-                type_arg = try buildNode(ctx, child);
-            } else if (std.mem.eql(u8, r, "expr") and addr_arg == null) {
-                addr_arg = try buildNode(ctx, child);
-            }
-        }
-    }
-    const t = type_arg orelse return error.MissingTypeArg;
-    var addr = addr_arg orelse return error.MissingAddrArg;
-    // PEG may parse &x as ref_type (type_ptr) in some contexts — convert to borrow_expr
-    if (addr.* == .type_ptr) {
-        addr = try ctx.newNode(.{ .borrow_expr = addr.type_ptr.elem });
-    }
-    return ctx.newNode(.{ .ptr_expr = .{
-        .kind = kind,
-        .type_arg = t,
-        .addr_arg = addr,
-    } });
-}
-
 // ============================================================
 // TYPE BUILDERS
 // ============================================================
@@ -1394,21 +1364,6 @@ fn buildGenericType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // Collect type/expr args from generic_arg_list -> type_or_expr -> type/expr
     var args_list = std.ArrayListUnmanaged(*Node){};
     try collectGenericArgs(ctx, cap, &args_list);
-    // Pointer constructors: RawPtr(T, &x), SafePtr(T, &x), VolatilePtr(T, &x), Ptr(T, &x)
-    const is_ptr = std.mem.eql(u8, name, "RawPtr") or std.mem.eql(u8, name, "SafePtr") or
-        std.mem.eql(u8, name, "VolatilePtr") or std.mem.eql(u8, name, "Ptr");
-    if (is_ptr and args_list.items.len == 2) {
-        // PEG parses &x as ref_type (type_ptr) in type_or_expr context — convert to borrow_expr
-        var addr = args_list.items[1];
-        if (addr.* == .type_ptr) {
-            addr = try ctx.newNode(.{ .borrow_expr = addr.type_ptr.elem });
-        }
-        return ctx.newNode(.{ .ptr_expr = .{
-            .kind = name,
-            .type_arg = args_list.items[0],
-            .addr_arg = addr,
-        } });
-    }
     return ctx.newNode(.{ .type_generic = .{ .name = name, .args = try args_list.toOwnedSlice(ctx.alloc()) } });
 }
 

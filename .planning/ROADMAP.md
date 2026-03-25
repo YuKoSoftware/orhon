@@ -96,6 +96,6 @@ Plans:
 | 9. Ptr Syntax Simplification | v0.11 | Complete | Complete | 2026-03-25 |
 | 10. Tamga Compatibility Update | v0.11 | Complete | Complete | 2026-03-25 |
 | 11. Full Test Suite Gate | v0.11 | Complete | Complete | 2026-03-25 |
-| 12. Fuzz Testing | v0.12 | 1/1 | Complete   | 2026-03-25 |
+| 12. Fuzz Testing | v0.12 | 1/1 | Complete    | 2026-03-25 |
 | 13. Bug Fixes | v0.12 | 0/TBD | Not started | - |
 | 14. Gate | v0.12 | 0/TBD | Not started | - |

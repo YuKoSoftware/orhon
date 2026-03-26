@@ -53,6 +53,23 @@ func arb_union_check(flag: bool) i32 {
     return 0
 }
 
+// ─── Error Union with Void ───────────────────────────────────────────────────
+
+func validate_input(value: i32) (Error | void) {
+    if(value < 0) {
+        return Error("negative value")
+    }
+    return
+}
+
+func check_and_report(value: i32) i32 {
+    const result = validate_input(value)
+    if(result is Error) {
+        return 0
+    }
+    return 1
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 test "error handling" {
@@ -63,4 +80,9 @@ test "error handling" {
 test "null handling" {
     assert(value_or_default(5) == 50)
     assert(value_or_default(0) == 0)
+}
+
+test "error void" {
+    assert(check_and_report(5) == 1)
+    assert(check_and_report(0 - 1) == 0)
 }

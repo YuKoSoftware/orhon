@@ -50,7 +50,8 @@ for TEST_NAME in \
     map_get \
     bitfield_constructor bitfield_methods \
     const_auto_borrow var_caller_promoted const_copy \
-    is_qualified is_not_qualified; do
+    is_qualified is_not_qualified \
+    error_void_ok error_void_fail; do
     if echo "$BINOUT" | grep -q "PASS $TEST_NAME"; then pass "runtime: $TEST_NAME"
     else fail "runtime: $TEST_NAME"; fi
 done

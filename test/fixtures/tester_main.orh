@@ -634,5 +634,19 @@ func main() void {
         console.println("FAIL is_not_qualified")
     }
 
+    // Test: (Error | void) — success path returns void, no error
+    if(tester.test_error_void_ok() == 1) {
+        console.println("PASS error_void_ok")
+    } else {
+        console.println("FAIL error_void_ok")
+    }
+
+    // Test: (Error | void) — error path returns error
+    if(tester.test_error_void_fail() == 1) {
+        console.println("PASS error_void_fail")
+    } else {
+        console.println("FAIL error_void_fail")
+    }
+
     console.println("TESTER:DONE")
 }

@@ -802,8 +802,12 @@ pub const TypeResolver = struct {
     fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
         switch (node.*) {
             .type_named => |type_name| {
+                // Qualified names (module.Type) refer to bridge/imported module types.
+                // The module import is validated by the module resolver; we trust the
+                // qualified form here rather than trying to look up cross-module types.
+                const is_qualified = std.mem.indexOfScalar(u8, type_name, '.') != null;
                 const is_primitive = types.isPrimitiveName(type_name);
-                const is_known = is_primitive or
+                const is_known = is_qualified or is_primitive or
                     self.decls.structs.contains(type_name) or
                     self.decls.enums.contains(type_name) or
                     self.decls.bitfields.contains(type_name) or

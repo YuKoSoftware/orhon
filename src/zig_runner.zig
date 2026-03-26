@@ -479,6 +479,36 @@ pub fn buildZigContent(
     // #linkC is applied to the artifact (lib/exe), not the bridge module.
     // Build.Module doesn't have linkSystemLibrary/linkLibC — only Step.Compile does.
 
+    // For bridge modules that are NOT already in shared_modules (i.e. they are
+    // transitive imports — e.g. tester imports allocator, but root only imports tester),
+    // we still need a named module so @import("allocator") resolves inside tester.zig.
+    // Create mod_{name} for each such bridge module, wire its bridge sidecar into it.
+    for (bridge_modules) |bmod_name| {
+        // Skip if already covered by shared_modules — it gets its mod_ created there
+        var already_shared = false;
+        for (shared_modules) |smod_name| {
+            if (std.mem.eql(u8, smod_name, bmod_name)) {
+                already_shared = true;
+                break;
+            }
+        }
+        if (already_shared) continue;
+
+        const extra_mod_chunk = try std.fmt.allocPrint(allocator,
+            \\    const mod_{s} = b.createModule(.{{
+            \\        .root_source_file = b.path("{s}.zig"),
+            \\        .target = target,
+            \\        .optimize = optimize,
+            \\    }});
+            \\    mod_{s}.addImport("_orhon_str", str_mod);
+            \\    mod_{s}.addImport("_orhon_collections", coll_mod);
+            \\    mod_{s}.addImport("{s}_bridge", bridge_{s});
+            \\
+        , .{ bmod_name, bmod_name, bmod_name, bmod_name, bmod_name, bmod_name, bmod_name });
+        defer allocator.free(extra_mod_chunk);
+        try buf.appendSlice(allocator, extra_mod_chunk);
+    }
+
     // Shared module creation — non-root, non-lib modules that are imported
     // by the root. Named modules prevent "file exists in two modules" in
     // multi-target builds and ensure @import("mod") resolves correctly.
@@ -496,16 +526,27 @@ pub fn buildZigContent(
         defer allocator.free(smod_chunk);
         try buf.appendSlice(allocator, smod_chunk);
 
-        // Wire bridge import for this shared module if it has one
+        // Wire bridge and named module imports into this shared module.
+        // This covers two cases:
+        //   1. The shared module IS a bridge module itself (e.g. console) — wire its own bridge
+        //   2. The shared module imports OTHER bridge modules (e.g. tester imports allocator)
+        // All bridge modules are wired to all shared modules. Unused imports are harmless in Zig.
         for (bridge_modules) |bmod_name| {
             if (std.mem.eql(u8, bmod_name, smod_name)) {
-                const smod_bridge = try std.fmt.allocPrint(allocator,
+                // This shared module has its own bridge — wire bridge only (mod_ = this module itself)
+                const smod_own_bridge = try std.fmt.allocPrint(allocator,
                     \\    mod_{s}.addImport("{s}_bridge", bridge_{s});
                     \\
-                , .{ smod_name, smod_name, smod_name });
-                defer allocator.free(smod_bridge);
-                try buf.appendSlice(allocator, smod_bridge);
-                break;
+                , .{ smod_name, bmod_name, bmod_name });
+                defer allocator.free(smod_own_bridge);
+                try buf.appendSlice(allocator, smod_own_bridge);
+            } else {
+                // Wire the bridge-backed named module so @import("{name}") resolves
+                const smod_bmod_key = try std.fmt.allocPrint(allocator,
+                    "    mod_{s}.addImport(\"{s}\", mod_{s});\n",
+                    .{ smod_name, bmod_name, bmod_name });
+                defer allocator.free(smod_bmod_key);
+                try buf.appendSlice(allocator, smod_bmod_key);
             }
         }
     }
@@ -547,6 +588,23 @@ pub fn buildZigContent(
             , .{ bmod_name, bmod_name });
             defer allocator.free(bridge_import);
             try buf.appendSlice(allocator, bridge_import);
+        }
+
+        // Wire extra bridge-backed named modules (transitive bridge deps) into the root
+        for (bridge_modules) |bmod_name| {
+            var already_shared = false;
+            for (shared_modules) |smod_name| {
+                if (std.mem.eql(u8, smod_name, bmod_name)) {
+                    already_shared = true;
+                    break;
+                }
+            }
+            if (already_shared) continue;
+            const extra_import = try std.fmt.allocPrint(allocator,
+                "    exe.root_module.addImport(\"{s}\", mod_{s});\n",
+                .{ bmod_name, bmod_name });
+            defer allocator.free(extra_import);
+            try buf.appendSlice(allocator, extra_import);
         }
 
         for (shared_modules) |smod_name| {
@@ -668,6 +726,23 @@ pub fn buildZigContent(
         , .{ bmod_name, bmod_name });
         defer allocator.free(test_bridge);
         try buf.appendSlice(allocator, test_bridge);
+    }
+
+    // Wire extra bridge-backed named modules into the test target
+    for (bridge_modules) |bmod_name| {
+        var already_shared = false;
+        for (shared_modules) |smod_name| {
+            if (std.mem.eql(u8, smod_name, bmod_name)) {
+                already_shared = true;
+                break;
+            }
+        }
+        if (already_shared) continue;
+        const test_extra = try std.fmt.allocPrint(allocator,
+            "    unit_tests.root_module.addImport(\"{s}\", mod_{s});\n",
+            .{ bmod_name, bmod_name });
+        defer allocator.free(test_extra);
+        try buf.appendSlice(allocator, test_extra);
     }
 
     // Add shared module imports to test target

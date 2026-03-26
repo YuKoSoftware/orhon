@@ -404,6 +404,18 @@ func main() void {
         console.println("FAIL alloc_default")
     }
 
+    if(tester.test_alloc_arena() == 30) {
+        console.println("PASS alloc_arena")
+    } else {
+        console.println("FAIL alloc_arena")
+    }
+
+    if(tester.test_alloc_external() == 12) {
+        console.println("PASS alloc_external")
+    } else {
+        console.println("FAIL alloc_external")
+    }
+
     if(tester.test_arb_union_return() == 1) {
         console.println("PASS arb_union_return")
     } else {

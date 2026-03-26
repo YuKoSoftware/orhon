@@ -7,6 +7,7 @@ module tester
 // ═══════════════════════════════════════════════════════════════
 
 import std::console
+import std::allocator
 
 // ─── Variables ───────────────────────────────────────────────
 
@@ -966,6 +967,30 @@ pub func test_alloc_default() i32 {
     defer { items.free() }
     items.add(100)
     items.add(200)
+    return items.get(0) + items.get(1)
+}
+
+// Mode 2: inline allocator — arena passed directly to .new()
+
+pub func test_alloc_arena() i32 {
+    var arena: allocator.Arena = allocator.Arena.create()
+    defer { arena.deinit() }
+    var items: List(i32) = List(i32).new(arena.allocator())
+    items.add(10)
+    items.add(20)
+    return items.get(0) + items.get(1)
+}
+
+// Mode 3: external allocator variable — allocator stored in var, passed to .new()
+
+pub func test_alloc_external() i32 {
+    var smp: allocator.SMP = allocator.SMP.create()
+    defer { smp.deinit() }
+    var a = smp.allocator()
+    var items: List(i32) = List(i32).new(a)
+    items.add(5)
+    items.add(7)
+    defer { items.free() }
     return items.get(0) + items.get(1)
 }
 

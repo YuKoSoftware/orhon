@@ -194,6 +194,8 @@ fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     if (std.mem.eql(u8, rule, "named_type")) return buildNamedType(ctx, cap);
     if (std.mem.eql(u8, rule, "keyword_type")) return buildKeywordType(ctx, cap);
     if (std.mem.eql(u8, rule, "generic_type")) return buildGenericType(ctx, cap);
+    if (std.mem.eql(u8, rule, "scoped_type")) return buildScopedType(ctx, cap);
+    if (std.mem.eql(u8, rule, "scoped_generic_type")) return buildScopedGenericType(ctx, cap);
     if (std.mem.eql(u8, rule, "borrow_type")) return buildBorrowType(ctx, cap);
     if (std.mem.eql(u8, rule, "ref_type")) return buildRefType(ctx, cap);
     if (std.mem.eql(u8, rule, "paren_type")) return buildParenType(ctx, cap);
@@ -1394,6 +1396,27 @@ fn buildNamedType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 
 fn buildKeywordType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     return ctx.newNode(.{ .type_named = tokenText(ctx, cap.start_pos) });
+}
+
+/// scoped_type <- IDENTIFIER '.' IDENTIFIER
+/// Produces type_named("module.Type") so @import("module") lookup works in codegen.
+fn buildScopedType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    const mod_name = tokenText(ctx, cap.start_pos);
+    // Second identifier follows the '.' token at start_pos+1
+    const type_name = tokenText(ctx, cap.start_pos + 2);
+    const qualified = try std.fmt.allocPrint(ctx.alloc(), "{s}.{s}", .{ mod_name, type_name });
+    return ctx.newNode(.{ .type_named = qualified });
+}
+
+/// scoped_generic_type <- IDENTIFIER '.' IDENTIFIER '(' _ generic_arg_list _ ')'
+/// Produces type_generic with name="module.Type" and collected type args.
+fn buildScopedGenericType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    const mod_name = tokenText(ctx, cap.start_pos);
+    const type_name = tokenText(ctx, cap.start_pos + 2);
+    const qualified = try std.fmt.allocPrint(ctx.alloc(), "{s}.{s}", .{ mod_name, type_name });
+    var args_list = std.ArrayListUnmanaged(*Node){};
+    try collectGenericArgs(ctx, cap, &args_list);
+    return ctx.newNode(.{ .type_generic = .{ .name = qualified, .args = try args_list.toOwnedSlice(ctx.alloc()) } });
 }
 
 fn buildGenericType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {

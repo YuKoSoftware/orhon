@@ -39,7 +39,7 @@ for TEST_NAME in \
     fixed_array array_index slice_expr raw_ptr safe_ptr typeid_same \
     typeid_diff match_range match_string list list_len map set map_iter set_iter \
     split_at split_list \
-    wrap sat overflow alloc_default arb_union_return \
+    wrap sat overflow alloc_default alloc_arena alloc_external arb_union_return \
     arb_union_match arb_union_field arb_union_assign arb_union_three \
     arb_value_positive arb_value_negative arb_value_inside arb_value_match \
     str_upper str_lower str_replace str_repeat str_parse_int str_parse_float \

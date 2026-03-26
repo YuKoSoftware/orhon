@@ -1111,7 +1111,11 @@ pub const CodeGen = struct {
                 .enum_variant_def => {
                     const vname = child.name orelse continue;
                     try self.emitIndent();
-                    try self.emitFmt("{s},\n", .{vname});
+                    if (child.literal) |lit| {
+                        try self.emitFmt("{s} = {s},\n", .{ vname, lit });
+                    } else {
+                        try self.emitFmt("{s},\n", .{vname});
+                    }
                 },
                 .func => {
                     const prev = self.current_func_mir;

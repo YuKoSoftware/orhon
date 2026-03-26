@@ -1493,6 +1493,11 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
         },
         .enum_variant => |v| {
             m.name = v.name;
+            // Propagate explicit discriminant value as literal text for codegen
+            if (v.value) |val| {
+                m.literal = val.int_literal;
+                m.literal_kind = .int;
+            }
         },
         .identifier => |name| {
             m.name = name;

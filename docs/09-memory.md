@@ -210,3 +210,62 @@ arena.deinit()
 ```
 
 `arena.freeAll()` releases all allocations but retains capacity for reuse. Call `.deinit()` to release the backing memory.
+
+---
+
+## Allocators
+
+Collections (`List`, `Map`, `Set`) accept an optional allocator argument. Three usage modes:
+
+### Mode 1 — Default SMP Allocator (no argument)
+
+Collections use a module-level SMP (`GeneralPurposeAllocator`) by default. No import or setup needed:
+
+```
+var items: List(i32) = List(i32).new()    // uses default SMP allocator
+items.add(42)
+defer { items.free() }
+```
+
+### Mode 2 — Inline Allocator
+
+Pass an allocator directly to `.new()`:
+
+```
+import std::allocator
+var arena: allocator.Arena = allocator.Arena.create()
+defer { arena.deinit() }
+var items: List(i32) = List(i32).new(arena.allocator())
+items.add(42)
+```
+
+The arena owns all memory allocated by `items`. Calling `arena.deinit()` releases everything at once — no need to call `items.free()` separately.
+
+### Mode 3 — External Allocator Variable
+
+Store the allocator interface in a variable for reuse across multiple collections:
+
+```
+import std::allocator
+var smp: allocator.SMP = allocator.SMP.create()
+defer { smp.deinit() }
+var a = smp.allocator()
+var items: List(i32) = List(i32).new(a)
+var counts: Map(String, i32) = Map(String, i32).new(a)
+defer { items.free() }
+defer { counts.free() }
+```
+
+### Available Allocators
+
+| Allocator | Notes |
+|-----------|-------|
+| `allocator.SMP` | General-purpose, thread-safe (default for collections) |
+| `allocator.Arena` | Batch work — `freeAll()` releases all allocations at once |
+| `allocator.Page` | OS page-sized chunks, good for large allocations |
+
+All allocators follow the same interface: `Type.create()` to instantiate, `.allocator()` to get the allocator handle, `.deinit()` to tear down.
+
+### Custom Allocators
+
+Custom allocators must be implemented in Zig as bridge sidecars — Orhon code uses allocators but does not build them. See the bridge module documentation for the pattern.

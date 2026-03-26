@@ -6,11 +6,11 @@ module example
 
 // import — scoped access: use module name as prefix
 import std::console
+import std::allocator
 
 // include — flat access: symbols dumped directly into scope (no prefix needed)
-// Example: include std::collections makes List, Map, Set available without prefix
-//   include std::collections
-//   var items: List(i32) = List(i32).new()   // no "collections." prefix
+// List, Map, Set are available without a module prefix after include.
+include std::collections
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -53,10 +53,34 @@ compt func double(n: i32) i32 {
 
 // defer executes a statement when the current scope exits.
 // Used for cleanup — freeing resources, closing handles.
-//
-//   var arena = allocator.Arena.create(1024)
-//   defer arena.destroy()
-//   // ... use arena ... freed automatically at scope exit
+
+// ─── Allocators ──────────────────────────────────────────────────────────────
+
+// Collections accept an optional allocator via .new(alloc).
+// Three modes: default SMP, inline allocator, external variable.
+
+pub func allocator_demo() i32 {
+    // Mode 1: default SMP allocator (no argument)
+    var defaults: List(i32) = List(i32).new()
+    defaults.add(1)
+    defer { defaults.free() }
+
+    // Mode 2: inline arena allocator
+    var arena: allocator.Arena = allocator.Arena.create()
+    defer { arena.deinit() }
+    var arena_list: List(i32) = List(i32).new(arena.allocator())
+    arena_list.add(2)
+
+    // Mode 3: external allocator variable
+    var smp: allocator.SMP = allocator.SMP.create()
+    defer { smp.deinit() }
+    var a = smp.allocator()
+    var ext_list: List(i32) = List(i32).new(a)
+    ext_list.add(3)
+    defer { ext_list.free() }
+
+    return defaults.get(0) + arena_list.get(0) + ext_list.get(0)
+}
 
 // ─── Borrowing ───────────────────────────────────────────────────────────────
 

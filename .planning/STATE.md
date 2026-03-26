@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.14
-milestone_name: Build System
+milestone: v0.10
+milestone_name: milestone
 status: Phase 19 complete, Phase 20 remaining
-stopped_at: Completed 19-bridge-modules/19-01-PLAN.md
-last_updated: "2026-03-26T19:00:00.000Z"
-last_activity: "2026-03-26 - Completed phase 19: Bridge modules as named Zig modules"
+stopped_at: Phase 21 context gathered
+last_updated: "2026-03-26T20:36:08.294Z"
+last_activity: "2026-03-26 - Completed quick task 260326-izf: Remove the #bitsize metadata and mechanics"
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 1
   total_plans: 1
   completed_plans: 1
@@ -86,6 +86,6 @@ None yet.
 ## Session Continuity
 
 Last activity: 2026-03-26 - Completed quick task 260326-izf: Remove the #bitsize metadata and mechanics
-Last session: 2026-03-26T18:30:27.187Z
-Stopped at: Completed 19-bridge-modules/19-01-PLAN.md
-Resume file: None
+Last session: 2026-03-26T20:36:08.289Z
+Stopped at: Phase 21 context gathered
+Resume file: .planning/phases/21-flexible-allocators/21-CONTEXT.md

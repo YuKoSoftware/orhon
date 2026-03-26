@@ -3995,6 +3995,34 @@ pub const CodeGen = struct {
             },
             // cast(i64, x) — type arg parsed as identifier by parseExpr
             .identifier => |name| builtins.primitiveToZig(name),
+            // Generic type constructors in expression position: Ptr(T), List(T), Map(K,V), etc.
+            // In type alias context (const Name: type = Ptr(u8)), the RHS is a call_expr.
+            // Reuse the type_generic branch by extracting callee name and arg types.
+            .call_expr => |c| blk: {
+                const callee_name = if (c.callee.* == .identifier) c.callee.identifier else break :blk "anyopaque";
+                // Reuse type_generic logic by treating call_expr as type_generic
+                const g_node = try self.allocator.create(parser.Node);
+                g_node.* = .{ .type_generic = .{ .name = callee_name, .args = c.args } };
+                defer self.allocator.destroy(g_node);
+                break :blk try self.typeToZig(g_node);
+            },
+            // Binary expr in type alias context: (null | T) or (Error | T) parsed as binary '|'
+            // Try to detect error/null union patterns.
+            .binary_expr => |b| blk: {
+                if (!std.mem.eql(u8, b.op, "|")) break :blk "anyopaque";
+                // Check for (Error | T) or (null | T) patterns
+                const left_is_error = b.left.* == .identifier and std.mem.eql(u8, b.left.identifier, "Error");
+                const left_is_null = b.left.* == .null_literal;
+                if (left_is_error) {
+                    const inner = try self.typeToZig(b.right);
+                    break :blk try self.allocTypeStr("anyerror!{s}", .{inner});
+                }
+                if (left_is_null) {
+                    const inner = try self.typeToZig(b.right);
+                    break :blk try self.allocTypeStr("?{s}", .{inner});
+                }
+                break :blk "anyopaque";
+            },
             else => "anyopaque",
         };
     }

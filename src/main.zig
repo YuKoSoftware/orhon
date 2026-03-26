@@ -1648,6 +1648,12 @@ fn emitInterfaceDecl(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc
                     .enum_variant => |v| {
                         try buf.appendSlice(alloc, "    ");
                         try buf.appendSlice(alloc, v.name);
+                        if (v.value) |val| {
+                            try buf.appendSlice(alloc, " = ");
+                            if (val.* == .int_literal) {
+                                try buf.appendSlice(alloc, val.int_literal);
+                            }
+                        }
                         if (v.fields.len > 0) {
                             try buf.append(alloc, '(');
                             for (v.fields, 0..) |f, i| {

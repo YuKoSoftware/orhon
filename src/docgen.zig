@@ -294,6 +294,12 @@ fn writeEnumDoc(allocator: std.mem.Allocator, buf: *std.ArrayListUnmanaged(u8), 
             const v = m.enum_variant;
             try buf.appendSlice(allocator, "- `");
             try buf.appendSlice(allocator, v.name);
+            if (v.value) |val| {
+                try buf.appendSlice(allocator, " = ");
+                if (val.* == .int_literal) {
+                    try buf.appendSlice(allocator, val.int_literal);
+                }
+            }
             if (v.fields.len > 0) {
                 try buf.append(allocator, '(');
                 for (v.fields, 0..) |f, i| {

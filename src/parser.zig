@@ -226,6 +226,7 @@ pub const FieldDecl = struct {
 pub const EnumVariant = struct {
     name: []const u8,
     fields: []*Node, // params for data-carrying variants
+    value: ?*Node = null,
     doc: ?[]const u8 = null,
 };
 

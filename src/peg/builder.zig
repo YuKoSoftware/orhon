@@ -674,8 +674,22 @@ fn buildFieldDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 
 fn buildEnumVariant(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     const name = tokenText(ctx, cap.start_pos);
+    var value: ?*Node = null;
+    // Scan for '=' followed by int_literal within this variant's token range
+    for (cap.start_pos..cap.end_pos) |i| {
+        if (i < ctx.tokens.len and ctx.tokens[i].kind == .assign) {
+            if (i + 1 < ctx.tokens.len and ctx.tokens[i + 1].kind == .int_literal) {
+                value = try ctx.newNode(.{ .int_literal = ctx.tokens[i + 1].text });
+            }
+            break;
+        }
+    }
     const fields = try buildChildrenByRule(ctx, cap, "param");
-    return ctx.newNode(.{ .enum_variant = .{ .name = name, .fields = fields } });
+    return ctx.newNode(.{ .enum_variant = .{
+        .name = name,
+        .fields = fields,
+        .value = value,
+    } });
 }
 
 fn buildDestructDecl(_: *BuildContext, _: *const CaptureNode) !*Node {

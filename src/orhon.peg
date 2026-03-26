@@ -153,7 +153,7 @@ enum_member
     <- doc_block? 'pub'? (func_decl / enum_variant)
 
 enum_variant
-    <- IDENTIFIER ('(' _ param_list _ ')')? TERM
+    <- IDENTIFIER ('=' int_literal / '(' _ param_list _ ')')? TERM
 
 
 # ============================================================

@@ -52,7 +52,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 - ✓ Enum variants with explicit integer values (`A = 4` in typed enums) — v0.13 Phase 15
 - ✓ `is` operator with module-qualified types (`ev is mod.Type`) — v0.13 Phase 16
-- [ ] `void` accepted in error unions (`Error | void`) — v0.13 Phase 17
+- ✓ `void` accepted in error unions (`Error | void`) — v0.13 Phase 17
 - [ ] `const Alias: type = T` type alias syntax — v0.13 Phase 18
 
 ### Out of Scope

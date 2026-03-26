@@ -126,7 +126,9 @@ Plans:
   1. `(Error | void)` parses and compiles — codegen emits `anyerror!void`
   2. Bridge functions returning `(Error | void)` work
   3. Existing `void` return functions unchanged
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 17-01-PLAN.md — Test fixtures, example module, full suite verification
 
 ### Phase 18: Type Alias Syntax
 **Goal**: `const Alias: type = T` declarations supported, generating Zig `const Alias = Type`
@@ -154,5 +156,5 @@ Plans:
 | 14. Gate | v0.12 | 0/TBD | Complete    | 2026-03-25 |
 | 15. Enum Explicit Values | v0.13 | 2/2 | Complete    | 2026-03-26 |
 | 16. `is` Operator Qualified Types | v0.13 | 1/1 | Complete    | 2026-03-26 |
-| 17. Unit Type Support | v0.13 | 0/TBD | Pending | — |
+| 17. Unit Type Support | v0.13 | 0/1 | Pending | — |
 | 18. Type Alias Syntax | v0.13 | 0/TBD | Pending | — |

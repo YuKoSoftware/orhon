@@ -195,10 +195,42 @@ func const_borrow_demo() i32 {
 //       Point     => { }
 //   }
 
+// ─── Type Aliases ───────────────────────────────────────────────────────────
+
+// const Name: type = T — creates a transparent type alias
+
+const Speed: type = i32
+
+pub const Distance: type = f64
+
+// Aliases work with all type forms
+
+const Scores: type = List(i32)
+
+const OptionalInt: type = (null | i32)
+
+const Fallible: type = (Error | i32)
+
+func type_alias_demo() i32 {
+    const s: Speed = 42
+    return s
+}
+
+func type_alias_local() i32 {
+    const MyInt: type = i32
+    const x: MyInt = 7
+    return x
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 test "const auto-borrow" {
     assert(const_borrow_demo() == 1)
+}
+
+test "type alias" {
+    assert(type_alias_demo() == 42)
+    assert(type_alias_local() == 7)
 }
 
 

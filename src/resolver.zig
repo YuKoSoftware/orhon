@@ -93,6 +93,28 @@ pub const TypeResolver = struct {
         self.type_map.deinit(self.allocator);
     }
 
+    /// Resolve a type node, treating type alias names as opaque (returns .inferred).
+    /// Type aliases are transparent — Zig handles the real type checking at codegen.
+    /// Pass scope to also detect local type aliases (declared inside function bodies).
+    fn resolveTypeAnnotation(self: *TypeResolver, node: *parser.Node) !RT {
+        return self.resolveTypeAnnotationInScope(node, null);
+    }
+
+    fn resolveTypeAnnotationInScope(self: *TypeResolver, node: *parser.Node, scope: ?*Scope) !RT {
+        const resolved = try types.resolveTypeNode(self.decls.typeAllocator(), node);
+        if (resolved == .named) {
+            // Module-level type alias
+            if (self.decls.types.contains(resolved.named)) return RT.inferred;
+            // Local type alias: stored in scope as RT.primitive(.@"type") (since "type" is a Primitive)
+            if (scope) |s| {
+                if (s.lookup(resolved.named)) |t| {
+                    if (t == .primitive and t.primitive == .@"type") return RT.inferred;
+                }
+            }
+        }
+        return resolved;
+    }
+
     /// Resolve types in a program AST
     pub fn resolve(self: *TypeResolver, ast: *parser.Node) !void {
         if (ast.* != .program) return;
@@ -153,21 +175,21 @@ pub const TypeResolver = struct {
             },
             .const_decl => |v| {
                 const t = if (v.type_annotation) |ta|
-                    try types.resolveTypeNode(self.decls.typeAllocator(), ta)
+                    try self.resolveTypeAnnotation(ta)
                 else
                     RT.inferred;
                 try scope.define(v.name, t);
             },
             .var_decl => |v| {
                 const t = if (v.type_annotation) |ta|
-                    try types.resolveTypeNode(self.decls.typeAllocator(), ta)
+                    try self.resolveTypeAnnotation(ta)
                 else
                     RT.inferred;
                 try scope.define(v.name, t);
             },
             .compt_decl => |v| {
                 const t = if (v.type_annotation) |ta|
-                    try types.resolveTypeNode(self.decls.typeAllocator(), ta)
+                    try self.resolveTypeAnnotation(ta)
                 else
                     RT.inferred;
                 try scope.define(v.name, t);
@@ -283,7 +305,7 @@ pub const TypeResolver = struct {
                 }
                 const val_type = try self.resolveExpr(v.value, scope);
                 const resolved = if (v.type_annotation) |t|
-                    try types.resolveTypeNode(self.decls.typeAllocator(), t)
+                    try self.resolveTypeAnnotationInScope(t, scope)
                 else
                     val_type;
                 if (v.type_annotation == null) {
@@ -315,14 +337,14 @@ pub const TypeResolver = struct {
                 // bridge consts have no value — skip value type checking
                 if (v.is_bridge) {
                     const resolved = if (v.type_annotation) |t|
-                        try types.resolveTypeNode(self.decls.typeAllocator(), t)
+                        try self.resolveTypeAnnotationInScope(t, scope)
                     else
                         RT.inferred;
                     try scope.define(v.name, resolved);
                 } else {
                     const val_type = try self.resolveExpr(v.value, scope);
                     const resolved = if (v.type_annotation) |t|
-                        try types.resolveTypeNode(self.decls.typeAllocator(), t)
+                        try self.resolveTypeAnnotationInScope(t, scope)
                     else
                         val_type;
                     if (v.type_annotation == null) {
@@ -347,7 +369,7 @@ pub const TypeResolver = struct {
                 }
                 const val_type = try self.resolveExpr(v.value, scope);
                 const resolved = if (v.type_annotation) |t|
-                    try types.resolveTypeNode(self.decls.typeAllocator(), t)
+                    try self.resolveTypeAnnotationInScope(t, scope)
                 else
                     val_type;
                 try scope.define(v.name, resolved);
@@ -811,6 +833,7 @@ pub const TypeResolver = struct {
                     self.decls.structs.contains(type_name) or
                     self.decls.enums.contains(type_name) or
                     self.decls.bitfields.contains(type_name) or
+                    self.decls.types.contains(type_name) or // type aliases
                     builtins.isBuiltinType(type_name) or
                     std.mem.eql(u8, type_name, K.Type.ANY) or
                     std.mem.eql(u8, type_name, K.Type.VOID) or

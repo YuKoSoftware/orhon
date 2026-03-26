@@ -41,6 +41,9 @@ else
     fail "enum explicit values in generated code"
 fi
 
+if grep -q "const Speed = i32" "$GEN_EXAMPLE"; then pass "type alias generates const = type"
+else fail "type alias generates const = type"; fi
+
 BINOUT=$(./bin/langtest 2>&1 || true)
 if echo "$BINOUT" | grep -q "hello orhon"; then pass "langtest binary runs"
 else fail "langtest binary runs" "$BINOUT"; fi

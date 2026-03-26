@@ -66,13 +66,13 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 ## Current State
 
-**Version:** v0.10.2
-**Tests:** 248 across 11 stages
+**Version:** v0.10.5
+**Tests:** 253 across 11 stages
 **Milestones shipped:** v0.10, v0.11, v0.12, v0.13
 
-v0.13 shipped 4 compiler features discovered while building the Tamga game framework: enum explicit values, qualified `is` operator, void in error unions, and type alias syntax. All Tamga-blocking compiler gaps are now resolved.
+Phase 21 complete — Flexible allocators: collections accept optional allocator via `.new(alloc)`, three usage modes (default SMP, inline, external variable), default changed from page_allocator to SMP. Bridge `.allocator()` methods declared. 3 compiler fixes shipped (scoped type builder, qualified name resolver, transitive bridge wiring).
 
-**Previous:** v0.12 Quality & Polish — shipped 2026-03-25
+**Previous:** v0.13 Tamga Compatibility — shipped 2026-03-26
 
 ## Constraints
 
@@ -94,6 +94,8 @@ v0.13 shipped 4 compiler features discovered while building the Tamga game frame
 | Breaking changes before wider adoption | No known external users, clean slate opportunity | ✓ v0.11 — both changes landed cleanly |
 | `const Alias: type = T` for type aliases | Reuse existing const declaration, not new `pub type` keyword | ✓ v0.13 Phase 18 — consistent with `name: Type = value` pattern |
 | Transparent (structural) type aliases | Speed == i32, not a distinct nominal type | ✓ v0.13 Phase 18 — simple, no special type comparisons needed |
+| Allocator via .new(alloc), not generic param | Keeps generics pure (types only), allocator is runtime struct field | ✓ v0.14 Phase 21 — clean, Zig-idiomatic |
+| SMP as default allocator, not page_allocator | SMP (GeneralPurposeAllocator) optimized for general use | ✓ v0.14 Phase 21 — correct default |
 
 ## Evolution
 
@@ -113,4 +115,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-26 after v0.13 milestone*
+*Last updated: 2026-03-26 after Phase 21 (Flexible Allocators)*

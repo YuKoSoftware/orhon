@@ -118,14 +118,14 @@ Plans:
 Plans:
 - [x] 16-01-PLAN.md — Grammar, builder, codegen for qualified is + tests
 
-### Phase 17: Unit Type Support
-**Goal**: `Unit` is recognized as a builtin type, enabling `(Error | Unit)` for void returns
+### Phase 17: Void in Error Unions
+**Goal**: `void` accepted in error union position — `(Error | void)` compiles to `anyerror!void`
 **Depends on**: Phase 16
 **Requirements**: TAMGA-03
 **Success Criteria** (what must be TRUE):
-  1. `Unit` recognized as builtin type mapping to Zig `void`
-  2. `(Error | Unit)` compiles — codegen emits `anyerror!void`
-  3. Bridge functions returning `(Error | Unit)` work
+  1. `(Error | void)` parses and compiles — codegen emits `anyerror!void`
+  2. Bridge functions returning `(Error | void)` work
+  3. Existing `void` return functions unchanged
 **Plans**: TBD
 
 ### Phase 18: Type Alias Syntax

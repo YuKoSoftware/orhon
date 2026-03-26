@@ -103,7 +103,7 @@ Plans:
   3. Existing sequential enums unchanged
 **Plans**: 2 plans
 Plans:
-- [ ] 15-01-PLAN.md — Pipeline core: grammar, AST, builder, MIR, codegen
+- [x] 15-01-PLAN.md — Pipeline core: grammar, AST, builder, MIR, codegen
 - [ ] 15-02-PLAN.md — Example module, tests, LSP/docgen touch-ups
 
 ### Phase 16: `is` Operator Qualified Types
@@ -149,7 +149,7 @@ Plans:
 | 12. Fuzz Testing | v0.12 | 1/1 | Complete    | 2026-03-25 |
 | 13. Bug Fixes | v0.12 | 1/1 | Complete    | 2026-03-25 |
 | 14. Gate | v0.12 | 0/TBD | Complete    | 2026-03-25 |
-| 15. Enum Explicit Values | v0.13 | 0/2 | In Progress | — |
+| 15. Enum Explicit Values | v0.13 | 1/2 | In Progress|  |
 | 16. `is` Operator Qualified Types | v0.13 | 0/TBD | Pending | — |
 | 17. Unit Type Support | v0.13 | 0/TBD | Pending | — |
 | 18. Type Alias Syntax | v0.13 | 0/TBD | Pending | — |

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.13
 milestone_name: Tamga Compatibility
-status: Milestone complete
-stopped_at: Phase 15 context gathered
-last_updated: "2026-03-25T20:44:06.442Z"
+status: Ready to execute
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-03-26T05:01:25.777Z"
 progress:
-  total_phases: 3
+  total_phases: 7
   completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 13 — bug-fixes
+**Current focus:** Phase 15 — enum-explicit-values
 
 ## Current Position
 
-Phase: 14
-Plan: Not started
+Phase: 15 (enum-explicit-values) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -54,6 +54,8 @@ Recent decisions affecting current work:
 - [Phase 12-fuzz-testing]: Parser fuzz test treats lex errors as non-failures — lexer and parser are tested independently
 - [Phase 13-bug-fixes]: Use std.testing.tmpDir for file-based unit tests to avoid /tmp path races under parallel execution
 - [Phase 13-bug-fixes]: Remove ziglib — bridge testbed no longer needed once real stdlib modules cover all patterns
+- [Phase 15-enum-explicit-values]: Ordered PEG choice enforces mutual exclusion for enum values vs fields
+- [Phase 15-enum-explicit-values]: Reuse MirNode.literal for enum discriminant — no new MirNode fields needed
 
 ### Pending Todos
 
@@ -65,6 +67,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T20:44:06.440Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-enum-explicit-values/15-CONTEXT.md
+Last session: 2026-03-26T05:01:25.772Z
+Stopped at: Completed 15-01-PLAN.md
+Resume file: None

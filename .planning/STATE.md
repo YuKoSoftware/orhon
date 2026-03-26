@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.10
 milestone_name: milestone
-status: Ready to execute
-stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-03-26T21:16:07.844Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 21-02-PLAN.md
+last_updated: "2026-03-26T21:19:48.694Z"
 last_activity: 2026-03-26
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -66,6 +66,7 @@ Recent decisions affecting current work:
 - [Phase 21]: Qualified type syntax (module.Type) validated at module level — resolver skips dotted names to avoid cross-module lookup
 - [Phase 21]: Bridge modules not in root shared_modules get mod_{name} created and wired transitively to support deep import chains
 - [Phase 21]: scoped_type PEG rule builder produces type_named(module.Type) — simple string concatenation, codegen-transparent
+- [Phase 21]: include std::collections added to example module to make List/Map/Set available without prefix
 
 ### Pending Todos
 
@@ -86,10 +87,11 @@ None yet.
 | 260326-izf | Remove the #bitsize metadata and mechanics | 2026-03-26 | 1ae6882 | [260326-izf-remove-the-bitsize-metadata-and-mechanic](./quick/260326-izf-remove-the-bitsize-metadata-and-mechanic/) |
 | Phase 19 P01 | 18min | 2 tasks | 4 files |
 | Phase 21 P01 | 30 | 2 tasks | 9 files |
+| Phase 21 P02 | 10 | 1 tasks | 2 files |
 
 ## Session Continuity
 
 Last activity: 2026-03-26
-Last session: 2026-03-26T21:16:07.842Z
-Stopped at: Completed 21-01-PLAN.md
+Last session: 2026-03-26T21:19:48.692Z
+Stopped at: Completed 21-02-PLAN.md
 Resume file: None

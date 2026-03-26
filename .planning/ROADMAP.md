@@ -115,8 +115,8 @@ Plans:
 **Goal**: Collections accept optional allocator parameter — 3 modes: default SMP, inline instantiation, external variable. Users can build custom allocators via bridge. Default allocator changed from page_allocator to SMP.
 **Requirements**: [ALLOC-01, ALLOC-02, ALLOC-03, ALLOC-04, ALLOC-05, ALLOC-06, ALLOC-07]
 **Depends on:** Phase 20
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 21-01-PLAN.md — SMP default + codegen .new(alloc) + string interpolation + runtime tests
-- [ ] 21-02-PLAN.md — Documentation and example module updates
+- [x] 21-02-PLAN.md — Documentation and example module updates

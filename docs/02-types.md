@@ -60,19 +60,14 @@ var c: u8 = 0b1010_1010
 var d: u8 = 0o777
 ```
 
-Numeric literals without a type annotation resolve to the project's `#bitsize` setting. If `#bitsize = 32`, bare `42` becomes `i32` and `3.14` becomes `f32`. If `#bitsize = 64`, they become `i64` and `f64`. If `#bitsize` is not set, bare numeric literals are a compile error — the type must be explicit.
+Numeric literals always require an explicit type annotation when used in variable declarations. The compiler does not infer a default integer or float size.
 
 ```
-// in main.orh
-#bitsize = 32
-
-// now these work:
-var x = 42              // i32 (from bitsize)
-var f = 3.14            // f32 (from bitsize)
-
-// explicit override always works:
-var y: i64 = 42         // i64 regardless of bitsize
-var g: f16 = 3.14       // f16 regardless of bitsize
+// explicit type required for numeric literals:
+var x: i32 = 42
+var f: f32 = 3.14
+var y: i64 = 42
+var g: f16 = 3.14
 ```
 
 Underscore separators are ignored by the compiler, purely for human readability.
@@ -82,7 +77,7 @@ Underscore separators are ignored by the compiler, purely for human readability.
 ## Type System
 
 ### Type annotation
-Explicit when ambiguous, optional when unambiguous. See the variables doc for full rules. Numeric literals resolve to `#bitsize` default or require an explicit type.
+Explicit when ambiguous, optional when unambiguous. See the variables doc for full rules. Numeric literals always require an explicit type.
 
 ### Generics with `any`
 `any` replaces `<T>` syntax. Always resolved at compile time — the compiler generates a typed version per usage. Hard compiler error if the type cannot be determined at compile time.

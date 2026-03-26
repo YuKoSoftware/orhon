@@ -3,7 +3,6 @@ module main
 #name    = "fail_threads"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 
 // thread function — unjoined handle
 

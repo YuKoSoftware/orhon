@@ -3,7 +3,6 @@ module main
 #name    = "fail_propagation"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 
 func may_fail(n: i32) (Error | i32) {
     if(n == 0) {

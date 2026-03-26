@@ -128,7 +128,6 @@ module main
 #name    = "neg_thread"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 
 thread worker(x: i32) Handle(i32) {
     return Handle(x * 2)
@@ -151,7 +150,6 @@ module main
 #name    = "neg_split"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 func main() void {
     const arr: [4]i32 = [1, 2, 3, 4]
     const left, right = arr.splitAt(2)
@@ -332,7 +330,6 @@ module main
 #name    = "neg_u8str"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 func greet(s: String) void { }
 func main() void {
     var buf: [5]u8 = [104, 101, 108, 108, 111]
@@ -395,7 +392,6 @@ module main
 #name    = "neg_version"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 func main() void {
     const v = Version(2, 0, 0)
 }

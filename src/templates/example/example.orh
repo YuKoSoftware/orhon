@@ -38,7 +38,6 @@ compt func double(n: i32) i32 {
 //   #name    = "myproject"        — project name
 //   #version = Version(1, 0, 0)   — semantic version
 //   #build   = exe                — build target: exe, lib, staticlib, dynlib
-//   #bitsize = 32                 — default integer/float width (32 or 64)
 
 // ─── Bridge Declarations ──────────────────────────────────────────────────────
 

@@ -3,7 +3,6 @@ module main
 #name    = "fail_match"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 
 // match arm with a type that is not a member of the union
 

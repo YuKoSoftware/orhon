@@ -22,7 +22,7 @@ and groups files by module name. Each group becomes one **compilation unit**.
 ### File Naming Rules — Anchor File
 Among all files in a module, exactly one must be named after the module — the **anchor file**.
 This is what `import math` resolves to. Only the anchor file can contain metadata
-(`#build`, `#name`, `#version`, `#bitsize`, `#dep`, `#linkC`, etc.).
+(`#build`, `#name`, `#version`, `#dep`, `#linkC`, etc.).
 
 - `module math` → one of the files must be `math.orh` (anywhere in `src/`)
 - `module main` → one of the files must be `main.orh`
@@ -189,7 +189,6 @@ module main
 #name    = "my_project"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 
 func main() void { }
 ```

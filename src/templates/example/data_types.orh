@@ -111,13 +111,6 @@ compt func typeof_demo() bool {
     return T == i32
 }
 
-// ─── #bitsize ────────────────────────────────────────────────────────────────
-
-// #bitsize — set in the module anchor file, controls default numeric literal types
-// #bitsize = 32 means bare `42` resolves to i32, bare `3.14` to f32
-// #bitsize = 64 means bare `42` resolves to i64, bare `3.14` to f64
-// Explicit type annotations always override: `const x: i64 = 42` ignores bitsize
-
 // ─── Generics with `any` ───────────────────────────────────────────────────
 
 func identity(val: any) any {

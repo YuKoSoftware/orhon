@@ -29,9 +29,9 @@ pub const Primitive = enum {
     string,
     void,
     @"type",
-    /// Unresolved integer literal — resolved to concrete type by bitsize
+    /// Unresolved integer literal — requires explicit type annotation
     numeric_literal,
-    /// Unresolved float literal — resolved to concrete type by bitsize
+    /// Unresolved float literal — requires explicit type annotation
     float_literal,
 
     /// Convert from AST/source name string. Returns null for non-primitive names.

@@ -3,7 +3,6 @@ module main
 #name    = "{s}"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 
 import std::console
 

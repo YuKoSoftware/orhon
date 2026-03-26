@@ -3,7 +3,6 @@ module main
 #name    = "fail_syntax"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 
 var x: i32 = 0
 

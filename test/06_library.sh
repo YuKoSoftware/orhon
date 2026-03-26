@@ -60,7 +60,6 @@ module ifacelib
 #name    = "ifacelib"
 #version = Version(1, 0, 0)
 #build   = static
-#bitsize = 32
 pub func add(a: i32, b: i32) i32 {
     return a + b
 }
@@ -79,7 +78,6 @@ module main
 #name    = "ifaceuser"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 import ifacelib
 func main() void {
 }

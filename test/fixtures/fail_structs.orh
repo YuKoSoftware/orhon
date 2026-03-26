@@ -3,7 +3,6 @@ module main
 #name    = "fail_structs"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 
 // duplicate field name in struct
 

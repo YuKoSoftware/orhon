@@ -3,7 +3,6 @@ module main
 #name    = "fail_borrow"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 
 struct Point {
     pub x: i32

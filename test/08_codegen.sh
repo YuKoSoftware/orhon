@@ -67,7 +67,6 @@ module main
 #name    = "discardtest"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 import std::console
 func compute() i32 {
     return 42

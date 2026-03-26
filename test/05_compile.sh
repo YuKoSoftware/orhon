@@ -37,7 +37,6 @@ module main
 #name    = "failtest"
 #version = Version(1, 0, 0)
 #build   = exe
-#bitsize = 32
 func add(a: i32, b: i32) i32 {
     return a + b
 }

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.13
 milestone_name: Tamga Compatibility
-status: Ready to plan
-stopped_at: Phase 17 context gathered
-last_updated: "2026-03-26T06:50:15.424Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-26T07:07:56.447Z"
 progress:
   total_phases: 7
-  completed_phases: 4
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 5
+  total_plans: 6
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 16 — is-operator-qualified-types
+**Current focus:** Phase 17 — unit-type-support
 
 ## Current Position
 
-Phase: 17
-Plan: Not started
+Phase: 17 (unit-type-support) — EXECUTING
+Plan: 1 of 1
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Recent decisions affecting current work:
 - [Phase 15]: Negative fixture matches 'error' pattern — exact parse wording varies, failure signal is sufficient
 - [Phase 16-is-operator-qualified-types]: Cross-module is tests placed in tester_main.orh — Zig-generated tester.zig cannot self-reference module name tester
 - [Phase 16-is-operator-qualified-types]: emitTypePath/emitTypeMirPath helpers emit type paths without semantic transforms to avoid corrupting type names
+- [Phase 17-unit-type-support]: No compiler changes needed — (Error | void) already fully supported; phase adds test coverage only
 
 ### Pending Todos
 
@@ -70,6 +71,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T06:50:15.419Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/phases/17-unit-type-support/17-CONTEXT.md
+Last session: 2026-03-26T07:07:56.444Z
+Stopped at: Completed 17-01-PLAN.md
+Resume file: None

@@ -624,10 +624,57 @@ pub fn buildZigContentMulti(
     var lib_targets = std.StringHashMapUnmanaged([]const u8){};
     defer lib_targets.deinit(allocator);
 
-    // Pass 1: emit all lib targets first
-    for (targets) |t| {
-        if (std.mem.eql(u8, t.build_type, "exe")) continue;
+    // Collect all lib targets for topological sort
+    var all_lib_targets = std.ArrayListUnmanaged(*const MultiTarget){};
+    defer all_lib_targets.deinit(allocator);
+    for (targets) |*t| {
+        if (!std.mem.eql(u8, t.build_type, "exe")) {
+            try all_lib_targets.append(allocator, t);
+            try lib_targets.put(allocator, t.module_name, t.project_name);
+        }
+    }
 
+    // Topological sort: emit libs whose lib_imports are all already emitted.
+    // Iteratively move "ready" libs (all deps emitted) to sorted output.
+    var sorted_libs = std.ArrayListUnmanaged(*const MultiTarget){};
+    defer sorted_libs.deinit(allocator);
+    var emitted_libs = std.StringHashMapUnmanaged(void){};
+    defer emitted_libs.deinit(allocator);
+
+    var remaining = all_lib_targets.items.len;
+    while (remaining > 0) {
+        const before = sorted_libs.items.len;
+        for (all_lib_targets.items) |t| {
+            if (emitted_libs.contains(t.module_name)) continue;
+            // Check if all lib_imports for this lib have been emitted
+            var deps_ready = true;
+            for (t.lib_imports) |dep_name| {
+                if (lib_targets.contains(dep_name) and !emitted_libs.contains(dep_name)) {
+                    deps_ready = false;
+                    break;
+                }
+            }
+            if (deps_ready) {
+                try sorted_libs.append(allocator, t);
+                try emitted_libs.put(allocator, t.module_name, {});
+            }
+        }
+        const after = sorted_libs.items.len;
+        // If no progress in a full pass, there is a circular lib dependency — emit remainder as-is
+        if (after == before) {
+            for (all_lib_targets.items) |t| {
+                if (!emitted_libs.contains(t.module_name)) {
+                    try sorted_libs.append(allocator, t);
+                    try emitted_libs.put(allocator, t.module_name, {});
+                }
+            }
+            break;
+        }
+        remaining = all_lib_targets.items.len - sorted_libs.items.len;
+    }
+
+    // Pass 1: emit all lib targets in dependency order
+    for (sorted_libs.items) |t| {
         const linkage: []const u8 = if (std.mem.eql(u8, t.build_type, "dynamic")) ".dynamic" else ".static";
 
         const lib_chunk = try std.fmt.allocPrint(allocator,
@@ -642,13 +689,32 @@ pub fn buildZigContentMulti(
             \\    }});
             \\    lib_{s}.root_module.addImport("_orhon_str", str_mod);
             \\    lib_{s}.root_module.addImport("_orhon_collections", coll_mod);
-            \\    b.installArtifact(lib_{s});
             \\
-        , .{ t.module_name, t.project_name, linkage, t.module_name, t.module_name, t.module_name, t.module_name });
+        , .{ t.module_name, t.project_name, linkage, t.module_name, t.module_name, t.module_name });
         defer allocator.free(lib_chunk);
         try buf.appendSlice(allocator, lib_chunk);
 
-        try lib_targets.put(allocator, t.module_name, t.project_name);
+        // Emit addImport for lib-to-lib dependencies so Zig resolves them via the
+        // build system module graph rather than falling back to file-path lookup.
+        // Without this, @import("tamga_sdl3") in a lib would resolve to the file
+        // tamga_sdl3.zig, causing "file exists in modules" conflicts.
+        for (t.lib_imports) |dep_name| {
+            if (lib_targets.contains(dep_name)) {
+                const dep_chunk = try std.fmt.allocPrint(allocator,
+                    \\    lib_{s}.root_module.addImport("{s}", lib_{s}.root_module);
+                    \\
+                , .{ t.module_name, dep_name, dep_name });
+                defer allocator.free(dep_chunk);
+                try buf.appendSlice(allocator, dep_chunk);
+            }
+        }
+
+        const install_chunk = try std.fmt.allocPrint(allocator,
+            \\    b.installArtifact(lib_{s});
+            \\
+        , .{t.module_name});
+        defer allocator.free(install_chunk);
+        try buf.appendSlice(allocator, install_chunk);
     }
 
     // Pass 2: emit all exe targets, linking against libs
@@ -905,6 +971,28 @@ test "buildZigContentMulti - single exe (no libs)" {
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") == null);
     // Runtime module has been removed — must NOT be present
     try std.testing.expect(std.mem.indexOf(u8, content, "addImport(\"_orhon_rt\"") == null);
+}
+
+test "buildZigContentMulti - lib-to-lib imports added to prevent file-module conflicts" {
+    // When lib A imports lib B, build.zig must emit addImport for B in A's section.
+    // Without this, Zig falls back to file-path resolution and reports "file exists in modules".
+    const alloc = std.testing.allocator;
+    const sdl3_name: []const u8 = "tamga_sdl3";
+    const vk3d_imports = [_][]const u8{sdl3_name};
+    const targets = [_]MultiTarget{
+        .{ .module_name = "tamga_sdl3", .project_name = "tamga_sdl3", .build_type = "static", .lib_imports = &.{} },
+        .{ .module_name = "tamga_vk3d", .project_name = "tamga_vk3d", .build_type = "static", .lib_imports = @constCast(&vk3d_imports) },
+        .{ .module_name = "main", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
+    };
+    const content = try buildZigContentMulti(alloc, &targets);
+    defer alloc.free(content);
+
+    // lib_tamga_vk3d must have tamga_sdl3 as an addImport
+    try std.testing.expect(std.mem.indexOf(u8, content, "lib_tamga_vk3d.root_module.addImport(\"tamga_sdl3\"") != null);
+    // tamga_sdl3 must be defined before tamga_vk3d in the output (topological order)
+    const sdl3_pos = std.mem.indexOf(u8, content, "lib_tamga_sdl3 = b.addLibrary") orelse unreachable;
+    const vk3d_pos = std.mem.indexOf(u8, content, "lib_tamga_vk3d = b.addLibrary") orelse unreachable;
+    try std.testing.expect(sdl3_pos < vk3d_pos);
 }
 
 test "formatTestOutput - all passed prints all tests passed" {

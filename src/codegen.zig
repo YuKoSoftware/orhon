@@ -637,10 +637,18 @@ pub const CodeGen = struct {
         const prev_reassigned_vars = self.reassigned_vars;
         self.reassigned_vars = .{};
         try collectAssignedMir(m.body(), &self.reassigned_vars, self.allocator);
+        const prev_error_narrowed = self.error_narrowed;
+        self.error_narrowed = .{};
+        const prev_null_narrowed = self.null_narrowed;
+        self.null_narrowed = .{};
         defer {
             self.current_func_node = prev_func_node;
             self.reassigned_vars.deinit(self.allocator);
             self.reassigned_vars = prev_reassigned_vars;
+            self.error_narrowed.deinit(self.allocator);
+            self.error_narrowed = prev_error_narrowed;
+            self.null_narrowed.deinit(self.allocator);
+            self.null_narrowed = prev_null_narrowed;
         }
 
         const ret_type = m.return_type orelse return;
@@ -875,10 +883,18 @@ pub const CodeGen = struct {
         const prev_reassigned_vars = self.reassigned_vars;
         self.reassigned_vars = .{};
         try collectAssigned(f.body, &self.reassigned_vars, self.allocator);
+        const prev_error_narrowed = self.error_narrowed;
+        self.error_narrowed = .{};
+        const prev_null_narrowed = self.null_narrowed;
+        self.null_narrowed = .{};
         defer {
             self.current_func_node = prev_func_node;
             self.reassigned_vars.deinit(self.allocator);
             self.reassigned_vars = prev_reassigned_vars;
+            self.error_narrowed.deinit(self.allocator);
+            self.error_narrowed = prev_error_narrowed;
+            self.null_narrowed.deinit(self.allocator);
+            self.null_narrowed = prev_null_narrowed;
         }
 
         // pub modifier — always pub for main (Zig requires pub fn main for exe entry)
@@ -1554,6 +1570,11 @@ pub const CodeGen = struct {
             .match_stmt => try self.generateMatchMir(m),
             .break_stmt => try self.emit("break;"),
             .continue_stmt => try self.emit("continue;"),
+            .throw_stmt => {
+                const var_name = m.name orelse return;
+                try self.emitFmt("if ({s}) |_| {{}} else |_err| return _err;", .{var_name});
+                try self.error_narrowed.put(self.allocator, var_name, {});
+            },
             .block => try self.generateBlockMir(m),
             // Injected nodes from MirLowerer (interpolation hoisting)
             .temp_var => {

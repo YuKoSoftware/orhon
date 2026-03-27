@@ -922,6 +922,7 @@ pub const MirKind = enum {
     assignment,
     break_stmt,
     continue_stmt,
+    throw_stmt,
     // Expressions
     literal, // int, float, string, bool, null, error
     identifier,
@@ -1223,6 +1224,7 @@ pub const MirLowerer = struct {
             .identifier,
             .break_stmt,
             .continue_stmt,
+            .throw_stmt,
             .enum_variant,
             .field_decl,
             .param,
@@ -1592,6 +1594,9 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
         .compiler_func => |cf| {
             m.name = cf.name;
         },
+        .throw_stmt => |t| {
+            m.name = t.variable;
+        },
         else => {},
     }
 }
@@ -1619,6 +1624,7 @@ fn astToMirKind(node: *parser.Node) MirKind {
         .assignment => .assignment,
         .break_stmt => .break_stmt,
         .continue_stmt => .continue_stmt,
+        .throw_stmt => .throw_stmt,
         .int_literal, .float_literal, .string_literal, .bool_literal, .null_literal, .error_literal => .literal,
         .identifier => .identifier,
         .binary_expr, .range_expr => .binary,

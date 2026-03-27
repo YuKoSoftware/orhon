@@ -262,6 +262,35 @@ pub const PropagationChecker = struct {
                 _ = try self.exprReturnsUnion(d.value);
             },
 
+            .throw_stmt => |t| {
+                if (scope.isTracked(t.variable)) |uvar| {
+                    if (!uvar.is_error_union) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "'throw' requires an error union variable -- '{s}' is not an error union",
+                            .{t.variable});
+                        defer self.allocator.free(msg);
+                        try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
+                        return;
+                    }
+                } else {
+                    const msg = try std.fmt.allocPrint(self.allocator,
+                        "'throw' requires an error union variable -- '{s}' is not an error union",
+                        .{t.variable});
+                    defer self.allocator.free(msg);
+                    try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
+                    return;
+                }
+                if (!scope.func_returns_error) {
+                    const msg = try std.fmt.allocPrint(self.allocator,
+                        "'throw' used in function that does not return an error union",
+                        .{});
+                    defer self.allocator.free(msg);
+                    try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
+                    return;
+                }
+                scope.markHandled(t.variable);
+            },
+
             .break_stmt, .continue_stmt => {},
 
             .block => try self.checkNode(node, scope),

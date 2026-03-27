@@ -102,10 +102,11 @@ I/O sites (console, tui, fs, system) intentionally retained.
 
 These are the highest-impact language changes. Every user benefits immediately.
 
-### `try` keyword for error propagation
+### `throw` statement for error propagation
 
-The single biggest ergonomic improvement. Eliminates 3-4 lines of boilerplate per
-error-returning call. Maps directly to Zig's `try`.
+The single biggest ergonomic improvement. Eliminates verbose error-check-and-return
+boilerplate. A statement (not expression modifier) that propagates an error union
+and narrows the variable to its value type.
 
 ```
 // Current (verbose)
@@ -113,13 +114,27 @@ var result: (Error | i32) = divide(10, 0)
 if(result is Error) { return result.Error }
 var value: i32 = result.value
 
-// With try (concise)
-var value: i32 = try divide(10, 0)
+// With throw (concise, explicit)
+var result = divide(10, 0)
+throw result
+// result is now i32 — error case propagated, type narrowed
 ```
 
-The function must return `(Error | T)` to use `try`. Compile error otherwise.
-Rust's `?`, Zig's `try`, Swift's `try` all prove this pattern works. Every modern
-language with error unions has single-character propagation.
+**Design:** `throw` is a statement, not an expression prefix like Zig's `try`.
+You don't sprinkle a keyword on every call — you explicitly propagate after the
+call. This allows work between the call and the propagation (logging, cleanup).
+
+**Rules:**
+- `throw x` where `x: (Error | T)` — propagates error, narrows `x` to `T`
+- The enclosing function must return an error type — compile error otherwise
+- After `throw`, the variable is usable as the value type without `.value`
+
+**Codegen:** `throw result` → `if (result) |_| {} else |err| return err;`
+followed by type narrowing so subsequent uses emit the unwrapped value.
+
+**Why not `try`:** `try` requires prefixing every error-returning call (noisy).
+`throw` is a standalone statement — one per error-returning block, not one per call.
+More explicit, more readable, more Orhon-like.
 
 ### Pattern guards in match
 

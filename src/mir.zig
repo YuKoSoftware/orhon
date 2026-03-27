@@ -470,7 +470,6 @@ pub const MirAnnotator = struct {
     /// must match across module boundaries, which requires cross-module coordination.
     fn annotateCallCoercions(self: *MirAnnotator, c: parser.CallExpr) !void {
         const sig = self.resolveCallSig(c) orelse return;
-        const param_count = @min(c.args.len, sig.params.len);
         // Resolve the callee name for const_ref_params tracking.
         // Only direct calls (identifier callee) qualify for const auto-borrow.
         const is_direct_call = c.callee.* == .identifier;
@@ -480,8 +479,14 @@ pub const MirAnnotator = struct {
             c.callee.field_expr.field
         else
             null;
+        // Instance method calls (field_expr callee) do not pass the receiver as an explicit arg.
+        // Bridge method sigs include 'self' as params[0] — skip it when matching call args.
+        const param_offset: usize = if (c.callee.* == .field_expr and sig.params.len > 0 and
+            std.mem.eql(u8, sig.params[0].name, "self")) 1 else 0;
+        const effective_params = sig.params[param_offset..];
+        const param_count = @min(c.args.len, effective_params.len);
         var idx: usize = 0;
-        for (c.args[0..param_count], sig.params[0..param_count]) |arg, param| {
+        for (c.args[0..param_count], effective_params[0..param_count]) |arg, param| {
             defer idx += 1;
             const arg_type = self.lookupType(arg) orelse continue;
             const coercion = detectCoercion(arg_type, param.type_);
@@ -693,12 +698,24 @@ pub const MirAnnotator = struct {
             // the struct definition for the method signature.
             const method_name = c.callee.field_expr.field;
             if (self.lookupType(c.callee.field_expr.object)) |obj_type| {
-                if (self.all_decls) |ad| {
-                    // Use struct name to find the owning module precisely.
-                    if (obj_type == .named) {
-                        const struct_name = obj_type.named;
+                if (obj_type == .named) {
+                    const struct_name = obj_type.named;
+                    // Check current module's struct_methods first ("StructName.method" key).
+                    // This covers bridge struct methods which are not in funcs to avoid name collisions.
+                    const qualified_key = std.fmt.allocPrint(
+                        self.allocator, "{s}.{s}", .{ struct_name, method_name },
+                    ) catch return null;
+                    defer self.allocator.free(qualified_key);
+                    if (self.decls.struct_methods.get(qualified_key)) |sig| return sig;
+                    if (self.all_decls) |ad| {
+                        // Also check all modules' struct_methods for cross-module bridge calls.
                         var it = ad.iterator();
                         while (it.next()) |entry| {
+                            if (entry.value_ptr.*.struct_methods.get(qualified_key)) |sig| return sig;
+                        }
+                        // Fallback: funcs lookup by method name (non-bridge methods).
+                        var it2 = ad.iterator();
+                        while (it2.next()) |entry| {
                             if (entry.value_ptr.*.structs.contains(struct_name)) {
                                 return entry.value_ptr.*.funcs.get(method_name);
                             }

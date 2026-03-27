@@ -74,6 +74,9 @@ pub const DeclTable = struct {
     bitfields: std.StringHashMap(BitfieldSig),
     vars: std.StringHashMap(VarSig),
     types: std.StringHashMap([]const u8), // type aliases and compt types
+    /// Bridge struct method signatures keyed by "StructName.method".
+    /// Used by MIR annotator to detect const & param coercions for cross-module calls.
+    struct_methods: std.StringHashMapUnmanaged(FuncSig),
     allocator: std.mem.Allocator,
     type_arena: std.heap.ArenaAllocator, // owns all ResolvedType inner allocations
 
@@ -90,6 +93,7 @@ pub const DeclTable = struct {
             .bitfields = std.StringHashMap(BitfieldSig).init(allocator),
             .vars = std.StringHashMap(VarSig).init(allocator),
             .types = std.StringHashMap([]const u8).init(allocator),
+            .struct_methods = .{},
             .allocator = allocator,
             .type_arena = std.heap.ArenaAllocator.init(allocator),
         };
@@ -124,6 +128,13 @@ pub const DeclTable = struct {
         self.bitfields.deinit();
         self.vars.deinit();
         self.types.deinit();
+        // Free struct_methods: keys are allocPrint strings, values have owned param slices
+        var sm_it = self.struct_methods.iterator();
+        while (sm_it.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.params);
+        }
+        self.struct_methods.deinit(self.allocator);
     }
 
     pub fn hasDecl(self: *const DeclTable, name: []const u8) bool {
@@ -325,6 +336,37 @@ pub const DeclCollector = struct {
         }
 
         try self.table.structs.put(s.name, sig);
+
+        // Register bridge struct methods into struct_methods so MIR can detect const & params.
+        // Key: "StructName.method" to avoid collisions with same-named methods on other structs.
+        if (s.is_bridge) {
+            for (s.members) |member| {
+                if (member.* == .func_decl) {
+                    const f = member.func_decl;
+                    var params: std.ArrayListUnmanaged(ParamSig) = .{};
+                    for (f.params) |param| {
+                        if (param.* == .param) {
+                            try params.append(self.allocator, .{
+                                .name = param.param.name,
+                                .type_ = try types.resolveTypeNode(self.table.typeAllocator(), param.param.type_annotation),
+                            });
+                        }
+                    }
+                    const method_sig = FuncSig{
+                        .name = f.name,
+                        .params = try params.toOwnedSlice(self.allocator),
+                        .param_nodes = f.params,
+                        .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
+                        .return_type_node = f.return_type,
+                        .is_compt = f.is_compt,
+                        .is_pub = f.is_pub,
+                        .is_thread = f.is_thread,
+                    };
+                    const key = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ s.name, f.name });
+                    try self.table.struct_methods.put(self.allocator, key, method_sig);
+                }
+            }
+        }
     }
 
     fn collectEnum(self: *DeclCollector, e: parser.EnumDecl, loc: ?errors.SourceLoc) anyerror!void {

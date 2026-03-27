@@ -571,8 +571,37 @@ pub const TypeResolver = struct {
                 if (c.callee.* == .field_expr) {
                     const fe = c.callee.field_expr;
                     if (fe.object.* == .identifier) {
+                        const obj_id = fe.object.identifier;
+                        // Module-level function: module.func()
                         if (self.decls.funcs.get(fe.field)) |sig| {
                             return sig.return_type;
+                        }
+                        // Static or instance method on a bridge struct.
+                        // obj_id may be the struct type name (static: Renderer.create())
+                        // or a variable whose type is a struct (instance: r.draw(m)).
+                        const struct_name: []const u8 = if (self.decls.structs.contains(obj_id))
+                            obj_id
+                        else if (scope.lookup(obj_id)) |var_type|
+                            if (var_type == .named) var_type.named else ""
+                        else
+                            "";
+                        if (struct_name.len > 0) {
+                            // Build "StructName.method" key and look in struct_methods
+                            const key = std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ struct_name, fe.field }) catch "";
+                            defer if (key.len > 0) self.allocator.free(key);
+                            if (key.len > 0) {
+                                if (self.decls.struct_methods.get(key)) |sig| return sig.return_type;
+                                // Cross-module: check all loaded module decls
+                                if (self.all_decls) |ad| {
+                                    if (ad.get(obj_id)) |mod_decls| {
+                                        if (mod_decls.struct_methods.get(key)) |sig| return sig.return_type;
+                                    }
+                                    var it = ad.iterator();
+                                    while (it.next()) |entry| {
+                                        if (entry.value_ptr.*.struct_methods.get(key)) |sig| return sig.return_type;
+                                    }
+                                }
+                            }
                         }
                     }
                 }

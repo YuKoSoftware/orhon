@@ -99,9 +99,9 @@ Plans:
 ### Phase 20: Tamga Build Verification
 **Goal**: Fix all 9 open compiler bugs so Tamga builds end-to-end with `orhon build` — no workarounds needed
 **Requirements**: [REQ-20]
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 Plans:
-- [ ] 20-01-PLAN.md — Codegen fixes (bugs 1, 2, 3) + MIR fix (bug 6) + bug 5 verification
+- [x] 20-01-PLAN.md — Codegen fixes (bugs 1, 2, 3) + MIR fix (bug 6) + bug 5 verification
 - [ ] 20-02-PLAN.md — Build system fixes (bugs 7, 8, 9) — export fn, shared cImport, #csource
 - [ ] 20-03-PLAN.md — Tamga workaround removal + end-to-end build verification
 

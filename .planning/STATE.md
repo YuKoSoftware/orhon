@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.10
 milestone_name: milestone
-status: Milestone complete
-stopped_at: Phase 20 context gathered
-last_updated: "2026-03-27T06:18:28.222Z"
-last_activity: 2026-03-26
+status: Ready to execute
+stopped_at: Completed 20-tamga-build-verification plan 01 (bugs 1-3, 5, 6 fixed)
+last_updated: "2026-03-27T07:45:57.789Z"
+last_activity: 2026-03-27
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
 ---
 
 # Project State
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 21 — flexible-allocators
+**Current focus:** Phase 20 — tamga-build-verification
 
 ## Current Position
 
-Phase: 21
-Plan: Not started
+Phase: 20 (tamga-build-verification) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -67,6 +67,8 @@ Recent decisions affecting current work:
 - [Phase 21]: Bridge modules not in root shared_modules get mod_{name} created and wired transitively to support deep import chains
 - [Phase 21]: scoped_type PEG rule builder produces type_named(module.Type) — simple string concatenation, codegen-transparent
 - [Phase 21]: include std::collections added to example module to make List/Map/Set available without prefix
+- [Phase 20-tamga-build-verification]: struct_methods map uses qualified 'StructName.method' keys to avoid collisions across bridge structs with same method names
+- [Phase 20-tamga-build-verification]: resolver updated to resolve bridge static/instance method return types via struct_methods
 
 ### Pending Todos
 
@@ -88,10 +90,11 @@ None yet.
 | Phase 19 P01 | 18min | 2 tasks | 4 files |
 | Phase 21 P01 | 30 | 2 tasks | 9 files |
 | Phase 21 P02 | 10 | 1 tasks | 2 files |
+| Phase 20-tamga-build-verification P01 | 180 | 3 tasks | 5 files |
 
 ## Session Continuity
 
-Last activity: 2026-03-26
-Last session: 2026-03-27T06:18:28.217Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-tamga-build-verification/20-CONTEXT.md
+Last activity: 2026-03-27
+Last session: 2026-03-27T07:45:57.784Z
+Stopped at: Completed 20-tamga-build-verification plan 01 (bugs 1-3, 5, 6 fixed)
+Resume file: None

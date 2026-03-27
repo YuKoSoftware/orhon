@@ -49,11 +49,14 @@ metadata
 
 metadata_body
     <- 'dep' expr expr?                         # #dep "path" Version?
-     / 'linkC' expr                             # #linkC "libname"
-     / 'cInclude' expr                          # #cInclude "header.h"
-     / 'csource' expr                           # #csource "file.cpp"
-     / 'linkCpp'                                # #linkCpp (flag, no argument)
+     / 'cimport' expr cimport_block             # #cimport "lib" { include: "...", source?: "..." }
      / IDENTIFIER '=' expr                      # #field = value
+
+cimport_block
+    <- '{' _ cimport_entry (',' _ cimport_entry)* _ '}'
+
+cimport_entry
+    <- IDENTIFIER ':' _ expr
 
 import_decl
     <- 'import' import_path ('as' IDENTIFIER)? NL

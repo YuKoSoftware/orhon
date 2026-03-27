@@ -438,9 +438,67 @@ fn buildImport(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 
 fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // metadata <- '#' metadata_body NL
-    // metadata_body <- 'dep' expr expr? / 'linkC' expr / IDENTIFIER '=' expr
+    // metadata_body <- 'dep' expr expr? / 'cimport' expr cimport_block / IDENTIFIER '=' expr
     const field_pos = cap.start_pos + 1; // after #
     const field = tokenText(ctx, field_pos);
+
+    // Handle #cimport "lib" { include: "...", source?: "..." }
+    if (std.mem.eql(u8, field, "cimport")) {
+        // Capture tree structure (from capture.zig evalRuleRef):
+        //   children[0] = CaptureNode(rule="expr") — lib name string
+        //   children[1] = CaptureNode(rule="cimport_block") — block wrapper
+        //     children[N] = CaptureNode(rule="cimport_entry") — each entry
+        //       children[0] = CaptureNode(rule="IDENTIFIER") — key
+        //       children[1] = CaptureNode(rule="expr") — value
+        if (cap.children.len < 2) {
+            // Grammar requires cimport_block — this should not happen in practice
+            const dummy = try ctx.newNode(.{ .identifier = field });
+            return ctx.newNode(.{ .metadata = .{ .field = field, .value = dummy } });
+        }
+        const lib_name_node = try buildNode(ctx, &cap.children[0]);
+
+        var include_val: ?[]const u8 = null;
+        var source_val: ?[]const u8 = null;
+
+        // Navigate into cimport_block wrapper to get cimport_entry children
+        const block_cap = &cap.children[1];
+        for (block_cap.children) |*entry_cap| {
+            // Each cimport_entry has children: [IDENTIFIER, expr]
+            if (entry_cap.children.len >= 2) {
+                const key = tokenText(ctx, entry_cap.children[0].start_pos);
+                const val_node = try buildNode(ctx, &entry_cap.children[1]);
+                if (val_node.* == .string_literal) {
+                    const raw = val_node.string_literal;
+                    const unquoted = if (raw.len >= 2 and raw[0] == '"')
+                        raw[1 .. raw.len - 1]
+                    else
+                        raw;
+                    if (std.mem.eql(u8, key, "include")) {
+                        include_val = unquoted;
+                    } else if (std.mem.eql(u8, key, "source")) {
+                        source_val = unquoted;
+                    } else {
+                        // D-05: Unknown key — compile error
+                        const msg = try std.fmt.allocPrint(ctx.alloc(),
+                            "unknown #cimport key '{s}' — only 'include' and 'source' are allowed", .{key});
+                        ctx.reportError(msg, entry_cap.children[0].start_pos);
+                    }
+                }
+            }
+        }
+
+        // D-06: include: is always required
+        if (include_val == null) {
+            ctx.reportError("#cimport requires 'include:' key", cap.start_pos);
+        }
+
+        return ctx.newNode(.{ .metadata = .{
+            .field = "cimport",
+            .value = lib_name_node,
+            .cimport_include = include_val,
+            .cimport_source = source_val,
+        } });
+    }
 
     // Build value from first expr child
     if (cap.children.len > 0) {

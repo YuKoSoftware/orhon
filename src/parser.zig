@@ -163,7 +163,9 @@ pub const ImportDecl = struct {
 pub const Metadata = struct {
     field: []const u8,
     value: *Node,
-    extra: ?*Node = null, // version node for #dep, null otherwise
+    extra: ?*Node = null,              // version node for #dep, null otherwise
+    cimport_include: ?[]const u8 = null, // include path from #cimport { include: "..." }
+    cimport_source: ?[]const u8 = null,  // source file from #cimport { source: "..." }
 };
 
 pub const FuncDecl = struct {

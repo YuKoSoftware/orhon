@@ -51,6 +51,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - ✓ `is` operator with module-qualified types (`ev is mod.Type`) — v0.13 Phase 16
 - ✓ `void` accepted in error unions (`Error | void`) — v0.13 Phase 17
 - ✓ `const Alias: type = T` type alias syntax — v0.13 Phase 18
+- ✓ Tamga build verification — 9 compiler bugs fixed (null union, elif, enumFromInt, zero-field struct, bridge borrow, shared cImport, #csource) — v0.14 Phase 20
 
 ### Active
 

@@ -50,6 +50,9 @@ metadata
 metadata_body
     <- 'dep' expr expr?                         # #dep "path" Version?
      / 'linkC' expr                             # #linkC "libname"
+     / 'cInclude' expr                          # #cInclude "header.h"
+     / 'csource' expr                           # #csource "file.cpp"
+     / 'linkCpp'                                # #linkCpp (flag, no argument)
      / IDENTIFIER '=' expr                      # #field = value
 
 import_decl

@@ -1237,6 +1237,16 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
         for (link_lib_lists.items) |li| allocator.free(li);
         link_lib_lists.deinit(allocator);
     }
+    var c_include_lists = std.ArrayListUnmanaged([]const []const u8){};
+    defer {
+        for (c_include_lists.items) |li| allocator.free(li);
+        c_include_lists.deinit(allocator);
+    }
+    var c_source_lists = std.ArrayListUnmanaged([]const []const u8){};
+    defer {
+        for (c_source_lists.items) |li| allocator.free(li);
+        c_source_lists.deinit(allocator);
+    }
     var mod_import_lists = std.ArrayListUnmanaged([]const []const u8){};
     defer {
         for (mod_import_lists.items) |li| allocator.free(li);
@@ -1372,6 +1382,86 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
             const link_slice = try allocator.dupe([]const u8, mt_link_libs.items);
             try link_lib_lists.append(allocator, link_slice);
 
+            // Collect #cInclude metadata from this module and its imported modules
+            var mt_c_includes: std.ArrayListUnmanaged([]const u8) = .{};
+            defer mt_c_includes.deinit(allocator);
+            if (mod.ast) |ast| {
+                for (ast.program.metadata) |meta| {
+                    if (std.mem.eql(u8, meta.metadata.field, "cInclude")) {
+                        if (meta.metadata.value.* == .string_literal) {
+                            const raw = meta.metadata.value.string_literal;
+                            const hdr = if (raw.len >= 2 and raw[0] == '"')
+                                raw[1 .. raw.len - 1]
+                            else
+                                raw;
+                            var already_listed = false;
+                            for (mt_c_includes.items) |existing| {
+                                if (std.mem.eql(u8, existing, hdr)) {
+                                    already_listed = true;
+                                    break;
+                                }
+                            }
+                            if (!already_listed) try mt_c_includes.append(allocator, hdr);
+                        }
+                    }
+                }
+            }
+            for (mod.imports) |imp_name| {
+                const dep_mod = mod_resolver.modules.get(imp_name) orelse continue;
+                if (dep_mod.is_root) continue;
+                if (dep_mod.ast) |ast| {
+                    for (ast.program.metadata) |meta| {
+                        if (std.mem.eql(u8, meta.metadata.field, "cInclude")) {
+                            if (meta.metadata.value.* == .string_literal) {
+                                const raw = meta.metadata.value.string_literal;
+                                const hdr = if (raw.len >= 2 and raw[0] == '"')
+                                    raw[1 .. raw.len - 1]
+                                else
+                                    raw;
+                                var already_listed = false;
+                                for (mt_c_includes.items) |existing| {
+                                    if (std.mem.eql(u8, existing, hdr)) {
+                                        already_listed = true;
+                                        break;
+                                    }
+                                }
+                                if (!already_listed) try mt_c_includes.append(allocator, hdr);
+                            }
+                        }
+                    }
+                }
+            }
+            const c_include_slice = try allocator.dupe([]const u8, mt_c_includes.items);
+            try c_include_lists.append(allocator, c_include_slice);
+
+            // Collect #csource and #linkCpp metadata from this module
+            var mt_c_sources: std.ArrayListUnmanaged([]const u8) = .{};
+            defer mt_c_sources.deinit(allocator);
+            var mt_needs_cpp = false;
+            if (mod.ast) |ast| {
+                for (ast.program.metadata) |meta| {
+                    if (std.mem.eql(u8, meta.metadata.field, "csource")) {
+                        if (meta.metadata.value.* == .string_literal) {
+                            const raw = meta.metadata.value.string_literal;
+                            const src = if (raw.len >= 2 and raw[0] == '"')
+                                raw[1 .. raw.len - 1]
+                            else
+                                raw;
+                            try mt_c_sources.append(allocator, src);
+                            // Detect C++ source by extension
+                            if (std.mem.endsWith(u8, src, ".cpp") or std.mem.endsWith(u8, src, ".cc")) {
+                                mt_needs_cpp = true;
+                            }
+                        }
+                    }
+                    if (std.mem.eql(u8, meta.metadata.field, "linkCpp")) {
+                        mt_needs_cpp = true;
+                    }
+                }
+            }
+            const c_source_slice = try allocator.dupe([]const u8, mt_c_sources.items);
+            try c_source_lists.append(allocator, c_source_slice);
+
             try multi_targets.append(allocator, .{
                 .module_name = mod.name,
                 .project_name = binary_name,
@@ -1380,6 +1470,9 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
                 .mod_imports = mod_slice,
                 .version = mt_version,
                 .link_libs = link_slice,
+                .c_includes = c_include_slice,
+                .c_source_files = c_source_slice,
+                .needs_cpp = mt_needs_cpp,
                 .has_bridges = mod.has_bridges,
             });
         }

@@ -21,7 +21,7 @@
 ### C Import Unification
 
 - [ ] **CIMP-01**: `#cimport "lib"` directive replaces `#linkC`, `#cInclude`, `#csource`, `#linkCpp`
-- [ ] **CIMP-02**: Optional block syntax `#cimport "lib" { include: "...", source: "..." }` for overrides
+- [ ] **CIMP-02**: Required block syntax `#cimport "lib" { include: "...", source: "..." }` — block is mandatory per D-06 (include: always required, bare form invalid)
 - [ ] **CIMP-03**: Duplicate `#cimport` for same library across project produces compile error
 - [ ] **CIMP-04**: Old directives (#linkC, #cInclude, #csource, #linkCpp) removed or deprecated
 - [ ] **CIMP-05**: Tamga framework migrated to `#cimport` syntax
@@ -74,4 +74,4 @@
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 — GUARD-01 text updated to match locked decision syntax*
+*Last updated: 2026-03-27 — CIMP-02 text updated to align with D-06 (block is mandatory, not optional)*

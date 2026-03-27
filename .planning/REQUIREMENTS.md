@@ -24,8 +24,8 @@
 - [x] **CIMP-02**: Required block syntax `#cimport "lib" { include: "...", source: "..." }` — block is mandatory per D-06 (include: always required, bare form invalid)
 - [x] **CIMP-03**: Duplicate `#cimport` for same library across project produces compile error
 - [x] **CIMP-04**: Old directives (#linkC, #cInclude, #csource, #linkCpp) removed or deprecated
-- [ ] **CIMP-05**: Tamga framework migrated to `#cimport` syntax
-- [ ] **CIMP-06**: Example module and docs updated with `#cimport` usage
+- [x] **CIMP-05**: Tamga framework migrated to `#cimport` syntax
+- [x] **CIMP-06**: Example module and docs updated with `#cimport` usage
 
 ## Future Requirements
 
@@ -64,8 +64,8 @@
 | CIMP-02 | Phase 24 | Complete |
 | CIMP-03 | Phase 24 | Complete |
 | CIMP-04 | Phase 24 | Complete |
-| CIMP-05 | Phase 24 | Pending |
-| CIMP-06 | Phase 24 | Pending |
+| CIMP-05 | Phase 24 | Complete |
+| CIMP-06 | Phase 24 | Complete |
 
 **Coverage:**
 - v1 requirements: 13 total

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.15
 milestone_name: Language Ergonomics
-status: verifying
-stopped_at: "Completed 24-02-PLAN.md — awaiting Task 3 checkpoint:human-verify"
-last_updated: "2026-03-27T19:07:25.738Z"
+status: complete
+stopped_at: Completed 24-02-PLAN.md — Phase 24 complete, v0.15 milestone complete
+last_updated: "2026-03-27T19:26:23.647Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 3
   completed_phases: 3
   total_plans: 6
   completed_plans: 6
-  percent: 0
+  percent: 100
 ---
 
 # Project State
@@ -21,27 +21,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 24 — cimport-unification
+**Current focus:** v0.15 milestone complete — all phases shipped
 
 ## Current Position
 
-Phase: 24 (cimport-unification) — EXECUTING
+Phase: 24 (cimport-unification) — COMPLETE
 Plan: 2 of 2
-Status: Phase complete — ready for verification
+Status: v0.15 milestone complete
 Last activity: 2026-03-27
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Cumulative:**
 
-- 5 milestones shipped (v0.10-v0.14)
-- 21 phases, 27 plans total
+- 6 milestones shipped (v0.10-v0.15)
+- 24 phases, 33 plans total
 
 **v0.15 so far:**
 
-- 0/3 phases complete
+- 3/3 phases complete
 
 ## Accumulated Context
 
@@ -66,6 +66,7 @@ Recent decisions affecting current work:
 - [Phase 24-cimport-unification]: One per project: duplicate #cimport for same lib name is compile error with both module names (D-08)
 - [Phase 24-cimport-unification]: VK3D SDL removal: #linkC 'SDL3' dropped; SDL types flow transitively via import tamga_sdl3 (D-09)
 - [Phase 24-cimport-unification]: VMA source-only: 'vma' name for identity; source: skips linkSystemLibrary; .cpp triggers C++ linking
+- [Phase 24-cimport-unification]: #cimport = { name: 'lib', include: 'h' } — lib name inside block as name: key, aligns with #key = value metadata pattern
 
 ### Pending Todos
 
@@ -78,5 +79,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-27
-Stopped at: Completed 24-02-PLAN.md — awaiting Task 3 checkpoint:human-verify
+Stopped at: Completed 24-02-PLAN.md — Phase 24 complete, v0.15 milestone complete
 Resume file: None

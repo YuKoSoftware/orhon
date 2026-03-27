@@ -106,7 +106,7 @@ See: [milestones/v0.14-ROADMAP.md](milestones/v0.14-ROADMAP.md)
 **Milestone Goal:** Reduce boilerplate and clean up C interop directives — make Orhon code more concise and the bridge system simpler.
 
 - [x] **Phase 22: `throw` Statement** - Error propagation with automatic type narrowing (completed 2026-03-27)
-- [ ] **Phase 23: Pattern Guards** - Conditional match arms with `case x if expr` syntax
+- [x] **Phase 23: Pattern Guards** - Conditional match arms with `case x if expr` syntax (completed 2026-03-27)
 - [ ] **Phase 24: `#cimport` Unification** - One directive per C library replaces four separate ones
 
 ## Phase Details
@@ -136,7 +136,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 23-01-PLAN.md -- Implement guards across compiler pipeline (grammar, builder, AST, resolver, MIR, codegen)
-- [ ] 23-02-PLAN.md -- Documentation update for pattern guards
+- [x] 23-02-PLAN.md -- Documentation update for pattern guards
 
 ### Phase 24: `#cimport` Unification
 **Goal**: A single `#cimport "lib"` directive replaces the four separate `#linkC`, `#cInclude`, `#csource`, and `#linkCpp` directives, and the Tamga framework is migrated to use it
@@ -163,5 +163,5 @@ Plans:
 | 15-18 | v0.13 | 5/5 | Complete | 2026-03-26 |
 | 19-21 | v0.14 | 6/6 | Complete | 2026-03-27 |
 | 22. `throw` Statement | v0.15 | 2/2 | Complete    | 2026-03-27 |
-| 23. Pattern Guards | v0.15 | 1/2 | In Progress|  |
+| 23. Pattern Guards | v0.15 | 2/2 | Complete   | 2026-03-27 |
 | 24. `#cimport` Unification | v0.15 | 0/? | Not started | - |

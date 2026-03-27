@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.15
 milestone_name: Language Ergonomics
-status: executing
-stopped_at: Completed 23-01-PLAN.md
-last_updated: "2026-03-27T16:09:19.462Z"
+status: verifying
+stopped_at: Completed 23-02-PLAN.md
+last_updated: "2026-03-27T16:13:08.436Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 Phase: 23 (pattern-guards) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-27
 
 Progress: [░░░░░░░░░░] 0%
@@ -60,6 +60,7 @@ Recent decisions affecting current work:
 - [Phase 23-pattern-guards]: Token scanning (findTokenInRange) used to distinguish guarded patterns since IDENTIFIER is a terminal token, not a named sub-rule capture child
 - [Phase 23-pattern-guards]: Labeled Zig block chosen for guard desugaring: if (_g0: { const x = _m; break :_g0 guard; }) — correctly chains with else-if without leaking scope
 - [Phase 23-pattern-guards]: mirContainsIdentifier used at codegen time to conditionally emit '_ = x' suppressor, avoiding both unused-local-constant and pointless-discard Zig errors
+- [Phase 23-pattern-guards]: Parenthesized Patterns reference table added as quick lookup (optional vs required) rather than prose paragraphs — easier to scan
 
 ### Pending Todos
 
@@ -72,5 +73,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-27
-Stopped at: Completed 23-01-PLAN.md
+Stopped at: Completed 23-02-PLAN.md
 Resume file: None

@@ -4,7 +4,7 @@ milestone: v0.15
 milestone_name: Language Ergonomics
 status: verifying
 stopped_at: Completed 22-02-PLAN.md
-last_updated: "2026-03-27T14:44:13.133Z"
+last_updated: "2026-03-27T14:49:02.952Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 3
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: 22 (throw-statement) — EXECUTING
-Plan: 2 of 2
+Phase: 23
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-03-27
 

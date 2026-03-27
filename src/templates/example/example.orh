@@ -8,9 +8,9 @@ module example
 import std::console
 import std::allocator
 
-// include — flat access: symbols dumped directly into scope (no prefix needed)
-// List, Map, Set are available without a module prefix after include.
-include std::collections
+// use — flat access: symbols dumped directly into scope (no prefix needed)
+// List, Map, Set are available without a module prefix after use.
+use std::collections
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

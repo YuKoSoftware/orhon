@@ -54,9 +54,9 @@ Zig 0.15.2 is the single backend. Generated Zig code is readable and debuggable.
 The codegen is a **pure 1:1 translator** — it maps Orhon syntax to Zig syntax with no domain knowledge of library types or methods. All stdlib functionality (collections, strings, allocators, etc.) lives in bridge modules (module + `.zig` sidecar), not in the codegen. This means adding new stdlib features never requires compiler changes.
 
 ### No runtime libraries (v0.9.6+)
-The compiler does **not** inject hardcoded runtime imports. All standard library functionality is accessed through the normal `import`/`include` bridge system:
+The compiler does **not** inject hardcoded runtime imports. All standard library functionality is accessed through the normal `import`/`use` bridge system:
 - `import std::collections` — scoped access: `collections.List(i32).new()`
-- `include std::collections` — names in current scope: `List(i32).new()`
+- `use std::collections` — names in current scope: `List(i32).new()`
 
 The codegen has no special-case name mapping for any library types. The only hardcoded import is Zig's own `std`. Nullable and error union types are language-level constructs handled by the codegen directly, not through runtime libraries.
 

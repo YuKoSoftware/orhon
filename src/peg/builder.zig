@@ -448,8 +448,8 @@ fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         //   metadata_cap.children[0]            = metadata_body_cap
         //   metadata_body_cap.children[0]        = cimport_block_cap
         //   cimport_block_cap.children           = [_, cimport_entry, _, cimport_entry, ...]
-        //   cimport_entry.children               = [IDENTIFIER_cap, _after_colon, expr_cap]
-        //   IDENTIFIER_cap.start_pos             = token position of key ("name", "include", "source")
+        //   cimport_entry.children               = [whitespace_cap, expr_cap]
+        //   (IDENTIFIER and ':' are terminals; key is at cimport_entry.start_pos)
         //   expr_cap                             = the string literal value
 
         // Navigate: metadata_cap -> metadata_body_cap -> cimport_block_cap
@@ -470,10 +470,12 @@ fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         for (block_cap.children) |*child| {
             const child_rule = child.rule orelse continue;
             if (!std.mem.eql(u8, child_rule, "cimport_entry")) continue;
-            // cimport_entry children: [cimport_key_cap, _after_colon, expr_cap]
-            if (child.children.len < 3) continue;
-            const key = tokenText(ctx, child.children[0].start_pos);
-            const val_node = try buildNode(ctx, &child.children[2]);
+            // cimport_entry children: [whitespace_cap, expr_cap]
+            // (IDENTIFIER and ':' are terminals — no child capture nodes)
+            // Key token is at child.start_pos; expr is the last child
+            if (child.children.len < 2) continue;
+            const key = tokenText(ctx, child.start_pos);
+            const val_node = try buildNode(ctx, &child.children[child.children.len - 1]);
             if (val_node.* == .string_literal) {
                 const raw = val_node.string_literal;
                 const unquoted = if (raw.len >= 2 and raw[0] == '"')

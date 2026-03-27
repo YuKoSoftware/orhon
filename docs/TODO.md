@@ -527,9 +527,9 @@ Beyond "does it crash" fuzzing — test semantic properties across the pipeline:
 
 ## Documentation Gaps
 
-### `include` vs `import` semantics
+### `use` vs `import` semantics
 
-No dedicated section explaining the difference. `include` brings names into current
+No dedicated section explaining the difference. `use` brings names into current
 scope, `import` keeps them namespaced — but this is only mentioned once in COMPILER.md.
 
 ### String interpolation `@{...}`

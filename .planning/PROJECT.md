@@ -59,7 +59,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 ### Active
 
 - [x] `throw` statement for error propagation (propagate + type narrowing) — v0.15 Phase 22
-- [ ] Pattern guards in match (`case x if x > 0`)
+- [x] Pattern guards in match (`(x if x > 0)` parenthesized guard syntax) — v0.15 Phase 23
 - [ ] `#cimport` unified C import directive (replaces #linkC, #cInclude, #csource, #linkCpp)
 
 ## Current Milestone: v0.15 Language Ergonomics
@@ -82,10 +82,12 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 ## Current State
 
 **Version:** v0.15 (in progress)
-**Tests:** 256 across 11 stages
+**Tests:** 259 across 11 stages
 **Milestones shipped:** v0.10, v0.11, v0.12, v0.13, v0.14
 
-Phase 22 complete — `throw` statement: `throw x` propagates error from `(Error | T)` and narrows `x` to `T`. Full pipeline: lexer, PEG grammar, builder, propagation validation, MIR, codegen. 256 tests pass.
+Phase 23 complete — Pattern guards: `(x if x > 0) => { body }` guards in match arms. Parenthesized patterns for ranges and bindings. Guard expressions access bound variable and enclosing scope. Else required when guards present. 259 tests pass.
+
+**Previous:** Phase 22 — `throw` statement for error propagation and type narrowing.
 
 **Previous:** v0.13 Tamga Compatibility — shipped 2026-03-26
 

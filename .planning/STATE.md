@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.14
-milestone_name: Build System
-status: Milestone complete — planning next
-stopped_at: v0.14 milestone archived
+milestone: v0.15
+milestone_name: Language Ergonomics
+status: Defining requirements
+stopped_at: Milestone v0.15 started
 last_updated: "2026-03-27"
 last_activity: 2026-03-27
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -20,22 +20,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Planning next milestone
+**Current focus:** v0.15 Language Ergonomics — try keyword, pattern guards, #cimport
 
 ## Current Position
 
-Milestone v0.14 complete. All phases archived.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-27 — Milestone v0.15 started
 
 ## Performance Metrics
 
-**Velocity (v0.14):**
-
-- Plans completed: 6
-- Total execution time: ~5 hours
-- Phases: 3
-
 **Cumulative:**
-
 - 5 milestones shipped (v0.10-v0.14)
 - 21 phases, 27 plans total
 
@@ -44,15 +40,10 @@ Milestone v0.14 complete. All phases archived.
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-All v0.14 decisions archived with milestone.
 
 ### Pending Todos
 
 None.
-
-### Roadmap Evolution
-
-v0.14 archived. Next milestone to be defined via `/gsd:new-milestone`.
 
 ### Blockers/Concerns
 
@@ -61,5 +52,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-27
-Stopped at: v0.14 milestone archived
+Stopped at: Milestone v0.15 started
 Resume file: None

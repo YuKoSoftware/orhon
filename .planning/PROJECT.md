@@ -58,7 +58,18 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 ### Active
 
-(No active requirements — planning next milestone)
+- [ ] `try` keyword for single-expression error propagation
+- [ ] Pattern guards in match (`case x if x > 0`)
+- [ ] `#cimport` unified C import directive (replaces #linkC, #cInclude, #csource, #linkCpp)
+
+## Current Milestone: v0.15 Language Ergonomics
+
+**Goal:** Reduce boilerplate and clean up C interop directives -- make Orhon code more concise and the bridge system simpler.
+
+**Target features:**
+- `try` keyword -- `var x = try divide(10, 0)` maps to Zig's `try`
+- Pattern guards in match -- `case x if x > 0` conditional arms
+- `#cimport` unified directive -- one directive per C library replaces 4 separate ones
 
 ### Out of Scope
 
@@ -123,4 +134,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after v0.14 milestone*
+*Last updated: 2026-03-27 — v0.15 Language Ergonomics milestone started*

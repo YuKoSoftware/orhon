@@ -482,4 +482,16 @@ else
     fail "rejects throw in void function" "$NEG_OUT"
 fi
 
+# old C interop directives rejected (CIMP-04)
+cd "$TESTDIR"
+mkdir -p neg_linkc/src
+cp "$FIXTURES/fail_old_linkc.orh" neg_linkc/src/main.orh
+cd neg_linkc
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "error\|unexpected\|parse"; then
+    pass "rejects old #linkC directive"
+else
+    fail "rejects old #linkC directive" "$NEG_OUT"
+fi
+
 report_results

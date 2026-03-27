@@ -1,0 +1,2 @@
+module fail_old_linkc
+#linkC "SDL3"

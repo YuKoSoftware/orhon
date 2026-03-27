@@ -189,15 +189,15 @@ pub const DeclCollector = struct {
     pub fn collect(self: *DeclCollector, ast: *parser.Node) !void {
         if (ast.* != .program) return;
 
-        // Validate: #linkC is only allowed in modules that have bridge declarations.
-        var link_c_node: ?*parser.Node = null;
+        // Validate: #cimport is only allowed in modules that have bridge declarations.
+        var cimport_node: ?*parser.Node = null;
         for (ast.program.metadata) |meta| {
-            if (std.mem.eql(u8, meta.metadata.field, "linkC")) {
-                link_c_node = meta;
+            if (std.mem.eql(u8, meta.metadata.field, "cimport")) {
+                cimport_node = meta;
                 break;
             }
         }
-        if (link_c_node != null) {
+        if (cimport_node != null) {
             var has_bridge = false;
             for (ast.program.top_level) |node| {
                 switch (node.*) {
@@ -209,8 +209,8 @@ pub const DeclCollector = struct {
             }
             if (!has_bridge) {
                 try self.reporter.report(.{
-                    .message = "#linkC is only allowed in modules with bridge declarations",
-                    .loc = self.nodeLoc(link_c_node.?),
+                    .message = "#cimport is only allowed in modules with bridge declarations",
+                    .loc = self.nodeLoc(cimport_node.?),
                 });
                 return;
             }
@@ -668,7 +668,7 @@ test "declaration collector - bridge func is registered" {
     try std.testing.expect(collector.table.funcs.contains("print"));
 }
 
-test "declaration collector - #linkC without bridge is an error" {
+test "declaration collector - #cimport without bridge is an error" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
@@ -695,11 +695,11 @@ test "declaration collector - #linkC without bridge is an error" {
     const top_level = try a.alloc(*parser.Node, 1);
     top_level[0] = func_node;
 
-    // #linkC metadata node
+    // #cimport metadata node
     const lib_name = try a.create(parser.Node);
     lib_name.* = .{ .string_literal = "\"SDL3\"" };
     const link_meta = try a.create(parser.Node);
-    link_meta.* = .{ .metadata = .{ .field = "linkC", .value = lib_name } };
+    link_meta.* = .{ .metadata = .{ .field = "cimport", .value = lib_name, .cimport_include = "SDL3/SDL.h" } };
     const metadata = try a.alloc(*parser.Node, 1);
     metadata[0] = link_meta;
 
@@ -716,7 +716,7 @@ test "declaration collector - #linkC without bridge is an error" {
     try std.testing.expect(reporter.hasErrors());
 }
 
-test "declaration collector - #linkC with bridge is allowed" {
+test "declaration collector - #cimport with bridge is allowed" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
@@ -745,7 +745,7 @@ test "declaration collector - #linkC with bridge is allowed" {
     const lib_name = try a.create(parser.Node);
     lib_name.* = .{ .string_literal = "\"SDL3\"" };
     const link_meta = try a.create(parser.Node);
-    link_meta.* = .{ .metadata = .{ .field = "linkC", .value = lib_name } };
+    link_meta.* = .{ .metadata = .{ .field = "cimport", .value = lib_name, .cimport_include = "SDL3/SDL.h" } };
     const metadata = try a.alloc(*parser.Node, 1);
     metadata[0] = link_meta;
 

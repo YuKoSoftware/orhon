@@ -331,7 +331,7 @@ pub const ZigRunner = struct {
     /// Run all test blocks in the generated Zig project
     pub fn runTests(self: *ZigRunner, module_name: []const u8, project_name: []const u8, bridge_modules: []const []const u8) !bool {
         // Generate build.zig with test step included
-        try self.generateBuildZigWithTests(module_name, "exe", project_name, null, &.{}, bridge_modules, &.{});
+        try self.generateBuildZigWithTests(module_name, "exe", project_name, null, &.{}, bridge_modules, &.{}, &.{}, &.{}, false);
 
         var args: std.ArrayListUnmanaged([]const u8) = .{};
         defer args.deinit(self.allocator);
@@ -362,8 +362,11 @@ pub const ZigRunner = struct {
         link_libs: []const []const u8,
         bridge_modules: []const []const u8,
         shared_modules: []const []const u8,
+        c_includes: []const []const u8,
+        c_source_files: []const []const u8,
+        needs_cpp: bool,
     ) !void {
-        return self.generateBuildZigWithTests(module_name, build_type, project_name, project_version, link_libs, bridge_modules, shared_modules);
+        return self.generateBuildZigWithTests(module_name, build_type, project_name, project_version, link_libs, bridge_modules, shared_modules, c_includes, c_source_files, needs_cpp);
     }
 
     fn generateBuildZigWithTests(
@@ -375,10 +378,27 @@ pub const ZigRunner = struct {
         link_libs: []const []const u8,
         bridge_modules: []const []const u8,
         shared_modules: []const []const u8,
+        c_includes: []const []const u8,
+        c_source_files: []const []const u8,
+        needs_cpp: bool,
     ) !void {
-        const content = try buildZigContent(self.allocator, module_name, build_type, project_name, project_version, link_libs, bridge_modules, shared_modules);
+        const content = try buildZigContent(self.allocator, module_name, build_type, project_name, project_version, link_libs, bridge_modules, shared_modules, c_includes, c_source_files, needs_cpp);
         defer self.allocator.free(content);
         try cache.writeGeneratedZig("build", content, self.allocator);
+
+        // Generate shared @cImport wrapper files on disk (same as multi-target path)
+        if (c_includes.len > 0) {
+            const synthetic = [1]MultiTarget{.{
+                .module_name = module_name,
+                .project_name = module_name,
+                .build_type = build_type,
+                .lib_imports = &.{},
+                .c_includes = c_includes,
+                .c_source_files = c_source_files,
+                .needs_cpp = needs_cpp,
+            }};
+            try generateSharedCImportFiles(self.allocator, &synthetic);
+        }
     }
 };
 
@@ -443,6 +463,9 @@ pub fn buildZigContent(
     link_libs: []const []const u8,
     bridge_modules: []const []const u8,
     shared_modules: []const []const u8,
+    c_includes: []const []const u8,
+    c_source_files: []const []const u8,
+    needs_cpp: bool,
 ) ![]u8 {
     var buf = std.ArrayListUnmanaged(u8){};
     errdefer buf.deinit(allocator);
@@ -482,8 +505,61 @@ pub fn buildZigContent(
         try buf.appendSlice(allocator, bridge_chunk);
     }
 
-    // #linkC is applied to the artifact (lib/exe), not the bridge module.
+    // #cimport is applied to the artifact (lib/exe), not the bridge module.
     // Build.Module doesn't have linkSystemLibrary/linkLibC — only Step.Compile does.
+
+    // Shared @cImport module generation — one module per unique #cimport header.
+    // Same logic as buildZigContentMulti so single-target projects get proper type identity.
+    var seen_cimport = std.StringHashMapUnmanaged(void){};
+    defer seen_cimport.deinit(allocator);
+    for (c_includes) |hdr| {
+        if (seen_cimport.contains(hdr)) continue;
+        try seen_cimport.put(allocator, hdr, {});
+        const base = std.fs.path.basename(hdr);
+        const stem = if (std.mem.lastIndexOfScalar(u8, base, '.')) |dot|
+            base[0..dot]
+        else
+            base;
+        var stem_buf: [64]u8 = undefined;
+        const stem_len = @min(stem.len, 63);
+        for (0..stem_len) |i| {
+            stem_buf[i] = if (std.ascii.isAlphanumeric(stem[i])) stem[i] else '_';
+        }
+        const safe_stem = stem_buf[0..stem_len];
+        const cimport_chunk = try std.fmt.allocPrint(allocator,
+            \\    const cimport_{s} = b.createModule(.{{
+            \\        .root_source_file = b.path("_{s}_c.zig"),
+            \\        .target = target,
+            \\        .optimize = optimize,
+            \\    }});
+            \\
+        , .{ safe_stem, safe_stem });
+        defer allocator.free(cimport_chunk);
+        try buf.appendSlice(allocator, cimport_chunk);
+    }
+
+    // Wire shared @cImport modules into all bridge modules that use them
+    for (bridge_modules) |bmod_name| {
+        for (c_includes) |hdr| {
+            const base = std.fs.path.basename(hdr);
+            const stem = if (std.mem.lastIndexOfScalar(u8, base, '.')) |dot|
+                base[0..dot]
+            else
+                base;
+            var stem_buf: [64]u8 = undefined;
+            const stem_len = @min(stem.len, 63);
+            for (0..stem_len) |i| {
+                stem_buf[i] = if (std.ascii.isAlphanumeric(stem[i])) stem[i] else '_';
+            }
+            const safe_stem = stem_buf[0..stem_len];
+            const wire_chunk = try std.fmt.allocPrint(allocator,
+                \\    bridge_{s}.addImport("{s}_c", cimport_{s});
+                \\
+            , .{ bmod_name, safe_stem, safe_stem });
+            defer allocator.free(wire_chunk);
+            try buf.appendSlice(allocator, wire_chunk);
+        }
+    }
 
     // For bridge modules that are NOT already in shared_modules (i.e. they are
     // transitive imports — e.g. tester imports allocator, but root only imports tester),
@@ -698,11 +774,14 @@ pub fn buildZigContent(
 
     }
 
-    // Apply #linkC to the artifact (lib/exe). linkSystemLibrary/linkLibC are
-    // methods on Step.Compile, not on Build.Module, so they go here.
+    // Apply #cimport link libs and C source files to the artifact (lib/exe).
+    // linkSystemLibrary/linkLibC/addCSourceFiles/linkLibCpp are on Step.Compile, not Build.Module.
     {
         const artifact_name: []const u8 = if (std.mem.eql(u8, build_type, "exe")) "exe" else "lib";
         try emitLinkLibs(&buf, allocator, link_libs, artifact_name);
+        if (c_source_files.len > 0 or needs_cpp) {
+            try emitCSourceFiles(&buf, allocator, c_source_files, needs_cpp, artifact_name);
+        }
     }
 
     // Always include test step so `orhon test` works
@@ -761,8 +840,11 @@ pub fn buildZigContent(
         try buf.appendSlice(allocator, test_mod);
     }
 
-    // Link C libraries for tests too
+    // Link C libraries and C source files for tests too
     try emitLinkLibs(&buf, allocator, link_libs, "unit_tests");
+    if (c_source_files.len > 0 or needs_cpp) {
+        try emitCSourceFiles(&buf, allocator, c_source_files, needs_cpp, "unit_tests");
+    }
 
     try buf.appendSlice(allocator,
         \\}
@@ -1549,7 +1631,7 @@ test "zig runner - find zig path format" {
 
 test "buildZigContent - exe" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{});
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addExecutable") != null);
@@ -1563,7 +1645,7 @@ test "buildZigContent - exe" {
 
 test "buildZigContent - static" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "mylib", "static", "mylib", null, &.{}, &.{}, &.{});
+    const content = try buildZigContent(alloc, "mylib", "static", "mylib", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -1577,7 +1659,7 @@ test "buildZigContent - static" {
 
 test "buildZigContent - dynamic" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "mylib", "dynamic", "mylib", null, &.{}, &.{}, &.{});
+    const content = try buildZigContent(alloc, "mylib", "dynamic", "mylib", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -1589,7 +1671,7 @@ test "buildZigContent - dynamic" {
 
 test "buildZigContent - project name in exe artifact" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "calculator", null, &.{}, &.{}, &.{});
+    const content = try buildZigContent(alloc, "main", "exe", "calculator", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
     defer alloc.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "\"calculator\"") != null);
 }
@@ -1597,7 +1679,7 @@ test "buildZigContent - project name in exe artifact" {
 test "buildZigContent - linkC emits linkSystemLibrary and linkLibC" {
     const alloc = std.testing.allocator;
     const libs = [_][]const u8{"SDL3"};
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &libs, &.{}, &.{});
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &libs, &.{}, &.{}, &.{}, &.{}, false);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary(\"SDL3\"") != null);
@@ -1606,7 +1688,7 @@ test "buildZigContent - linkC emits linkSystemLibrary and linkLibC" {
 
 test "buildZigContent - no linkC means no linkLibC" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{});
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary") == null);

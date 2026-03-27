@@ -1044,18 +1044,31 @@ fn buildMatchArm(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     const mp_cap = cap.findChild("match_pattern") orelse return error.NoPattern;
     const body = if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
 
-    // Check if match_pattern contains a parenthesized_pattern
+    // Check if match_pattern contains a parenthesized_pattern.
+    // parenthesized_pattern is a named rule ref, so it appears as a child of match_pattern
+    // when that alternative fires.
     if (mp_cap.findChild("parenthesized_pattern")) |pp| {
-        // Check if this is a guarded pattern: (IDENTIFIER if expr)
-        // The guarded form has an IDENTIFIER child and 'if' separating it from the guard expr
-        const ident_cap = pp.findChild("IDENTIFIER");
-        if (ident_cap != null) {
-            // Guarded pattern: (x if guard_expr) — pattern is the bound identifier
-            const pattern = try buildNode(ctx, ident_cap.?);
-            // The expr child of the parenthesized_pattern is the guard expression
+        // Determine which alternative matched by scanning tokens:
+        // Guarded:  '(' IDENTIFIER 'if' expr ')' — has kw_if between '(' and first expr
+        // Plain:    '(' expr ')'
+        //
+        // If there is a kw_if token in the pp token range (after the first identifier),
+        // it is a guarded binding. IDENTIFIER is a terminal token not a sub-rule, so we
+        // must scan tokens directly instead of using findChild.
+        const has_if_kw = findTokenInRange(ctx, pp.start_pos, pp.end_pos, .kw_if) != null;
+
+        if (has_if_kw) {
+            // Guarded pattern: (x if guard_expr)
+            // First token after '(' is the bound identifier
+            const ident_pos = pp.start_pos + 1; // '(' is at start_pos, IDENTIFIER is next
+            if (ident_pos >= ctx.tokens.len) return error.NoPattern;
+            const ident_text = ctx.tokens[ident_pos].text;
+            const pattern = try ctx.newNode(.{ .identifier = ident_text });
+            // The expr child of pp is the guard expression
             const guard = if (pp.findChild("expr")) |e| try buildNode(ctx, e) else return error.NoGuardExpr;
             return ctx.newNode(.{ .match_arm = .{ .pattern = pattern, .guard = guard, .body = body } });
         }
+
         // Non-guarded parenthesized pattern: (1..10) or (42)
         // Build the inner expr as the pattern
         const pattern = if (pp.findChild("expr")) |e| try buildNode(ctx, e) else return error.NoPattern;

@@ -101,12 +101,63 @@ match s {
 ```
 match value {
     0       => { }    // exact integer
-    4..8    => { }    // inclusive range
+    (4..8)  => { }    // inclusive range — parentheses required
     "hello" => { }    // String
     North   => { }    // enum variant, no type prefix
     else    => { }    // catch-all
 }
 ```
+
+### Parenthesized Patterns
+
+Some patterns require parentheses; others allow them to be omitted:
+
+| Pattern | Parentheses | Example |
+|---------|-------------|---------|
+| Single literal | optional | `42 =>`, `"hello" =>` |
+| Single identifier (enum variant, type name) | optional | `North =>`, `Error =>` |
+| Range | required | `(1..10) =>` |
+| Binding with guard | required | `(x if x > 0) =>` |
+| `else` | never | `else =>` |
+
+Range patterns always require parentheses:
+```
+match(n) {
+    (1..3) => { return 1 }
+    (4..6) => { return 2 }
+    else   => { return 0 }
+}
+```
+
+### Pattern Guards
+
+Match arms can include a guard expression using the `if` keyword. The arm only
+fires when both the pattern matches and the guard evaluates to true.
+
+Guard syntax requires parentheses around the binding and guard:
+```
+match(value) {
+    (x if x > 0)  => { return x }
+    (x if x < 0)  => { return 0 - x }
+    else           => { return 0 }
+}
+```
+
+The guard expression can reference the bound variable and variables from the
+enclosing scope:
+```
+func clamp(n: i32, max: i32) i32 {
+    match(n) {
+        (x if x > max)  => { return max }
+        else             => { return n }
+    }
+}
+```
+
+When any arm has a guard, an `else` arm is required — guards do not guarantee
+exhaustive coverage.
+
+Guarded and unguarded arms can coexist freely in the same match block.
 
 ### Matching on Union Types
 

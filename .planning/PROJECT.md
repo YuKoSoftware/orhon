@@ -58,7 +58,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 ### Active
 
-- [ ] `try` keyword for single-expression error propagation
+- [ ] `throw` statement for error propagation (propagate + type narrowing)
 - [ ] Pattern guards in match (`case x if x > 0`)
 - [ ] `#cimport` unified C import directive (replaces #linkC, #cInclude, #csource, #linkCpp)
 
@@ -67,7 +67,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 **Goal:** Reduce boilerplate and clean up C interop directives -- make Orhon code more concise and the bridge system simpler.
 
 **Target features:**
-- `try` keyword -- `var x = try divide(10, 0)` maps to Zig's `try`
+- `throw` statement -- `throw result` propagates error and narrows type to value
 - Pattern guards in match -- `case x if x > 0` conditional arms
 - `#cimport` unified directive -- one directive per C library replaces 4 separate ones
 

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.10
 milestone_name: milestone
 status: Ready to execute
-stopped_at: Completed 20-tamga-build-verification plan 01 (bugs 1-3, 5, 6 fixed)
-last_updated: "2026-03-27T07:45:57.789Z"
+stopped_at: "Completed 20-tamga-build-verification plan 02 (bugs 8, 9 fixed: shared cImport modules and #csource directive)"
+last_updated: "2026-03-27T07:56:41.072Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-25)
 ## Current Position
 
 Phase: 20 (tamga-build-verification) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -69,6 +69,9 @@ Recent decisions affecting current work:
 - [Phase 21]: include std::collections added to example module to make List/Map/Set available without prefix
 - [Phase 20-tamga-build-verification]: struct_methods map uses qualified 'StructName.method' keys to avoid collisions across bridge structs with same method names
 - [Phase 20-tamga-build-verification]: resolver updated to resolve bridge static/instance method return types via struct_methods
+- [Phase 20-tamga-build-verification]: Use #cInclude metadata (separate from #linkC) to specify shared @cImport header — clean separation of library linking vs type import
+- [Phase 20-tamga-build-verification]: Derive shared cImport module name from header stem + _c suffix (e.g., vulkan/vulkan.h -> vulkan_c) — predictable, no extra metadata
+- [Phase 20-tamga-build-verification]: #linkCpp is a flag (no argument) for explicit C++ linking; .cpp/.cc extensions in #csource also auto-enable it
 
 ### Pending Todos
 
@@ -91,10 +94,11 @@ None yet.
 | Phase 21 P01 | 30 | 2 tasks | 9 files |
 | Phase 21 P02 | 10 | 1 tasks | 2 files |
 | Phase 20-tamga-build-verification P01 | 180 | 3 tasks | 5 files |
+| Phase 20-tamga-build-verification P02 | 45 | 2 tasks | 3 files |
 
 ## Session Continuity
 
 Last activity: 2026-03-27
-Last session: 2026-03-27T07:45:57.784Z
-Stopped at: Completed 20-tamga-build-verification plan 01 (bugs 1-3, 5, 6 fixed)
+Last session: 2026-03-27T07:56:41.067Z
+Stopped at: Completed 20-tamga-build-verification plan 02 (bugs 8, 9 fixed: shared cImport modules and #csource directive)
 Resume file: None

@@ -7,9 +7,9 @@
 
 ### Error Propagation
 
-- [ ] **ERR-01**: `throw x` propagates error from `(Error | T)` and returns early from enclosing function
-- [ ] **ERR-02**: After `throw x`, variable `x` narrows to value type `T` (no `.value` needed)
-- [ ] **ERR-03**: `throw` in a function that doesn't return an error type produces compile error
+- [x] **ERR-01**: `throw x` propagates error from `(Error | T)` and returns early from enclosing function
+- [x] **ERR-02**: After `throw x`, variable `x` narrows to value type `T` (no `.value` needed)
+- [x] **ERR-03**: `throw` in a function that doesn't return an error type produces compile error
 - [ ] **ERR-04**: Example module and docs updated with `throw` usage
 
 ### Pattern Guards
@@ -53,9 +53,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ERR-01 | Phase 22 | Pending |
-| ERR-02 | Phase 22 | Pending |
-| ERR-03 | Phase 22 | Pending |
+| ERR-01 | Phase 22 | Complete |
+| ERR-02 | Phase 22 | Complete |
+| ERR-03 | Phase 22 | Complete |
 | ERR-04 | Phase 22 | Pending |
 | GUARD-01 | Phase 23 | Pending |
 | GUARD-02 | Phase 23 | Pending |

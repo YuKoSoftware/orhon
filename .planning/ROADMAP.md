@@ -122,7 +122,7 @@ See: [milestones/v0.14-ROADMAP.md](milestones/v0.14-ROADMAP.md)
   4. The example module demonstrates `throw` usage and compiles successfully
 **Plans**: 2 plans
 Plans:
-- [ ] 22-01-PLAN.md -- Implement throw across compiler pipeline (lexer, PEG, builder, propagation, MIR, codegen)
+- [x] 22-01-PLAN.md -- Implement throw across compiler pipeline (lexer, PEG, builder, propagation, MIR, codegen)
 - [ ] 22-02-PLAN.md -- Tests, example module, and docs for throw
 
 ### Phase 23: Pattern Guards
@@ -162,6 +162,6 @@ Plans:
 | 12-14 | v0.12 | All | Complete | 2026-03-25 |
 | 15-18 | v0.13 | 5/5 | Complete | 2026-03-26 |
 | 19-21 | v0.14 | 6/6 | Complete | 2026-03-27 |
-| 22. `throw` Statement | v0.15 | 0/? | Not started | - |
+| 22. `throw` Statement | v0.15 | 1/2 | In Progress|  |
 | 23. Pattern Guards | v0.15 | 0/? | Not started | - |
 | 24. `#cimport` Unification | v0.15 | 0/? | Not started | - |

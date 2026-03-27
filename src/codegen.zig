@@ -1490,7 +1490,12 @@ pub const CodeGen = struct {
                 if (m.children.len > 1) try self.generateBlockMir(m.thenBlock());
                 if (m.elseBlock()) |else_m| {
                     try self.emit(" else ");
-                    try self.generateBlockMir(else_m);
+                    if (else_m.kind == .if_stmt) {
+                        // elif — emit as else if without extra braces
+                        try self.generateStatementMir(else_m);
+                    } else {
+                        try self.generateBlockMir(else_m);
+                    }
                 }
             },
             .assignment => {

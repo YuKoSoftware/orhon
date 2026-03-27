@@ -141,6 +141,7 @@ fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     if (std.mem.eql(u8, rule, "block")) return buildBlock(ctx, cap);
     if (std.mem.eql(u8, rule, "return_stmt")) return buildReturn(ctx, cap);
     if (std.mem.eql(u8, rule, "if_stmt")) return buildIf(ctx, cap);
+    if (std.mem.eql(u8, rule, "elif_chain")) return buildElifChain(ctx, cap);
     if (std.mem.eql(u8, rule, "while_stmt")) return buildWhile(ctx, cap);
     if (std.mem.eql(u8, rule, "for_stmt")) return buildFor(ctx, cap);
     if (std.mem.eql(u8, rule, "defer_stmt")) return buildDefer(ctx, cap);
@@ -947,6 +948,32 @@ fn buildIf(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         .then_block = then_block,
         .else_block = else_block,
     } });
+}
+
+// elif_chain <- 'elif' '(' expr ')' block elif_chain?  /  'else' block
+// Builds an if_stmt node (for the elif alternative) or a plain block (for the else alternative).
+// The result is used as the else_block of the parent if_stmt or elif_chain.
+fn buildElifChain(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    // Check if this is an 'elif' or 'else' branch by looking for an expr child.
+    // An 'elif' branch has: expr (condition) + block (then) + optional elif_chain (else)
+    // An 'else' branch has: only a block child.
+    if (cap.findChild("expr")) |e| {
+        // elif branch
+        const condition = try buildNode(ctx, e);
+        const then_block = if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
+        var else_block: ?*Node = null;
+        if (cap.findChild("elif_chain")) |chain| {
+            else_block = try buildNode(ctx, chain);
+        }
+        return ctx.newNode(.{ .if_stmt = .{
+            .condition = condition,
+            .then_block = then_block,
+            .else_block = else_block,
+        } });
+    } else {
+        // else branch — just a block
+        return if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
+    }
 }
 
 fn buildWhile(ctx: *BuildContext, cap: *const CaptureNode) !*Node {

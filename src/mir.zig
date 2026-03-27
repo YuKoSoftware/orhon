@@ -607,6 +607,14 @@ pub const MirAnnotator = struct {
             return .{ .kind = .error_wrap };
         // Plain → arbitrary union
         if (dst == .union_type and src != .union_type) {
+            // null literal into a union that has null as a member:
+            // typeToZig emits ?(union(enum) {...}) for such unions, so Zig handles
+            // null coercion natively — no wrapping needed.
+            if (src == .null_type) {
+                for (dst.union_type) |member| {
+                    if (member == .null_type) return .{ .kind = null };
+                }
+            }
             // For numeric/float literals, find the matching member type in the union
             if (src == .primitive and src.primitive == .numeric_literal) {
                 for (dst.union_type) |member| {

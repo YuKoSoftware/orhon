@@ -60,7 +60,7 @@ cimport_entry
 
 import_decl
     <- 'import' import_path ('as' IDENTIFIER)? NL
-     / 'include' import_path NL
+     / 'use' import_path NL
 
 import_path
     <- STRING_LITERAL                           # C header: import "header.h"
@@ -594,7 +594,7 @@ _               <- ([ \t\n] / '//' (!'\n' .)* '\n')*
 # ============================================================
 # KEYWORDS (reserved — cannot be used as identifiers)
 # ============================================================
-# func var const if else elif for while return throw import include
+# func var const if else elif for while return throw import use
 # pub match struct enum bitfield defer thread null void compt
 # any module test and or not main as break continue true false
 # bridge is cast copy move swap assert size align typename

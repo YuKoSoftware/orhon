@@ -448,8 +448,8 @@ fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         //   metadata_cap.children[0]            = metadata_body_cap
         //   metadata_body_cap.children[0]        = cimport_block_cap
         //   cimport_block_cap.children           = [_, cimport_entry, _, cimport_entry, ...]
-        //   cimport_entry.children               = [cimport_key_cap, _after_colon, expr_cap]
-        //   cimport_key_cap.start_pos            = token position of key ("name", "include", "source")
+        //   cimport_entry.children               = [IDENTIFIER_cap, _after_colon, expr_cap]
+        //   IDENTIFIER_cap.start_pos             = token position of key ("name", "include", "source")
         //   expr_cap                             = the string literal value
 
         // Navigate: metadata_cap -> metadata_body_cap -> cimport_block_cap

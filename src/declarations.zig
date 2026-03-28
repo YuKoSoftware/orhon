@@ -20,6 +20,10 @@ pub const FuncSig = struct {
     is_compt: bool,
     is_pub: bool,
     is_thread: bool,
+    /// True for bridge declarations — implementation lives in paired .zig sidecar.
+    /// Bridge function calls must not receive const auto-borrow promotion because
+    /// the Orhon compiler does not control the sidecar's parameter types.
+    is_bridge: bool = false,
 };
 
 pub const ParamSig = struct {
@@ -274,6 +278,7 @@ pub const DeclCollector = struct {
             .is_compt = f.is_compt,
             .is_pub = f.is_pub,
             .is_thread = f.is_thread,
+            .is_bridge = f.is_bridge,
         };
 
         if (self.table.funcs.contains(f.name)) {
@@ -361,6 +366,7 @@ pub const DeclCollector = struct {
                         .is_compt = f.is_compt,
                         .is_pub = f.is_pub,
                         .is_thread = f.is_thread,
+                        .is_bridge = true, // methods on bridge structs are always bridge
                     };
                     const key = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ s.name, f.name });
                     try self.table.struct_methods.put(self.allocator, key, method_sig);

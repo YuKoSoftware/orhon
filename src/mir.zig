@@ -504,7 +504,10 @@ pub const MirAnnotator = struct {
             } else {
                 // Const auto-borrow: annotate const non-primitive args with value_to_const_ref.
                 // Only applies to same-module direct calls (Pitfall 5: cross-module skipped).
-                if (is_direct_call and arg.* == .identifier) {
+                // Bridge functions are excluded — the sidecar .zig defines param types, so the
+                // Orhon compiler must not promote their parameters; the const & case is handled
+                // by detectCoercion above when the declared param type is already `const &`.
+                if (is_direct_call and arg.* == .identifier and !sig.is_bridge) {
                     const name = arg.identifier;
                     // Skip promoted params (already *const T — prevents double-borrow)
                     if (!self.promoted_params.contains(name) and self.const_vars.contains(name)) {

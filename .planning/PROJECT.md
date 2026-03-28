@@ -61,7 +61,16 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 ### Active
 
-(None — next milestone requirements TBD via `/gsd:new-milestone`)
+(Defined in REQUIREMENTS.md for v0.16 Bug Fixes)
+
+## Current Milestone: v0.16 Bug Fixes
+
+**Goal:** Fix all known open bugs from TODO.md and Tamga's bugs.md — zero known workarounds remaining.
+
+**Target fixes:**
+- Codegen: `const &BridgeStruct` by-value, bridge struct `*const` in error unions, `export fn` missing `pub`, cross-module `is` operator
+- Parser: `size` reserved keyword, negative float literals in arguments
+- Build: multi-file module sidecar conflict, cimport include paths, cimport source linkSystemLibrary, cross-compilation garbled step name, `-fast` cache leak
 
 ## Current State
 
@@ -127,4 +136,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after v0.15 Language Ergonomics milestone*
+*Last updated: 2026-03-28 after v0.16 Bug Fixes milestone started*

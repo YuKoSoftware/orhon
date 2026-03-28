@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.16
 milestone_name: Bug Fixes
-status: active
-stopped_at: ""
-last_updated: "2026-03-28"
+status: verifying
+stopped_at: Completed 25-01-PLAN.md
+last_updated: "2026-03-28T09:16:54.578Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
   percent: 0
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Phase: 25 of 28 (Bridge Codegen Fixes)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-28 — Roadmap created, phases 25-28 defined
+Phase: 25 (Bridge Codegen Fixes) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-03-28
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -40,6 +40,7 @@ Progress: [░░░░░░░░░░] 0%
 - 24 phases, 33 plans total
 
 **v0.16 so far:**
+
 - Plans completed: 0
 - Average duration: N/A
 
@@ -53,6 +54,8 @@ Recent decisions affecting current work:
 - v0.15: `#cimport = { name, include, source }` unified directive — hard removed old C directives
 - v0.15: `throw` not `try` for error propagation — statement form, cleaner than prefix
 - v0.14: Named bridge modules via build system — createModule/addImport eliminates duplicate module errors
+- [Phase 25-bridge-codegen-fixes]: Add is_bridge to FuncSig to prevent incorrect const auto-borrow on bridge calls (v0.16 Phase 25)
+- [Phase 25-bridge-codegen-fixes]: Sidecar pub fixup via read-modify-write scan: prepend 'pub ' to export fn when missing (v0.16 Phase 25)
 
 ### Pending Todos
 
@@ -65,5 +68,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Roadmap created for v0.16 Bug Fixes — 4 phases (25-28), 12 requirements mapped. Ready to plan Phase 25.
+Stopped at: Completed 25-01-PLAN.md
 Resume file: None

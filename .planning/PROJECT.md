@@ -63,6 +63,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - ✓ Build system: sidecar pub-fixup loop, cimport include paths, linkSystemLibrary — v0.16 Phase 27
 - ✓ Cross-compilation target fix, -fast cache cleanup, Async(T) removal, TODO.md cleanup — v0.16 Phase 28
 - ✓ Codegen split — monolithic codegen.zig (4354 lines) into 5 focused files, all under 1200 lines — v0.17 Phase 29
+- ✓ Error quality — "did you mean?" typo suggestions, "expected X, got Y" type mismatch display, ownership/borrow/thread fix hints — v0.17 Phase 30
 
 ### Active
 
@@ -82,10 +83,10 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 ## Current State
 
 **Version:** v0.16 (shipped 2026-03-28)
-**Tests:** 262 across 11 stages
+**Tests:** 266 across 11 stages
 **Milestones shipped:** v0.10, v0.11, v0.12, v0.13, v0.14, v0.15, v0.16
 
-v0.17 in progress — codegen split complete (Phase 29). Error quality and PEG error messages next. 262 tests pass.
+v0.17 in progress — codegen split (Phase 29) and error quality (Phase 30) complete. PEG error messages and 5 module splits next. 266 tests pass.
 
 ### Out of Scope
 

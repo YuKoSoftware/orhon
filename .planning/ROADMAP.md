@@ -71,7 +71,7 @@ See: [milestones/v0.16-ROADMAP.md](milestones/v0.16-ROADMAP.md)
 
 - [x] **Phase 29: Codegen Split** - Split codegen.zig into focused files with shared helpers (completed 2026-03-28)
 - [x] **Phase 30: Error Quality** - "Did you mean?" suggestions, type mismatch display, ownership fix hints (completed 2026-03-28)
-- [ ] **Phase 31: PEG Error Messages** - Show all expected tokens when alternatives fail at same position
+- [x] **Phase 31: PEG Error Messages** - Show all expected tokens when alternatives fail at same position (completed 2026-03-28)
 - [ ] **Phase 32: LSP Split** - Split lsp.zig (3301 lines) into types, JSON, analysis, handlers, and server loop
 - [ ] **Phase 33: MIR Split** - Split mir.zig (2356 lines) into types, registry, node, annotator, lowerer, and utils
 - [ ] **Phase 34: Main Split** - Split main.zig (2315 lines) into CLI, pipeline, init, stdlib bundler, and interface gen
@@ -115,9 +115,9 @@ Plans:
   1. A syntax error at a choice point shows all expected tokens (e.g. "expected `func`, `struct`, or `enum`") instead of a single token
   2. The expected set is deduplicated — the same token name never appears twice in one error message
   3. Existing parse error tests in test/11_errors.sh still pass with the improved messages
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 31-01-PLAN.md — Extend PEG engine expected-set accumulation + consumer formatting
+- [x] 31-01-PLAN.md — Extend PEG engine expected-set accumulation + consumer formatting
 
 ### Phase 32: LSP Split
 **Goal**: lsp.zig is broken into focused files (types, JSON, analysis, handler groups, server loop) with no behavior change — LSP features work identically
@@ -187,7 +187,7 @@ Plans:
 | 25-28 | v0.16 | 5/5 | Complete | 2026-03-28 |
 | 29 | v0.17 | 1/1 | Complete    | 2026-03-28 |
 | 30 | v0.17 | 2/2 | Complete    | 2026-03-28 |
-| 31 | v0.17 | 0/1 | Not started | - |
+| 31 | v0.17 | 1/1 | Complete   | 2026-03-28 |
 | 32 | v0.17 | 0/? | Not started | - |
 | 33 | v0.17 | 0/? | Not started | - |
 | 34 | v0.17 | 0/? | Not started | - |

@@ -22,7 +22,7 @@ Requirements for v0.17 Codegen Refactor & Error Quality milestone. Each maps to 
 
 ### Parser Errors
 
-- [ ] **PEG-01**: PEG expected-set accumulation — when alternatives fail at the same position, show all expected tokens instead of just one
+- [x] **PEG-01**: PEG expected-set accumulation — when alternatives fail at the same position, show all expected tokens instead of just one
 
 ### Module Splits
 
@@ -58,7 +58,7 @@ None deferred — all Tier 2 items included in v0.17.
 | ERR-01 | Phase 30 | Complete |
 | ERR-02 | Phase 30 | Complete |
 | ERR-03 | Phase 30 | Complete |
-| PEG-01 | Phase 31 | Pending |
+| PEG-01 | Phase 31 | Complete |
 | SPLIT-01 | Phase 32 | Pending |
 | SPLIT-02 | Phases 32-36 | Pending |
 | SPLIT-03 | Phase 33 | Pending |

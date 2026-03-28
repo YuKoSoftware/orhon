@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
 status: verifying
-stopped_at: Phase 31 context gathered
-last_updated: "2026-03-28T20:43:35.545Z"
+stopped_at: Completed 31-01-PLAN.md
+last_updated: "2026-03-28T21:27:07.080Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 8
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  completed_phases: 3
+  total_plans: 4
+  completed_plans: 4
   percent: 0
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 30 — error-quality
+**Current focus:** Phase 31 — peg-error-messages
 
 ## Current Position
 
-Phase: 31
-Plan: Not started
+Phase: 31 (peg-error-messages) — EXECUTING
+Plan: 1 of 1
 Status: Phase complete — ready for verification
 Last activity: 2026-03-28
 
@@ -57,6 +57,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 30-error-quality]: 12 guards before identifier error: primitive names, compiler funcs, arithmetic modes (wrap/sat/overflow), module names, enum variants, bitfield flags, else pattern, match guard bound vars
 - [Phase 30-error-quality]: Fix match guard body scope: guarded arm body resolves with guard_scope so bound variable x is accessible in arm body
 - [Phase 30-error-quality]: Borrow fixture updated to add use-while-borrowed scenario: existing conflict only triggered mutable-new-borrow path (no hint), new scenario triggers checkNotMutablyBorrowedPath which always shows const & hint
+- [Phase 31-peg-error-messages]: Use two fixed arrays instead of BoundedArray for PEG error accumulation — Zig 0.15 has no std.BoundedArray
+- [Phase 31-peg-error-messages]: Dedup-on-read for PEG expected set: accumulate raw during parsing, deduplicate only in getError() once on failure
 
 ### Pending Todos
 
@@ -73,9 +75,10 @@ None.
 | Phase 29 P01 | 126 | 1 tasks | 7 files |
 | Phase 30-error-quality P01 | 45m | 2 tasks | 4 files |
 | Phase 30-error-quality P02 | 25m | 2 tasks | 6 files |
+| Phase 31-peg-error-messages P01 | 22 | 3 tasks | 3 files |
 
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Phase 31 context gathered
-Resume file: .planning/phases/31-peg-error-messages/31-CONTEXT.md
+Stopped at: Completed 31-01-PLAN.md
+Resume file: None

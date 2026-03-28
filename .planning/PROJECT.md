@@ -59,6 +59,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - ✓ Pattern guards in match (`(x if x > 0)` parenthesized guard syntax) — v0.15 Phase 23
 - ✓ `#cimport` unified C import directive (`#cimport = { name: "...", include: "..." }`) — v0.15 Phase 24
 - ✓ Bridge `const &` pointer pass, error-union value params, sidecar `pub export fn` — v0.16 Phase 25
+- ✓ Cross-module `is` tagged union check, Async(T) compile error, negative literal parsing — v0.16 Phase 26
 
 ### Active
 
@@ -137,4 +138,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after Phase 25 Bridge Codegen Fixes complete*
+*Last updated: 2026-03-28 after Phase 26 Codegen Correctness & Parser complete*

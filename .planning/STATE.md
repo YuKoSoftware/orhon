@@ -65,6 +65,12 @@ Recent decisions affecting current work:
 
 None.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260328-lsa | Fix bridge struct value param const promotion in error-union functions | 2026-03-28 | 7f7ad65 | [260328-lsa](./quick/260328-lsa-fix-bridge-struct-value-param-const-prom/) |
+
 ### Blockers/Concerns
 
 None.

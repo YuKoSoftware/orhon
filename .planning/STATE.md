@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
-status: executing
-stopped_at: Completed 30-error-quality 30-01-PLAN.md — ERR-01 and ERR-02 done
-last_updated: "2026-03-28T20:16:16.864Z"
+status: verifying
+stopped_at: Completed 30-error-quality 30-02-PLAN.md — ERR-03 ownership/borrow/thread hints + 4 integration tests
+last_updated: "2026-03-28T20:26:05.616Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 Phase: 30 (error-quality) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-28
 
 Progress: [░░░░░░░░░░] 0%
@@ -56,6 +56,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 30-error-quality]: Adaptive Levenshtein threshold: 1 for names len<=4, 2 for longer — reduces false positives on short identifiers
 - [Phase 30-error-quality]: 12 guards before identifier error: primitive names, compiler funcs, arithmetic modes (wrap/sat/overflow), module names, enum variants, bitfield flags, else pattern, match guard bound vars
 - [Phase 30-error-quality]: Fix match guard body scope: guarded arm body resolves with guard_scope so bound variable x is accessible in arm body
+- [Phase 30-error-quality]: Borrow fixture updated to add use-while-borrowed scenario: existing conflict only triggered mutable-new-borrow path (no hint), new scenario triggers checkNotMutablyBorrowedPath which always shows const & hint
 
 ### Pending Todos
 
@@ -71,9 +72,10 @@ None.
 None.
 | Phase 29 P01 | 126 | 1 tasks | 7 files |
 | Phase 30-error-quality P01 | 45m | 2 tasks | 4 files |
+| Phase 30-error-quality P02 | 25m | 2 tasks | 6 files |
 
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Completed 30-error-quality 30-01-PLAN.md — ERR-01 and ERR-02 done
+Stopped at: Completed 30-error-quality 30-02-PLAN.md — ERR-03 ownership/borrow/thread hints + 4 integration tests
 Resume file: None

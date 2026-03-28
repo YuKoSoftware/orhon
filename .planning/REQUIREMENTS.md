@@ -18,7 +18,7 @@ Requirements for v0.17 Codegen Refactor & Error Quality milestone. Each maps to 
 
 - [x] **ERR-01**: "Did you mean X?" suggestions for identifier typos using Levenshtein distance against known names in scope
 - [x] **ERR-02**: Type mismatch errors show expected vs actual types (e.g., "expected i32, got f64")
-- [ ] **ERR-03**: Ownership/borrow violation errors suggest fixes ("consider using `copy()`" or "consider borrowing with `const &`")
+- [x] **ERR-03**: Ownership/borrow violation errors suggest fixes ("consider using `copy()`" or "consider borrowing with `const &`")
 
 ### Parser Errors
 
@@ -57,7 +57,7 @@ None deferred — all Tier 2 items included in v0.17.
 | CGR-04 | Phase 29 | Complete |
 | ERR-01 | Phase 30 | Complete |
 | ERR-02 | Phase 30 | Complete |
-| ERR-03 | Phase 30 | Pending |
+| ERR-03 | Phase 30 | Complete |
 | PEG-01 | Phase 31 | Pending |
 | SPLIT-01 | Phase 32 | Pending |
 | SPLIT-02 | Phases 32-36 | Pending |

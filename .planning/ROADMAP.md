@@ -70,7 +70,7 @@ See: [milestones/v0.16-ROADMAP.md](milestones/v0.16-ROADMAP.md)
 ### v0.17 Codegen Refactor & Error Quality (Phases 29-36)
 
 - [x] **Phase 29: Codegen Split** - Split codegen.zig into focused files with shared helpers (completed 2026-03-28)
-- [ ] **Phase 30: Error Quality** - "Did you mean?" suggestions, type mismatch display, ownership fix hints
+- [x] **Phase 30: Error Quality** - "Did you mean?" suggestions, type mismatch display, ownership fix hints (completed 2026-03-28)
 - [ ] **Phase 31: PEG Error Messages** - Show all expected tokens when alternatives fail at same position
 - [ ] **Phase 32: LSP Split** - Split lsp.zig (3301 lines) into types, JSON, analysis, handlers, and server loop
 - [ ] **Phase 33: MIR Split** - Split mir.zig (2356 lines) into types, registry, node, annotator, lowerer, and utils
@@ -102,10 +102,10 @@ Plans:
   2. A type mismatch error shows "expected T1, got T2" with both type names resolved and spelled out
   3. A move-after-use error suggests "consider using `copy()`" or names the offending variable
   4. A borrow violation error suggests "consider borrowing with `const &`" where applicable
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 30-01-PLAN.md — Levenshtein infrastructure + "did you mean?" in resolver + type mismatch standardization
-- [ ] 30-02-PLAN.md — Ownership/borrow/thread fix hints + integration tests for all ERR requirements
+- [x] 30-02-PLAN.md — Ownership/borrow/thread fix hints + integration tests for all ERR requirements
 
 ### Phase 31: PEG Error Messages
 **Goal**: Parse errors list every token the parser could have accepted at the failure point, not just the first alternative tried
@@ -184,7 +184,7 @@ Plans:
 | 22-24 | v0.15 | 6/6 | Complete | 2026-03-27 |
 | 25-28 | v0.16 | 5/5 | Complete | 2026-03-28 |
 | 29 | v0.17 | 1/1 | Complete    | 2026-03-28 |
-| 30 | v0.17 | 1/2 | In Progress|  |
+| 30 | v0.17 | 2/2 | Complete   | 2026-03-28 |
 | 31 | v0.17 | 0/1 | Not started | - |
 | 32 | v0.17 | 0/? | Not started | - |
 | 33 | v0.17 | 0/? | Not started | - |

@@ -58,6 +58,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - ✓ `throw` statement for error propagation (propagate + type narrowing) — v0.15 Phase 22
 - ✓ Pattern guards in match (`(x if x > 0)` parenthesized guard syntax) — v0.15 Phase 23
 - ✓ `#cimport` unified C import directive (`#cimport = { name: "...", include: "..." }`) — v0.15 Phase 24
+- ✓ Bridge `const &` pointer pass, error-union value params, sidecar `pub export fn` — v0.16 Phase 25
 
 ### Active
 
@@ -136,4 +137,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after v0.16 Bug Fixes milestone started*
+*Last updated: 2026-03-28 after Phase 25 Bridge Codegen Fixes complete*

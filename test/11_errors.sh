@@ -194,7 +194,7 @@ func main() void {
 ORHON
 cd neg_ifcond
 NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "condition must be bool"; then pass "rejects non-bool if condition"
+if echo "$NEG_OUT" | grep -qi "type mismatch.*condition"; then pass "rejects non-bool if condition"
 else fail "rejects non-bool if condition" "$NEG_OUT"; fi
 
 # non-bool while condition
@@ -211,7 +211,7 @@ func main() void {
 ORHON
 cd neg_whilecond
 NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "condition must be bool"; then pass "rejects non-bool while condition"
+if echo "$NEG_OUT" | grep -qi "type mismatch.*condition"; then pass "rejects non-bool while condition"
 else fail "rejects non-bool while condition" "$NEG_OUT"; fi
 
 # break outside loop
@@ -422,7 +422,7 @@ run_fixture neg_syntax fail_syntax.orh "module-level.*var.*not allowed" "fixture
 run_fixture neg_types fail_types.orh "unknown type" "fixture: catches unknown types"
 run_fixture neg_types2 fail_types.orh "already declared" "fixture: catches duplicate variable"
 run_fixture neg_types3 fail_types.orh "return type mismatch" "fixture: catches return type mismatch"
-run_fixture neg_types4 fail_types.orh "condition must be bool" "fixture: catches non-bool condition"
+run_fixture neg_types4 fail_types.orh "type mismatch.*condition" "fixture: catches non-bool condition"
 run_fixture neg_types5 fail_types.orh "type mismatch" "fixture: catches type mismatch"
 run_fixture neg_types6 fail_types.orh "break.*outside\|continue.*outside" "fixture: catches break/continue outside loop"
 

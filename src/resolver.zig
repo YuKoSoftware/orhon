@@ -14,6 +14,14 @@ const types = @import("types.zig");
 
 const RT = types.ResolvedType;
 
+/// Primitive type name candidates for "did you mean?" suggestions on unknown types.
+const PRIMITIVE_NAMES = [_][]const u8{
+    "i8", "i16", "i32", "i64",
+    "u8", "u16", "u32", "u64",
+    "f32", "f64",
+    "bool", "usize", "void",
+};
+
 /// A resolved type binding — maps expression nodes to their resolved types
 pub const TypeBinding = struct {
     node: *parser.Node,
@@ -387,7 +395,7 @@ pub const TypeResolver = struct {
                     cond_type != .unknown and cond_type != .inferred)
                 {
                     const msg = try std.fmt.allocPrint(self.allocator,
-                        "if condition must be bool, got '{s}'", .{cond_type.name()});
+                        "type mismatch in if condition: expected bool, got '{s}'", .{cond_type.name()});
                     defer self.allocator.free(msg);
                     try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
                 }
@@ -400,7 +408,7 @@ pub const TypeResolver = struct {
                     cond_type != .unknown and cond_type != .inferred)
                 {
                     const msg = try std.fmt.allocPrint(self.allocator,
-                        "while condition must be bool, got '{s}'", .{cond_type.name()});
+                        "type mismatch in while condition: expected bool, got '{s}'", .{cond_type.name()});
                     defer self.allocator.free(msg);
                     try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
                 }
@@ -437,7 +445,9 @@ pub const TypeResolver = struct {
                         if (pat.* == .identifier and !std.mem.eql(u8, pat.identifier, "else")) {
                             try self.validateMatchArm(pat.identifier, match_type, arm);
                         }
-                        _ = try self.resolveExpr(pat, scope);
+                        // Skip resolveExpr for identifier patterns — they are enum variants,
+                        // 'else', or guard-bound variables, not expressions in scope.
+                        if (pat.* != .identifier) _ = try self.resolveExpr(pat, scope);
                         // Resolve guard expression in a child scope that includes the bound
                         // variable. The bound variable (e.g. 'x' in '(x if x > 0)') has
                         // the same type as the match value. Without this child scope,
@@ -450,8 +460,11 @@ pub const TypeResolver = struct {
                                 try guard_scope.define(pat.identifier, match_type);
                             }
                             _ = try self.resolveExpr(g, &guard_scope);
+                            // Body of a guarded arm can use the bound variable — resolve with guard_scope
+                            try self.resolveNode(ma.body, &guard_scope);
+                        } else {
+                            try self.resolveNode(ma.body, scope);
                         }
-                        try self.resolveNode(ma.body, scope);
                     }
                 }
                 // Guards require else arm for exhaustiveness — guards don't guarantee coverage
@@ -529,6 +542,48 @@ pub const TypeResolver = struct {
                 if (self.decls.vars.get(id_name)) |v| return v.type_ orelse RT.unknown;
                 if (builtins.isBuiltinType(id_name)) return RT{ .named = id_name };
                 if (builtins.isBuiltinValue(id_name)) return RT{ .named = id_name };
+                // Primitive type names (i32, f64, etc.) may appear as arguments to cast() and similar
+                if (types.isPrimitiveName(id_name)) return RT{ .named = id_name };
+                // Compiler-intrinsic functions are resolved by codegen, not tracked in decls
+                if (builtins.isCompilerFunc(id_name)) return RT{ .named = id_name };
+                // Arithmetic mode functions (wrap, sat, overflow) are codegen-level intrinsics
+                if (std.mem.eql(u8, id_name, "wrap") or
+                    std.mem.eql(u8, id_name, "sat") or
+                    std.mem.eql(u8, id_name, "overflow")) return RT.unknown;
+                // Known module names — used as qualified access prefixes (module.Type, module.func)
+                if (self.all_decls) |ad| {
+                    if (ad.contains(id_name)) return RT.unknown;
+                }
+
+                // Enum variants, bitfield flags, and the 'else' match pattern are used as bare
+                // identifiers in match patterns. They are not in the scope chain — silently
+                // return unknown to avoid false errors.
+                if (std.mem.eql(u8, id_name, "else")) return RT.unknown;
+                if (self.isEnumVariantOrBitfieldFlag(id_name)) return RT.unknown;
+
+                // Build candidate list from scope chain + module declarations for suggestion
+                var candidates: std.ArrayListUnmanaged([]const u8) = .{};
+                defer candidates.deinit(self.allocator);
+                var sc: ?*const Scope = scope;
+                while (sc) |s| : (sc = s.parent) {
+                    var it = s.vars.keyIterator();
+                    while (it.next()) |k| try candidates.append(self.allocator, k.*);
+                }
+                var fit = self.decls.funcs.keyIterator();
+                while (fit.next()) |k| try candidates.append(self.allocator, k.*);
+                var sit = self.decls.structs.keyIterator();
+                while (sit.next()) |k| try candidates.append(self.allocator, k.*);
+                var eit = self.decls.enums.keyIterator();
+                while (eit.next()) |k| try candidates.append(self.allocator, k.*);
+                var vit = self.decls.vars.keyIterator();
+                while (vit.next()) |k| try candidates.append(self.allocator, k.*);
+
+                const suggestion = try errors.formatSuggestion(id_name, candidates.items, self.allocator);
+                defer if (suggestion) |s| self.allocator.free(s);
+                const msg = try std.fmt.allocPrint(self.allocator,
+                    "unknown identifier '{s}'{s}", .{ id_name, suggestion orelse "" });
+                defer self.allocator.free(msg);
+                try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
                 return RT.unknown;
             },
 
@@ -904,8 +959,23 @@ pub const TypeResolver = struct {
                     scope.lookup(type_name) != null;
 
                 if (!is_known) {
+                    // Build candidate list from declared types + primitives for suggestion
+                    var candidates: std.ArrayListUnmanaged([]const u8) = .{};
+                    defer candidates.deinit(self.allocator);
+                    var sti = self.decls.structs.keyIterator();
+                    while (sti.next()) |k| try candidates.append(self.allocator, k.*);
+                    var eni = self.decls.enums.keyIterator();
+                    while (eni.next()) |k| try candidates.append(self.allocator, k.*);
+                    var bfi = self.decls.bitfields.keyIterator();
+                    while (bfi.next()) |k| try candidates.append(self.allocator, k.*);
+                    var tyi = self.decls.types.keyIterator();
+                    while (tyi.next()) |k| try candidates.append(self.allocator, k.*);
+                    for (&PRIMITIVE_NAMES) |pn| try candidates.append(self.allocator, pn);
+
+                    const suggestion = try errors.formatSuggestion(type_name, candidates.items, self.allocator);
+                    defer if (suggestion) |s| self.allocator.free(s);
                     const msg = try std.fmt.allocPrint(self.allocator,
-                        "unknown type '{s}'", .{type_name});
+                        "unknown type '{s}'{s}", .{ type_name, suggestion orelse "" });
                     defer self.allocator.free(msg);
                     try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
                 }
@@ -1003,6 +1073,24 @@ pub const TypeResolver = struct {
             .{ expected.name(), actual.name() });
         defer self.allocator.free(msg);
         try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+    }
+
+    /// Returns true if `name` is a variant of any declared enum or a flag of any declared bitfield.
+    /// Used to suppress false "unknown identifier" errors for enum variants used as match patterns.
+    fn isEnumVariantOrBitfieldFlag(self: *const TypeResolver, name: []const u8) bool {
+        var enum_it = self.decls.enums.valueIterator();
+        while (enum_it.next()) |sig| {
+            for (sig.variants) |v| {
+                if (std.mem.eql(u8, v, name)) return true;
+            }
+        }
+        var bf_it = self.decls.bitfields.valueIterator();
+        while (bf_it.next()) |sig| {
+            for (sig.flags) |f| {
+                if (std.mem.eql(u8, f, name)) return true;
+            }
+        }
+        return false;
     }
 
     /// Check function call args for illegal []u8 → String coercion.

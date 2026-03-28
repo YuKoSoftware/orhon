@@ -875,6 +875,7 @@ fn makeUri(allocator: std.mem.Allocator, source_file: []const u8, project_root: 
 /// Convert Reporter errors/warnings into LSP Diagnostics with file URIs.
 fn toDiagnostics(allocator: std.mem.Allocator, reporter: *errors.Reporter, project_root: []const u8) ![]Diagnostic {
     var diags: std.ArrayListUnmanaged(Diagnostic) = .{};
+    defer diags.deinit(allocator);
 
     for (reporter.errors.items) |err| {
         const d = makeDiag(allocator, err, 1, project_root) catch continue;
@@ -885,7 +886,7 @@ fn toDiagnostics(allocator: std.mem.Allocator, reporter: *errors.Reporter, proje
         try diags.append(allocator, d);
     }
 
-    return if (diags.items.len > 0) allocator.dupe(Diagnostic, diags.items) else &.{};
+    return if (diags.items.len > 0) try allocator.dupe(Diagnostic, diags.items) else &.{};
 }
 
 fn makeDiag(allocator: std.mem.Allocator, err: errors.OrhonError, severity: u8, project_root: []const u8) !Diagnostic {
@@ -896,6 +897,7 @@ fn makeDiag(allocator: std.mem.Allocator, err: errors.OrhonError, severity: u8, 
         try std.fmt.allocPrint(allocator, "{s}/{s}", .{ project_root, loc.file })
     else
         try allocator.dupe(u8, loc.file);
+    defer allocator.free(full_path);
 
     return .{
         .uri = try pathToUri(allocator, full_path),

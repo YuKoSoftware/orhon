@@ -4176,11 +4176,6 @@ pub const CodeGen = struct {
             .type_generic => |g| blk: {
                 if (std.mem.eql(u8, g.name, "Thread")) {
                     break :blk "std.Thread"; // Thread handle type
-                } else if (std.mem.eql(u8, g.name, "Async")) {
-                    const err_msg = try std.fmt.allocPrint(self.allocator, "Async(T) is not yet implemented — cannot use as a type", .{});
-                    defer self.allocator.free(err_msg);
-                    try self.reporter.report(.{ .message = err_msg });
-                    break :blk "void"; // fallback after error
                 } else if (std.mem.eql(u8, g.name, "Handle")) {
                     // Handle(T) → _OrhonHandle(zigT) (emitted as file-level helper)
                     if (g.args.len > 0) {

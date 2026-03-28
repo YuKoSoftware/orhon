@@ -20,10 +20,10 @@ Fixed: generates `?union(enum) { ... }` for multi-type null unions.
 
 ~~`TypeName()` for a zero-field struct emits `TypeName()` in Zig.~~ Fixed: emits `TypeName{}`.
 
-### Build — multi-file module with Zig sidecar: "file exists in two modules"
+### ~~Build — multi-file module with Zig sidecar: "file exists in two modules"~~ — fixed v0.16 Phase 27
 
-Build fails when a module has multiple `.orh` files and a `.zig` sidecar.
-Pre-existing issue, confirmed before Tamga VMA work.
+~~Build fails when a module has multiple `.orh` files and a `.zig` sidecar.~~
+Fixed: sidecar deduplication prevents duplicate module registration.
 
 ### ~~Parser — `size` is a reserved keyword in bridge func parameters~~ — fixed (PEG grammar)
 
@@ -594,3 +594,27 @@ source location queries, current function node tracking, and `type_expr`/`passth
 
 **Done in v0.12.** `std.testing.fuzz` covers lexer and parser. Standalone harness in
 `src/fuzz.zig` with 5 strategies and 50,000 iterations.
+
+### Bridge codegen fixes ✓
+
+**Done in v0.16 Phase 25.** `const &BridgeStruct` parameters now pass by pointer
+(not by value). Sidecar `export fn` declarations are fixed to `pub export fn` via
+read-modify-write scanner. `is_bridge` flag on FuncSig guards const auto-borrow for
+bridge calls.
+
+### Cross-module `is` operator and negative literal parsing ✓
+
+**Done in v0.16 Phase 26.** Cross-module `is` operator uses tagged union tag
+comparison for arbitrary unions. Unary `-` placed before `&` in PEG unary_expr rule
+to fix negative literal parsing.
+
+### C interop: sidecar dedup, cimport include paths, linkSystemLibrary ✓
+
+**Done in v0.16 Phase 27.** Infinite loop in pub-fixup scanner fixed. `addIncludePath`
+derives path from sidecar dirname. Unconditional `cimport_source == null` guards
+removed. Multi-file modules with Zig sidecars build correctly.
+
+### Cross-compilation target fix and build cache cleanup ✓
+
+**Done in v0.16 Phase 28.** Cross-compilation target flag corrected. Build cache
+cleaned up. Dead `Async(T)` codegen branch removed from `typeToZig`.

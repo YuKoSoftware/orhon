@@ -121,7 +121,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [ ] 28-01-PLAN.md — Fix cross-compilation target flag use-after-free and -fast cache leak
-- [ ] 28-02-PLAN.md — Remove Async(T) from codegen and update TODO.md
+- [x] 28-02-PLAN.md — Remove Async(T) from codegen and update TODO.md
 
 ## Progress
 
@@ -136,4 +136,4 @@ Plans:
 | 25. Bridge Codegen Fixes | v0.16 | 1/1 | Complete    | 2026-03-28 |
 | 26. Codegen Correctness & Parser | v0.16 | 1/1 | Complete    | 2026-03-28 |
 | 27. C Interop & Multi-Module Build | v0.16 | 1/1 | Complete    | 2026-03-28 |
-| 28. Cross-Compile, Cache & Docs | v0.16 | 0/2 | Not started | - |
+| 28. Cross-Compile, Cache & Docs | v0.16 | 1/2 | In Progress|  |

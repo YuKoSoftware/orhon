@@ -4,7 +4,7 @@ milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
 status: verifying
 stopped_at: Completed 30-error-quality 30-02-PLAN.md — ERR-03 ownership/borrow/thread hints + 4 integration tests
-last_updated: "2026-03-28T20:26:05.616Z"
+last_updated: "2026-03-28T20:30:08.059Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 8
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Phase: 30 (error-quality) — EXECUTING
-Plan: 2 of 2
+Phase: 31
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-03-28
 

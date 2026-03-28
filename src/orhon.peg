@@ -363,6 +363,7 @@ mul_expr
 # Level 1 — Unary (prefix, right-associative)
 unary_expr
     <- '!' unary_expr
+     / '-' unary_expr
      / '&' unary_expr
      / postfix_expr
 

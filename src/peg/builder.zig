@@ -1472,11 +1472,15 @@ fn buildNotExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 }
 
 fn buildUnaryExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // unary_expr <- '!' unary_expr / '&' unary_expr / postfix_expr
+    // unary_expr <- '!' unary_expr / '-' unary_expr / '&' unary_expr / postfix_expr
     const first_tok = ctx.tokens[cap.start_pos];
     if (first_tok.kind == .bang) {
         const operand = if (cap.children.len > 0) try buildNode(ctx, &cap.children[0]) else return error.NoOperand;
         return ctx.newNode(.{ .unary_expr = .{ .op = "!", .operand = operand } });
+    }
+    if (first_tok.kind == .minus) {
+        const operand = if (cap.children.len > 0) try buildNode(ctx, &cap.children[0]) else return error.NoOperand;
+        return ctx.newNode(.{ .unary_expr = .{ .op = "-", .operand = operand } });
     }
     if (first_tok.kind == .ampersand) {
         const operand = if (cap.children.len > 0) try buildNode(ctx, &cap.children[0]) else return error.NoOperand;

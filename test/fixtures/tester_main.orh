@@ -694,5 +694,12 @@ func main() void {
         console.println("FAIL match_guard_scope")
     }
 
+    // Test: negative literal arguments
+    if(tester.test_negative_args() == 1) {
+        console.println("PASS negative_literal_args")
+    } else {
+        console.println("FAIL negative_literal_args")
+    }
+
     console.println("TESTER:DONE")
 }

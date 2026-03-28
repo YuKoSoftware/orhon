@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.16
-milestone_name: Bug Fixes
-status: completed
-stopped_at: Milestone complete
+milestone: v0.17
+milestone_name: Codegen Refactor & Error Quality
+status: defining_requirements
+stopped_at: Defining requirements
 last_updated: "2026-03-28"
 last_activity: 2026-03-28
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Planning next milestone
+**Current focus:** v0.17 — Codegen Refactor & Error Quality
 
 ## Current Position
 
-Phase: N/A — milestone complete
-Plan: N/A
-Status: v0.16 shipped — ready for next milestone
-Last activity: 2026-03-28
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-28 — Milestone v0.17 started
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -39,10 +39,10 @@ Progress: [██████████] 100%
 - 7 milestones shipped (v0.10-v0.16)
 - 28 phases, 38 plans total
 
-**v0.16:**
+**v0.17 so far:**
 
-- Plans completed: 5
-- Duration: 1 day (2026-03-28)
+- Plans completed: 0
+- Average duration: N/A
 
 ## Accumulated Context
 
@@ -58,7 +58,6 @@ None.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 260328-lsa | Fix bridge struct value param const promotion in error-union functions | 2026-03-28 | 7f7ad65 | [260328-lsa](./quick/260328-lsa-fix-bridge-struct-value-param-const-prom/) |
 
 ### Blockers/Concerns
 
@@ -67,5 +66,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Milestone v0.16 complete
+Stopped at: Defining requirements for v0.17
 Resume file: None

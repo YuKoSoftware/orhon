@@ -65,7 +65,18 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 ### Active
 
-(No active milestone — planning next)
+(Defined in REQUIREMENTS.md for v0.17 Codegen Refactor & Error Quality)
+
+## Current Milestone: v0.17 Codegen Refactor & Error Quality
+
+**Goal:** Split the monolithic codegen into maintainable files and add developer-facing error improvements — better parse errors, type mismatch display, and fix suggestions.
+
+**Target features:**
+- Split codegen.zig (3262 lines) into 2-3 focused files with shared helpers
+- "Did you mean X?" suggestions for identifier typos
+- Expected vs actual display for type mismatches
+- Ownership/borrow violation fix suggestions
+- PEG expected-set accumulation (show all expected tokens)
 
 ## Current State
 
@@ -73,7 +84,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 **Tests:** 262 across 11 stages
 **Milestones shipped:** v0.10, v0.11, v0.12, v0.13, v0.14, v0.15, v0.16
 
-v0.16 Bug Fixes complete — all 13 known bugs fixed across codegen, parser, and build system. Zero known workarounds remaining. Tamga framework builds clean. 262 tests pass.
+v0.16 Bug Fixes complete — all 13 known bugs fixed. Zero workarounds remaining. 262 tests pass.
 
 ### Out of Scope
 
@@ -134,4 +145,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after v0.16 Bug Fixes milestone shipped*
+*Last updated: 2026-03-28 after v0.17 milestone started*

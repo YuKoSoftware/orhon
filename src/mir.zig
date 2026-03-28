@@ -507,6 +507,9 @@ pub const MirAnnotator = struct {
                 // Bridge functions are excluded — the sidecar .zig defines param types, so the
                 // Orhon compiler must not promote their parameters; the const & case is handled
                 // by detectCoercion above when the declared param type is already `const &`.
+                // This guard covers all bridge call forms: direct calls (processTexture(tex)),
+                // struct method calls (ren.createMaterial(tex)), and error-union-returning bridge
+                // functions — all excluded via !sig.is_bridge regardless of return type.
                 if (is_direct_call and arg.* == .identifier and !sig.is_bridge) {
                     const name = arg.identifier;
                     // Skip promoted params (already *const T — prevents double-borrow)
@@ -2175,4 +2178,179 @@ test "const auto-borrow - const_ref_params populated" {
     try std.testing.expect(annotator.isConstRefParam("render", 0));
     // ("render", 1) should NOT be in const_ref_params
     try std.testing.expect(!annotator.isConstRefParam("render", 1));
+}
+
+test "const auto-borrow - bridge struct method with error-union return skips promotion" {
+    // Verify that a bridge struct method call with (Error | T) return type and a struct
+    // value param does NOT get const auto-borrow promotion. Covers the Tamga scenario:
+    //   const tex = ...                          // const Texture local
+    //   const mat = ren.createMaterial(..., tex) // bridge method, (Error | Material) return
+    // The bridge sidecar owns the param type — promoting tex to *const Texture here
+    // would cause a type mismatch with a by-value sidecar parameter.
+    const alloc = std.testing.allocator;
+    var decls = declarations.DeclTable.init(alloc);
+    defer decls.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var type_map = std.AutoHashMapUnmanaged(*parser.Node, RT){};
+    defer type_map.deinit(alloc);
+
+    var annotator = MirAnnotator.init(alloc, &reporter, &decls, &type_map);
+    defer annotator.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Register bridge struct method: Renderer.createMaterial(self: &Renderer, texture: Texture) (Error | Material)
+    // params is owned by decls (freed by struct_methods deinit), param_nodes freed separately.
+    const params = try alloc.alloc(declarations.ParamSig, 2);
+    const param_nodes = try alloc.alloc(*parser.Node, 2);
+    defer alloc.free(param_nodes);
+    const self_type_node = try a.create(parser.Node);
+    self_type_node.* = .{ .type_named = "Renderer" };
+    const tex_type_node = try a.create(parser.Node);
+    tex_type_node.* = .{ .type_named = "Texture" };
+    param_nodes[0] = self_type_node;
+    param_nodes[1] = tex_type_node;
+    params[0] = .{ .name = "self", .type_ = RT{ .named = "Renderer" } };
+    params[1] = .{ .name = "texture", .type_ = RT{ .named = "Texture" } };
+
+    // Return type: (Error | Material)
+    const ret_inner = try decls.typeAllocator().create(RT);
+    ret_inner.* = RT{ .named = "Material" };
+    const ret_node = try a.create(parser.Node);
+    ret_node.* = .{ .type_named = "Material" };
+
+    const key = try alloc.dupe(u8, "Renderer.createMaterial");
+    try decls.struct_methods.put(alloc, key, .{
+        .name = "createMaterial",
+        .params = params,
+        .param_nodes = param_nodes,
+        .return_type = RT{ .error_union = ret_inner },
+        .return_type_node = ret_node,
+        .is_compt = false,
+        .is_pub = true,
+        .is_thread = false,
+        .is_bridge = true, // bridge method — sidecar owns param types
+    });
+
+    // Mark "tex" as a const var of type Texture
+    try annotator.const_vars.put(alloc, "tex", {});
+
+    // Build call: ren.createMaterial(tex) — field_expr callee, one explicit arg
+    const ren_node = try a.create(parser.Node);
+    ren_node.* = .{ .identifier = "ren" };
+    try type_map.put(alloc, ren_node, RT{ .named = "Renderer" });
+
+    const callee_node = try a.create(parser.Node);
+    callee_node.* = .{ .field_expr = .{ .object = ren_node, .field = "createMaterial" } };
+
+    const tex_arg = try a.create(parser.Node);
+    tex_arg.* = .{ .identifier = "tex" };
+    try type_map.put(alloc, tex_arg, RT{ .named = "Texture" });
+
+    const call_args = try a.alloc(*parser.Node, 1);
+    call_args[0] = tex_arg;
+    const call_arg_names = try a.alloc([]const u8, 1);
+    call_arg_names[0] = "";
+
+    const call_expr = parser.CallExpr{
+        .callee = callee_node,
+        .args = call_args,
+        .arg_names = call_arg_names,
+    };
+
+    try annotator.annotateCallCoercions(call_expr);
+
+    // The tex arg must NOT have value_to_const_ref coercion — bridge owns its param types.
+    const info = annotator.node_map.get(tex_arg);
+    if (info) |i| {
+        if (i.coercion) |c_kind| {
+            try std.testing.expect(c_kind != .value_to_const_ref);
+        }
+    }
+    // const_ref_params must NOT record "createMaterial" — bridge method calls are excluded.
+    try std.testing.expect(!annotator.isConstRefParam("createMaterial", 0));
+}
+
+test "const auto-borrow - direct bridge function call skips promotion" {
+    // Verify that a DIRECT call to a bridge function (not a method) does NOT get const
+    // auto-borrow promotion, even with error-union return type and a struct value param.
+    // The !sig.is_bridge guard at the call coercion site covers this case.
+    const alloc = std.testing.allocator;
+    var decls = declarations.DeclTable.init(alloc);
+    defer decls.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var type_map = std.AutoHashMapUnmanaged(*parser.Node, RT){};
+    defer type_map.deinit(alloc);
+
+    var annotator = MirAnnotator.init(alloc, &reporter, &decls, &type_map);
+    defer annotator.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Register bridge function: processTexture(tex: Texture) (Error | Material)
+    // is_bridge = true — the sidecar defines param types; Orhon must not promote.
+    const params = try alloc.alloc(declarations.ParamSig, 1);
+    const param_nodes = try alloc.alloc(*parser.Node, 1);
+    defer alloc.free(param_nodes);
+    const param_type_node = try a.create(parser.Node);
+    param_type_node.* = .{ .type_named = "Texture" };
+    param_nodes[0] = param_type_node;
+    params[0] = .{ .name = "tex", .type_ = RT{ .named = "Texture" } };
+
+    // Return type: (Error | Material)
+    const ret_inner = try decls.typeAllocator().create(RT);
+    ret_inner.* = RT{ .named = "Material" };
+    const ret_node = try a.create(parser.Node);
+    ret_node.* = .{ .type_named = "Material" };
+
+    try decls.funcs.put("processTexture", .{
+        .name = "processTexture",
+        .params = params,
+        .param_nodes = param_nodes,
+        .return_type = RT{ .error_union = ret_inner },
+        .return_type_node = ret_node,
+        .is_compt = false,
+        .is_pub = true,
+        .is_thread = false,
+        .is_bridge = true, // bridge function — sidecar owns param types
+    });
+
+    // Mark "myTex" as a const var of type Texture
+    try annotator.const_vars.put(alloc, "myTex", {});
+
+    // Build direct call: processTexture(myTex)
+    const arg_node = try a.create(parser.Node);
+    arg_node.* = .{ .identifier = "myTex" };
+    try type_map.put(alloc, arg_node, RT{ .named = "Texture" });
+
+    const callee_node = try a.create(parser.Node);
+    callee_node.* = .{ .identifier = "processTexture" };
+    const call_args = try a.alloc(*parser.Node, 1);
+    call_args[0] = arg_node;
+    const call_arg_names = try a.alloc([]const u8, 1);
+    call_arg_names[0] = "";
+
+    const call_expr = parser.CallExpr{
+        .callee = callee_node,
+        .args = call_args,
+        .arg_names = call_arg_names,
+    };
+
+    try annotator.annotateCallCoercions(call_expr);
+
+    // The arg must NOT have value_to_const_ref coercion — bridge guard prevents promotion.
+    const info = annotator.node_map.get(arg_node);
+    if (info) |i| {
+        if (i.coercion) |c_kind| {
+            try std.testing.expect(c_kind != .value_to_const_ref);
+        }
+    }
+    // const_ref_params must NOT record "processTexture" for any index.
+    try std.testing.expect(!annotator.isConstRefParam("processTexture", 0));
 }

@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
-status: defining_requirements
-stopped_at: Defining requirements
+status: roadmap_ready
+stopped_at: Roadmap created — ready to plan Phase 29
 last_updated: "2026-03-28"
 last_activity: 2026-03-28
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 29 (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-28 — Milestone v0.17 started
+Status: Roadmap created — ready to plan Phase 29
+Last activity: 2026-03-28 — Roadmap defined for v0.17
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -66,5 +66,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Defining requirements for v0.17
+Stopped at: Roadmap created — ready to plan Phase 29 (Codegen Split)
 Resume file: None

@@ -42,19 +42,19 @@ None deferred — all Tier 2 items included in v0.17.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CGR-01 | — | Not started |
-| CGR-02 | — | Not started |
-| CGR-03 | — | Not started |
-| CGR-04 | — | Not started |
-| ERR-01 | — | Not started |
-| ERR-02 | — | Not started |
-| ERR-03 | — | Not started |
-| PEG-01 | — | Not started |
+| CGR-01 | Phase 29 | Pending |
+| CGR-02 | Phase 29 | Pending |
+| CGR-03 | Phase 29 | Pending |
+| CGR-04 | Phase 29 | Pending |
+| ERR-01 | Phase 30 | Pending |
+| ERR-02 | Phase 30 | Pending |
+| ERR-03 | Phase 30 | Pending |
+| PEG-01 | Phase 31 | Pending |
 
 **Coverage:**
 - v0.17 requirements: 8 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 8
+- Mapped to phases: 8 (Phase 29: 4, Phase 30: 3, Phase 31: 1)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-28*

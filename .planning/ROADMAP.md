@@ -69,7 +69,7 @@ See: [milestones/v0.16-ROADMAP.md](milestones/v0.16-ROADMAP.md)
 
 ### v0.17 Codegen Refactor & Error Quality (Phases 29-31)
 
-- [ ] **Phase 29: Codegen Split** - Split codegen.zig into focused files with shared helpers
+- [x] **Phase 29: Codegen Split** - Split codegen.zig into focused files with shared helpers (completed 2026-03-28)
 - [ ] **Phase 30: Error Quality** - "Did you mean?" suggestions, type mismatch display, ownership fix hints
 - [ ] **Phase 31: PEG Error Messages** - Show all expected tokens when alternatives fail at same position
 
@@ -84,9 +84,9 @@ See: [milestones/v0.16-ROADMAP.md](milestones/v0.16-ROADMAP.md)
   2. Emit helpers (emit, emitFmt, emitIndent, emitLine) live in one shared module imported by all codegen files
   3. Type-to-Zig mapping (typeToZig, emitType) exists in exactly one location with no inline duplicates
   4. `./testall.sh` passes 262/262 — generated Zig output is byte-for-byte identical to pre-refactor
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 29-01-PLAN.md — Split codegen.zig into 4 files (core + decls + stmts + exprs) using wrapper stub pattern
+- [x] 29-01-PLAN.md — Split codegen.zig into 4 files (core + decls + stmts + exprs) using wrapper stub pattern
 
 ### Phase 30: Error Quality
 **Goal**: Compiler errors give developers actionable guidance — typos get suggestions, mismatches show types, ownership violations say what to do
@@ -120,6 +120,6 @@ Plans:
 | 19-21 | v0.14 | 6/6 | Complete | 2026-03-27 |
 | 22-24 | v0.15 | 6/6 | Complete | 2026-03-27 |
 | 25-28 | v0.16 | 5/5 | Complete | 2026-03-28 |
-| 29 | v0.17 | 0/1 | Not started | - |
+| 29 | v0.17 | 1/1 | Complete   | 2026-03-28 |
 | 30 | v0.17 | 0/1 | Not started | - |
 | 31 | v0.17 | 0/1 | Not started | - |

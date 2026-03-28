@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
-status: planning
-stopped_at: Phase 29 context gathered
-last_updated: "2026-03-28T16:18:08.593Z"
-last_activity: 2026-03-28 — Roadmap defined for v0.17
+status: verifying
+stopped_at: Completed 29-01-PLAN.md — codegen split complete
+last_updated: "2026-03-28T18:39:07.049Z"
+last_activity: 2026-03-28
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** v0.17 — Codegen Refactor & Error Quality
+**Current focus:** Phase 29 — codegen-split
 
 ## Current Position
 
-Phase: 29 (not started)
-Plan: —
-Status: Roadmap created — ready to plan Phase 29
-Last activity: 2026-03-28 — Roadmap defined for v0.17
+Phase: 29 (codegen-split) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-03-28
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -50,6 +50,10 @@ Progress: [░░░░░░░░░░] 0%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
+- [Phase 29]: Split codegen_exprs.zig further into codegen_match.zig because MIR expressions section was 1895 lines vs estimated 1180
+- [Phase 29]: Made all CodeGen struct methods pub to allow helper files to call via cg.method()
+- [Phase 29]: File-scope pub forwarders in codegen.zig for static functions (opToZig, mirIsString, isTypeAlias, extractValueType) called by helpers
+
 ### Pending Todos
 
 None.
@@ -62,9 +66,10 @@ None.
 ### Blockers/Concerns
 
 None.
+| Phase 29 P01 | 126 | 1 tasks | 7 files |
 
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Phase 29 context gathered
-Resume file: .planning/phases/29-codegen-split/29-CONTEXT.md
+Stopped at: Completed 29-01-PLAN.md — codegen split complete
+Resume file: None

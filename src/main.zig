@@ -1450,6 +1450,10 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
             const c_source_slice = try allocator.dupe([]const u8, mt_c_sources.items);
             try c_source_lists.append(allocator, c_source_slice);
 
+            const mt_source_dir: ?[]const u8 = if (mod.sidecar_path) |sp|
+                std.fs.path.dirname(sp)
+            else
+                null;
             try multi_targets.append(allocator, .{
                 .module_name = mod.name,
                 .project_name = binary_name,
@@ -1462,6 +1466,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
                 .c_source_files = c_source_slice,
                 .needs_cpp = mt_needs_cpp,
                 .has_bridges = mod.has_bridges,
+                .source_dir = mt_source_dir,
             });
         }
 
@@ -1645,7 +1650,11 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
                 try shared_mods.append(allocator, imp_name);
             }
 
-            try runner.generateBuildZig(mod.name, build_type, binary_name, project_version, link_libs.items, bridge_mods.items, shared_mods.items, c_includes_st.items, c_sources_st.items, needs_cpp_st);
+            const single_source_dir: ?[]const u8 = if (mod.sidecar_path) |sp|
+                std.fs.path.dirname(sp)
+            else
+                null;
+            try runner.generateBuildZig(mod.name, build_type, binary_name, project_version, link_libs.items, bridge_mods.items, shared_mods.items, c_includes_st.items, c_sources_st.items, needs_cpp_st, single_source_dir);
 
             for (cli.targets.items) |build_target| {
                 const target_str = build_target.toZigTriple();

@@ -331,7 +331,7 @@ pub const ZigRunner = struct {
     /// Run all test blocks in the generated Zig project
     pub fn runTests(self: *ZigRunner, module_name: []const u8, project_name: []const u8, bridge_modules: []const []const u8) !bool {
         // Generate build.zig with test step included
-        try self.generateBuildZigWithTests(module_name, "exe", project_name, null, &.{}, bridge_modules, &.{}, &.{}, &.{}, false);
+        try self.generateBuildZigWithTests(module_name, "exe", project_name, null, &.{}, bridge_modules, &.{}, &.{}, &.{}, false, null);
 
         var args: std.ArrayListUnmanaged([]const u8) = .{};
         defer args.deinit(self.allocator);
@@ -365,8 +365,9 @@ pub const ZigRunner = struct {
         c_includes: []const []const u8,
         c_source_files: []const []const u8,
         needs_cpp: bool,
+        source_dir: ?[]const u8,
     ) !void {
-        return self.generateBuildZigWithTests(module_name, build_type, project_name, project_version, link_libs, bridge_modules, shared_modules, c_includes, c_source_files, needs_cpp);
+        return self.generateBuildZigWithTests(module_name, build_type, project_name, project_version, link_libs, bridge_modules, shared_modules, c_includes, c_source_files, needs_cpp, source_dir);
     }
 
     fn generateBuildZigWithTests(
@@ -381,8 +382,9 @@ pub const ZigRunner = struct {
         c_includes: []const []const u8,
         c_source_files: []const []const u8,
         needs_cpp: bool,
+        source_dir: ?[]const u8,
     ) !void {
-        const content = try buildZigContent(self.allocator, module_name, build_type, project_name, project_version, link_libs, bridge_modules, shared_modules, c_includes, c_source_files, needs_cpp);
+        const content = try buildZigContent(self.allocator, module_name, build_type, project_name, project_version, link_libs, bridge_modules, shared_modules, c_includes, c_source_files, needs_cpp, source_dir);
         defer self.allocator.free(content);
         try cache.writeGeneratedZig("build", content, self.allocator);
 
@@ -466,6 +468,7 @@ pub fn buildZigContent(
     c_includes: []const []const u8,
     c_source_files: []const []const u8,
     needs_cpp: bool,
+    source_dir: ?[]const u8,
 ) ![]u8 {
     var buf = std.ArrayListUnmanaged(u8){};
     errdefer buf.deinit(allocator);
@@ -779,6 +782,12 @@ pub fn buildZigContent(
     {
         const artifact_name: []const u8 = if (std.mem.eql(u8, build_type, "exe")) "exe" else "lib";
         try emitLinkLibs(&buf, allocator, link_libs, artifact_name);
+        // Apply addIncludePath so module-relative headers resolve (BLD-02)
+        if (c_includes.len > 0) {
+            if (source_dir) |sdir| {
+                try emitIncludePath(&buf, allocator, sdir, artifact_name);
+            }
+        }
         if (c_source_files.len > 0 or needs_cpp) {
             try emitCSourceFiles(&buf, allocator, c_source_files, needs_cpp, artifact_name);
         }
@@ -842,6 +851,12 @@ pub fn buildZigContent(
 
     // Link C libraries and C source files for tests too
     try emitLinkLibs(&buf, allocator, link_libs, "unit_tests");
+    // Apply addIncludePath so module-relative headers resolve in tests (BLD-02)
+    if (c_includes.len > 0) {
+        if (source_dir) |sdir| {
+            try emitIncludePath(&buf, allocator, sdir, "unit_tests");
+        }
+    }
     if (c_source_files.len > 0 or needs_cpp) {
         try emitCSourceFiles(&buf, allocator, c_source_files, needs_cpp, "unit_tests");
     }
@@ -876,6 +891,21 @@ fn emitLinkLibs(
     , .{artifact_name});
     defer allocator.free(libc_chunk);
     try buf.appendSlice(allocator, libc_chunk);
+}
+
+/// Emit addIncludePath for a Step.Compile artifact so module-relative headers resolve.
+fn emitIncludePath(
+    buf: *std.ArrayListUnmanaged(u8),
+    allocator: std.mem.Allocator,
+    source_dir: []const u8,
+    artifact_name: []const u8,
+) !void {
+    const chunk = try std.fmt.allocPrint(allocator,
+        \\    {s}.root_module.addIncludePath(.{{ .cwd_relative = "{s}" }});
+        \\
+    , .{ artifact_name, source_dir });
+    defer allocator.free(chunk);
+    try buf.appendSlice(allocator, chunk);
 }
 
 /// Generate shared @cImport wrapper .zig files for all unique #cInclude headers.
@@ -991,6 +1021,7 @@ pub const MultiTarget = struct {
     c_source_files: []const []const u8 = &.{}, // C/C++ source files from #csource metadata
     needs_cpp: bool = false, // true when #linkCpp is present or any .cpp/.cc source files
     has_bridges: bool = false, // module has bridge declarations needing named Zig modules
+    source_dir: ?[]const u8 = null, // source directory for addIncludePath (cimport module-relative headers)
 };
 
 /// Build a unified build.zig for multiple targets.
@@ -1346,6 +1377,15 @@ pub fn buildZigContentMulti(
             try emitLinkLibs(&buf, allocator, t.link_libs, lib_art_name);
         }
 
+        // Apply addIncludePath so module-relative headers resolve (BLD-02)
+        if (t.c_includes.len > 0) {
+            if (t.source_dir) |sdir| {
+                const lib_art_name = try std.fmt.allocPrint(allocator, "lib_{s}", .{t.module_name});
+                defer allocator.free(lib_art_name);
+                try emitIncludePath(&buf, allocator, sdir, lib_art_name);
+            }
+        }
+
         // Apply #csource / #linkCpp to this lib artifact
         if (t.c_source_files.len > 0 or t.needs_cpp) {
             const lib_art_name = try std.fmt.allocPrint(allocator, "lib_{s}", .{t.module_name});
@@ -1474,6 +1514,15 @@ pub fn buildZigContentMulti(
             const exe_art_name = try std.fmt.allocPrint(allocator, "exe_{s}", .{t.module_name});
             defer allocator.free(exe_art_name);
             try emitLinkLibs(&buf, allocator, t.link_libs, exe_art_name);
+        }
+
+        // Apply addIncludePath so module-relative headers resolve (BLD-02)
+        if (t.c_includes.len > 0) {
+            if (t.source_dir) |sdir| {
+                const exe_art_name = try std.fmt.allocPrint(allocator, "exe_{s}", .{t.module_name});
+                defer allocator.free(exe_art_name);
+                try emitIncludePath(&buf, allocator, sdir, exe_art_name);
+            }
         }
 
         // Apply #csource / #linkCpp to this exe artifact
@@ -1631,7 +1680,7 @@ test "zig runner - find zig path format" {
 
 test "buildZigContent - exe" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addExecutable") != null);
@@ -1645,7 +1694,7 @@ test "buildZigContent - exe" {
 
 test "buildZigContent - static" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "mylib", "static", "mylib", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
+    const content = try buildZigContent(alloc, "mylib", "static", "mylib", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -1659,7 +1708,7 @@ test "buildZigContent - static" {
 
 test "buildZigContent - dynamic" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "mylib", "dynamic", "mylib", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
+    const content = try buildZigContent(alloc, "mylib", "dynamic", "mylib", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -1671,7 +1720,7 @@ test "buildZigContent - dynamic" {
 
 test "buildZigContent - project name in exe artifact" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "calculator", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
+    const content = try buildZigContent(alloc, "main", "exe", "calculator", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "\"calculator\"") != null);
 }
@@ -1679,7 +1728,7 @@ test "buildZigContent - project name in exe artifact" {
 test "buildZigContent - linkC emits linkSystemLibrary and linkLibC" {
     const alloc = std.testing.allocator;
     const libs = [_][]const u8{"SDL3"};
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &libs, &.{}, &.{}, &.{}, &.{}, false);
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &libs, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary(\"SDL3\"") != null);
@@ -1688,7 +1737,7 @@ test "buildZigContent - linkC emits linkSystemLibrary and linkLibC" {
 
 test "buildZigContent - no linkC means no linkLibC" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false);
+    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary") == null);

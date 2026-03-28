@@ -1403,10 +1403,8 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
                         }
                         try registry.put(alloc, lib_name, mod_name);
 
-                        // source: present without a system library → skip linkSystemLibrary
-                        if (meta.metadata.cimport_source == null) {
-                            try link_libs.append(alloc, lib_name);
-                        }
+                        // Always emit linkSystemLibrary for the cimport name (BLD-03)
+                        try link_libs.append(alloc, lib_name);
 
                         // include: always required (D-06, validated earlier in declarations pass)
                         if (meta.metadata.cimport_include) |inc| {
@@ -1555,10 +1553,8 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
                                 raw[1 .. raw.len - 1]
                             else
                                 raw;
-                            // source-only: skip linkSystemLibrary
-                            if (meta.metadata.cimport_source == null) {
-                                try link_libs.append(allocator, lib_name);
-                            }
+                            // Always emit linkSystemLibrary for the cimport name (BLD-03)
+                            try link_libs.append(allocator, lib_name);
                             if (meta.metadata.cimport_include) |inc| {
                                 try c_includes_st.append(allocator, inc);
                             }
@@ -1590,20 +1586,18 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
                                     raw[1 .. raw.len - 1]
                                 else
                                     raw;
-                                // source-only: skip linkSystemLibrary
-                                if (meta.metadata.cimport_source == null) {
-                                    var already = false;
-                                    for (link_libs.items) |existing| {
-                                        if (std.mem.eql(u8, existing, lib_name)) { already = true; break; }
-                                    }
-                                    if (!already) try link_libs.append(allocator, lib_name);
+                                // Always emit linkSystemLibrary for the cimport name (BLD-03)
+                                var lib_already = false;
+                                for (link_libs.items) |existing| {
+                                    if (std.mem.eql(u8, existing, lib_name)) { lib_already = true; break; }
                                 }
+                                if (!lib_already) try link_libs.append(allocator, lib_name);
                                 if (meta.metadata.cimport_include) |inc| {
-                                    var already = false;
+                                    var inc_already = false;
                                     for (c_includes_st.items) |existing| {
-                                        if (std.mem.eql(u8, existing, inc)) { already = true; break; }
+                                        if (std.mem.eql(u8, existing, inc)) { inc_already = true; break; }
                                     }
-                                    if (!already) try c_includes_st.append(allocator, inc);
+                                    if (!inc_already) try c_includes_st.append(allocator, inc);
                                 }
                                 if (meta.metadata.cimport_source) |src| {
                                     try c_sources_st.append(allocator, src);

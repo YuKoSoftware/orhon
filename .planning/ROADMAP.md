@@ -9,7 +9,7 @@
 - ✅ **v0.14 Build System** - Phases 19-21 (shipped 2026-03-27)
 - ✅ **v0.15 Language Ergonomics** - Phases 22-24 (shipped 2026-03-27)
 - ✅ **v0.16 Bug Fixes** - Phases 25-28 (shipped 2026-03-28)
-- [ ] **v0.17 Codegen Refactor & Error Quality** - Phases 29-31
+- [ ] **v0.17 Codegen Refactor & Error Quality** - Phases 29-36
 
 ## Phases
 
@@ -67,11 +67,16 @@ See: [milestones/v0.16-ROADMAP.md](milestones/v0.16-ROADMAP.md)
 
 </details>
 
-### v0.17 Codegen Refactor & Error Quality (Phases 29-31)
+### v0.17 Codegen Refactor & Error Quality (Phases 29-36)
 
 - [x] **Phase 29: Codegen Split** - Split codegen.zig into focused files with shared helpers (completed 2026-03-28)
 - [ ] **Phase 30: Error Quality** - "Did you mean?" suggestions, type mismatch display, ownership fix hints
 - [ ] **Phase 31: PEG Error Messages** - Show all expected tokens when alternatives fail at same position
+- [ ] **Phase 32: LSP Split** - Split lsp.zig (3301 lines) into types, JSON, analysis, handlers, and server loop
+- [ ] **Phase 33: MIR Split** - Split mir.zig (2356 lines) into types, registry, node, annotator, lowerer, and utils
+- [ ] **Phase 34: Main Split** - Split main.zig (2315 lines) into CLI, pipeline, init, stdlib bundler, and interface gen
+- [ ] **Phase 35: Zig Runner Split** - Split zig_runner.zig (1952 lines) into runner, build gen, multi-target gen, and discovery
+- [ ] **Phase 36: PEG Builder Split** - Split peg/builder.zig (1836 lines) into context, dispatch, decls, stmts, exprs, and types
 
 ## Phase Details
 
@@ -97,7 +102,10 @@ Plans:
   2. A type mismatch error shows "expected T1, got T2" with both type names resolved and spelled out
   3. A move-after-use error suggests "consider using `copy()`" or names the offending variable
   4. A borrow violation error suggests "consider borrowing with `const &`" where applicable
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 30-01-PLAN.md — Levenshtein infrastructure + "did you mean?" in resolver + type mismatch standardization
+- [ ] 30-02-PLAN.md — Ownership/borrow/thread fix hints + integration tests for all ERR requirements
 
 ### Phase 31: PEG Error Messages
 **Goal**: Parse errors list every token the parser could have accepted at the failure point, not just the first alternative tried
@@ -107,6 +115,61 @@ Plans:
   1. A syntax error at a choice point shows all expected tokens (e.g. "expected `func`, `struct`, or `enum`") instead of a single token
   2. The expected set is deduplicated — the same token name never appears twice in one error message
   3. Existing parse error tests in test/11_errors.sh still pass with the improved messages
+**Plans**: TBD
+
+### Phase 32: LSP Split
+**Goal**: lsp.zig is broken into focused files (types, JSON, analysis, handler groups, server loop) with no behavior change — LSP features work identically
+**Depends on**: Phase 29
+**Requirements**: SPLIT-01, SPLIT-02
+**Success Criteria** (what must be TRUE):
+  1. lsp.zig is split into 8+ files — no single file exceeds ~600 lines
+  2. Handler groups (navigation, editing, view/hints) are in separate files
+  3. JSON infrastructure and type definitions are isolated modules
+  4. `./testall.sh` passes all tests — LSP unit tests pass in their new locations
+**Plans**: TBD
+
+### Phase 33: MIR Split
+**Goal**: mir.zig is broken into focused files (types, registry, node, annotator, lowerer, utils) with no behavior change — all tests pass
+**Depends on**: Phase 29
+**Requirements**: SPLIT-03, SPLIT-02
+**Success Criteria** (what must be TRUE):
+  1. mir.zig is split into 6+ files — MirAnnotator, MirLowerer, and UnionRegistry each in their own file
+  2. Type definitions (TypeClass, Coercion, NodeInfo, MirKind) are in a shared types module
+  3. MirNode struct is in its own file with accessor methods
+  4. `./testall.sh` passes all tests — MIR unit tests pass in their new locations
+**Plans**: TBD
+
+### Phase 34: Main Split
+**Goal**: main.zig is broken into focused files (CLI, pipeline, init, stdlib bundler, interface gen) with no behavior change — all tests pass
+**Depends on**: Phase 29
+**Requirements**: SPLIT-04, SPLIT-02
+**Success Criteria** (what must be TRUE):
+  1. main.zig is reduced to ~115 lines — allocator setup + command dispatch only
+  2. Pipeline orchestration (runPipeline) is in its own file
+  3. CLI parsing, project init, stdlib bundling, and interface generation are separate modules
+  4. `./testall.sh` passes all tests — pipeline integration tests pass in their new locations
+**Plans**: TBD
+
+### Phase 35: Zig Runner Split
+**Goal**: zig_runner.zig is broken into focused files (runner, single-target build gen, multi-target build gen, discovery) with no behavior change — all tests pass
+**Depends on**: Phase 29
+**Requirements**: SPLIT-05, SPLIT-02
+**Success Criteria** (what must be TRUE):
+  1. zig_runner.zig is reduced to ~400 lines — ZigRunner struct and invocation logic only
+  2. buildZigContent (414 lines) and buildZigContentMulti (594 lines) are in separate files
+  3. Zig binary discovery is in its own module
+  4. `./testall.sh` passes all tests — build generation tests pass in their new locations
+**Plans**: TBD
+
+### Phase 36: PEG Builder Split
+**Goal**: peg/builder.zig is broken into focused files (context, dispatch, decls, stmts, exprs, types) mirroring the codegen split pattern — all tests pass
+**Depends on**: Phase 29
+**Requirements**: SPLIT-06, SPLIT-02
+**Success Criteria** (what must be TRUE):
+  1. builder.zig is split into 6+ files — no single file exceeds ~510 lines
+  2. Split follows the same decls/stmts/exprs/types pattern as the codegen split (Phase 29)
+  3. Dispatch table remains centralized in one file importing all builder categories
+  4. `./testall.sh` passes all tests — PEG builder tests pass in their new locations
 **Plans**: TBD
 
 ## Progress
@@ -121,5 +184,10 @@ Plans:
 | 22-24 | v0.15 | 6/6 | Complete | 2026-03-27 |
 | 25-28 | v0.16 | 5/5 | Complete | 2026-03-28 |
 | 29 | v0.17 | 1/1 | Complete    | 2026-03-28 |
-| 30 | v0.17 | 0/1 | Not started | - |
+| 30 | v0.17 | 0/2 | Not started | - |
 | 31 | v0.17 | 0/1 | Not started | - |
+| 32 | v0.17 | 0/? | Not started | - |
+| 33 | v0.17 | 0/? | Not started | - |
+| 34 | v0.17 | 0/? | Not started | - |
+| 35 | v0.17 | 0/? | Not started | - |
+| 36 | v0.17 | 0/? | Not started | - |

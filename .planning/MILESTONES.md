@@ -1,5 +1,19 @@
 # Milestones
 
+## v0.16 Bug Fixes (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 5 plans, 11 tasks
+
+**Key accomplishments:**
+
+- Added is_bridge to FuncSig to prevent incorrect const auto-borrow on bridge calls, and fixed sidecar pub visibility so @import resolves all bridge symbols
+- Three compiler bugs fixed: unary negation in PEG grammar, cross-module `is` union tag comparison, and Async(T) compile error — all 260 tests passing.
+- Fixed three build system bugs: infinite-loop pub-fixup scanner (BLD-01), missing addIncludePath for cimport headers (BLD-02), suppressed linkSystemLibrary when source: present (BLD-03); 262 tests pass
+- Fixed use-after-free on cross-compilation target flag and .zig-cache leak after optimized builds in zig_runner.zig
+- Dead Async(T) codegen branch removed from typeToZig; TODO.md updated with all v0.16 fix status and phase accomplishments.
+
+---
+
 ## v0.15 Language Ergonomics (Shipped: 2026-03-27)
 
 **Phases completed:** 3 phases, 6 plans, 12 tasks

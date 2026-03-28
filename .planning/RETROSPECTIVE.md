@@ -61,6 +61,65 @@
 - Build system changes (named modules, shared cImport) have cascading benefits — Phase 19's work unblocked both Tamga builds and allocator bridges
 - The 3-mode allocator design (default/inline/external) is the right granularity — covers all real use cases without overengineering
 
+## Milestone: v0.15 — Language Ergonomics
+
+**Shipped:** 2026-03-27
+**Phases:** 3 | **Plans:** 6
+
+### What Was Built
+- `throw` statement for error propagation — implemented across all 7 compiler passes with type narrowing
+- Pattern guards `(x if expr)` — parenthesized syntax across 6 passes, else-requirement enforcement
+- `#cimport = { name, include, source }` — unified C import directive replacing 4 old directives
+- Tamga fully migrated to new directives — zero legacy syntax remaining
+
+### What Worked
+- Parenthesized guard syntax `(x if expr)` fit the existing "syntax containment" principle — no debate needed
+- `throw` as statement rather than expression prefix was cleaner — less hidden control flow
+- Hard removal of old C directives was safe since Tamga is the only consumer
+
+### What Was Inefficient
+- Nothing notable — 3 focused phases executed cleanly in one day
+
+### Patterns Established
+- `#key = { ... }` as the metadata syntax pattern — reusable for future directives
+- Statement-form keywords (throw) over expression-prefix keywords (try) for control flow
+
+### Key Lessons
+- User-driven syntax decisions (throw not try, parens for guards) produced cleaner results than following other languages' conventions
+
+## Milestone: v0.16 — Bug Fixes
+
+**Shipped:** 2026-03-28
+**Phases:** 4 | **Plans:** 5
+
+### What Was Built
+- Bridge codegen fixes: `is_bridge` on FuncSig, sidecar pub fixup, error-union value param preservation
+- Parser: unary negation in PEG grammar for negative literal arguments
+- Cross-module `is` operator emits tagged union check instead of `@TypeOf` comparison
+- Build system: pub-fixup infinite loop fix, cimport include paths, linkSystemLibrary
+- Cross-compilation target flag use-after-free fix, `-fast` cache leak elimination
+- Dead `Async(T)` branch removal from codegen
+
+### What Worked
+- Bug-by-bug systematic approach: 13 requirements mapped to 4 phases, each phase surgically focused
+- Grouping bugs by subsystem (codegen, parser, build, cleanup) kept phases cohesive
+- Single-day milestone — all 4 phases completed in one session, 46 commits
+- Quick task (260328-lsa) caught a regression in bridge struct value param const promotion after Phase 25
+
+### What Was Inefficient
+- Phase 25 needed a follow-up quick task to handle edge case (error-union bridge calls) — the original plan missed this scenario
+- Some summary extraction from older milestones (v0.10-v0.14) produced low-quality one-liners due to inconsistent SUMMARY.md formatting
+
+### Patterns Established
+- `is_bridge` flag pattern for bridge/non-bridge function behavior divergence
+- Read-modify-write pub fixup scanner with proper position advancement (avoids infinite loops)
+- Optional allocation pattern for target flags with lifetime extending past conditional blocks
+
+### Key Lessons
+- Quick tasks (`/gsd:quick`) are the right tool for catching post-phase regressions — lower overhead than a new phase
+- 13 bugs in 4 phases (5 plans) is about right for a bug-fix milestone — focused enough to ship in one day
+- Removing dead code (Async(T)) should happen as soon as it's identified, not deferred
+
 ## Cross-Milestone Trends
 
 | Milestone | Phases | Plans | Duration | Theme |
@@ -70,3 +129,5 @@
 | v0.12 | 3 | 2 | 1 day | Quality & polish |
 | v0.13 | 4 | 5 | 1 day | Real-world compatibility |
 | v0.14 | 3 | 6 | 2 days | Build system & allocators |
+| v0.15 | 3 | 6 | 1 day | Language ergonomics |
+| v0.16 | 4 | 5 | 1 day | Bug fixes (zero workarounds) |

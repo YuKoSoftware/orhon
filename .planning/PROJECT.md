@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Orhon is a compiled, memory-safe programming language that transpiles to Zig. Written in Zig 0.15.x, it targets developers who want Rust-level safety with Zig-level simplicity. The compiler implements a 12-pass pipeline from source to native binary, with ownership tracking, borrow checking, thread safety analysis, and incremental compilation. Currently at v0.15.
+Orhon is a compiled, memory-safe programming language that transpiles to Zig. Written in Zig 0.15.x, it targets developers who want Rust-level safety with Zig-level simplicity. The compiler implements a 12-pass pipeline from source to native binary, with ownership tracking, borrow checking, thread safety analysis, and incremental compilation. Currently at v0.16.
 
 ## Core Value
 
@@ -65,24 +65,15 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 
 ### Active
 
-(Defined in REQUIREMENTS.md for v0.16 Bug Fixes)
-
-## Current Milestone: v0.16 Bug Fixes
-
-**Goal:** Fix all known open bugs from TODO.md and Tamga's bugs.md — zero known workarounds remaining.
-
-**Target fixes:**
-- Codegen: `const &BridgeStruct` by-value, bridge struct `*const` in error unions, `export fn` missing `pub`, cross-module `is` operator
-- Parser: `size` reserved keyword, negative float literals in arguments
-- Build: multi-file module sidecar conflict, cimport include paths, cimport source linkSystemLibrary, cross-compilation garbled step name, `-fast` cache leak
+(No active milestone — planning next)
 
 ## Current State
 
-**Version:** v0.15 (shipped 2026-03-27)
-**Tests:** 260 across 11 stages
-**Milestones shipped:** v0.10, v0.11, v0.12, v0.13, v0.14, v0.15
+**Version:** v0.16 (shipped 2026-03-28)
+**Tests:** 262 across 11 stages
+**Milestones shipped:** v0.10, v0.11, v0.12, v0.13, v0.14, v0.15, v0.16
 
-v0.15 Language Ergonomics complete — `throw` statement, pattern guards, and `#cimport` unification all shipped. Tamga framework fully migrated. 260 tests pass.
+v0.16 Bug Fixes complete — all 13 known bugs fixed across codegen, parser, and build system. Zero known workarounds remaining. Tamga framework builds clean. 262 tests pass.
 
 ### Out of Scope
 
@@ -121,6 +112,9 @@ v0.15 Language Ergonomics complete — `throw` statement, pattern guards, and `#
 | Parenthesized guard syntax `(x if expr)` | Parens contain the compound construct, consistent with syntax containment rule | ✓ v0.15 Phase 23 — clean, explicit |
 | `#cimport = { name, include, source }` syntax | Consistent with `#key = value` metadata pattern | ✓ v0.15 Phase 24 — visual consistency |
 | Hard remove of old C directives | Only consumer is Tamga (controlled), no deprecation period needed | ✓ v0.15 Phase 24 — clean break |
+| `is_bridge` flag on FuncSig | Prevents incorrect const auto-borrow on bridge calls | ✓ v0.16 Phase 25 — clean bridge/non-bridge separation |
+| Sidecar pub fixup via read-modify-write | Prepend `pub ` to export fn when missing, scanner advances past needle | ✓ v0.16 Phase 25 — no infinite loop |
+| Remove Async(T) entirely | Dead language construct, never implemented — clean removal over deprecation | ✓ v0.16 Phase 28 — no dead code |
 
 ## Evolution
 
@@ -140,4 +134,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after v0.16 Bug Fixes milestone complete*
+*Last updated: 2026-03-28 after v0.16 Bug Fixes milestone shipped*

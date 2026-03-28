@@ -84,7 +84,9 @@ See: [milestones/v0.16-ROADMAP.md](milestones/v0.16-ROADMAP.md)
   2. Emit helpers (emit, emitFmt, emitIndent, emitLine) live in one shared module imported by all codegen files
   3. Type-to-Zig mapping (typeToZig, emitType) exists in exactly one location with no inline duplicates
   4. `./testall.sh` passes 262/262 — generated Zig output is byte-for-byte identical to pre-refactor
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 29-01-PLAN.md — Split codegen.zig into 4 files (core + decls + stmts + exprs) using wrapper stub pattern
 
 ### Phase 30: Error Quality
 **Goal**: Compiler errors give developers actionable guidance — typos get suggestions, mismatches show types, ownership violations say what to do

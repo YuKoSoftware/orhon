@@ -64,7 +64,7 @@ See: [milestones/v0.15-ROADMAP.md](milestones/v0.15-ROADMAP.md)
 
 - [x] **Phase 25: Bridge Codegen Fixes** - `const &BridgeStruct`, error-union by-value, and `pub export fn` all emit correct Zig (completed 2026-03-28)
 - [x] **Phase 26: Codegen Correctness & Parser** - cross-module `is` operator, `Async(T)` error, and negative literal parsing fixed (completed 2026-03-28)
-- [ ] **Phase 27: C Interop & Multi-Module Build** - multi-file sidecar conflict, cimport include paths, and linkSystemLibrary all resolved
+- [x] **Phase 27: C Interop & Multi-Module Build** - multi-file sidecar conflict, cimport include paths, and linkSystemLibrary all resolved (completed 2026-03-28)
 - [ ] **Phase 28: Cross-Compile, Cache & Docs** - cross-compilation step name fixed, `-fast` cache leak eliminated, TODO.md cleaned up
 
 ## Phase Details
@@ -106,7 +106,7 @@ Plans:
   4. All 260 tests continue to pass
 **Plans**: 1 plan
 Plans:
-- [ ] 27-01-PLAN.md — Fix sidecar dedup, cimport include paths, and linkSystemLibrary for source:
+- [x] 27-01-PLAN.md — Fix sidecar dedup, cimport include paths, and linkSystemLibrary for source:
 
 ### Phase 28: Cross-Compile, Cache & Docs
 **Goal**: Cross-compilation targets pass valid step names to Zig, `-fast` builds stay clean, and TODO.md reflects current bug status
@@ -132,5 +132,5 @@ Plans:
 | 22-24 | v0.15 | 6/6 | Complete | 2026-03-27 |
 | 25. Bridge Codegen Fixes | v0.16 | 1/1 | Complete    | 2026-03-28 |
 | 26. Codegen Correctness & Parser | v0.16 | 1/1 | Complete    | 2026-03-28 |
-| 27. C Interop & Multi-Module Build | v0.16 | 0/1 | Not started | - |
+| 27. C Interop & Multi-Module Build | v0.16 | 1/1 | Complete   | 2026-03-28 |
 | 28. Cross-Compile, Cache & Docs | v0.16 | 0/? | Not started | - |

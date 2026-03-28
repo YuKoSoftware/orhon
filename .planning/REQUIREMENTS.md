@@ -21,9 +21,9 @@ Requirements for v0.16 Bug Fixes milestone. Each maps to roadmap phases.
 
 ### Build System
 
-- [ ] **BLD-01**: Multi-file module with Zig sidecar resolves without "file exists in two modules" error
-- [ ] **BLD-02**: `#cimport` bridge file adds include path for module-relative headers
-- [ ] **BLD-03**: `#cimport source:` generates `linkSystemLibrary` for owning module
+- [x] **BLD-01**: Multi-file module with Zig sidecar resolves without "file exists in two modules" error
+- [x] **BLD-02**: `#cimport` bridge file adds include path for module-relative headers
+- [x] **BLD-03**: `#cimport source:` generates `linkSystemLibrary` for owning module
 - [ ] **BLD-04**: Cross-compilation `-win_x64` passes valid step name to Zig build
 - [ ] **BLD-05**: `orhon build -fast` uses standard cache directories (no leak into `bin/`)
 
@@ -56,9 +56,9 @@ None deferred — all known bugs included in v0.16.
 | CGN-04 | Phase 26 | Complete |
 | CGN-05 | Phase 26 | Complete |
 | PRS-01 | Phase 26 | Complete |
-| BLD-01 | Phase 27 | Pending |
-| BLD-02 | Phase 27 | Pending |
-| BLD-03 | Phase 27 | Pending |
+| BLD-01 | Phase 27 | Complete |
+| BLD-02 | Phase 27 | Complete |
+| BLD-03 | Phase 27 | Complete |
 | BLD-04 | Phase 28 | Pending |
 | BLD-05 | Phase 28 | Pending |
 | DOC-01 | Phase 28 | Pending |

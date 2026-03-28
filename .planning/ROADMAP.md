@@ -78,7 +78,9 @@ See: [milestones/v0.15-ROADMAP.md](milestones/v0.15-ROADMAP.md)
   2. A bridge struct value parameter inside an error-union function stays by-value — no silent `*const` promotion
   3. A sidecar `export fn` generates `pub export fn` so the symbol is accessible from Orhon callers
   4. All 260 tests continue to pass with the corrected codegen
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 25-01-PLAN.md — Fix bridge codegen: const &, error-union params, pub export fn
 
 ### Phase 26: Codegen Correctness & Parser
 **Goal**: Cross-module type checks emit correct Zig, `Async(T)` is rejected at compile time, and negative literals parse as arguments
@@ -123,7 +125,7 @@ See: [milestones/v0.15-ROADMAP.md](milestones/v0.15-ROADMAP.md)
 | 15-18 | v0.13 | 5/5 | Complete | 2026-03-26 |
 | 19-21 | v0.14 | 6/6 | Complete | 2026-03-27 |
 | 22-24 | v0.15 | 6/6 | Complete | 2026-03-27 |
-| 25. Bridge Codegen Fixes | v0.16 | 0/? | Not started | - |
+| 25. Bridge Codegen Fixes | v0.16 | 0/1 | Planned | - |
 | 26. Codegen Correctness & Parser | v0.16 | 0/? | Not started | - |
 | 27. C Interop & Multi-Module Build | v0.16 | 0/? | Not started | - |
 | 28. Cross-Compile, Cache & Docs | v0.16 | 0/? | Not started | - |

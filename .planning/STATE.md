@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
-status: verifying
-stopped_at: Phase 30 planned — 2 plans in 2 waves
-last_updated: "2026-03-28T19:32:30.097Z"
+status: executing
+stopped_at: Completed 30-error-quality 30-01-PLAN.md — ERR-01 and ERR-02 done
+last_updated: "2026-03-28T20:16:16.864Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** A clean, correct compiler with zero workarounds — every bug fixed, every error propagated, every code path honest.
-**Current focus:** Phase 29 — codegen-split
+**Current focus:** Phase 30 — error-quality
 
 ## Current Position
 
-Phase: 30
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 30 (error-quality) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-03-28
 
 Progress: [░░░░░░░░░░] 0%
@@ -53,6 +53,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 29]: Split codegen_exprs.zig further into codegen_match.zig because MIR expressions section was 1895 lines vs estimated 1180
 - [Phase 29]: Made all CodeGen struct methods pub to allow helper files to call via cg.method()
 - [Phase 29]: File-scope pub forwarders in codegen.zig for static functions (opToZig, mirIsString, isTypeAlias, extractValueType) called by helpers
+- [Phase 30-error-quality]: Adaptive Levenshtein threshold: 1 for names len<=4, 2 for longer — reduces false positives on short identifiers
+- [Phase 30-error-quality]: 12 guards before identifier error: primitive names, compiler funcs, arithmetic modes (wrap/sat/overflow), module names, enum variants, bitfield flags, else pattern, match guard bound vars
+- [Phase 30-error-quality]: Fix match guard body scope: guarded arm body resolves with guard_scope so bound variable x is accessible in arm body
 
 ### Pending Todos
 
@@ -67,9 +70,10 @@ None.
 
 None.
 | Phase 29 P01 | 126 | 1 tasks | 7 files |
+| Phase 30-error-quality P01 | 45m | 2 tasks | 4 files |
 
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Phase 30 planned — 2 plans in 2 waves
-Resume file: .planning/phases/30-error-quality/30-01-PLAN.md
+Stopped at: Completed 30-error-quality 30-01-PLAN.md — ERR-01 and ERR-02 done
+Resume file: None

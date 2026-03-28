@@ -102,9 +102,9 @@ Plans:
   2. A type mismatch error shows "expected T1, got T2" with both type names resolved and spelled out
   3. A move-after-use error suggests "consider using `copy()`" or names the offending variable
   4. A borrow violation error suggests "consider borrowing with `const &`" where applicable
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 30-01-PLAN.md — Levenshtein infrastructure + "did you mean?" in resolver + type mismatch standardization
+- [x] 30-01-PLAN.md — Levenshtein infrastructure + "did you mean?" in resolver + type mismatch standardization
 - [ ] 30-02-PLAN.md — Ownership/borrow/thread fix hints + integration tests for all ERR requirements
 
 ### Phase 31: PEG Error Messages
@@ -184,7 +184,7 @@ Plans:
 | 22-24 | v0.15 | 6/6 | Complete | 2026-03-27 |
 | 25-28 | v0.16 | 5/5 | Complete | 2026-03-28 |
 | 29 | v0.17 | 1/1 | Complete    | 2026-03-28 |
-| 30 | v0.17 | 0/2 | Not started | - |
+| 30 | v0.17 | 1/2 | In Progress|  |
 | 31 | v0.17 | 0/1 | Not started | - |
 | 32 | v0.17 | 0/? | Not started | - |
 | 33 | v0.17 | 0/? | Not started | - |

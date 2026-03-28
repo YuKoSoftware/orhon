@@ -61,6 +61,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - ✓ Bridge `const &` pointer pass, error-union value params, sidecar `pub export fn` — v0.16 Phase 25
 - ✓ Cross-module `is` tagged union check, Async(T) compile error, negative literal parsing — v0.16 Phase 26
 - ✓ Build system: sidecar pub-fixup loop, cimport include paths, linkSystemLibrary — v0.16 Phase 27
+- ✓ Cross-compilation target fix, -fast cache cleanup, Async(T) removal, TODO.md cleanup — v0.16 Phase 28
 
 ### Active
 
@@ -139,4 +140,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after Phase 27 C Interop & Multi-Module Build complete*
+*Last updated: 2026-03-28 after v0.16 Bug Fixes milestone complete*

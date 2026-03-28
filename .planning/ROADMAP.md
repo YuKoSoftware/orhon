@@ -115,7 +115,9 @@ Plans:
   1. A syntax error at a choice point shows all expected tokens (e.g. "expected `func`, `struct`, or `enum`") instead of a single token
   2. The expected set is deduplicated — the same token name never appears twice in one error message
   3. Existing parse error tests in test/11_errors.sh still pass with the improved messages
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 31-01-PLAN.md — Extend PEG engine expected-set accumulation + consumer formatting
 
 ### Phase 32: LSP Split
 **Goal**: lsp.zig is broken into focused files (types, JSON, analysis, handler groups, server loop) with no behavior change — LSP features work identically

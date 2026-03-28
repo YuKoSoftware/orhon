@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
-status: roadmap_ready
-stopped_at: Roadmap created — ready to plan Phase 29
-last_updated: "2026-03-28"
-last_activity: 2026-03-28
+status: planning
+stopped_at: Phase 29 context gathered
+last_updated: "2026-03-28T16:18:08.593Z"
+last_activity: 2026-03-28 — Roadmap defined for v0.17
 progress:
   total_phases: 3
   completed_phases: 0
@@ -66,5 +66,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Roadmap created — ready to plan Phase 29 (Codegen Split)
-Resume file: None
+Stopped at: Phase 29 context gathered
+Resume file: .planning/phases/29-codegen-split/29-CONTEXT.md

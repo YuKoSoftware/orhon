@@ -170,7 +170,9 @@ Plans:
   2. buildZigContent (414 lines) and buildZigContentMulti (594 lines) are in separate files
   3. Zig binary discovery is in its own module
   4. `./testall.sh` passes all tests — build generation tests pass in their new locations
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 35-01-PLAN.md — Extract zig_runner_build.zig, zig_runner_multi.zig, zig_runner_discovery.zig; reduce zig_runner.zig to re-export facade
 
 ### Phase 36: PEG Builder Split
 **Goal**: peg/builder.zig is broken into focused files (context, dispatch, decls, stmts, exprs, types) mirroring the codegen split pattern — all tests pass
@@ -200,5 +202,5 @@ Plans:
 | 32 | v0.17 | 2/2 | Complete    | 2026-03-29 |
 | 33 | v0.17 | 2/2 | Complete    | 2026-03-29 |
 | 34 | v0.17 | 2/2 | Complete    | 2026-03-29 |
-| 35 | v0.17 | 0/? | Not started | - |
+| 35 | v0.17 | 0/1 | Not started | - |
 | 36 | v0.17 | 0/? | Not started | - |

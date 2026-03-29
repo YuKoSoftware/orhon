@@ -1,6 +1,6 @@
 // main.zig — Orhon compiler entry point
-// CLI argument parsing and pipeline orchestration.
-// No business logic here — delegates to each pass.
+// Allocator setup, command dispatch, and pipeline orchestration.
+// Foundation modules (CLI, init, stdlib, interface) are delegated to split files.
 
 const std = @import("std");
 const build_options = @import("build_options");
@@ -21,593 +21,31 @@ const errors = @import("errors.zig");
 const cache = @import("cache.zig");
 const builtins = @import("builtins.zig");
 const peg = @import("peg.zig");
+const _cli = @import("cli.zig");
+const _init = @import("init.zig");
+const _std_bundle = @import("std_bundle.zig");
+const _interface = @import("interface.zig");
 
-// ============================================================
-// CLI
-// ============================================================
-
-const Command = enum {
-    build,
-    run,
-    @"test",
-    init,
-    addtopath,
-    debug,
-    version,
-    fmt,
-    gendoc,
-    lsp,
-    which,
-    analysis,
-    help,
-};
-
-const BuildTarget = enum {
-    native,
-    linux_x64,
-    linux_arm,
-    win_x64,
-    mac_x64,
-    mac_arm,
-    wasm,
-    zig, // emit Zig source project
-
-    fn toZigTriple(self: BuildTarget) []const u8 {
-        return switch (self) {
-            .native => "",
-            .linux_x64 => "x86_64-linux",
-            .linux_arm => "aarch64-linux",
-            .win_x64 => "x86_64-windows",
-            .mac_x64 => "x86_64-macos",
-            .mac_arm => "aarch64-macos",
-            .wasm => "wasm32-freestanding",
-            .zig => "",
-        };
-    }
-
-    fn folderName(self: BuildTarget) []const u8 {
-        return switch (self) {
-            .native => "native",
-            .linux_x64 => "linux_x64",
-            .linux_arm => "linux_arm",
-            .win_x64 => "win_x64",
-            .mac_x64 => "mac_x64",
-            .mac_arm => "mac_arm",
-            .wasm => "wasm",
-            .zig => "zig",
-        };
-    }
-};
-
-const OptLevel = enum {
-    debug,
-    fast,
-    small,
-};
-
-const CliArgs = struct {
-    command: Command,
-    targets: std.ArrayListUnmanaged(BuildTarget),
-    optimize: OptLevel,
-    verbose: bool,        // -verbose flag (show Zig compiler output)
-    source_dir: []const u8,
-    project_name: []const u8, // for init command
-    init_in_place: bool, // orhon init (no name) — init in current dir
-    allocator: std.mem.Allocator, // owns duped strings
-
-    pub fn deinit(self: *const CliArgs) void {
-        if (self.project_name.len > 0) self.allocator.free(self.project_name);
-        if (!std.mem.eql(u8, self.source_dir, "src")) self.allocator.free(self.source_dir);
-        @constCast(&self.targets).deinit(self.allocator);
-    }
-};
-
-fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-
-    if (args.len < 2) {
-        printUsage();
-        std.process.exit(1);
-    }
-
-    var cli = CliArgs{
-        .command = .help,
-        .targets = .{},
-        .optimize = .debug,
-        .verbose = false,
-        .source_dir = "src",
-        .project_name = "",
-        .init_in_place = false,
-        .allocator = allocator,
-    };
-
-    // Parse command
-    const cmd_str = args[1];
-    if (std.mem.eql(u8, cmd_str, "build")) {
-        cli.command = .build;
-    } else if (std.mem.eql(u8, cmd_str, "run")) {
-        cli.command = .run;
-    } else if (std.mem.eql(u8, cmd_str, "test")) {
-        cli.command = .@"test";
-    } else if (std.mem.eql(u8, cmd_str, "init")) {
-        cli.command = .init;
-        if (args.len >= 3) {
-            cli.project_name = try allocator.dupe(u8, args[2]);
-        } else {
-            // No name given — init in current directory, use dir name as project name
-            cli.init_in_place = true;
-            const cwd_path = try std.process.getCwdAlloc(allocator);
-            defer allocator.free(cwd_path);
-            const dir_name = std.fs.path.basename(cwd_path);
-            if (dir_name.len == 0) {
-                std.debug.print("error: could not determine project name from current directory\n", .{});
-                std.process.exit(1);
-            }
-            cli.project_name = try allocator.dupe(u8, dir_name);
-        }
-    } else if (std.mem.eql(u8, cmd_str, "debug")) {
-        cli.command = .debug;
-    } else if (std.mem.eql(u8, cmd_str, "fmt")) {
-        cli.command = .fmt;
-    } else if (std.mem.eql(u8, cmd_str, "gendoc")) {
-        cli.command = .gendoc;
-    } else if (std.mem.eql(u8, cmd_str, "addtopath") or std.mem.eql(u8, cmd_str, "-addtopath")) {
-        cli.command = .addtopath;
-    } else if (std.mem.eql(u8, cmd_str, "version") or std.mem.eql(u8, cmd_str, "--version")) {
-        cli.command = .version;
-    } else if (std.mem.eql(u8, cmd_str, "lsp")) {
-        cli.command = .lsp;
-    } else if (std.mem.eql(u8, cmd_str, "which")) {
-        cli.command = .which;
-    } else if (std.mem.eql(u8, cmd_str, "analysis")) {
-        cli.command = .analysis;
-    } else if (std.mem.eql(u8, cmd_str, "help") or std.mem.eql(u8, cmd_str, "--help")) {
-        cli.command = .help;
-    } else {
-        printUsage();
-        std.process.exit(1);
-    }
-
-    // Parse flags
-    var i: usize = 2;
-    while (i < args.len) : (i += 1) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "-linux_x64")) {
-            try cli.targets.append(allocator, .linux_x64);
-        } else if (std.mem.eql(u8, arg, "-linux_arm")) {
-            try cli.targets.append(allocator, .linux_arm);
-        } else if (std.mem.eql(u8, arg, "-win_x64")) {
-            try cli.targets.append(allocator, .win_x64);
-        } else if (std.mem.eql(u8, arg, "-mac_x64")) {
-            try cli.targets.append(allocator, .mac_x64);
-        } else if (std.mem.eql(u8, arg, "-mac_arm")) {
-            try cli.targets.append(allocator, .mac_arm);
-        } else if (std.mem.eql(u8, arg, "-wasm")) {
-            try cli.targets.append(allocator, .wasm);
-        } else if (std.mem.eql(u8, arg, "-zig")) {
-            try cli.targets.append(allocator, .zig);
-        } else if (std.mem.eql(u8, arg, "-fast")) {
-            cli.optimize = .fast;
-        } else if (std.mem.eql(u8, arg, "-small")) {
-            cli.optimize = .small;
-        } else if (std.mem.eql(u8, arg, "-verbose")) {
-            cli.verbose = true;
-        } else {
-            // Treat as source directory
-            cli.source_dir = try allocator.dupe(u8, arg);
-        }
-    }
-
-    return cli;
-}
-
-fn printUsage() void {
-    const usage =
-        \\orhon — The Orhon compiler  (orhon help for more info)
-        \\
-        \\  build   run   test   fmt   gendoc   init   lsp   addtopath   debug   analysis   version
-        \\
-    ;
-    std.debug.print("{s}", .{usage});
-}
-
-fn printHelp() void {
-    const help =
-        \\orhon — The Orhon programming language compiler
-        \\
-        \\Commands:
-        \\  build               Compile the project in the current directory
-        \\  run                 Build and immediately execute the binary
-        \\  test                Run all test { } blocks in the project
-        \\  init [name]         Create a new project (in ./<name>/ or current dir if no name)
-        \\  fmt                 Format all .orh files in the project
-        \\  gendoc              Generate Markdown docs from /// comments (pub items)
-        \\  lsp                 Start the language server (for editor integration)
-        \\  addtopath           Add orhon to your shell PATH
-        \\  debug               Show project info — modules, files, source directory
-        \\  analysis <file>     Run PEG grammar validation on a single .orh file
-        \\  version             Print the compiler version
-        \\
-        \\Targets (combinable — e.g. orhon build -linux_x64 -win_x64):
-        \\  -linux_x64          Linux x86-64
-        \\  -linux_arm          Linux ARM64
-        \\  -win_x64            Windows x86-64
-        \\  -mac_x64            macOS x86-64
-        \\  -mac_arm            macOS ARM64 (Apple Silicon)
-        \\  -wasm               WebAssembly
-        \\  -zig                Emit Zig source project (no binary)
-        \\
-        \\Build flags:
-        \\  -fast               Maximum speed optimization
-        \\  -small              Minimum binary size optimization
-        \\  -verbose            Show raw Zig compiler output
-        \\
-    ;
-    std.debug.print("{s}", .{help});
-}
+// Re-export CLI types used throughout this file
+pub const CliArgs = _cli.CliArgs;
+pub const Command = _cli.Command;
+pub const BuildTarget = _cli.BuildTarget;
 
 // ============================================================
 // PIPELINE
 // ============================================================
-
-
-
-// ============================================================
-// PROJECT INIT
-// ============================================================
-
-// Templates are embedded from src/templates/ at compile time.
-// Never put multi-line file content inline in .zig source — use @embedFile instead.
-const MAIN_ORH_TEMPLATE         = @embedFile("templates/main.orh");
-
-// Example module — split across multiple files in templates/example/
-const EXAMPLE_ORH_TEMPLATE      = @embedFile("templates/example/example.orh");
-const CONTROL_FLOW_ORH_TEMPLATE = @embedFile("templates/example/control_flow.orh");
-const ERROR_HANDLING_TEMPLATE   = @embedFile("templates/example/error_handling.orh");
-const DATA_TYPES_TEMPLATE       = @embedFile("templates/example/data_types.orh");
-const STRINGS_TEMPLATE          = @embedFile("templates/example/strings.orh");
-const ADVANCED_TEMPLATE         = @embedFile("templates/example/advanced.orh");
-
-
-fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: bool) !void {
-    // Validate project name
-    if (name.len == 0) {
-        std.debug.print("error: project name cannot be empty\n", .{});
-        return error.InvalidName;
-    }
-    for (name) |ch| {
-        if (!std.ascii.isAlphanumeric(ch) and ch != '_' and ch != '-') {
-            std.debug.print("error: project name must contain only letters, numbers, - or _\n", .{});
-            return error.InvalidName;
-        }
-    }
-
-    // Create project directory, src/ and src/example/ subdirectories
-    const base = if (in_place) "." else name;
-    const src_dir_path = try std.fs.path.join(allocator, &.{ base, "src" });
-    defer allocator.free(src_dir_path);
-    try std.fs.cwd().makePath(src_dir_path);
-
-    const example_dir_path = try std.fs.path.join(allocator, &.{ base, "src", "example" });
-    defer allocator.free(example_dir_path);
-    try std.fs.cwd().makePath(example_dir_path);
-
-    // Write src/main.orh from template (skip if exists)
-    // Template contains a single {s} placeholder for the project name.
-    // Split on it and write in two parts — avoids allocPrint brace escaping issues.
-    const main_orh_path = try std.fs.path.join(allocator, &.{ base, "src", "main.orh" });
-    defer allocator.free(main_orh_path);
-
-    if (std.fs.cwd().access(main_orh_path, .{})) |_| {
-        // main.orh exists — don't overwrite
-    } else |_| {
-        const main_file = try std.fs.cwd().createFile(main_orh_path, .{});
-        defer main_file.close();
-
-        const placeholder = "{s}";
-        if (std.mem.indexOf(u8, MAIN_ORH_TEMPLATE, placeholder)) |pos| {
-            try main_file.writeAll(MAIN_ORH_TEMPLATE[0..pos]);
-            try main_file.writeAll(name);
-            try main_file.writeAll(MAIN_ORH_TEMPLATE[pos + placeholder.len..]);
-        } else {
-            try main_file.writeAll(MAIN_ORH_TEMPLATE);
-        }
-    }
-
-    // Write example module files into src/example/ (skip each if exists)
-    const example_files = .{
-        .{ "example.orh",        EXAMPLE_ORH_TEMPLATE },
-        .{ "control_flow.orh",   CONTROL_FLOW_ORH_TEMPLATE },
-        .{ "error_handling.orh", ERROR_HANDLING_TEMPLATE },
-        .{ "data_types.orh",     DATA_TYPES_TEMPLATE },
-        .{ "strings.orh",        STRINGS_TEMPLATE },
-        .{ "advanced.orh",       ADVANCED_TEMPLATE },
-    };
-
-    inline for (example_files) |entry| {
-        const file_path = try std.fs.path.join(allocator, &.{ base, "src", "example", entry[0] });
-        defer allocator.free(file_path);
-
-        if (std.fs.cwd().access(file_path, .{})) |_| {
-            // file exists — don't overwrite
-        } else |_| {
-            const file = try std.fs.cwd().createFile(file_path, .{});
-            defer file.close();
-            try file.writeAll(entry[1]);
-        }
-    }
-
-    std.debug.print("Created project '{s}'\n", .{name});
-    std.debug.print("  {s}/src/\n", .{base});
-    std.debug.print("  {s}/src/main.orh\n", .{base});
-    std.debug.print("  {s}/src/example/  (6 files — language manual)\n", .{base});
-    if (!in_place) {
-        std.debug.print("\nGet started:\n", .{});
-        std.debug.print("  cd {s}\n", .{name});
-    } else {
-        std.debug.print("\nGet started:\n", .{});
-    }
-    std.debug.print("  orhon build\n", .{});
-    std.debug.print("  orhon run\n", .{});
-}
-
-// ============================================================
-// STD INIT
-// ============================================================
-
-const COLLECTIONS_ORH = @embedFile("std/collections.orh");
-const COLLECTIONS_ZIG = @embedFile("std/collections.zig");
-const ALLOCATOR_ORH = @embedFile("std/allocator.orh");
-const ALLOCATOR_ZIG = @embedFile("std/allocator.zig");
-const CONSOLE_ORH = @embedFile("std/console.orh");
-const CONSOLE_ZIG = @embedFile("std/console.zig");
-const FS_ORH      = @embedFile("std/fs.orh");
-const FS_ZIG      = @embedFile("std/fs.zig");
-const MATH_ORH    = @embedFile("std/math.orh");
-const MATH_ZIG    = @embedFile("std/math.zig");
-const STR_ORH     = @embedFile("std/str.orh");
-const STR_ZIG     = @embedFile("std/str.zig");
-const SYSTEM_ORH  = @embedFile("std/system.orh");
-const SYSTEM_ZIG  = @embedFile("std/system.zig");
-const TIME_ORH    = @embedFile("std/time.orh");
-const TIME_ZIG    = @embedFile("std/time.zig");
-const JSON_ORH    = @embedFile("std/json.orh");
-const JSON_ZIG    = @embedFile("std/json.zig");
-const SORT_ORH    = @embedFile("std/sort.orh");
-const SORT_ZIG    = @embedFile("std/sort.zig");
-const RANDOM_ORH  = @embedFile("std/random.orh");
-const RANDOM_ZIG  = @embedFile("std/random.zig");
-const ENCODING_ORH = @embedFile("std/encoding.orh");
-const ENCODING_ZIG = @embedFile("std/encoding.zig");
-const STREAM_ORH   = @embedFile("std/stream.orh");
-const STREAM_ZIG   = @embedFile("std/stream.zig");
-const CRYPTO_ORH   = @embedFile("std/crypto.orh");
-const CRYPTO_ZIG   = @embedFile("std/crypto.zig");
-const COMPRESS_ORH = @embedFile("std/compression.orh");
-const COMPRESS_ZIG = @embedFile("std/compression.zig");
-const XML_ORH      = @embedFile("std/xml.orh");
-const XML_ZIG      = @embedFile("std/xml.zig");
-const CSV_ORH      = @embedFile("std/csv.orh");
-const CSV_ZIG      = @embedFile("std/csv.zig");
-const TESTING_ORH  = @embedFile("std/testing.orh");
-const TESTING_ZIG  = @embedFile("std/testing.zig");
-const NET_ORH      = @embedFile("std/net.orh");
-const NET_ZIG      = @embedFile("std/net.zig");
-const HTTP_ORH     = @embedFile("std/http.orh");
-const HTTP_ZIG     = @embedFile("std/http.zig");
-const REGEX_ORH    = @embedFile("std/regex.orh");
-const REGEX_ZIG    = @embedFile("std/regex.zig");
-const INI_ORH      = @embedFile("std/ini.orh");
-const INI_ZIG      = @embedFile("std/ini.zig");
-const TOML_ORH     = @embedFile("std/toml.orh");
-const TOML_ZIG     = @embedFile("std/toml.zig");
-const SIMD_ORH     = @embedFile("std/simd.orh");
-const SIMD_ZIG     = @embedFile("std/simd.zig");
-const TUI_ORH      = @embedFile("std/tui.orh");
-const TUI_ZIG      = @embedFile("std/tui.zig");
-const YAML_ORH     = @embedFile("std/yaml.orh");
-const YAML_ZIG     = @embedFile("std/yaml.zig");
-const LINEAR_ORH   = @embedFile("std/linear.orh");
-
-/// Write an embedded file to .orh-cache/std/ if it doesn't already exist
-fn writeStdFile(dir: []const u8, name: []const u8, content: []const u8, allocator: std.mem.Allocator) !void {
-    const path = try std.fs.path.join(allocator, &.{ dir, name });
-    defer allocator.free(path);
-    std.fs.cwd().access(path, .{}) catch {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        try file.writeAll(content);
-    };
-}
-
-/// Ensure all embedded std files exist in .orh-cache/std/
-fn ensureStdFiles(allocator: std.mem.Allocator) !void {
-    const std_dir = cache.CACHE_DIR ++ "/std";
-    try std.fs.cwd().makePath(std_dir);
-
-    const files = [_]struct { name: []const u8, content: []const u8 }{
-        .{ .name = "collections.orh", .content = COLLECTIONS_ORH },
-        .{ .name = "collections.zig", .content = COLLECTIONS_ZIG },
-        .{ .name = "allocator.orh", .content = ALLOCATOR_ORH },
-        .{ .name = "allocator.zig", .content = ALLOCATOR_ZIG },
-        .{ .name = "console.orh", .content = CONSOLE_ORH },
-        .{ .name = "console.zig", .content = CONSOLE_ZIG },
-        .{ .name = "fs.orh",      .content = FS_ORH },
-        .{ .name = "fs.zig",      .content = FS_ZIG },
-        .{ .name = "math.orh",    .content = MATH_ORH },
-        .{ .name = "math.zig",    .content = MATH_ZIG },
-        .{ .name = "str.orh",     .content = STR_ORH },
-        .{ .name = "str.zig",     .content = STR_ZIG },
-        .{ .name = "system.orh",  .content = SYSTEM_ORH },
-        .{ .name = "system.zig",  .content = SYSTEM_ZIG },
-        .{ .name = "time.orh",    .content = TIME_ORH },
-        .{ .name = "time.zig",    .content = TIME_ZIG },
-        .{ .name = "json.orh",    .content = JSON_ORH },
-        .{ .name = "json.zig",    .content = JSON_ZIG },
-        .{ .name = "sort.orh",    .content = SORT_ORH },
-        .{ .name = "sort.zig",    .content = SORT_ZIG },
-        .{ .name = "random.orh",  .content = RANDOM_ORH },
-        .{ .name = "random.zig",  .content = RANDOM_ZIG },
-        .{ .name = "encoding.orh", .content = ENCODING_ORH },
-        .{ .name = "encoding.zig", .content = ENCODING_ZIG },
-        .{ .name = "stream.orh",   .content = STREAM_ORH },
-        .{ .name = "stream.zig",   .content = STREAM_ZIG },
-        .{ .name = "crypto.orh",   .content = CRYPTO_ORH },
-        .{ .name = "crypto.zig",   .content = CRYPTO_ZIG },
-        .{ .name = "compression.orh", .content = COMPRESS_ORH },
-        .{ .name = "compression.zig", .content = COMPRESS_ZIG },
-        .{ .name = "xml.orh",         .content = XML_ORH },
-        .{ .name = "xml.zig",         .content = XML_ZIG },
-        .{ .name = "csv.orh",         .content = CSV_ORH },
-        .{ .name = "csv.zig",         .content = CSV_ZIG },
-        .{ .name = "testing.orh",     .content = TESTING_ORH },
-        .{ .name = "testing.zig",     .content = TESTING_ZIG },
-        .{ .name = "net.orh",         .content = NET_ORH },
-        .{ .name = "net.zig",         .content = NET_ZIG },
-        .{ .name = "http.orh",        .content = HTTP_ORH },
-        .{ .name = "http.zig",        .content = HTTP_ZIG },
-        .{ .name = "regex.orh",       .content = REGEX_ORH },
-        .{ .name = "regex.zig",       .content = REGEX_ZIG },
-        .{ .name = "ini.orh",         .content = INI_ORH },
-        .{ .name = "ini.zig",         .content = INI_ZIG },
-        .{ .name = "toml.orh",        .content = TOML_ORH },
-        .{ .name = "toml.zig",        .content = TOML_ZIG },
-        .{ .name = "simd.orh",        .content = SIMD_ORH },
-        .{ .name = "simd.zig",        .content = SIMD_ZIG },
-        .{ .name = "tui.orh",         .content = TUI_ORH },
-        .{ .name = "tui.zig",         .content = TUI_ZIG },
-        .{ .name = "yaml.orh",        .content = YAML_ORH },
-        .{ .name = "yaml.zig",        .content = YAML_ZIG },
-        .{ .name = "linear.orh",      .content = LINEAR_ORH },
-    };
-
-    for (files) |f| {
-        try writeStdFile(std_dir, f.name, f.content, allocator);
-    }
-}
-
-
-
-// ============================================================
-// PATH INSTALLATION
-// ============================================================
-
-fn addToPath(allocator: std.mem.Allocator) !void {
-    // Get the directory containing the orhon binary
-    var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const exe_path = try std.fs.selfExePath(&exe_buf);
-    const exe_dir = std.fs.path.dirname(exe_path) orelse ".";
-
-    // Check if already in PATH
-    const path_env = std.process.getEnvVarOwned(allocator, "PATH") catch "";
-    defer if (path_env.len > 0) allocator.free(path_env);
-
-    if (std.mem.indexOf(u8, path_env, exe_dir) != null) {
-        std.debug.print("orhon is already in PATH ({s})\n", .{exe_dir});
-        return;
-    }
-
-    // Find the right shell profile to update
-    const home = std.process.getEnvVarOwned(allocator, "HOME") catch {
-        std.debug.print("error: $HOME not set\n", .{});
-        return error.NoHome;
-    };
-    defer allocator.free(home);
-
-    // Determine shell and profile file
-    const shell = std.process.getEnvVarOwned(allocator, "SHELL") catch "";
-    defer if (shell.len > 0) allocator.free(shell);
-
-    const profile_name: []const u8 = blk: {
-        if (std.mem.endsWith(u8, shell, "zsh"))  break :blk ".zshrc";
-        if (std.mem.endsWith(u8, shell, "fish")) break :blk ".config/fish/config.fish";
-        break :blk ".bashrc"; // default to bash
-    };
-
-    const profile_path = try std.fs.path.join(allocator, &.{ home, profile_name });
-    defer allocator.free(profile_path);
-
-    // The line to append
-    const export_line = try std.fmt.allocPrint(allocator,
-        "\n# orhon compiler\nexport PATH=\"$PATH:{s}\"\n",
-        .{exe_dir});
-    defer allocator.free(export_line);
-
-    // Fish uses a different syntax
-    const fish_line = try std.fmt.allocPrint(allocator,
-        "\n# orhon compiler\nfish_add_path {s}\n",
-        .{exe_dir});
-    defer allocator.free(fish_line);
-
-    const line_to_write = if (std.mem.endsWith(u8, shell, "fish"))
-        fish_line
-    else
-        export_line;
-
-    // For fish, ensure the config directory exists first
-    if (std.mem.endsWith(u8, shell, "fish")) {
-        const fish_config_dir = try std.fs.path.join(allocator, &.{ home, ".config", "fish" });
-        defer allocator.free(fish_config_dir);
-        try std.fs.cwd().makePath(fish_config_dir);
-    }
-
-    // Read existing profile to check for a previous orhon entry
-    const existing = std.fs.cwd().readFileAlloc(allocator, profile_path, 1024 * 1024) catch "";
-    defer if (existing.len > 0) allocator.free(existing);
-
-    const marker = "# orhon compiler";
-
-    if (std.mem.indexOf(u8, existing, marker)) |start| {
-        // Find the end of the orhon block (marker line + export/path line)
-        // Look for the next newline after the export line
-        const after_marker = start + marker.len;
-        // Skip the marker line's newline
-        const after_first_nl = if (after_marker < existing.len and existing[after_marker] == '\n')
-            after_marker + 1
-        else
-            after_marker;
-        // Find end of the export/path line
-        const end = if (std.mem.indexOfPos(u8, existing, after_first_nl, "\n")) |nl|
-            nl + 1
-        else
-            existing.len;
-
-        // Also trim a leading newline before the marker if present
-        const real_start = if (start > 0 and existing[start - 1] == '\n') start - 1 else start;
-
-        // Rewrite the file with the old entry replaced
-        const file = try std.fs.cwd().createFile(profile_path, .{ .truncate = true });
-        defer file.close();
-        try file.writeAll(existing[0..real_start]);
-        try file.writeAll(line_to_write);
-        try file.writeAll(existing[end..]);
-
-        std.debug.print("Updated orhon PATH in {s} (replaced old entry)\n", .{profile_path});
-    } else {
-        // No existing entry — append
-        const file = try std.fs.cwd().createFile(profile_path, .{ .truncate = false, .exclusive = false });
-        defer file.close();
-        try file.seekFromEnd(0);
-        try file.writeAll(line_to_write);
-
-        std.debug.print("Added orhon to PATH in {s}\n", .{profile_path});
-    }
-    std.debug.print("Run: source {s}\n", .{profile_path});
-    std.debug.print("  or open a new terminal\n", .{});
-}
 
 pub fn main() !void {
     var da = std.heap.DebugAllocator(.{}){};
     defer _ = da.deinit();
     const allocator = if (@import("builtin").mode == .Debug) da.allocator() else std.heap.smp_allocator;
 
-    var cli = try parseArgs(allocator);
+    var cli = try _cli.parseArgs(allocator);
     defer cli.deinit();
 
     // Handle init and addtopath before setting up the full pipeline
     if (cli.command == .init) {
-        initProject(allocator, cli.project_name, cli.init_in_place) catch |err| {
+        _init.initProject(allocator, cli.project_name, cli.init_in_place) catch |err| {
             std.debug.print("error: failed to create project: {}\n", .{err});
             std.process.exit(1);
         };
@@ -666,7 +104,7 @@ pub fn main() !void {
     }
 
     if (cli.command == .help) {
-        printHelp();
+        _cli.printHelp();
         return;
     }
 
@@ -845,7 +283,7 @@ fn runGendoc(allocator: std.mem.Allocator, cli: *const CliArgs) !void {
     const docgen = @import("docgen.zig");
 
     // Ensure std files are available (parsing may discover std imports)
-    try ensureStdFiles(allocator);
+    try _std_bundle.ensureStdFiles(allocator);
 
     // Check source dir exists
     std.fs.cwd().access(cli.source_dir, .{}) catch {
@@ -899,19 +337,19 @@ fn runGendoc(allocator: std.mem.Allocator, cli: *const CliArgs) !void {
 fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Reporter) !?[]const u8 {
 
     // Ensure embedded std files exist in .orh-cache/std/
-    try ensureStdFiles(allocator);
+    try _std_bundle.ensureStdFiles(allocator);
 
     // Copy internal bridges to generated dir — always available for all modules
     try cache.ensureGeneratedDir();
     {
         const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_str.zig", .{});
         defer file.close();
-        try file.writeAll(STR_ZIG);
+        try file.writeAll(_std_bundle.STR_ZIG);
     }
     {
         const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_collections.zig", .{});
         defer file.close();
-        try file.writeAll(COLLECTIONS_ZIG);
+        try file.writeAll(_std_bundle.COLLECTIONS_ZIG);
     }
 
     // ── Pass 3: Module Resolution ──────────────────────────────
@@ -1525,7 +963,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
             if (!std.mem.eql(u8, t.build_type, "exe")) {
                 const mod = mod_resolver.modules.get(t.module_name) orelse continue;
                 if (mod.ast) |ast| {
-                    try generateInterface(allocator, t.module_name, t.project_name, ast);
+                    try _interface.generateInterface(allocator, t.module_name, t.project_name, ast);
                 }
             }
         }
@@ -1699,7 +1137,7 @@ fn runPipeline(allocator: std.mem.Allocator, cli: *CliArgs, reporter: *errors.Re
                 }
             } else {
                 if (mod.ast) |ast| {
-                    try generateInterface(allocator, mod.name, binary_name, ast);
+                    try _interface.generateInterface(allocator, mod.name, binary_name, ast);
                 }
             }
         }
@@ -1747,236 +1185,119 @@ fn collectBridgeNames(ast: *parser.Node, allocator: std.mem.Allocator) ![][]cons
 }
 
 // ============================================================
-// INTERFACE FILE GENERATION
+// PATH INSTALLATION
+// (moves to commands.zig in Plan 02)
 // ============================================================
-//
-// When a module is compiled as static or dynamic, emit a pub-only
-// `.orh` file into bin/ so consumers can type-check against the API.
-// The interface file is valid Orhon — it has the module declaration,
-// version, and all pub signatures, but no bodies or private members.
 
-/// Write a type node as Orhon source syntax into a buffer
-fn formatType(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator) anyerror!void {
-    switch (node.*) {
-        .type_primitive => |s| try buf.appendSlice(alloc, s),
-        .type_named     => |s| try buf.appendSlice(alloc, s),
-        .type_slice     => |elem| {
-            try buf.appendSlice(alloc, "[]");
-            try formatType(elem, buf, alloc);
-        },
-        .type_array     => |a| {
-            try buf.append(alloc, '[');
-            try formatExprSimple(a.size, buf, alloc);
-            try buf.append(alloc, ']');
-            try formatType(a.elem, buf, alloc);
-        },
-        .type_ptr       => |p| {
-            try buf.appendSlice(alloc, p.kind);
-            try formatType(p.elem, buf, alloc);
-        },
-        .type_union     => |arms| {
-            try buf.append(alloc, '(');
-            for (arms, 0..) |arm, i| {
-                if (i > 0) try buf.appendSlice(alloc, " | ");
-                try formatType(arm, buf, alloc);
-            }
-            try buf.append(alloc, ')');
-        },
-        .type_func      => |f| {
-            try buf.appendSlice(alloc, "func(");
-            for (f.params, 0..) |p, i| {
-                if (i > 0) try buf.appendSlice(alloc, ", ");
-                try formatType(p, buf, alloc);
-            }
-            try buf.appendSlice(alloc, ") ");
-            try formatType(f.ret, buf, alloc);
-        },
-        .type_generic   => |g| {
-            try buf.appendSlice(alloc, g.name);
-            try buf.append(alloc, '(');
-            for (g.args, 0..) |a, i| {
-                if (i > 0) try buf.appendSlice(alloc, ", ");
-                try formatType(a, buf, alloc);
-            }
-            try buf.append(alloc, ')');
-        },
-        .type_tuple_named => |fields| {
-            try buf.append(alloc, '(');
-            for (fields, 0..) |f, i| {
-                if (i > 0) try buf.appendSlice(alloc, ", ");
-                try buf.appendSlice(alloc, f.name);
-                try buf.appendSlice(alloc, ": ");
-                try formatType(f.type_node, buf, alloc);
-            }
-            try buf.append(alloc, ')');
-        },
-        .type_tuple_anon => |parts| {
-            try buf.append(alloc, '(');
-            for (parts, 0..) |p, i| {
-                if (i > 0) try buf.appendSlice(alloc, ", ");
-                try formatType(p, buf, alloc);
-            }
-            try buf.append(alloc, ')');
-        },
-        else => try buf.appendSlice(alloc, "any"),
+fn addToPath(allocator: std.mem.Allocator) !void {
+    // Get the directory containing the orhon binary
+    var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const exe_path = try std.fs.selfExePath(&exe_buf);
+    const exe_dir = std.fs.path.dirname(exe_path) orelse ".";
+
+    // Check if already in PATH
+    const path_env = std.process.getEnvVarOwned(allocator, "PATH") catch "";
+    defer if (path_env.len > 0) allocator.free(path_env);
+
+    if (std.mem.indexOf(u8, path_env, exe_dir) != null) {
+        std.debug.print("orhon is already in PATH ({s})\n", .{exe_dir});
+        return;
     }
+
+    // Find the right shell profile to update
+    const home = std.process.getEnvVarOwned(allocator, "HOME") catch {
+        std.debug.print("error: $HOME not set\n", .{});
+        return error.NoHome;
+    };
+    defer allocator.free(home);
+
+    // Determine shell and profile file
+    const shell = std.process.getEnvVarOwned(allocator, "SHELL") catch "";
+    defer if (shell.len > 0) allocator.free(shell);
+
+    const profile_name: []const u8 = blk: {
+        if (std.mem.endsWith(u8, shell, "zsh"))  break :blk ".zshrc";
+        if (std.mem.endsWith(u8, shell, "fish")) break :blk ".config/fish/config.fish";
+        break :blk ".bashrc"; // default to bash
+    };
+
+    const profile_path = try std.fs.path.join(allocator, &.{ home, profile_name });
+    defer allocator.free(profile_path);
+
+    // The line to append
+    const export_line = try std.fmt.allocPrint(allocator,
+        "\n# orhon compiler\nexport PATH=\"$PATH:{s}\"\n",
+        .{exe_dir});
+    defer allocator.free(export_line);
+
+    // Fish uses a different syntax
+    const fish_line = try std.fmt.allocPrint(allocator,
+        "\n# orhon compiler\nfish_add_path {s}\n",
+        .{exe_dir});
+    defer allocator.free(fish_line);
+
+    const line_to_write = if (std.mem.endsWith(u8, shell, "fish"))
+        fish_line
+    else
+        export_line;
+
+    // For fish, ensure the config directory exists first
+    if (std.mem.endsWith(u8, shell, "fish")) {
+        const fish_config_dir = try std.fs.path.join(allocator, &.{ home, ".config", "fish" });
+        defer allocator.free(fish_config_dir);
+        try std.fs.cwd().makePath(fish_config_dir);
+    }
+
+    // Read existing profile to check for a previous orhon entry
+    const existing = std.fs.cwd().readFileAlloc(allocator, profile_path, 1024 * 1024) catch "";
+    defer if (existing.len > 0) allocator.free(existing);
+
+    const marker = "# orhon compiler";
+
+    if (std.mem.indexOf(u8, existing, marker)) |start| {
+        // Find the end of the orhon block (marker line + export/path line)
+        // Look for the next newline after the export line
+        const after_marker = start + marker.len;
+        // Skip the marker line's newline
+        const after_first_nl = if (after_marker < existing.len and existing[after_marker] == '\n')
+            after_marker + 1
+        else
+            after_marker;
+        // Find end of the export/path line
+        const end = if (std.mem.indexOfPos(u8, existing, after_first_nl, "\n")) |nl|
+            nl + 1
+        else
+            existing.len;
+
+        // Also trim a leading newline before the marker if present
+        const real_start = if (start > 0 and existing[start - 1] == '\n') start - 1 else start;
+
+        // Rewrite the file with the old entry replaced
+        const file = try std.fs.cwd().createFile(profile_path, .{ .truncate = true });
+        defer file.close();
+        try file.writeAll(existing[0..real_start]);
+        try file.writeAll(line_to_write);
+        try file.writeAll(existing[end..]);
+
+        std.debug.print("Updated orhon PATH in {s} (replaced old entry)\n", .{profile_path});
+    } else {
+        // No existing entry — append
+        const file = try std.fs.cwd().createFile(profile_path, .{ .truncate = false, .exclusive = false });
+        defer file.close();
+        try file.seekFromEnd(0);
+        try file.writeAll(line_to_write);
+
+        std.debug.print("Added orhon to PATH in {s}\n", .{profile_path});
+    }
+    std.debug.print("Run: source {s}\n", .{profile_path});
+    std.debug.print("  or open a new terminal\n", .{});
 }
 
-/// Write simple expressions that appear in type contexts (array sizes, version numbers)
-fn formatExprSimple(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator) anyerror!void {
-    switch (node.*) {
-        .int_literal   => |s| try buf.appendSlice(alloc, s),
-        .float_literal => |s| try buf.appendSlice(alloc, s),
-        .identifier    => |s| try buf.appendSlice(alloc, s),
-        .call_expr     => |c| {
-            // Version(1, 2, 3) etc.
-            if (c.callee.* == .identifier) try buf.appendSlice(alloc, c.callee.identifier);
-            try buf.append(alloc, '(');
-            for (c.args, 0..) |a, i| {
-                if (i > 0) try buf.appendSlice(alloc, ", ");
-                try formatExprSimple(a, buf, alloc);
-            }
-            try buf.append(alloc, ')');
-        },
-        else => {},
-    }
-}
+// ============================================================
+// BUILD OUTPUT HELPERS
+// (moves to commands.zig in Plan 02)
+// ============================================================
 
-/// Write a function signature (no body) into a buffer
-fn emitFuncSig(f: parser.FuncDecl, buf: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator, indent: []const u8) anyerror!void {
-    try buf.appendSlice(alloc, indent);
-    if (f.is_pub) try buf.appendSlice(alloc, "pub ");
-    if (f.is_compt) try buf.appendSlice(alloc, "compt ");
-    try buf.appendSlice(alloc, "func ");
-    try buf.appendSlice(alloc, f.name);
-    try buf.append(alloc, '(');
-    for (f.params, 0..) |p, i| {
-        if (i > 0) try buf.appendSlice(alloc, ", ");
-        const param = p.param;
-        try buf.appendSlice(alloc, param.name);
-        try buf.appendSlice(alloc, ": ");
-        try formatType(param.type_annotation, buf, alloc);
-    }
-    try buf.appendSlice(alloc, ") ");
-    try formatType(f.return_type, buf, alloc);
-    try buf.append(alloc, '\n');
-}
-
-/// Emit one top-level pub declaration into a buffer (skip private)
-fn emitInterfaceDecl(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator) anyerror!void {
-    switch (node.*) {
-        .func_decl => |f| {
-            if (!f.is_pub) return;
-            try emitFuncSig(f, buf, alloc, "");
-            try buf.append(alloc, '\n');
-        },
-        .struct_decl => |s| {
-            if (!s.is_pub) return;
-            try buf.appendSlice(alloc, "pub struct ");
-            try buf.appendSlice(alloc, s.name);
-            try buf.appendSlice(alloc, " {\n");
-            for (s.members) |m| {
-                switch (m.*) {
-                    .field_decl => |fd| {
-                        if (!fd.is_pub) continue;
-                        try buf.appendSlice(alloc, "    pub ");
-                        try buf.appendSlice(alloc, fd.name);
-                        try buf.appendSlice(alloc, ": ");
-                        try formatType(fd.type_annotation, buf, alloc);
-                        try buf.append(alloc, '\n');
-                    },
-                    .func_decl => |f| {
-                        if (!f.is_pub) continue;
-                        try emitFuncSig(f, buf, alloc, "    ");
-                    },
-                    .const_decl => |v| {
-                        if (!v.is_pub) continue;
-                        try buf.appendSlice(alloc, "    pub const ");
-                        try buf.appendSlice(alloc, v.name);
-                        if (v.type_annotation) |t| {
-                            try buf.appendSlice(alloc, ": ");
-                            try formatType(t, buf, alloc);
-                        }
-                        try buf.append(alloc, '\n');
-                    },
-                    else => {},
-                }
-            }
-            try buf.appendSlice(alloc, "}\n\n");
-        },
-        .enum_decl => |e| {
-            if (!e.is_pub) return;
-            try buf.appendSlice(alloc, "pub enum ");
-            try buf.appendSlice(alloc, e.name);
-            try buf.append(alloc, '(');
-            try formatType(e.backing_type, buf, alloc);
-            try buf.appendSlice(alloc, ") {\n");
-            for (e.members) |m| {
-                switch (m.*) {
-                    .enum_variant => |v| {
-                        try buf.appendSlice(alloc, "    ");
-                        try buf.appendSlice(alloc, v.name);
-                        if (v.value) |val| {
-                            try buf.appendSlice(alloc, " = ");
-                            if (val.* == .int_literal) {
-                                try buf.appendSlice(alloc, val.int_literal);
-                            }
-                        }
-                        if (v.fields.len > 0) {
-                            try buf.append(alloc, '(');
-                            for (v.fields, 0..) |f, i| {
-                                if (i > 0) try buf.appendSlice(alloc, ", ");
-                                const p = f.param;
-                                try buf.appendSlice(alloc, p.name);
-                                try buf.appendSlice(alloc, ": ");
-                                try formatType(p.type_annotation, buf, alloc);
-                            }
-                            try buf.append(alloc, ')');
-                        }
-                        try buf.append(alloc, '\n');
-                    },
-                    .func_decl => |f| {
-                        if (!f.is_pub) continue;
-                        try emitFuncSig(f, buf, alloc, "    ");
-                    },
-                    else => {},
-                }
-            }
-            try buf.appendSlice(alloc, "}\n\n");
-        },
-        .bitfield_decl => |b| {
-            if (!b.is_pub) return;
-            try buf.appendSlice(alloc, "pub bitfield ");
-            try buf.appendSlice(alloc, b.name);
-            try buf.append(alloc, '(');
-            try formatType(b.backing_type, buf, alloc);
-            try buf.appendSlice(alloc, ") {\n");
-            for (b.members) |flag| {
-                try buf.appendSlice(alloc, "    ");
-                try buf.appendSlice(alloc, flag);
-                try buf.append(alloc, '\n');
-            }
-            try buf.appendSlice(alloc, "}\n\n");
-        },
-        .const_decl => |v| {
-            if (!v.is_pub) return;
-            try buf.appendSlice(alloc, "pub const ");
-            try buf.appendSlice(alloc, v.name);
-            if (v.type_annotation) |t| {
-                try buf.appendSlice(alloc, ": ");
-                try formatType(t, buf, alloc);
-            }
-            try buf.appendSlice(alloc, " = ");
-            try formatExprSimple(v.value, buf, alloc);
-            try buf.append(alloc, '\n');
-            try buf.append(alloc, '\n');
-        },
-        else => {},
-    }
-}
-
-/// Generate a pub-only interface `.orh` file into `bin/<binary_name>.orh`.
-/// Called after a successful static or dynamic library build.
 /// Copy the generated Zig project from .orh-cache/generated/ to bin/zig/
 fn emitZigProject(allocator: std.mem.Allocator) !void {
     const dst_dir = "bin/zig";
@@ -2022,47 +1343,6 @@ fn moveArtifactsToSubfolder(allocator: std.mem.Allocator, subfolder: []const u8)
     }
 }
 
-fn generateInterface(
-    alloc: std.mem.Allocator,
-    mod_name: []const u8,
-    binary_name: []const u8,
-    ast: *parser.Node,
-) !void {
-    if (ast.* != .program) return;
-
-    var buf = std.ArrayListUnmanaged(u8){};
-    defer buf.deinit(alloc);
-
-    // Header comment + module declaration
-    try buf.appendSlice(alloc, "// Orhon interface file — generated by orhon, do not edit\n\n");
-    try buf.appendSlice(alloc, "module ");
-    try buf.appendSlice(alloc, mod_name);
-    try buf.appendSlice(alloc, "\n\n");
-
-    // Version from metadata
-    for (ast.program.metadata) |meta| {
-        if (std.mem.eql(u8, meta.metadata.field, "version")) {
-            try buf.appendSlice(alloc, "#version = ");
-            try formatExprSimple(meta.metadata.value, &buf, alloc);
-            try buf.appendSlice(alloc, "\n\n");
-            break;
-        }
-    }
-
-    // Public declarations
-    for (ast.program.top_level) |node| {
-        try emitInterfaceDecl(node, &buf, alloc);
-    }
-
-    // Write to bin/<binary_name>.orh
-    try std.fs.cwd().makePath("bin");
-    const path = try std.fmt.allocPrint(alloc, "bin/{s}.orh", .{binary_name});
-    defer alloc.free(path);
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
-    try file.writeAll(buf.items);
-}
-
 // ============================================================
 // TESTS — embedded in main.zig to verify pipeline integration
 // ============================================================
@@ -2085,14 +1365,6 @@ test "pipeline - imports all passes" {
     _ = cache;
     _ = builtins;
     try std.testing.expect(true);
-}
-
-test "cli - build target names" {
-    try std.testing.expectEqual(BuildTarget.native, .native);
-    try std.testing.expectEqual(BuildTarget.linux_x64, .linux_x64);
-    try std.testing.expectEqual(BuildTarget.win_x64, .win_x64);
-    try std.testing.expectEqual(BuildTarget.wasm, .wasm);
-    try std.testing.expectEqual(BuildTarget.zig, .zig);
 }
 
 test "full pipeline - hello world" {

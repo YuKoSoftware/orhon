@@ -68,6 +68,8 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - ✓ LSP split — monolithic lsp.zig (3303 lines) into 9 focused files, all under 640 lines — v0.17 Phase 32
 - ✓ MIR split — monolithic mir.zig (2356 lines) into 6 focused files — v0.17 Phase 33
 - ✓ Main split — monolithic main.zig (2328 lines) into 7 focused files (cli, init, std_bundle, interface, pipeline, commands, slim dispatcher) — v0.17 Phase 34
+- ✓ Zig-runner split — monolithic zig_runner.zig (489 lines) into focused satellites — v0.17 Phase 35
+- ✓ PEG builder split — builder.zig (1836 lines) into hub + 5 satellites (decls, bridge, stmts, exprs, types), all under 510 lines — v0.17 Phase 36
 
 ### Active
 
@@ -90,7 +92,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 **Tests:** 266 across 11 stages
 **Milestones shipped:** v0.10, v0.11, v0.12, v0.13, v0.14, v0.15, v0.16
 
-v0.17 in progress — codegen split (Phase 29), error quality (Phase 30), PEG error messages (Phase 31), LSP split (Phase 32), MIR split (Phase 33), main split (Phase 34), and zig-runner split (Phase 35) complete. 1 module split remaining (peg-builder). 266 tests pass.
+v0.17 complete — all 8 phases shipped: codegen split (29), error quality (30), PEG error messages (31), LSP split (32), MIR split (33), main split (34), zig-runner split (35), PEG builder split (36). 266 tests pass.
 
 ### Out of Scope
 
@@ -152,4 +154,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after Phase 35 (Zig runner split) complete*
+*Last updated: 2026-03-29 after Phase 36 (PEG builder split) complete — v0.17 milestone finished*

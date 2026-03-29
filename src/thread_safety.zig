@@ -1,16 +1,19 @@
 // thread_safety.zig — Thread Safety Analysis pass (pass 8)
 // Ensures values moved into threads are not used after spawn.
 // Ensures all threads are joined (.value or .wait()) before scope exit.
+// Enforces: owned args moved, const borrows freeze, mutable borrows rejected.
 
 const std = @import("std");
 const parser = @import("parser.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
+const K = @import("constants.zig");
 
 /// Tracks which variables have been moved into threads
 pub const ThreadSafetyChecker = struct {
     moved_to_thread: std.StringHashMap([]const u8), // var_name → thread_name
+    frozen_for_thread: std.StringHashMap([]const u8), // var_name → thread_name (const borrow freeze)
     declared_threads: std.StringHashMap(void), // thread names declared in current scope
     joined_threads: std.StringHashMap(void), // thread names that had .value or .wait()
     consumed_threads: std.StringHashMap(void), // threads whose .value has been consumed (move)
@@ -20,6 +23,7 @@ pub const ThreadSafetyChecker = struct {
     pub fn init(allocator: std.mem.Allocator, ctx: *const sema.SemanticContext) ThreadSafetyChecker {
         return .{
             .moved_to_thread = std.StringHashMap([]const u8).init(allocator),
+            .frozen_for_thread = std.StringHashMap([]const u8).init(allocator),
             .declared_threads = std.StringHashMap(void).init(allocator),
             .joined_threads = std.StringHashMap(void).init(allocator),
             .consumed_threads = std.StringHashMap(void).init(allocator),
@@ -30,6 +34,7 @@ pub const ThreadSafetyChecker = struct {
 
     pub fn deinit(self: *ThreadSafetyChecker) void {
         self.moved_to_thread.deinit();
+        self.frozen_for_thread.deinit();
         self.declared_threads.deinit();
         self.joined_threads.deinit();
         self.consumed_threads.deinit();
@@ -49,19 +54,23 @@ pub const ThreadSafetyChecker = struct {
                 const prev_declared = self.declared_threads;
                 const prev_joined = self.joined_threads;
                 const prev_moved = self.moved_to_thread;
+                const prev_frozen = self.frozen_for_thread;
                 const prev_consumed = self.consumed_threads;
                 self.declared_threads = std.StringHashMap(void).init(self.allocator);
                 self.joined_threads = std.StringHashMap(void).init(self.allocator);
                 self.moved_to_thread = std.StringHashMap([]const u8).init(self.allocator);
+                self.frozen_for_thread = std.StringHashMap([]const u8).init(self.allocator);
                 self.consumed_threads = std.StringHashMap(void).init(self.allocator);
                 defer {
                     self.declared_threads.deinit();
                     self.joined_threads.deinit();
                     self.moved_to_thread.deinit();
+                    self.frozen_for_thread.deinit();
                     self.consumed_threads.deinit();
                     self.declared_threads = prev_declared;
                     self.joined_threads = prev_joined;
                     self.moved_to_thread = prev_moved;
+                    self.frozen_for_thread = prev_frozen;
                     self.consumed_threads = prev_consumed;
                 }
                 try self.checkNode(f.body);
@@ -88,19 +97,23 @@ pub const ThreadSafetyChecker = struct {
                 const prev_declared = self.declared_threads;
                 const prev_joined = self.joined_threads;
                 const prev_moved = self.moved_to_thread;
+                const prev_frozen = self.frozen_for_thread;
                 const prev_consumed = self.consumed_threads;
                 self.declared_threads = std.StringHashMap(void).init(self.allocator);
                 self.joined_threads = std.StringHashMap(void).init(self.allocator);
                 self.moved_to_thread = std.StringHashMap([]const u8).init(self.allocator);
+                self.frozen_for_thread = std.StringHashMap([]const u8).init(self.allocator);
                 self.consumed_threads = std.StringHashMap(void).init(self.allocator);
                 defer {
                     self.declared_threads.deinit();
                     self.joined_threads.deinit();
                     self.moved_to_thread.deinit();
+                    self.frozen_for_thread.deinit();
                     self.consumed_threads.deinit();
                     self.declared_threads = prev_declared;
                     self.joined_threads = prev_joined;
                     self.moved_to_thread = prev_moved;
+                    self.frozen_for_thread = prev_frozen;
                     self.consumed_threads = prev_consumed;
                 }
                 try self.checkNode(t.body);
@@ -117,6 +130,10 @@ pub const ThreadSafetyChecker = struct {
                 if (isHandleType(v.type_annotation)) {
                     try self.declared_threads.put(v.name, {});
                 }
+                // Check thread call arg enforcement on the value
+                if (v.value.* == .call_expr) {
+                    try self.checkThreadCallArgs(v.value);
+                }
                 // Check if using a value that was moved into a thread
                 try self.checkExprForThreadMoves(v.value);
                 // Check for .value join via: const x = handle.value
@@ -124,6 +141,16 @@ pub const ThreadSafetyChecker = struct {
             },
 
             .assignment => |a| {
+                // Check if assigning to a frozen variable (const-borrowed by a thread)
+                if (a.left.* == .identifier) {
+                    if (self.frozen_for_thread.get(a.left.identifier)) |thread_name| {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "cannot mutate '{s}' while it is borrowed by thread '{s}'",
+                            .{ a.left.identifier, thread_name });
+                        defer self.allocator.free(msg);
+                        try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
+                    }
+                }
                 try self.checkExprForThreadMoves(a.right);
                 // Check for .value join via: x = thread_name.value
                 try self.checkJoinExpr(a.right);
@@ -139,12 +166,16 @@ pub const ThreadSafetyChecker = struct {
                             self.declared_threads.contains(fe.object.identifier))
                         {
                             try self.joined_threads.put(fe.object.identifier, {});
+                            // Unfreeze variables frozen by this thread
+                            try self.unfreezeForThread(fe.object.identifier);
                             if (std.mem.eql(u8, method, "join")) {
                                 try self.consumed_threads.put(fe.object.identifier, {});
                             }
                         }
                     }
                 }
+                // Check thread call arg enforcement
+                try self.checkThreadCallArgs(node);
                 try self.checkExprForThreadMoves(node);
             },
 
@@ -198,6 +229,78 @@ pub const ThreadSafetyChecker = struct {
         }
     }
 
+    const declarations = @import("declarations.zig");
+
+    /// Check if a call_expr calls a thread function. Returns the callee name and func sig.
+    fn isThreadCall(self: *ThreadSafetyChecker, node: *parser.Node) ?struct { name: []const u8, sig: declarations.FuncSig } {
+        if (node.* != .call_expr) return null;
+        const c = node.call_expr;
+        if (c.callee.* != .identifier) return null;
+        const callee_name = c.callee.identifier;
+        if (self.ctx.decls.funcs.get(callee_name)) |sig| {
+            if (sig.is_thread) return .{ .name = callee_name, .sig = sig };
+        }
+        return null;
+    }
+
+    /// Enforce thread arg rules: owned args move, const borrows freeze, mutable borrows rejected.
+    fn checkThreadCallArgs(self: *ThreadSafetyChecker, node: *parser.Node) anyerror!void {
+        const info = self.isThreadCall(node) orelse return;
+        const c = node.call_expr;
+        const thread_name = info.name;
+
+        for (c.args, 0..) |arg, i| {
+            if (arg.* == .borrow_expr) {
+                // Check if the corresponding param is a mutable borrow (var &T)
+                if (i < info.sig.param_nodes.len) {
+                    const param_node = info.sig.param_nodes[i];
+                    if (param_node.* == .param) {
+                        const type_ann = param_node.param.type_annotation;
+                        if (type_ann.* == .type_ptr and
+                            std.mem.eql(u8, type_ann.type_ptr.kind, K.Ptr.VAR_REF))
+                        {
+                            // Mutable borrow to thread — immediate error
+                            const msg = try std.fmt.allocPrint(self.allocator,
+                                "cannot pass mutable borrow to thread '{s}' — mutable borrows across threads are unsafe",
+                                .{thread_name});
+                            defer self.allocator.free(msg);
+                            try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(arg) });
+                            continue;
+                        }
+                    }
+                }
+                // Const borrow — freeze the inner variable
+                const inner = arg.borrow_expr;
+                if (inner.* == .identifier) {
+                    try self.frozen_for_thread.put(inner.identifier, thread_name);
+                }
+            } else if (arg.* == .identifier) {
+                // Owned value — move into thread
+                try self.moved_to_thread.put(arg.identifier, thread_name);
+            }
+        }
+    }
+
+    /// Remove frozen entries for a specific thread (called on join/wait)
+    fn unfreezeForThread(self: *ThreadSafetyChecker, thread_name: []const u8) anyerror!void {
+        // Collect keys to remove (can't modify during iteration)
+        var to_remove: [32][]const u8 = undefined;
+        var remove_count: usize = 0;
+
+        var it = self.frozen_for_thread.iterator();
+        while (it.next()) |entry| {
+            if (std.mem.eql(u8, entry.value_ptr.*, thread_name)) {
+                if (remove_count < to_remove.len) {
+                    to_remove[remove_count] = entry.key_ptr.*;
+                    remove_count += 1;
+                }
+            }
+        }
+        for (to_remove[0..remove_count]) |key| {
+            _ = self.frozen_for_thread.remove(key);
+        }
+    }
+
     /// Recursively check if an expression contains thread joins (thread_name.value)
     fn checkJoinExpr(self: *ThreadSafetyChecker, expr: *parser.Node) anyerror!void {
         switch (expr.*) {
@@ -217,6 +320,8 @@ pub const ThreadSafetyChecker = struct {
                         try self.joined_threads.put(name, {});
                         try self.consumed_threads.put(name, {});
                         _ = self.moved_to_thread.remove(name);
+                        // Unfreeze variables frozen by this thread
+                        try self.unfreezeForThread(name);
                     }
                 }
             },
@@ -583,4 +688,200 @@ test "thread safety - collectUsedVars walks unary and index" {
     try checker.collectUsedVars(&neg, &used);
 
     try std.testing.expect(used.contains("x"));
+}
+
+test "thread safety - owned arg moved into thread" {
+    const alloc = std.testing.allocator;
+    const declarations = @import("declarations.zig");
+    const types = @import("types.zig");
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+
+    // Register a thread function: thread consumer(data: i32) Handle(i32)
+    var void_node = parser.Node{ .identifier = "void" };
+    var i32_node = parser.Node{ .identifier = "i32" };
+    var param_node = parser.Node{ .param = .{
+        .name = "data",
+        .type_annotation = &i32_node,
+        .default_value = null,
+    } };
+    var param_nodes = [_]*parser.Node{&param_node};
+    try decl_table.funcs.put("consumer", .{
+        .name = "consumer",
+        .params = &.{},
+        .param_nodes = &param_nodes,
+        .return_type = types.ResolvedType{ .primitive = .void },
+        .return_type_node = &void_node,
+        .is_compt = false,
+        .is_pub = false,
+        .is_thread = true,
+    });
+
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
+    defer checker.deinit();
+
+    // Build: consumer(x) — call thread func with owned arg
+    var callee = parser.Node{ .identifier = "consumer" };
+    var x_arg = parser.Node{ .identifier = "x" };
+    var args = [_]*parser.Node{&x_arg};
+    var arg_names = [_][]const u8{""};
+    var call = parser.Node{ .call_expr = .{
+        .callee = &callee,
+        .args = &args,
+        .arg_names = &arg_names,
+    } };
+
+    try checker.checkThreadCallArgs(&call);
+    try std.testing.expect(checker.moved_to_thread.contains("x"));
+    try std.testing.expect(!reporter.hasErrors());
+}
+
+test "thread safety - const borrow arg freezes variable" {
+    const alloc = std.testing.allocator;
+    const declarations = @import("declarations.zig");
+    const types = @import("types.zig");
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+
+    // Register: thread reader(val: &i32) Handle(void)
+    var void_node = parser.Node{ .identifier = "void" };
+    var i32_elem = parser.Node{ .identifier = "i32" };
+    var param_type = parser.Node{ .type_ptr = .{
+        .kind = K.Ptr.CONST_REF,
+        .elem = &i32_elem,
+    } };
+    var param_node = parser.Node{ .param = .{
+        .name = "val",
+        .type_annotation = &param_type,
+        .default_value = null,
+    } };
+    var param_nodes = [_]*parser.Node{&param_node};
+    try decl_table.funcs.put("reader", .{
+        .name = "reader",
+        .params = &.{},
+        .param_nodes = &param_nodes,
+        .return_type = types.ResolvedType{ .primitive = .void },
+        .return_type_node = &void_node,
+        .is_compt = false,
+        .is_pub = false,
+        .is_thread = true,
+    });
+
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
+    defer checker.deinit();
+
+    // Build: reader(&x) — const borrow to thread
+    var callee = parser.Node{ .identifier = "reader" };
+    var x_inner = parser.Node{ .identifier = "x" };
+    var borrow_arg = parser.Node{ .borrow_expr = &x_inner };
+    var args = [_]*parser.Node{&borrow_arg};
+    var arg_names = [_][]const u8{""};
+    var call = parser.Node{ .call_expr = .{
+        .callee = &callee,
+        .args = &args,
+        .arg_names = &arg_names,
+    } };
+
+    try checker.checkThreadCallArgs(&call);
+    try std.testing.expect(checker.frozen_for_thread.contains("x"));
+    try std.testing.expect(!reporter.hasErrors());
+
+    // Now simulate assignment to frozen x — should error
+    var x_left = parser.Node{ .identifier = "x" };
+    var lit = parser.Node{ .int_literal = "20" };
+    var assignment = parser.Node{ .assignment = .{
+        .left = &x_left,
+        .right = &lit,
+        .op = "=",
+    } };
+    try checker.checkStatement(&assignment);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "thread safety - mutable borrow arg rejected" {
+    const alloc = std.testing.allocator;
+    const declarations = @import("declarations.zig");
+    const types = @import("types.zig");
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+
+    // Register: thread writer(val: var &i32) Handle(void)
+    var void_node = parser.Node{ .identifier = "void" };
+    var i32_elem = parser.Node{ .identifier = "i32" };
+    var param_type = parser.Node{ .type_ptr = .{
+        .kind = K.Ptr.VAR_REF,
+        .elem = &i32_elem,
+    } };
+    var param_node = parser.Node{ .param = .{
+        .name = "val",
+        .type_annotation = &param_type,
+        .default_value = null,
+    } };
+    var param_nodes = [_]*parser.Node{&param_node};
+    try decl_table.funcs.put("writer", .{
+        .name = "writer",
+        .params = &.{},
+        .param_nodes = &param_nodes,
+        .return_type = types.ResolvedType{ .primitive = .void },
+        .return_type_node = &void_node,
+        .is_compt = false,
+        .is_pub = false,
+        .is_thread = true,
+    });
+
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
+    defer checker.deinit();
+
+    // Build: writer(var &x) — mutable borrow to thread
+    var callee = parser.Node{ .identifier = "writer" };
+    var x_inner = parser.Node{ .identifier = "x" };
+    var borrow_arg = parser.Node{ .borrow_expr = &x_inner };
+    var args = [_]*parser.Node{&borrow_arg};
+    var arg_names = [_][]const u8{""};
+    var call = parser.Node{ .call_expr = .{
+        .callee = &callee,
+        .args = &args,
+        .arg_names = &arg_names,
+    } };
+
+    try checker.checkThreadCallArgs(&call);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "thread safety - frozen var unfreezes after join" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    const declarations = @import("declarations.zig");
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = ThreadSafetyChecker.init(alloc, &ctx);
+    defer checker.deinit();
+
+    // Simulate: x is frozen for thread "t"
+    try checker.frozen_for_thread.put("x", "t");
+    try checker.declared_threads.put("t", {});
+
+    // Simulate: t.value (join)
+    var t_id = parser.Node{ .identifier = "t" };
+    var val_expr = parser.Node{ .field_expr = .{ .object = &t_id, .field = "value" } };
+    try checker.checkJoinExpr(&val_expr);
+
+    // x should be unfrozen
+    try std.testing.expect(!checker.frozen_for_thread.contains("x"));
+    try std.testing.expect(!reporter.hasErrors());
 }

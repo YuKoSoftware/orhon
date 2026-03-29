@@ -72,7 +72,7 @@ See: [milestones/v0.16-ROADMAP.md](milestones/v0.16-ROADMAP.md)
 - [x] **Phase 29: Codegen Split** - Split codegen.zig into focused files with shared helpers (completed 2026-03-28)
 - [x] **Phase 30: Error Quality** - "Did you mean?" suggestions, type mismatch display, ownership fix hints (completed 2026-03-28)
 - [x] **Phase 31: PEG Error Messages** - Show all expected tokens when alternatives fail at same position (completed 2026-03-28)
-- [ ] **Phase 32: LSP Split** - Split lsp.zig (3301 lines) into types, JSON, analysis, handlers, and server loop
+- [x] **Phase 32: LSP Split** - Split lsp.zig (3301 lines) into types, JSON, analysis, handlers, and server loop (completed 2026-03-29)
 - [ ] **Phase 33: MIR Split** - Split mir.zig (2356 lines) into types, registry, node, annotator, lowerer, and utils
 - [ ] **Phase 34: Main Split** - Split main.zig (2315 lines) into CLI, pipeline, init, stdlib bundler, and interface gen
 - [ ] **Phase 35: Zig Runner Split** - Split zig_runner.zig (1952 lines) into runner, build gen, multi-target gen, and discovery
@@ -128,10 +128,10 @@ Plans:
   2. Handler groups (navigation, editing, view/hints) are in separate files
   3. JSON infrastructure and type definitions are isolated modules
   4. `./testall.sh` passes all tests — LSP unit tests pass in their new locations
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 32-01-PLAN.md — Extract foundation modules (lsp_types, lsp_json, lsp_utils, lsp_analysis)
-- [ ] 32-02-PLAN.md — Extract handler modules (lsp_nav, lsp_edit, lsp_view, lsp_semantic)
+- [x] 32-01-PLAN.md — Extract foundation modules (lsp_types, lsp_json, lsp_utils, lsp_analysis)
+- [x] 32-02-PLAN.md — Extract handler modules (lsp_nav, lsp_edit, lsp_view, lsp_semantic)
 
 ### Phase 33: MIR Split
 **Goal**: mir.zig is broken into focused files (types, registry, node, annotator, lowerer, utils) with no behavior change — all tests pass
@@ -191,7 +191,7 @@ Plans:
 | 29 | v0.17 | 1/1 | Complete    | 2026-03-28 |
 | 30 | v0.17 | 2/2 | Complete    | 2026-03-28 |
 | 31 | v0.17 | 1/1 | Complete    | 2026-03-28 |
-| 32 | v0.17 | 0/2 | Not started | - |
+| 32 | v0.17 | 2/2 | Complete   | 2026-03-29 |
 | 33 | v0.17 | 0/? | Not started | - |
 | 34 | v0.17 | 0/? | Not started | - |
 | 35 | v0.17 | 0/? | Not started | - |

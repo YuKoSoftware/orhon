@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.17
-milestone_name: Codegen Refactor & Error Quality
-status: complete
-stopped_at: "v0.17 milestone archived"
-last_updated: "2026-03-29T17:30:00.000Z"
+milestone: v0.10
+milestone_name: milestone
+status: v0.17 shipped — ready for next milestone
+stopped_at: Completed quick-260329-wpb
+last_updated: "2026-03-29T20:46:33.707Z"
 last_activity: 2026-03-29
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 12
-  completed_plans: 12
+  total_phases: 14
+  completed_phases: 13
+  total_plans: 21
+  completed_plans: 21
   percent: 100
 ---
 
@@ -51,6 +51,8 @@ Progress: [██████████] 100%
 
 Decisions archived in PROJECT.md Key Decisions table and milestones/v0.17-ROADMAP.md.
 
+- [Phase quick-260329-wpb]: Task 2 (single-target bridge_mods scoping) not implemented — direct-import approach breaks transitive bridge resolution; original all-module iterator is correct for single-root projects
+
 ### Pending Todos
 
 None.
@@ -68,5 +70,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-29
-Stopped at: Completed quick-260329-wak
+Stopped at: Completed quick-260329-wpb
 Resume file: None

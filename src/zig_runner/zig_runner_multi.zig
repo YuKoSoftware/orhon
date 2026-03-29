@@ -324,8 +324,16 @@ pub fn buildZigContentMulti(
             try buf.appendSlice(allocator, bridge_import);
         }
 
-        // Add imports for non-root bridge modules used by this target
+        // Add imports for non-root bridge modules actually used by this target
         for (extra_bridge_modules) |bmod_name| {
+            var uses_module = false;
+            for (t.mod_imports) |mod_name| {
+                if (std.mem.eql(u8, mod_name, bmod_name)) {
+                    uses_module = true;
+                    break;
+                }
+            }
+            if (!uses_module) continue;
             const extra_import = try std.fmt.allocPrint(allocator,
                 \\    lib_{s}.root_module.addImport("{s}_bridge", bridge_{s});
                 \\
@@ -463,8 +471,16 @@ pub fn buildZigContentMulti(
             try buf.appendSlice(allocator, bridge_import);
         }
 
-        // Add imports for non-root bridge modules used by this target
+        // Add imports for non-root bridge modules actually used by this target
         for (extra_bridge_modules) |bmod_name| {
+            var uses_module = false;
+            for (t.mod_imports) |mod_name| {
+                if (std.mem.eql(u8, mod_name, bmod_name)) {
+                    uses_module = true;
+                    break;
+                }
+            }
+            if (!uses_module) continue;
             const extra_import = try std.fmt.allocPrint(allocator,
                 \\    exe_{s}.root_module.addImport("{s}_bridge", bridge_{s});
                 \\
@@ -580,8 +596,16 @@ pub fn buildZigContentMulti(
                 }
             }
 
-            // Add imports for non-root bridge modules
+            // Add imports for non-root bridge modules actually used by this target
             for (extra_bridge_modules) |bmod_name| {
+                var uses_module = false;
+                for (t.mod_imports) |mod_name| {
+                    if (std.mem.eql(u8, mod_name, bmod_name)) {
+                        uses_module = true;
+                        break;
+                    }
+                }
+                if (!uses_module) continue;
                 const extra_test = try std.fmt.allocPrint(allocator,
                     \\    unit_tests.root_module.addImport("{s}_bridge", bridge_{s});
                     \\

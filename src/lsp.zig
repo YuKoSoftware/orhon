@@ -19,6 +19,40 @@ const errors = @import("errors.zig");
 const cache = @import("cache.zig");
 const types = @import("types.zig");
 const builtins = @import("builtins.zig");
+const lsp_types = @import("lsp_types.zig");
+const lsp_json = @import("lsp_json.zig");
+
+const Diagnostic = lsp_types.Diagnostic;
+const SymbolInfo = lsp_types.SymbolInfo;
+const SymbolKind = lsp_types.SymbolKind;
+const AnalysisResult = lsp_types.AnalysisResult;
+const CompletionItemKind = lsp_types.CompletionItemKind;
+const SemanticTokenType = lsp_types.SemanticTokenType;
+const SemanticModifier = lsp_types.SemanticModifier;
+const SemanticToken = lsp_types.SemanticToken;
+const TokenClassification = lsp_types.TokenClassification;
+const CallContext = lsp_types.CallContext;
+const ParamLabels = lsp_types.ParamLabels;
+const TrimResult = lsp_types.TrimResult;
+const PublishResult = lsp_types.PublishResult;
+const MAX_PARAMS = lsp_types.MAX_PARAMS;
+
+const jsonStr = lsp_json.jsonStr;
+const jsonObj = lsp_json.jsonObj;
+const jsonInt = lsp_json.jsonInt;
+const jsonArray = lsp_json.jsonArray;
+const jsonBool = lsp_json.jsonBool;
+const jsonId = lsp_json.jsonId;
+const writeJsonValue = lsp_json.writeJsonValue;
+const appendJsonString = lsp_json.appendJsonString;
+const appendInt = lsp_json.appendInt;
+const buildInitializeResult = lsp_json.buildInitializeResult;
+const buildEmptyArrayResponse = lsp_json.buildEmptyArrayResponse;
+const buildEmptyResponse = lsp_json.buildEmptyResponse;
+const buildDiagnosticsMsg = lsp_json.buildDiagnosticsMsg;
+const buildHoverResponse = lsp_json.buildHoverResponse;
+const buildDefinitionResponse = lsp_json.buildDefinitionResponse;
+const buildDocumentSymbolsResponse = lsp_json.buildDocumentSymbolsResponse;
 
 const Io = std.Io;
 
@@ -26,8 +60,8 @@ const Io = std.Io;
 // JSON-RPC TRANSPORT
 // ============================================================
 
-const MAX_HEADER_LINE: usize = 4096;
-const MAX_CONTENT_LENGTH: usize = 64 * 1024 * 1024; // 64 MiB
+const MAX_HEADER_LINE: usize = lsp_types.MAX_HEADER_LINE;
+const MAX_CONTENT_LENGTH: usize = lsp_types.MAX_CONTENT_LENGTH;
 
 /// Read a single LSP message from stdin.
 /// Format: "Content-Length: N\r\n\r\n<N bytes of JSON>"
@@ -71,227 +105,8 @@ fn writeMessage(writer: *Io.Writer, json: []const u8) !void {
     try writer.flush();
 }
 
-// ============================================================
-// JSON HELPERS
-// ============================================================
-
-fn jsonStr(value: std.json.Value, key: []const u8) ?[]const u8 {
-    const obj = switch (value) { .object => |o| o, else => return null };
-    const val = obj.get(key) orelse return null;
-    return switch (val) { .string => |s| s, else => null };
-}
-
-fn jsonObj(value: std.json.Value, key: []const u8) ?std.json.Value {
-    const obj = switch (value) { .object => |o| o, else => return null };
-    const val = obj.get(key) orelse return null;
-    return switch (val) { .object => val, else => null };
-}
-
-fn jsonInt(value: std.json.Value, key: []const u8) ?i64 {
-    const obj = switch (value) { .object => |o| o, else => return null };
-    const val = obj.get(key) orelse return null;
-    return switch (val) { .integer => |i| i, else => null };
-}
-
-fn jsonArray(value: std.json.Value, key: []const u8) ?[]std.json.Value {
-    const obj = switch (value) { .object => |o| o, else => return null };
-    const val = obj.get(key) orelse return null;
-    return switch (val) { .array => |a| a.items, else => null };
-}
-
-fn jsonBool(value: std.json.Value, key: []const u8) bool {
-    const obj = switch (value) { .object => |o| o, else => return false };
-    const val = obj.get(key) orelse return false;
-    return switch (val) { .bool => |b| b, else => false };
-}
-
-fn jsonId(root: std.json.Value) std.json.Value {
-    return switch (root) {
-        .object => |obj| obj.get("id") orelse .null,
-        else => .null,
-    };
-}
-
-// ============================================================
-// JSON RESPONSE BUILDERS
-// ============================================================
-
-fn writeJsonValue(w: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator, value: std.json.Value) !void {
-    switch (value) {
-        .integer => |i| {
-            var buf: [32]u8 = undefined;
-            const s = std.fmt.bufPrint(&buf, "{d}", .{i}) catch "0";
-            try w.appendSlice(allocator, s);
-        },
-        .string => |s| {
-            try w.append(allocator, '"');
-            try appendJsonString(w, allocator, s);
-            try w.append(allocator, '"');
-        },
-        .null => try w.appendSlice(allocator, "null"),
-        else => try w.appendSlice(allocator, "null"),
-    }
-}
-
-fn appendJsonString(w: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator, s: []const u8) !void {
-    for (s) |c| {
-        switch (c) {
-            '"' => try w.appendSlice(allocator, "\\\""),
-            '\\' => try w.appendSlice(allocator, "\\\\"),
-            '\n' => try w.appendSlice(allocator, "\\n"),
-            '\r' => try w.appendSlice(allocator, "\\r"),
-            '\t' => try w.appendSlice(allocator, "\\t"),
-            else => {
-                if (c < 0x20) {
-                    var buf: [6]u8 = undefined;
-                    const esc = std.fmt.bufPrint(&buf, "\\u{x:0>4}", .{c}) catch continue;
-                    try w.appendSlice(allocator, esc);
-                } else {
-                    try w.append(allocator, c);
-                }
-            },
-        }
-    }
-}
-
-fn appendInt(w: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator, val: usize) !void {
-    var nbuf: [16]u8 = undefined;
-    const s = std.fmt.bufPrint(&nbuf, "{d}", .{val}) catch "0";
-    try w.appendSlice(allocator, s);
-}
-
-fn buildInitializeResult(allocator: std.mem.Allocator, id: std.json.Value) ![]u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    defer buf.deinit(allocator);
-
-    try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeJsonValue(&buf, allocator, id);
-    try buf.appendSlice(allocator,
-        \\,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},"hoverProvider":true,"definitionProvider":true,"documentSymbolProvider":true,"completionProvider":{"triggerCharacters":["."]},"referencesProvider":true,"renameProvider":{"prepareProvider":false},"signatureHelpProvider":{"triggerCharacters":["(", ","]},"documentFormattingProvider":true,"workspaceSymbolProvider":true,"documentHighlightProvider":true,"foldingRangeProvider":true,"inlayHintProvider":true,"codeActionProvider":true},"serverInfo":{"name":"orhon-lsp","version":"0.8.2"}}}
-    );
-
-    return allocator.dupe(u8, buf.items);
-}
-
-fn buildEmptyArrayResponse(allocator: std.mem.Allocator, id: std.json.Value) ![]u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    defer buf.deinit(allocator);
-
-    try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeJsonValue(&buf, allocator, id);
-    try buf.appendSlice(allocator, ",\"result\":[]}");
-
-    return allocator.dupe(u8, buf.items);
-}
-
-fn buildEmptyResponse(allocator: std.mem.Allocator, id: std.json.Value) ![]u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    defer buf.deinit(allocator);
-
-    try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeJsonValue(&buf, allocator, id);
-    try buf.appendSlice(allocator, ",\"result\":null}");
-
-    return allocator.dupe(u8, buf.items);
-}
-
-const Diagnostic = struct {
-    uri: []const u8,
-    line: usize, // 0-based
-    col: usize, // 0-based
-    severity: u8, // 1=error, 2=warning
-    message: []const u8,
-};
-
-fn buildDiagnosticsMsg(allocator: std.mem.Allocator, uri: []const u8, diags: []const Diagnostic) ![]u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    defer buf.deinit(allocator);
-
-    try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"");
-    try appendJsonString(&buf, allocator, uri);
-    try buf.appendSlice(allocator, "\",\"diagnostics\":[");
-
-    var first = true;
-    for (diags) |d| {
-        if (!std.mem.eql(u8, d.uri, uri)) continue;
-        if (!first) try buf.append(allocator, ',');
-        first = false;
-
-        try buf.appendSlice(allocator, "{\"range\":{\"start\":{\"line\":");
-        try appendInt(&buf, allocator, d.line);
-        try buf.appendSlice(allocator, ",\"character\":");
-        try appendInt(&buf, allocator, d.col);
-        try buf.appendSlice(allocator, "},\"end\":{\"line\":");
-        try appendInt(&buf, allocator, d.line);
-        try buf.appendSlice(allocator, ",\"character\":");
-        try appendInt(&buf, allocator, d.col + 1);
-        try buf.appendSlice(allocator, "}},\"severity\":");
-        try appendInt(&buf, allocator, d.severity);
-        try buf.appendSlice(allocator, ",\"source\":\"orhon\",\"message\":\"");
-        try appendJsonString(&buf, allocator, d.message);
-        try buf.appendSlice(allocator, "\"}");
-    }
-
-    try buf.appendSlice(allocator, "]}}");
-    return allocator.dupe(u8, buf.items);
-}
-
-// ============================================================
-// SYMBOL INFO — cached analysis data for hover/definition/symbols
-// ============================================================
-
-/// LSP symbol kinds (subset we use)
-const SymbolKind = enum(u8) {
-    function = 12,
-    struct_ = 23,
-    enum_ = 10,
-    variable = 13,
-    constant = 14,
-    field = 8,
-    enum_member = 22,
-};
-
-/// Flattened symbol info extracted from DeclTable + LocMap.
-/// All strings are owned by the allocator.
-const SymbolInfo = struct {
-    name: []const u8,
-    detail: []const u8, // type signature for hover
-    kind: SymbolKind,
-    module: []const u8, // owning module name (e.g. "main", "console")
-    parent: []const u8, // parent symbol name (e.g. "MyStruct" for fields, "" for top-level)
-    uri: []const u8, // file URI
-    line: usize, // 0-based
-    col: usize, // 0-based
-};
-
-/// Result of running analysis — diagnostics + symbols
-const AnalysisResult = struct {
-    diagnostics: []Diagnostic,
-    symbols: []SymbolInfo,
-};
-
-fn freeDiagnostics(allocator: std.mem.Allocator, diags: []Diagnostic) void {
-    if (diags.len > 0) {
-        for (diags) |d| {
-            allocator.free(d.uri);
-            allocator.free(d.message);
-        }
-        allocator.free(diags);
-    }
-}
-
-fn freeSymbols(allocator: std.mem.Allocator, symbols: []SymbolInfo) void {
-    if (symbols.len > 0) {
-        for (symbols) |s| {
-            allocator.free(s.name);
-            allocator.free(s.detail);
-            allocator.free(s.module);
-            if (s.parent.len > 0) allocator.free(s.parent);
-            allocator.free(s.uri);
-        }
-        allocator.free(symbols);
-    }
-}
+const freeDiagnostics = lsp_types.freeDiagnostics;
+const freeSymbols = lsp_types.freeSymbols;
 
 // ============================================================
 // URI HELPERS
@@ -909,112 +724,6 @@ fn makeDiag(allocator: std.mem.Allocator, err: errors.OrhonError, severity: u8, 
 }
 
 // ============================================================
-// PHASE 2 RESPONSE BUILDERS
-// ============================================================
-
-fn buildHoverResponse(allocator: std.mem.Allocator, id: std.json.Value, detail: []const u8) ![]u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    defer buf.deinit(allocator);
-
-    try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeJsonValue(&buf, allocator, id);
-    try buf.appendSlice(allocator, ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```orhon\\n");
-    try appendJsonString(&buf, allocator, detail);
-    try buf.appendSlice(allocator, "\\n```\"}}}");
-
-    return allocator.dupe(u8, buf.items);
-}
-
-fn buildDefinitionResponse(allocator: std.mem.Allocator, id: std.json.Value, uri: []const u8, line: usize, col: usize) ![]u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    defer buf.deinit(allocator);
-
-    try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeJsonValue(&buf, allocator, id);
-    try buf.appendSlice(allocator, ",\"result\":{\"uri\":\"");
-    try appendJsonString(&buf, allocator, uri);
-    try buf.appendSlice(allocator, "\",\"range\":{\"start\":{\"line\":");
-    try appendInt(&buf, allocator, line);
-    try buf.appendSlice(allocator, ",\"character\":");
-    try appendInt(&buf, allocator, col);
-    try buf.appendSlice(allocator, "},\"end\":{\"line\":");
-    try appendInt(&buf, allocator, line);
-    try buf.appendSlice(allocator, ",\"character\":");
-    try appendInt(&buf, allocator, col);
-    try buf.appendSlice(allocator, "}}}}");
-
-    return allocator.dupe(u8, buf.items);
-}
-
-fn buildDocumentSymbolsResponse(allocator: std.mem.Allocator, id: std.json.Value, symbols: []const SymbolInfo, uri: []const u8) ![]u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    defer buf.deinit(allocator);
-
-    try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeJsonValue(&buf, allocator, id);
-    try buf.appendSlice(allocator, ",\"result\":[");
-
-    // Use hierarchical DocumentSymbol format — children nested under parents
-    var first = true;
-    for (symbols) |s| {
-        if (!std.mem.eql(u8, s.uri, uri)) continue;
-        if (s.parent.len > 0) continue; // children handled below
-
-        if (!first) try buf.append(allocator, ',');
-        first = false;
-
-        try appendDocumentSymbol(&buf, allocator, s, symbols, uri);
-    }
-
-    try buf.appendSlice(allocator, "]}");
-    return allocator.dupe(u8, buf.items);
-}
-
-fn appendDocumentSymbol(buf: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator, s: SymbolInfo, all_symbols: []const SymbolInfo, uri: []const u8) !void {
-    try buf.appendSlice(allocator, "{\"name\":\"");
-    try appendJsonString(buf, allocator, s.name);
-    try buf.appendSlice(allocator, "\",\"detail\":\"");
-    try appendJsonString(buf, allocator, s.detail);
-    try buf.appendSlice(allocator, "\",\"kind\":");
-    try appendInt(buf, allocator, @intFromEnum(s.kind));
-    // DocumentSymbol uses range + selectionRange (not location)
-    try buf.appendSlice(allocator, ",\"range\":{\"start\":{\"line\":");
-    try appendInt(buf, allocator, s.line);
-    try buf.appendSlice(allocator, ",\"character\":");
-    try appendInt(buf, allocator, s.col);
-    try buf.appendSlice(allocator, "},\"end\":{\"line\":");
-    try appendInt(buf, allocator, s.line);
-    try buf.appendSlice(allocator, ",\"character\":");
-    try appendInt(buf, allocator, s.col + s.name.len);
-    try buf.appendSlice(allocator, "}},\"selectionRange\":{\"start\":{\"line\":");
-    try appendInt(buf, allocator, s.line);
-    try buf.appendSlice(allocator, ",\"character\":");
-    try appendInt(buf, allocator, s.col);
-    try buf.appendSlice(allocator, "},\"end\":{\"line\":");
-    try appendInt(buf, allocator, s.line);
-    try buf.appendSlice(allocator, ",\"character\":");
-    try appendInt(buf, allocator, s.col + s.name.len);
-    try buf.appendSlice(allocator, "}}");
-
-    // Add children (fields, enum members)
-    var has_children = false;
-    for (all_symbols) |child| {
-        if (!std.mem.eql(u8, child.uri, uri)) continue;
-        if (!std.mem.eql(u8, child.parent, s.name)) continue;
-        if (!has_children) {
-            try buf.appendSlice(allocator, ",\"children\":[");
-            has_children = true;
-        } else {
-            try buf.append(allocator, ',');
-        }
-        try appendDocumentSymbol(buf, allocator, child, &.{}, uri); // no recursive children
-    }
-    if (has_children) try buf.append(allocator, ']');
-
-    try buf.append(allocator, '}');
-}
-
-// ============================================================
 // WORD-AT-POSITION — extract the identifier under cursor from source
 // ============================================================
 
@@ -1607,12 +1316,6 @@ pub fn serve(allocator: std.mem.Allocator) !void {
     }
 }
 
-/// Run analysis, publish diagnostics, return new cached symbols.
-const PublishResult = struct {
-    symbols: []SymbolInfo,
-    diags: []Diagnostic,
-};
-
 fn runAndPublishWithDiags(
     allocator: std.mem.Allocator,
     writer: *Io.Writer,
@@ -1780,19 +1483,6 @@ fn handleDocumentSymbols(allocator: std.mem.Allocator, root: std.json.Value, id:
 // ============================================================
 // COMPLETION
 // ============================================================
-
-/// LSP CompletionItemKind values
-const CompletionItemKind = enum(u8) {
-    keyword = 14,
-    function = 3,
-    struct_ = 22,
-    enum_ = 13,
-    variable = 6,
-    constant = 21,
-    field = 5,
-    enum_member = 20,
-    type_ = 25, // for builtin/primitive types
-};
 
 fn handleCompletion(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo, use_snippets: bool, doc_store: *const std.StringHashMap([]u8)) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
@@ -2380,12 +2070,6 @@ fn handleSignatureHelp(allocator: std.mem.Allocator, root: std.json.Value, id: s
     return allocator.dupe(u8, buf.items);
 }
 
-const CallContext = struct {
-    func_name: []const u8,
-    obj_name: ?[]const u8, // e.g. "console" in "console.println("
-    active_param: usize,
-};
-
 /// Scan backwards from cursor through `prefix` to find `funcname(` and count commas for active param.
 fn findCallContext(prefix: []const u8) ?CallContext {
     if (prefix.len == 0) return null;
@@ -2746,14 +2430,6 @@ fn appendQuickFix(buf: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator
 // PARAMETER LABEL EXTRACTION — for signature help highlights
 // ============================================================
 
-const MAX_PARAMS = 16;
-
-const ParamLabels = struct {
-    starts: [MAX_PARAMS]usize,
-    ends: [MAX_PARAMS]usize,
-    count: usize,
-};
-
 /// Parse parameter byte ranges from a signature like "func name(a: i32, b: String) void".
 /// Returns offsets into the original string for each parameter.
 fn extractParamLabels(sig: []const u8) ParamLabels {
@@ -2809,8 +2485,6 @@ fn extractParamLabels(sig: []const u8) ParamLabels {
     }
     return result;
 }
-
-const TrimResult = struct { start: usize, end: usize };
 
 fn trimRange(s: []const u8, start: usize, end: usize) TrimResult {
     var a = start;
@@ -2998,29 +2672,6 @@ fn appendFoldingRange(buf: *std.ArrayListUnmanaged(u8), allocator: std.mem.Alloc
 // SEMANTIC TOKENS — rich syntax highlighting via LSP
 // ============================================================
 
-/// Token type indices (must match legend in capabilities)
-const SemanticTokenType = enum(u8) {
-    keyword = 0,
-    type_ = 1,
-    function = 2,
-    variable = 3,
-    string = 4,
-    number = 5,
-    comment = 6,
-    operator = 7,
-    parameter = 8,
-    enum_member = 9,
-    property = 10,
-    namespace = 11,
-};
-
-/// Token modifier bit flags (must match legend)
-const SemanticModifier = struct {
-    const declaration: u32 = 1 << 0;
-    const definition: u32 = 1 << 1;
-    const readonly: u32 = 1 << 2;
-};
-
 fn handleSemanticTokens(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
     const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
@@ -3085,19 +2736,6 @@ fn handleSemanticTokens(allocator: std.mem.Allocator, root: std.json.Value, id: 
     return allocator.dupe(u8, buf.items);
 }
 
-const SemanticToken = struct {
-    line: usize,
-    col: usize,
-    length: usize,
-    token_type: u8,
-    modifiers: u32,
-};
-
-const TokenClassification = struct {
-    token_type: ?SemanticTokenType,
-    modifiers: u32,
-};
-
 fn classifyToken(kind: lexer.TokenKind) TokenClassification {
     return switch (kind) {
         // Keywords
@@ -3152,13 +2790,6 @@ test "uriToPath returns null for non-file URI" {
 test "findProjectRoot detects src directory" {
     const root = findProjectRoot("/home/user/project/src/main.orh");
     try std.testing.expectEqualStrings("/home/user/project", root.?);
-}
-
-test "appendJsonString escapes special characters" {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    defer buf.deinit(std.testing.allocator);
-    try appendJsonString(&buf, std.testing.allocator, "hello \"world\"\nnew\\line");
-    try std.testing.expectEqualStrings("hello \\\"world\\\"\\nnew\\\\line", buf.items);
 }
 
 test "readMessage parses LSP header" {

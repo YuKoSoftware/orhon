@@ -34,13 +34,12 @@ Full Polonius (flow-sensitive dataflow analysis) is overkill for Orhon.
 
 Ordered by how much each item unblocks downstream work.
 
-### Incremental compilation — semantic hashing
+### ~~Incremental compilation — semantic hashing~~ DONE (v0.10.20)
 
-Replace timestamp-based cache invalidation with semantic hashing. Hash the token
-stream (or normalized AST) after lexing. Avoids unnecessary recompilations when files
-are touched but not changed (git checkout, save without editing, formatting).
-
-Quick win — moderate effort, high impact.
+~~Replace timestamp-based cache invalidation with semantic hashing.~~ Shipped.
+`cache.zig` now hashes the token stream via `hashSemanticContent()`, skipping
+newlines and doc comments. Whitespace-only and comment-only edits no longer
+invalidate the cache.
 
 ### Incremental compilation — interface diffing
 
@@ -434,12 +433,11 @@ Auto-detects C++ from extension and applies `linkLibCpp()`.
 
 ### Runtime Library Removal ✓
 
-**Done.** Zero runtime libraries. The compiler injects no hardcoded imports. The only
-hardcoded import is `const std = @import("std");`.
+**Done.** Zero runtime libraries. The only hardcoded imports are `const std = @import("std");`
+and `str` (auto-imported for string method dispatch when not explicitly imported).
 
 **What was removed:**
-- `_orhon_collections` — collections are now a normal bridge module (`import std::collections`)
-- `_orhon_str` — string ops are a normal bridge module (`import std::str`)
+- `_orhon_collections` — collections require explicit `use std::collections` or `import std::collections` (v0.10.20)
 - `_orhon_rt` — **deleted entirely**. `_rt.zig` and `_rt.orh` no longer exist.
 - All `_rt.` references in codegen replaced with native Zig equivalents
 - `_str` and `_collections` hardcoded prefixes replaced with user import aliases
@@ -507,7 +505,7 @@ cleaned up. Dead `Async(T)` codegen branch removed from `typeToZig`.
 
 ### Builtins cleanup — `List`, `Map`, `Set` no longer hardcoded ✓
 
-**Done in v0.10.19.** Removed `List`, `Map`, `Set` from `BUILTIN_TYPES`. Collections
+**Done in v0.10.20.** Removed `List`, `Map`, `Set` from `BUILTIN_TYPES`. Collections
 are now resolved through the import system like any other module. `use std::collections`
 or `import std::collections` required. Added bridge func declarations to `collections.orh`.
 Fixed `preScanImports` to recognize `use` keyword. Always collect declarations for all

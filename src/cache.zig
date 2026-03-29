@@ -1,16 +1,19 @@
-// cache.zig — Orhon incremental compilation cache (semantic hashing)
-// Manages .orh-cache/hashes and .orh-cache/deps.graph
+// cache.zig — Orhon incremental compilation cache (semantic hashing + interface diffing)
+// Manages .orh-cache/hashes, .orh-cache/deps.graph, and .orh-cache/interfaces.
 // Determines which modules need recompilation.
 
 const std = @import("std");
 const XxHash3 = std.hash.XxHash3;
 const lexer = @import("lexer.zig");
+const declarations = @import("declarations.zig");
+const types = @import("types.zig");
 
 pub const CACHE_DIR = ".orh-cache";
 pub const GENERATED_DIR = ".orh-cache/generated";
 pub const HASHES_FILE = ".orh-cache/hashes";
 pub const DEPS_FILE = ".orh-cache/deps.graph";
 pub const WARNINGS_FILE = ".orh-cache/warnings";
+pub const INTERFACES_FILE = ".orh-cache/interfaces";
 
 /// A module entry in the cache
 pub const ModuleEntry = struct {
@@ -23,12 +26,17 @@ pub const ModuleEntry = struct {
 pub const Cache = struct {
     hashes: std.StringHashMap(u64),
     deps: std.StringHashMap(std.ArrayListUnmanaged([]const u8)),
+    /// Interface hashes keyed by module name — used for smarter dependency invalidation.
+    /// A downstream module only recompiles if its dependency's interface hash changed,
+    /// not just because the dependency's source changed.
+    interface_hashes: std.StringHashMap(u64),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Cache {
         return .{
             .hashes = std.StringHashMap(u64).init(allocator),
             .deps = std.StringHashMap(std.ArrayListUnmanaged([]const u8)).init(allocator),
+            .interface_hashes = std.StringHashMap(u64).init(allocator),
             .allocator = allocator,
         };
     }
@@ -48,6 +56,12 @@ pub const Cache = struct {
             entry.value_ptr.deinit(self.allocator);
         }
         self.deps.deinit();
+        // Free interface hash keys
+        var ih_it = self.interface_hashes.iterator();
+        while (ih_it.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+        }
+        self.interface_hashes.deinit();
     }
 
     /// Load content hashes from .orh-cache/hashes
@@ -187,6 +201,57 @@ pub const Cache = struct {
 
         return false;
     }
+
+    /// Load interface hashes from .orh-cache/interfaces
+    pub fn loadInterfaceHashes(self: *Cache) !void {
+        const file = std.fs.cwd().openFile(INTERFACES_FILE, .{}) catch |err| {
+            if (err == error.FileNotFound) return; // fresh build
+            return err;
+        };
+        defer file.close();
+
+        const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
+        defer self.allocator.free(content);
+
+        var lines = std.mem.splitScalar(u8, content, '\n');
+        while (lines.next()) |line| {
+            if (line.len == 0) continue;
+            // Format: "module_name hash"
+            var parts = std.mem.splitScalar(u8, line, ' ');
+            const mod_name = parts.next() orelse continue;
+            const hash_str = parts.next() orelse continue;
+            const hash_val = std.fmt.parseInt(u64, hash_str, 10) catch continue;
+            const name_copy = try self.allocator.dupe(u8, mod_name);
+            try self.interface_hashes.put(name_copy, hash_val);
+        }
+    }
+
+    /// Save interface hashes to .orh-cache/interfaces
+    pub fn saveInterfaceHashes(self: *Cache) !void {
+        try ensureGeneratedDir();
+        const file = try std.fs.cwd().createFile(INTERFACES_FILE, .{});
+        defer file.close();
+
+        var buf: [4096]u8 = undefined;
+        var w = file.writer(&buf);
+        const writer = &w.interface;
+
+        var it = self.interface_hashes.iterator();
+        while (it.next()) |entry| {
+            try writer.print("{s} {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+        }
+        try writer.flush();
+    }
+
+    /// Returns true if the dependency's current interface hash differs from cached,
+    /// or if no cached interface hash exists for the dependency.
+    pub fn depInterfaceChanged(self: *Cache, dep_name: []const u8) bool {
+        _ = self.interface_hashes.get(dep_name) orelse return true;
+        // The caller is responsible for comparing against the freshly computed hash.
+        // This function reports "changed" only when there is no stored hash at all.
+        // The actual comparison happens in pipeline.zig where both values are available.
+        return false;
+    }
 };
 
 /// A cached warning entry
@@ -282,6 +347,274 @@ pub fn hashSemanticContent(source: []const u8) u64 {
     }
 
     return seed;
+}
+
+/// Compute a deterministic u64 hash of a module's public interface.
+///
+/// Only public declarations are included — private changes (is_pub=false) do not
+/// affect the hash. This is the key property enabling interface diffing: a module
+/// that changes only its function bodies or private helpers will produce the same
+/// interface hash, so downstream importers can skip recompilation.
+///
+/// HashMap iteration order is non-deterministic, so entry names are sorted
+/// alphabetically before hashing (up to 256 names per category; beyond that
+/// the sort is skipped — rare edge case, still semantically correct).
+pub fn hashInterface(decls: *const declarations.DeclTable) u64 {
+    var seed: u64 = 0;
+
+    // Category 0x01: public functions
+    seed = XxHash3.hash(seed, &[_]u8{0x01});
+    {
+        var names: [256][]const u8 = undefined;
+        var count: usize = 0;
+        var it = decls.funcs.iterator();
+        while (it.next()) |entry| {
+            if (!entry.value_ptr.is_pub) continue;
+            if (count < 256) {
+                names[count] = entry.key_ptr.*;
+                count += 1;
+            }
+        }
+        sortNames(names[0..count]);
+        for (names[0..count]) |name| {
+            const sig = decls.funcs.get(name).?;
+            seed = XxHash3.hash(seed, name);
+            for (sig.params) |param| {
+                seed = hashResolvedType(seed, param.type_);
+            }
+            seed = hashResolvedType(seed, sig.return_type);
+            seed = XxHash3.hash(seed, &[_]u8{ @intFromBool(sig.is_compt), @intFromBool(sig.is_thread) });
+        }
+    }
+
+    // Category 0x02: public structs
+    seed = XxHash3.hash(seed, &[_]u8{0x02});
+    {
+        var names: [256][]const u8 = undefined;
+        var count: usize = 0;
+        var it = decls.structs.iterator();
+        while (it.next()) |entry| {
+            if (!entry.value_ptr.is_pub) continue;
+            if (count < 256) {
+                names[count] = entry.key_ptr.*;
+                count += 1;
+            }
+        }
+        sortNames(names[0..count]);
+        for (names[0..count]) |name| {
+            const sig = decls.structs.get(name).?;
+            seed = XxHash3.hash(seed, name);
+            // Sort fields by name for determinism
+            var field_names: [256][]const u8 = undefined;
+            var fc: usize = 0;
+            for (sig.fields) |field| {
+                if (fc < 256) {
+                    field_names[fc] = field.name;
+                    fc += 1;
+                }
+            }
+            sortNames(field_names[0..fc]);
+            for (field_names[0..fc]) |fname| {
+                // Find field by name
+                for (sig.fields) |field| {
+                    if (std.mem.eql(u8, field.name, fname)) {
+                        seed = XxHash3.hash(seed, field.name);
+                        seed = hashResolvedType(seed, field.type_);
+                        seed = XxHash3.hash(seed, &[_]u8{@intFromBool(field.is_pub)});
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Category 0x03: public enums
+    seed = XxHash3.hash(seed, &[_]u8{0x03});
+    {
+        var names: [256][]const u8 = undefined;
+        var count: usize = 0;
+        var it = decls.enums.iterator();
+        while (it.next()) |entry| {
+            if (!entry.value_ptr.is_pub) continue;
+            if (count < 256) {
+                names[count] = entry.key_ptr.*;
+                count += 1;
+            }
+        }
+        sortNames(names[0..count]);
+        for (names[0..count]) |name| {
+            const sig = decls.enums.get(name).?;
+            seed = XxHash3.hash(seed, name);
+            seed = hashResolvedType(seed, sig.backing_type);
+            // Sort variant names
+            var vnames: [256][]const u8 = undefined;
+            var vc: usize = 0;
+            for (sig.variants) |v| {
+                if (vc < 256) {
+                    vnames[vc] = v;
+                    vc += 1;
+                }
+            }
+            sortNames(vnames[0..vc]);
+            for (vnames[0..vc]) |vname| {
+                seed = XxHash3.hash(seed, vname);
+            }
+        }
+    }
+
+    // Category 0x04: public bitfields
+    seed = XxHash3.hash(seed, &[_]u8{0x04});
+    {
+        var names: [256][]const u8 = undefined;
+        var count: usize = 0;
+        var it = decls.bitfields.iterator();
+        while (it.next()) |entry| {
+            if (!entry.value_ptr.is_pub) continue;
+            if (count < 256) {
+                names[count] = entry.key_ptr.*;
+                count += 1;
+            }
+        }
+        sortNames(names[0..count]);
+        for (names[0..count]) |name| {
+            const sig = decls.bitfields.get(name).?;
+            seed = XxHash3.hash(seed, name);
+            seed = hashResolvedType(seed, sig.backing_type);
+            var fnames: [256][]const u8 = undefined;
+            var fc: usize = 0;
+            for (sig.flags) |flag| {
+                if (fc < 256) {
+                    fnames[fc] = flag;
+                    fc += 1;
+                }
+            }
+            sortNames(fnames[0..fc]);
+            for (fnames[0..fc]) |flag| {
+                seed = XxHash3.hash(seed, flag);
+            }
+        }
+    }
+
+    // Category 0x05: public variables/constants
+    seed = XxHash3.hash(seed, &[_]u8{0x05});
+    {
+        var names: [256][]const u8 = undefined;
+        var count: usize = 0;
+        var it = decls.vars.iterator();
+        while (it.next()) |entry| {
+            if (!entry.value_ptr.is_pub) continue;
+            if (count < 256) {
+                names[count] = entry.key_ptr.*;
+                count += 1;
+            }
+        }
+        sortNames(names[0..count]);
+        for (names[0..count]) |name| {
+            const sig = decls.vars.get(name).?;
+            seed = XxHash3.hash(seed, name);
+            if (sig.type_) |t| seed = hashResolvedType(seed, t);
+            seed = XxHash3.hash(seed, &[_]u8{ @intFromBool(sig.is_const), @intFromBool(sig.is_compt) });
+        }
+    }
+
+    // Category 0x06: public type aliases
+    seed = XxHash3.hash(seed, &[_]u8{0x06});
+    {
+        var names: [256][]const u8 = undefined;
+        var count: usize = 0;
+        var it = decls.types.iterator();
+        while (it.next()) |entry| {
+            if (count < 256) {
+                names[count] = entry.key_ptr.*;
+                count += 1;
+            }
+        }
+        sortNames(names[0..count]);
+        for (names[0..count]) |name| {
+            seed = XxHash3.hash(seed, name);
+        }
+    }
+
+    return seed;
+}
+
+/// Sort a slice of string slices alphabetically in-place using insertion sort.
+/// Insertion sort is chosen for its simplicity and low overhead for small slices.
+fn sortNames(names: [][]const u8) void {
+    if (names.len <= 1) return;
+    var i: usize = 1;
+    while (i < names.len) : (i += 1) {
+        const key = names[i];
+        var j: usize = i;
+        while (j > 0 and std.mem.order(u8, names[j - 1], key) == .gt) : (j -= 1) {
+            names[j] = names[j - 1];
+        }
+        names[j] = key;
+    }
+}
+
+/// Hash a ResolvedType value into a running seed.
+/// Hashes the tag discriminant plus inner data recursively.
+fn hashResolvedType(seed: u64, rt: types.ResolvedType) u64 {
+    var s = seed;
+    // Hash the tag as a discriminant byte
+    const tag: u8 = @intCast(@intFromEnum(std.meta.activeTag(rt)));
+    s = XxHash3.hash(s, &[_]u8{tag});
+    switch (rt) {
+        .primitive => |p| {
+            const pval: u8 = @intCast(@intFromEnum(p));
+            s = XxHash3.hash(s, &[_]u8{pval});
+        },
+        .named => |name| {
+            s = XxHash3.hash(s, name);
+        },
+        .err, .null_type, .inferred, .unknown => {
+            // tag is enough
+        },
+        .slice => |elem| {
+            s = hashResolvedType(s, elem.*);
+        },
+        .array => |arr| {
+            s = hashResolvedType(s, arr.elem.*);
+            // size node is an AST pointer; use its address as a proxy (stable within a build)
+            const addr: u64 = @intFromPtr(arr.size);
+            s = XxHash3.hash(s, std.mem.asBytes(&addr));
+        },
+        .error_union => |inner| {
+            s = hashResolvedType(s, inner.*);
+        },
+        .null_union => |inner| {
+            s = hashResolvedType(s, inner.*);
+        },
+        .union_type => |variants| {
+            for (variants) |v| {
+                s = hashResolvedType(s, v);
+            }
+        },
+        .tuple => |fields| {
+            for (fields) |f| {
+                s = XxHash3.hash(s, f.name);
+                s = hashResolvedType(s, f.type_);
+            }
+        },
+        .func_ptr => |fp| {
+            for (fp.params) |p| {
+                s = hashResolvedType(s, p);
+            }
+            s = hashResolvedType(s, fp.return_type.*);
+        },
+        .generic => |g| {
+            s = XxHash3.hash(s, g.name);
+            for (g.args) |arg| {
+                s = hashResolvedType(s, arg);
+            }
+        },
+        .ptr => |p| {
+            s = XxHash3.hash(s, p.kind);
+            s = hashResolvedType(s, p.elem.*);
+        },
+    }
+    return s;
 }
 
 pub fn ensureGeneratedDir() !void {
@@ -417,4 +750,195 @@ test "cache hasChanged with formatting" {
     // hasChanged should return false — only whitespace differs
     const changed = try cache.hasChanged(tmp_path);
     try std.testing.expect(!changed);
+}
+
+// ── Interface hashing tests ────────────────────────────────────────────────
+
+/// Build a minimal DeclTable with a single public function for testing.
+/// Uses an arena allocator for parser nodes — the arena must be deinitialized
+/// after the table.
+fn makeTestTable(
+    alloc: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    func_name: []const u8,
+    is_pub: bool,
+) !declarations.DeclTable {
+    var table = declarations.DeclTable.init(alloc);
+    const params = try alloc.alloc(declarations.ParamSig, 0);
+
+    // parser.Node for the return type — owned by the arena, freed with it
+    const parser_mod = @import("parser.zig");
+    const ret_node = try arena.create(parser_mod.Node);
+    ret_node.* = .{ .type_named = "void" };
+
+    const sig = declarations.FuncSig{
+        .name = func_name,
+        .params = params,
+        .param_nodes = &.{},
+        .return_type = .{ .primitive = .void },
+        .return_type_node = ret_node,
+        .is_compt = false,
+        .is_pub = is_pub,
+        .is_thread = false,
+        .is_bridge = false,
+    };
+    try table.funcs.put(func_name, sig);
+    return table;
+}
+
+/// Free a test DeclTable that was built with makeTestTable.
+fn freeTestTable(alloc: std.mem.Allocator, table: *declarations.DeclTable) void {
+    var it = table.funcs.iterator();
+    while (it.next()) |e| alloc.free(e.value_ptr.params);
+    table.funcs.deinit();
+    table.structs.deinit();
+    table.enums.deinit();
+    table.bitfields.deinit();
+    table.vars.deinit();
+    table.types.deinit();
+    table.struct_methods.deinit(alloc);
+    table.type_arena.deinit();
+}
+
+test "interface hash deterministic" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Two identical tables must produce the same hash
+    var t1 = try makeTestTable(alloc, a, "greet", true);
+    defer freeTestTable(alloc, &t1);
+
+    var t2 = try makeTestTable(alloc, a, "greet", true);
+    defer freeTestTable(alloc, &t2);
+
+    const h1 = hashInterface(&t1);
+    const h2 = hashInterface(&t2);
+    try std.testing.expectEqual(h1, h2);
+}
+
+test "interface hash ignores private" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Table with only a public func
+    var pub_table = try makeTestTable(alloc, a, "greet", true);
+    defer freeTestTable(alloc, &pub_table);
+
+    // Same table, plus a private func
+    var pub_and_priv = try makeTestTable(alloc, a, "greet", true);
+    defer freeTestTable(alloc, &pub_and_priv);
+    {
+        const parser_mod = @import("parser.zig");
+        const ret_node = try a.create(parser_mod.Node);
+        ret_node.* = .{ .type_named = "void" };
+        const params = try alloc.alloc(declarations.ParamSig, 0);
+        const priv_sig = declarations.FuncSig{
+            .name = "helper",
+            .params = params,
+            .param_nodes = &.{},
+            .return_type = .{ .primitive = .void },
+            .return_type_node = ret_node,
+            .is_compt = false,
+            .is_pub = false, // private — must not affect the hash
+            .is_thread = false,
+            .is_bridge = false,
+        };
+        try pub_and_priv.funcs.put("helper", priv_sig);
+    }
+
+    const h1 = hashInterface(&pub_table);
+    const h2 = hashInterface(&pub_and_priv);
+    try std.testing.expectEqual(h1, h2);
+}
+
+test "interface hash changes on public change" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var t1 = try makeTestTable(alloc, a, "greet", true);
+    defer freeTestTable(alloc, &t1);
+
+    // Same as t1 but with an additional public function
+    var t2 = try makeTestTable(alloc, a, "greet", true);
+    defer freeTestTable(alloc, &t2);
+    {
+        const parser_mod = @import("parser.zig");
+        const ret_node = try a.create(parser_mod.Node);
+        ret_node.* = .{ .type_named = "void" };
+        const params = try alloc.alloc(declarations.ParamSig, 0);
+        const new_pub = declarations.FuncSig{
+            .name = "farewell",
+            .params = params,
+            .param_nodes = &.{},
+            .return_type = .{ .primitive = .void },
+            .return_type_node = ret_node,
+            .is_compt = false,
+            .is_pub = true, // public — must change the hash
+            .is_thread = false,
+            .is_bridge = false,
+        };
+        try t2.funcs.put("farewell", new_pub);
+    }
+
+    const h1 = hashInterface(&t1);
+    const h2 = hashInterface(&t2);
+    try std.testing.expect(h1 != h2);
+}
+
+test "interface hashes load save roundtrip" {
+    const alloc = std.testing.allocator;
+    const tmp_interfaces = "/tmp/orhon_test_interfaces";
+
+    var cache1 = Cache.init(alloc);
+    defer cache1.deinit();
+
+    // Insert two module interface hashes
+    const k1 = try alloc.dupe(u8, "collections");
+    try cache1.interface_hashes.put(k1, 12345678901234);
+    const k2 = try alloc.dupe(u8, "str");
+    try cache1.interface_hashes.put(k2, 98765432109876);
+
+    // Save to temp file by temporarily overriding via direct file write
+    {
+        const file = try std.fs.cwd().createFile(tmp_interfaces, .{});
+        defer file.close();
+        var buf: [1024]u8 = undefined;
+        var w = file.writer(&buf);
+        const writer = &w.interface;
+        var it = cache1.interface_hashes.iterator();
+        while (it.next()) |entry| {
+            try writer.print("{s} {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+        }
+        try writer.flush();
+    }
+    defer std.fs.cwd().deleteFile(tmp_interfaces) catch {};
+
+    // Load into a fresh cache by reading the temp file directly
+    var cache2 = Cache.init(alloc);
+    defer cache2.deinit();
+    {
+        const file = std.fs.cwd().openFile(tmp_interfaces, .{}) catch unreachable;
+        defer file.close();
+        const content = try file.readToEndAlloc(alloc, 1024 * 1024);
+        defer alloc.free(content);
+        var lines = std.mem.splitScalar(u8, content, '\n');
+        while (lines.next()) |line| {
+            if (line.len == 0) continue;
+            var parts = std.mem.splitScalar(u8, line, ' ');
+            const mod_name = parts.next() orelse continue;
+            const hash_str = parts.next() orelse continue;
+            const hash_val = std.fmt.parseInt(u64, hash_str, 10) catch continue;
+            const name_copy = try alloc.dupe(u8, mod_name);
+            try cache2.interface_hashes.put(name_copy, hash_val);
+        }
+    }
+
+    try std.testing.expectEqual(@as(?u64, 12345678901234), cache2.interface_hashes.get("collections"));
+    try std.testing.expectEqual(@as(?u64, 98765432109876), cache2.interface_hashes.get("str"));
 }

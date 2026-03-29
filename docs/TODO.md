@@ -100,13 +100,11 @@ independent modules.
 tracking, `type_expr`/`passthrough` (type trees are structural, not duplicated into MIR).
 Decide: migrate into MirNode fields or document as permanent architectural boundary.
 
-### Bridge module import scoping
+### ~~Bridge module import scoping~~ PARTIALLY DONE (v0.10.22)
 
-Named bridge modules are currently added as imports to all targets in the generated
-`build.zig`, not just the target that owns the bridge. Functionally safe — codegen only
-emits `@import` for a module's own bridge — but the extra `addImport` entries are
-unnecessary. Tighten so each target only receives its own bridge import if the build
-graph gets large enough for this to matter.
+~~Named bridge modules added to all targets.~~ Multi-target builds fixed: each lib/exe/test
+target now only receives `addImport` for bridges it actually imports. Single-target path
+left as-is — transitive bridge resolution requires all bridges to be available.
 
 ---
 

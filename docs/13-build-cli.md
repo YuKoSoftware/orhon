@@ -123,6 +123,53 @@ pub fn main() void {
 
 ---
 
+## Language Server (LSP)
+
+Orhon ships a built-in LSP server for editor integration. Start it with `orhon lsp` —
+it communicates over JSON-RPC via stdin/stdout.
+
+### Supported Features
+
+| Feature | Description |
+|---------|-------------|
+| Diagnostics | Real-time errors and warnings as you type |
+| Hover | Type info and definition details on hover |
+| Go-to-Definition | Navigate to symbol definitions |
+| Find References | Find all usages of a symbol |
+| Document Highlight | Highlight all occurrences in current file |
+| Completion | Autocomplete with optional snippet support |
+| Signature Help | Show function signatures while typing |
+| Rename | Refactor symbol names across files |
+| Code Actions | Quick fixes for diagnostics |
+| Document Symbols | List symbols in current file |
+| Workspace Symbols | Search symbols across the project |
+| Semantic Tokens | Enhanced syntax highlighting |
+| Inlay Hints | Display inferred types (off by default) |
+| Folding Ranges | Code folding support |
+| Formatting | Format code via LSP |
+
+### How It Works
+
+The LSP runs passes 1–9 (lexer through error propagation) on file changes and caches
+results. Passes 10–12 (MIR, codegen, Zig compilation) are not run — no binary is
+produced during editing.
+
+### VS Code Extension
+
+Install from the VS Code marketplace (publisher: YuKoSoftware) or build from
+`editors/vscode/`.
+
+**Settings:**
+- `orhon.lsp.enabled` — enable/disable the language server (default: true)
+- `orhon.lsp.path` — path to the `orhon` binary (default: `"orhon"`)
+- `orhon.inlayHints.enabled` — show inferred type hints (default: false)
+- `orhon.completion.snippets` — insert parameter snippets on completion (default: false)
+
+The extension auto-detects the `orhon` binary from `~/.local/bin`, `/usr/local/bin`,
+or `/usr/bin` if not configured explicitly.
+
+---
+
 ## Incremental Compilation
 
 Checked at Module Resolution — unchanged modules skip all passes and reuse cached `.zig` files. Works at two levels:

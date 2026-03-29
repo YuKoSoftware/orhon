@@ -541,15 +541,17 @@ table, syntax, scope rules, when to use each.
 ~~Not documented at all.~~ Added to `docs/02-types.md`: syntax, supported types,
 memory behavior (auto defer free), how it maps to `allocPrint`.
 
-### Testing framework
+### ~~Testing framework~~ — documented
 
-Only 15 lines of docs. Missing: test filtering, fixtures, assertion variety, output
-format, organization patterns.
+~~Only 15 lines of docs.~~ Expanded `docs/15-testing.md`: test declaration syntax,
+`assert` + `std::testing` assertions with full table, output format, organization
+guidelines, current limitations (no filtering, no fixtures).
 
-### LSP capabilities
+### ~~LSP capabilities~~ — documented
 
-No user-facing documentation. Missing: supported features, editor setup guide,
-VS Code extension usage.
+~~No user-facing documentation.~~ Added LSP section to `docs/13-build-cli.md`: full
+feature table (15 features), how it works (passes 1-9), VS Code extension settings
+and setup.
 
 ### ~~`compt` function rules~~ — documented
 
@@ -557,11 +559,12 @@ VS Code extension usage.
 type-generating vs value-computing compt, `any` parameters, `compt for`, rules for
 what compt can and cannot do.
 
-### Design rationale documentation
+### ~~Design rationale documentation~~ — documented
 
-Explain WHY Orhon chose "no closures," "no lifetime annotations," "nominal tuples."
-These are interesting design decisions that attract language enthusiasts and help users
-understand the philosophy. Gleam, Roc, and Zig all do this well.
+~~Explain WHY Orhon chose its design.~~ Added "Design Rationale" section to
+`docs/01-basics.md`: no closures, no lifetime annotations, no operator overloading,
+nominal types, no exceptions, no GC, no macros, explicit cast. Each with reasoning
+and inspiration sources.
 
 ---
 

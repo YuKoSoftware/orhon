@@ -76,3 +76,74 @@ cast, copy, move, swap, assert, size, align, typename, typeid
 Block comments use `/* */`. No nesting — the first `*/` closes the comment. Single-line `//` is preferred for regular comments; `/* */` is for temporarily disabling code blocks.
 
 Doc comments (`///`) attach to the declaration immediately below them. At the top of an anchor file (after `module`), they document the module itself. Consecutive `///` lines merge into a single doc block. A blank line between `///` and the declaration breaks the attachment. Use `orhon gendoc` to generate Markdown documentation from `pub` declarations and their doc comments.
+
+---
+
+## Design Rationale
+
+Why Orhon makes the choices it does. These are intentional constraints, not missing
+features.
+
+### No closures — explicit context only
+
+Closures implicitly capture variables from their environment. This creates hidden state,
+makes ownership tracking ambiguous, and complicates the borrow checker. In Orhon, all
+context is passed explicitly as function arguments. Loops with inner scope access cover
+most closure use cases. For callbacks, pass context as arguments or wrap state in a struct.
+`capture()` (planned) will make explicit what closures make implicit.
+
+**Inspiration:** Zig also has no closures for the same reasons.
+
+### No lifetime annotations — scope-based ownership
+
+Rust's lifetime annotations (`'a`, `'b`) are powerful but add significant cognitive load.
+Orhon uses scope-based ownership: borrows are valid within the scope they're created in.
+Non-lexical lifetimes (NLL, planned) will extend borrows to "last use" instead of "scope
+exit" — capturing 85% of Rust's expressiveness without any annotation syntax.
+
+**Trade-off:** Some valid programs are rejected. This is intentional — simpler mental
+model wins over accepting every theoretically safe program.
+
+### No operator overloading — named methods only
+
+Operator overloading lets `+` mean anything — string concatenation, vector addition,
+matrix multiplication, database queries. Reading code becomes guessing. In Orhon, `+`
+always means numeric addition (or SIMD element-wise). Everything else uses named methods
+(`concat`, `add`, `multiply`). The code says what it does.
+
+### Nominal types — no structural typing
+
+Two types with identical fields but different names are different types. `Point(x: f32,
+y: f32)` and `Velocity(x: f32, y: f32)` are incompatible. This catches bugs at compile
+time that structural typing would silently accept. It also makes code self-documenting —
+the type name carries meaning.
+
+### No exceptions — union-based errors
+
+Exceptions create invisible control flow paths. Every function might throw, and nothing
+in the signature tells you. Orhon uses `(Error | T)` union types — the error possibility
+is visible in the return type. `throw` propagates errors explicitly. The compiler tracks
+error flow through every path.
+
+### No garbage collection — compile-time memory management
+
+Orhon is a systems language. GC pauses, unpredictable memory usage, and runtime overhead
+contradict the performance goals. Memory is managed through ownership, borrowing, and
+explicit allocators. The compiler verifies safety at compile time — no runtime cost.
+
+### No macros — `compt` covers it
+
+Macros are powerful but create a language-within-a-language. Code that looks like Orhon
+but follows different rules. `compt` (compile-time evaluation) covers the same use
+cases — type generation, constant computation, conditional compilation — using regular
+Orhon syntax. What you write in a `compt` function is the same language you write
+everywhere else.
+
+**Inspiration:** Zig's `comptime` — same philosophy, same decision.
+
+### Explicit `cast()` — no implicit conversions
+
+Implicit conversions cause subtle bugs. `i32` silently becoming `f64`, integers
+narrowing without warning, boolean coercion from integers. In Orhon, every type
+conversion is an explicit `cast(TargetType, value)`. The code shows exactly where
+types change. Narrowing casts emit a compiler warning.

@@ -88,8 +88,8 @@ else fail "bare call discards return value"; fi
 # Both generateInterpolatedString and generateInterpolatedStringMir must use
 # 'catch |err| return err' instead of 'catch unreachable'.
 
-CODEGEN_SRC="$REPO_DIR/src/codegen.zig"
-CODEGEN_EXPRS="$REPO_DIR/src/codegen_exprs.zig"
+CODEGEN_SRC="$REPO_DIR/src/codegen/codegen.zig"
+CODEGEN_EXPRS="$REPO_DIR/src/codegen/codegen_exprs.zig"
 
 # generateInterpolatedString and generateInterpolatedStringMir are now in codegen_exprs.zig
 INTERP_SAFE_COUNT=$(grep -c 'catch |err| return err' "$CODEGEN_EXPRS" 2>/dev/null || echo 0)

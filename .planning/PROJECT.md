@@ -66,6 +66,8 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 - ✓ Error quality — "did you mean?" typo suggestions, "expected X, got Y" type mismatch display, ownership/borrow/thread fix hints — v0.17 Phase 30
 - ✓ PEG error messages — multi-token expected-set accumulation in parse errors — v0.17 Phase 31
 - ✓ LSP split — monolithic lsp.zig (3303 lines) into 9 focused files, all under 640 lines — v0.17 Phase 32
+- ✓ MIR split — monolithic mir.zig (2356 lines) into 6 focused files — v0.17 Phase 33
+- ✓ Main split — monolithic main.zig (2328 lines) into 7 focused files (cli, init, std_bundle, interface, pipeline, commands, slim dispatcher) — v0.17 Phase 34
 
 ### Active
 
@@ -88,7 +90,7 @@ A clean, correct compiler with zero workarounds — every bug fixed, every error
 **Tests:** 266 across 11 stages
 **Milestones shipped:** v0.10, v0.11, v0.12, v0.13, v0.14, v0.15, v0.16
 
-v0.17 in progress — codegen split (Phase 29), error quality (Phase 30), PEG error messages (Phase 31), LSP split (Phase 32), and MIR split (Phase 33) complete. 3 module splits remaining. 266 tests pass.
+v0.17 in progress — codegen split (Phase 29), error quality (Phase 30), PEG error messages (Phase 31), LSP split (Phase 32), MIR split (Phase 33), and main split (Phase 34) complete. 2 module splits remaining. 266 tests pass.
 
 ### Out of Scope
 
@@ -150,4 +152,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after Phase 33 (MIR split) complete*
+*Last updated: 2026-03-29 after Phase 34 (Main split) complete*

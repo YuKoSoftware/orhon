@@ -4,7 +4,7 @@ milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
 status: verifying
 stopped_at: Completed 36-01-PLAN.md — peg builder split done
-last_updated: "2026-03-29T13:16:18.383Z"
+last_updated: "2026-03-29T13:24:35.679Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 8
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Phase: 36 (peg-builder-split) — EXECUTING
-Plan: 1 of 1
+Phase: 36
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-03-29
 

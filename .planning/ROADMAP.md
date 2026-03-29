@@ -73,7 +73,7 @@ See: [milestones/v0.16-ROADMAP.md](milestones/v0.16-ROADMAP.md)
 - [x] **Phase 30: Error Quality** - "Did you mean?" suggestions, type mismatch display, ownership fix hints (completed 2026-03-28)
 - [x] **Phase 31: PEG Error Messages** - Show all expected tokens when alternatives fail at same position (completed 2026-03-28)
 - [x] **Phase 32: LSP Split** - Split lsp.zig (3301 lines) into types, JSON, analysis, handlers, and server loop (completed 2026-03-29)
-- [ ] **Phase 33: MIR Split** - Split mir.zig (2356 lines) into types, registry, node, annotator, lowerer, and utils
+- [x] **Phase 33: MIR Split** - Split mir.zig (2356 lines) into types, registry, node, annotator, lowerer, and utils (completed 2026-03-29)
 - [ ] **Phase 34: Main Split** - Split main.zig (2315 lines) into CLI, pipeline, init, stdlib bundler, and interface gen
 - [ ] **Phase 35: Zig Runner Split** - Split zig_runner.zig (1952 lines) into runner, build gen, multi-target gen, and discovery
 - [ ] **Phase 36: PEG Builder Split** - Split peg/builder.zig (1836 lines) into context, dispatch, decls, stmts, exprs, and types
@@ -142,10 +142,10 @@ Plans:
   2. Type definitions (TypeClass, Coercion, NodeInfo, MirKind) are in a shared types module
   3. MirNode struct is in its own file with accessor methods
   4. `./testall.sh` passes all tests — MIR unit tests pass in their new locations
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 33-01-PLAN.md — Extract foundation modules (mir_types, mir_registry, mir_node) from mir.zig
-- [ ] 33-02-PLAN.md — Extract implementation modules (mir_annotator, mir_lowerer), finalize mir.zig facade
+- [x] 33-02-PLAN.md — Extract implementation modules (mir_annotator, mir_lowerer), finalize mir.zig facade
 
 ### Phase 34: Main Split
 **Goal**: main.zig is broken into focused files (CLI, pipeline, init, stdlib bundler, interface gen) with no behavior change — all tests pass
@@ -195,7 +195,7 @@ Plans:
 | 30 | v0.17 | 2/2 | Complete    | 2026-03-28 |
 | 31 | v0.17 | 1/1 | Complete    | 2026-03-28 |
 | 32 | v0.17 | 2/2 | Complete    | 2026-03-29 |
-| 33 | v0.17 | 1/2 | In Progress|  |
+| 33 | v0.17 | 2/2 | Complete   | 2026-03-29 |
 | 34 | v0.17 | 0/? | Not started | - |
 | 35 | v0.17 | 0/? | Not started | - |
 | 36 | v0.17 | 0/? | Not started | - |

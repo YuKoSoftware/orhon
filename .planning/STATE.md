@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
-status: executing
-stopped_at: Completed 33-01-PLAN.md
-last_updated: "2026-03-29T07:50:35.677Z"
+status: verifying
+stopped_at: Completed 33-02-PLAN.md
+last_updated: "2026-03-29T08:02:49.030Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 8
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 Phase: 33 (mir-split) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-29
 
 Progress: [░░░░░░░░░░] 0%
@@ -61,6 +61,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 31-peg-error-messages]: Dedup-on-read for PEG expected set: accumulate raw during parsing, deduplicate only in getError() once on failure
 - [Phase 33-mir-split]: Underscore-prefixed module import names (_mir_types, _mir_registry, _mir_node) to avoid Zig shadowing conflicts with local variables
 - [Phase 33-mir-split]: pub const re-exports in mir.zig for all 9 moved types — zero downstream changes required
+- [Phase 33-mir-split]: mir.zig reduced to 15-line re-export facade — all 6 mir_*.zig files contain implementations
 
 ### Pending Todos
 
@@ -79,9 +80,10 @@ None.
 | Phase 30-error-quality P02 | 25m | 2 tasks | 6 files |
 | Phase 31-peg-error-messages P01 | 22 | 3 tasks | 3 files |
 | Phase 33-mir-split P01 | 10 | 1 tasks | 5 files |
+| Phase 33-mir-split P02 | 15m | 1 tasks | 4 files |
 
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Completed 33-01-PLAN.md
+Stopped at: Completed 33-02-PLAN.md
 Resume file: None

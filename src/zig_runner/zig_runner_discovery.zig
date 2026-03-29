@@ -2,7 +2,7 @@
 // Locates the zig binary in the same directory as the orhon binary, or in PATH.
 
 const std = @import("std");
-const errors = @import("errors.zig");
+const errors = @import("../errors.zig");
 const builtin = @import("builtin");
 
 /// Find the Zig binary

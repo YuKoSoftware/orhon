@@ -1,8 +1,8 @@
 // mir_types.zig — MIR type definitions and classification
 
 const std = @import("std");
-const parser = @import("parser.zig");
-const types = @import("types.zig");
+const parser = @import("../parser.zig");
+const types = @import("../types.zig");
 
 pub const RT = types.ResolvedType;
 

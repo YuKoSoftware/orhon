@@ -4,7 +4,7 @@ const std = @import("std");
 const lsp_types = @import("lsp_types.zig");
 const lsp_json = @import("lsp_json.zig");
 const lsp_utils = @import("lsp_utils.zig");
-const builtins = @import("builtins.zig");
+const builtins = @import("../builtins.zig");
 
 const SymbolInfo = lsp_types.SymbolInfo;
 const Diagnostic = lsp_types.Diagnostic;

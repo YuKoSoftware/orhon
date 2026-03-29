@@ -1,12 +1,12 @@
 // mir_annotator.zig — MIR annotation pass
 
 const std = @import("std");
-const parser = @import("parser.zig");
-const declarations = @import("declarations.zig");
-const errors = @import("errors.zig");
-const types = @import("types.zig");
-const K = @import("constants.zig");
-const builtins = @import("builtins.zig");
+const parser = @import("../parser.zig");
+const declarations = @import("../declarations.zig");
+const errors = @import("../errors.zig");
+const types = @import("../types.zig");
+const K = @import("../constants.zig");
+const builtins = @import("../builtins.zig");
 const mir_types = @import("mir_types.zig");
 const mir_registry = @import("mir_registry.zig");
 

@@ -4,9 +4,9 @@
 // Re-export hub — satellite files contain build/multi/discovery implementations.
 
 const std = @import("std");
-const errors = @import("errors.zig");
-const cache = @import("cache.zig");
-const module = @import("module.zig");
+const errors = @import("../errors.zig");
+const cache = @import("../cache.zig");
+const module = @import("../module.zig");
 
 const _zig_runner_build = @import("zig_runner_build.zig");
 const _zig_runner_multi = @import("zig_runner_multi.zig");

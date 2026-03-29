@@ -1,7 +1,7 @@
 // mir_node.zig — MIR tree node data structures
 
 const std = @import("std");
-const parser = @import("parser.zig");
+const parser = @import("../parser.zig");
 const mir_types = @import("mir_types.zig");
 
 pub const RT = mir_types.RT;

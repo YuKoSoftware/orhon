@@ -51,7 +51,7 @@ pub fn main() !void {
     }
 
     if (cli.command == .lsp) {
-        const lsp = @import("lsp.zig");
+        const lsp = @import("lsp/lsp.zig");
         try lsp.serve(allocator);
         return;
     }

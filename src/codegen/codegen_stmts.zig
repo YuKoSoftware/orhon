@@ -4,14 +4,14 @@
 
 const std = @import("std");
 const codegen = @import("codegen.zig");
-const parser = @import("parser.zig");
-const mir = @import("mir.zig");
-const declarations = @import("declarations.zig");
-const errors = @import("errors.zig");
-const K = @import("constants.zig");
-const module = @import("module.zig");
-const RT = @import("types.zig").ResolvedType;
-const builtins = @import("builtins.zig");
+const parser = @import("../parser.zig");
+const mir = @import("../mir/mir.zig");
+const declarations = @import("../declarations.zig");
+const errors = @import("../errors.zig");
+const K = @import("../constants.zig");
+const module = @import("../module.zig");
+const RT = @import("../types.zig").ResolvedType;
+const builtins = @import("../builtins.zig");
 
 const CodeGen = codegen.CodeGen;
 

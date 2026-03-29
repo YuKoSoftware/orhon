@@ -2,9 +2,9 @@
 
 const std = @import("std");
 const lsp_types = @import("lsp_types.zig");
-const parser = @import("parser.zig");
-const declarations = @import("declarations.zig");
-const builtins = @import("builtins.zig");
+const parser = @import("../parser.zig");
+const declarations = @import("../declarations.zig");
+const builtins = @import("../builtins.zig");
 
 const SymbolInfo = lsp_types.SymbolInfo;
 const SymbolKind = lsp_types.SymbolKind;

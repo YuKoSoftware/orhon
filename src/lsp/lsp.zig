@@ -3,7 +3,7 @@
 // Handler implementations live in lsp_nav, lsp_edit, lsp_view, lsp_semantic.
 
 const std = @import("std");
-const lexer = @import("lexer.zig");
+const lexer = @import("../lexer.zig");
 const lsp_types = @import("lsp_types.zig");
 const lsp_json = @import("lsp_json.zig");
 const lsp_utils = @import("lsp_utils.zig");

@@ -25,7 +25,7 @@ pub const buildASTWithArena = builder_mod.buildASTWithArena;
 pub const parseGrammar = grammar_mod.parseGrammar;
 
 /// The embedded Orhon PEG grammar source
-pub const GRAMMAR_SOURCE = @embedFile("orhon.peg");
+pub const GRAMMAR_SOURCE = @embedFile("peg/orhon.peg");
 
 /// Load the Orhon grammar from the embedded .peg file.
 pub fn loadGrammar(allocator: std.mem.Allocator) !Grammar {

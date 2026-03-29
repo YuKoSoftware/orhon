@@ -2,9 +2,9 @@
 // Generates the build.zig content for single-target (exe, static, dynamic) projects.
 
 const std = @import("std");
-const errors = @import("errors.zig");
-const cache = @import("cache.zig");
-const module = @import("module.zig");
+const errors = @import("../errors.zig");
+const cache = @import("../cache.zig");
+const module = @import("../module.zig");
 
 /// Build the content of build.zig for the given build type.
 /// Caller owns the returned slice.

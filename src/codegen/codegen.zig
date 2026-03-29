@@ -3,14 +3,14 @@
 // One .zig file per Orhon module. Uses std.fmt for output.
 
 const std = @import("std");
-const parser = @import("parser.zig");
-const mir = @import("mir.zig");
-const builtins = @import("builtins.zig");
-const declarations = @import("declarations.zig");
-const errors = @import("errors.zig");
-const K = @import("constants.zig");
-const module = @import("module.zig");
-const RT = @import("types.zig").ResolvedType;
+const parser = @import("../parser.zig");
+const mir = @import("../mir/mir.zig");
+const builtins = @import("../builtins.zig");
+const declarations = @import("../declarations.zig");
+const errors = @import("../errors.zig");
+const K = @import("../constants.zig");
+const module = @import("../module.zig");
+const RT = @import("../types.zig").ResolvedType;
 const decls_impl = @import("codegen_decls.zig");
 const stmts_impl = @import("codegen_stmts.zig");
 const exprs_impl = @import("codegen_exprs.zig");

@@ -464,7 +464,7 @@ test "grammar - parse negation" {
 
 test "grammar - parse full orhon grammar" {
     const alloc = std.testing.allocator;
-    const peg_source = @embedFile("../orhon.peg");
+    const peg_source = @embedFile("orhon.peg");
     var grammar = try parseGrammar(peg_source, alloc);
     defer grammar.deinit();
 

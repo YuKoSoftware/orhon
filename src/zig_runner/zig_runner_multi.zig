@@ -2,9 +2,9 @@
 // Generates the unified build.zig content for multi-target (multi-lib/exe) projects.
 
 const std = @import("std");
-const errors = @import("errors.zig");
-const cache = @import("cache.zig");
-const module = @import("module.zig");
+const errors = @import("../errors.zig");
+const cache = @import("../cache.zig");
+const module = @import("../module.zig");
 const _build = @import("zig_runner_build.zig");
 
 /// Descriptor for a build target in a multi-target project

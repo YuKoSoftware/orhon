@@ -1,9 +1,9 @@
 // mir_lowerer.zig — MIR lowering pass
 
 const std = @import("std");
-const parser = @import("parser.zig");
-const declarations = @import("declarations.zig");
-const K = @import("constants.zig");
+const parser = @import("../parser.zig");
+const declarations = @import("../declarations.zig");
+const K = @import("../constants.zig");
 const mir_types = @import("mir_types.zig");
 const mir_node = @import("mir_node.zig");
 const mir_registry = @import("mir_registry.zig");

@@ -42,7 +42,7 @@ top_level_start
      / 'thread' / 'compt' / 'bridge' / 'test' / 'import' / '#'
 
 module_decl
-    <- doc_block? 'module' (IDENTIFIER / 'main') NL
+    <- doc_block? 'module' (IDENTIFIER / 'main') NL  {label: "module declaration"}
 
 metadata
     <- '#' metadata_body NL
@@ -60,7 +60,7 @@ cimport_entry
 
 import_decl
     <- 'import' import_path ('as' IDENTIFIER)? NL
-     / 'use' import_path NL
+     / 'use' import_path NL  {label: "import declaration"}
 
 import_path
     <- STRING_LITERAL                           # C header: import "header.h"
@@ -104,7 +104,7 @@ pub_decl
 # ============================================================
 
 func_decl
-    <- 'func' func_name '(' _ param_list _ ')' type (block / TERM)
+    <- 'func' func_name '(' _ param_list _ ')' type (block / TERM)  {label: "function declaration"}
 
 thread_decl
     <- 'thread' func_name '(' _ param_list _ ')' type block
@@ -132,7 +132,7 @@ compt_decl
 # ============================================================
 
 struct_decl
-    <- 'struct' IDENTIFIER generic_params? '{' _ struct_body _ '}'
+    <- 'struct' IDENTIFIER generic_params? '{' _ struct_body _ '}'  {label: "struct declaration"}
 
 generic_params
     <- '(' _ param_list _ ')'
@@ -152,7 +152,7 @@ field_decl
 # ============================================================
 
 enum_decl
-    <- 'enum' '(' type ')' IDENTIFIER '{' _ enum_body _ '}'
+    <- 'enum' '(' type ')' IDENTIFIER '{' _ enum_body _ '}'  {label: "enum declaration"}
 
 enum_body
     <- (enum_member _)*
@@ -201,11 +201,11 @@ bridge_struct_body
 
 const_decl
     <- 'const' IDENTIFIER destruct_tail TERM
-     / 'const' IDENTIFIER (':' type)? '=' expr TERM
+     / 'const' IDENTIFIER (':' type)? '=' expr TERM  {label: "constant declaration"}
 
 var_decl
     <- 'var' IDENTIFIER destruct_tail TERM
-     / 'var' IDENTIFIER (':' type)? '=' expr TERM
+     / 'var' IDENTIFIER (':' type)? '=' expr TERM  {label: "variable declaration"}
 
 destruct_tail
     <- (',' IDENTIFIER)+ '=' expr
@@ -224,7 +224,7 @@ test_decl
 # ============================================================
 
 block
-    <- '{' _ statement* _ '}'
+    <- '{' _ statement* _ '}'  {label: "block"}
 
 statement
     <- _ (var_decl
@@ -242,23 +242,23 @@ statement
         / expr_or_assignment) _
 
 return_stmt
-    <- 'return' (!NL !'}' !EOF expr)? TERM
+    <- 'return' (!NL !'}' !EOF expr)? TERM  {label: "return statement"}
 
 throw_stmt
     <- 'throw' IDENTIFIER TERM
 
 if_stmt
-    <- 'if' '(' expr ')' block elif_chain?
+    <- 'if' '(' expr ')' block elif_chain?  {label: "if statement"}
 
 elif_chain
     <- 'elif' '(' expr ')' block elif_chain?
      / 'else' block
 
 while_stmt
-    <- 'while' '(' expr ')' (':' '(' assign_expr ')')? block
+    <- 'while' '(' expr ')' (':' '(' assign_expr ')')? block  {label: "while loop"}
 
 for_stmt
-    <- 'for' '(' expr ')' '|' for_captures '|' block
+    <- 'for' '(' expr ')' '|' for_captures '|' block  {label: "for loop"}
 
 for_captures
     <- '(' IDENTIFIER (',' IDENTIFIER)* ')' (',' IDENTIFIER)?   # tuple: |(k, v), i|
@@ -268,7 +268,7 @@ defer_stmt
     <- 'defer' block
 
 match_stmt
-    <- 'match' expr '{' _ match_arm* _ '}'
+    <- 'match' expr '{' _ match_arm* _ '}'  {label: "match statement"}
 
 match_arm
     <- _ match_pattern '=>' block _
@@ -493,7 +493,7 @@ type
      / scoped_type
      / generic_type
      / named_type
-     / keyword_type
+     / keyword_type  {label: "type"}
 
 # const &T — immutable reference
 borrow_type

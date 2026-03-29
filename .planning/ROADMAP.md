@@ -74,7 +74,7 @@ See: [milestones/v0.16-ROADMAP.md](milestones/v0.16-ROADMAP.md)
 - [x] **Phase 31: PEG Error Messages** - Show all expected tokens when alternatives fail at same position (completed 2026-03-28)
 - [x] **Phase 32: LSP Split** - Split lsp.zig (3301 lines) into types, JSON, analysis, handlers, and server loop (completed 2026-03-29)
 - [x] **Phase 33: MIR Split** - Split mir.zig (2356 lines) into types, registry, node, annotator, lowerer, and utils (completed 2026-03-29)
-- [ ] **Phase 34: Main Split** - Split main.zig (2315 lines) into CLI, pipeline, init, stdlib bundler, and interface gen
+- [x] **Phase 34: Main Split** - Split main.zig (2315 lines) into CLI, pipeline, init, stdlib bundler, and interface gen (completed 2026-03-29)
 - [ ] **Phase 35: Zig Runner Split** - Split zig_runner.zig (1952 lines) into runner, build gen, multi-target gen, and discovery
 - [ ] **Phase 36: PEG Builder Split** - Split peg/builder.zig (1836 lines) into context, dispatch, decls, stmts, exprs, and types
 
@@ -156,10 +156,10 @@ Plans:
   2. Pipeline orchestration (runPipeline) is in its own file
   3. CLI parsing, project init, stdlib bundling, and interface generation are separate modules
   4. `./testall.sh` passes all tests — pipeline integration tests pass in their new locations
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 34-01-PLAN.md — Extract foundation modules (cli.zig, init.zig, std_bundle.zig, interface.zig)
-- [ ] 34-02-PLAN.md — Extract pipeline.zig and commands.zig, finalize main.zig facade
+- [x] 34-01-PLAN.md — Extract foundation modules (cli.zig, init.zig, std_bundle.zig, interface.zig)
+- [x] 34-02-PLAN.md — Extract pipeline.zig and commands.zig, finalize main.zig facade
 
 ### Phase 35: Zig Runner Split
 **Goal**: zig_runner.zig is broken into focused files (runner, single-target build gen, multi-target build gen, discovery) with no behavior change — all tests pass
@@ -199,6 +199,6 @@ Plans:
 | 31 | v0.17 | 1/1 | Complete    | 2026-03-28 |
 | 32 | v0.17 | 2/2 | Complete    | 2026-03-29 |
 | 33 | v0.17 | 2/2 | Complete    | 2026-03-29 |
-| 34 | v0.17 | 0/2 | Not started | - |
+| 34 | v0.17 | 2/2 | Complete   | 2026-03-29 |
 | 35 | v0.17 | 0/? | Not started | - |
 | 36 | v0.17 | 0/? | Not started | - |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
 status: executing
-stopped_at: Phase 34 context gathered
-last_updated: "2026-03-29T09:49:58.791Z"
-last_activity: 2026-03-29 -- Phase 34 execution started
+stopped_at: Completed 34-02-PLAN.md
+last_updated: "2026-03-29T10:13:59.842Z"
+last_activity: 2026-03-29
 progress:
   total_phases: 8
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 10
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Current Position
 
 Phase: 34 (main-split) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 34
-Last activity: 2026-03-29 -- Phase 34 execution started
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-03-29
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -62,6 +62,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 33-mir-split]: Underscore-prefixed module import names (_mir_types, _mir_registry, _mir_node) to avoid Zig shadowing conflicts with local variables
 - [Phase 33-mir-split]: pub const re-exports in mir.zig for all 9 moved types — zero downstream changes required
 - [Phase 33-mir-split]: mir.zig reduced to 15-line re-export facade — all 6 mir_*.zig files contain implementations
+- [Phase 34-main-split]: pipeline.zig calls _commands directly for emitZigProject/moveArtifactsToSubfolder — avoids main.zig routing
 
 ### Pending Todos
 
@@ -81,9 +82,10 @@ None.
 | Phase 31-peg-error-messages P01 | 22 | 3 tasks | 3 files |
 | Phase 33-mir-split P01 | 10 | 1 tasks | 5 files |
 | Phase 33-mir-split P02 | 15m | 1 tasks | 4 files |
+| Phase 34-main-split P02 | 15 | 2 tasks | 4 files |
 
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Phase 34 context gathered
-Resume file: .planning/phases/34-main-split/34-CONTEXT.md
+Stopped at: Completed 34-02-PLAN.md
+Resume file: None

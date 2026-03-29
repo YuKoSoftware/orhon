@@ -1,9 +1,10 @@
-// cache.zig — Orhon incremental compilation cache (content hashing)
+// cache.zig — Orhon incremental compilation cache (semantic hashing)
 // Manages .orh-cache/hashes and .orh-cache/deps.graph
 // Determines which modules need recompilation.
 
 const std = @import("std");
 const XxHash3 = std.hash.XxHash3;
+const lexer = @import("lexer.zig");
 
 pub const CACHE_DIR = ".orh-cache";
 pub const GENERATED_DIR = ".orh-cache/generated";
@@ -147,20 +148,20 @@ pub const Cache = struct {
         try writer.flush();
     }
 
-    /// Check if a file has changed since last build (compares content hash)
+    /// Check if a file has changed since last build (compares semantic hash)
     pub fn hasChanged(self: *Cache, path: []const u8) !bool {
         const content = std.fs.cwd().readFileAlloc(self.allocator, path, 10 * 1024 * 1024) catch return true;
         defer self.allocator.free(content);
-        const current_hash = XxHash3.hash(0, content);
+        const current_hash = hashSemanticContent(content);
         const cached_hash = self.hashes.get(path) orelse return true;
         return current_hash != cached_hash;
     }
 
-    /// Update the content hash for a file
+    /// Update the semantic hash for a file
     pub fn updateHash(self: *Cache, path: []const u8) !void {
         const content = try std.fs.cwd().readFileAlloc(self.allocator, path, 10 * 1024 * 1024);
         defer self.allocator.free(content);
-        const hash_val = XxHash3.hash(0, content);
+        const hash_val = hashSemanticContent(content);
         const result = try self.hashes.getOrPut(path);
         if (!result.found_existing) {
             result.key_ptr.* = try self.allocator.dupe(u8, path);
@@ -242,6 +243,45 @@ pub fn saveWarnings(warnings: []const CachedWarning) !void {
         try writer.print("{s}\t{s}\t{d}\t{s}\n", .{ warn.module, warn.file, warn.line, warn.message });
     }
     try writer.flush();
+}
+
+/// Compute a semantic hash of Orhon source by hashing the token stream.
+/// Whitespace (newlines) and doc comments are excluded so that formatting-only
+/// changes do not invalidate the cache. Token kinds and literal text are both
+/// included so that real code changes always produce a different hash.
+///
+/// No allocation — the lexer is driven incrementally and XxHash3 is seeded
+/// with the previous result to build a rolling hash.
+pub fn hashSemanticContent(source: []const u8) u64 {
+    var lex = lexer.Lexer.init(source);
+    var seed: u64 = 0;
+
+    while (true) {
+        const tok = lex.next();
+        // Stop at EOF
+        if (tok.kind == .eof) break;
+        // Skip tokens that carry no semantic meaning
+        if (tok.kind == .newline or tok.kind == .doc_comment) continue;
+
+        // Hash the token kind as a two-byte value, seeded by previous result
+        const kind_val: u16 = @intFromEnum(tok.kind);
+        const kind_bytes = [2]u8{ @truncate(kind_val >> 8), @truncate(kind_val) };
+        seed = XxHash3.hash(seed, &kind_bytes);
+
+        // For tokens whose text carries semantic value, also hash the text
+        switch (tok.kind) {
+            .identifier,
+            .int_literal,
+            .float_literal,
+            .string_literal,
+            => {
+                seed = XxHash3.hash(seed, tok.text);
+            },
+            else => {},
+        }
+    }
+
+    return seed;
 }
 
 pub fn ensureGeneratedDir() !void {
@@ -327,4 +367,54 @@ test "cache detects content change" {
     // hasChanged should now return true
     const changed = try cache.hasChanged(tmp_path);
     try std.testing.expect(changed);
+}
+
+test "semantic hash ignores whitespace" {
+    const src1 = "module test\nfunc main() {}\n";
+    const src2 = "module test\n\n\nfunc main() {}\n\n";
+    const h1 = hashSemanticContent(src1);
+    const h2 = hashSemanticContent(src2);
+    try std.testing.expectEqual(h1, h2);
+}
+
+test "semantic hash ignores comments" {
+    const src1 = "module test\nfunc main() {}\n";
+    const src2 = "module test\n/// A doc comment\nfunc main() {}\n";
+    const h1 = hashSemanticContent(src1);
+    const h2 = hashSemanticContent(src2);
+    try std.testing.expectEqual(h1, h2);
+}
+
+test "semantic hash detects code changes" {
+    const src1 = "module test\nfunc main() {}\n";
+    const src2 = "module test\nfunc other() {}\n";
+    const h1 = hashSemanticContent(src1);
+    const h2 = hashSemanticContent(src2);
+    try std.testing.expect(h1 != h2);
+}
+
+test "cache hasChanged with formatting" {
+    var cache = Cache.init(std.testing.allocator);
+    defer cache.deinit();
+
+    const tmp_path = "/tmp/orhon_cache_test_formatting.orh";
+    {
+        const f = try std.fs.cwd().createFile(tmp_path, .{});
+        defer f.close();
+        try f.writeAll("module test\nfunc main() {}\n");
+    }
+    defer std.fs.cwd().deleteFile(tmp_path) catch {};
+
+    try cache.updateHash(tmp_path);
+
+    // Rewrite with different whitespace only (semantically identical)
+    {
+        const f = try std.fs.cwd().createFile(tmp_path, .{});
+        defer f.close();
+        try f.writeAll("module test\n\n\nfunc main()  {}\n\n");
+    }
+
+    // hasChanged should return false — only whitespace differs
+    const changed = try cache.hasChanged(tmp_path);
+    try std.testing.expect(!changed);
 }

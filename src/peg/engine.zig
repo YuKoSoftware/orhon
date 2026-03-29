@@ -86,6 +86,7 @@ pub const ParseError = struct {
     found_kind: TokenKind,
     expected_rule: []const u8, // rule that was being attempted
     expected_set: std.EnumSet(TokenKind), // all expected token kinds at furthest failure (deduplicated)
+    label: ?[]const u8, // human-readable label from grammar annotation, if present
 };
 
 pub const Engine = struct {
@@ -96,6 +97,7 @@ pub const Engine = struct {
     // Error tracking — furthest failure position
     furthest_pos: usize = 0,
     furthest_rule: []const u8 = "",
+    furthest_label: ?[]const u8 = null,
     // Expected tokens at furthest position — EnumSet provides O(1) insert and automatic deduplication
     furthest_expected: std.EnumSet(TokenKind) = std.EnumSet(TokenKind).initEmpty(),
 
@@ -127,6 +129,7 @@ pub const Engine = struct {
             .found_kind = tok.kind,
             .expected_rule = self.furthest_rule,
             .expected_set = self.furthest_expected,
+            .label = self.furthest_label,
         };
     }
 
@@ -151,9 +154,10 @@ pub const Engine = struct {
         // Evaluate
         const result = self.eval(expr, pos);
 
-        // Track rule name for error reporting
+        // Track rule name and label for error reporting
         if (result == null and pos >= self.furthest_pos) {
             self.furthest_rule = rule_name;
+            self.furthest_label = self.grammar.getLabel(rule_name);
         }
 
         // Memoize

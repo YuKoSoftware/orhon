@@ -481,6 +481,9 @@ pub const Resolver = struct {
                         break :blk try std.fmt.allocPrint(alloc, "var &T is not valid — use &T for mutable references", .{})
                     else
                         break :blk try std.fmt.allocPrint(alloc, "unexpected '{s}'", .{err_info.found});
+                } else if (err_info.label) |label| blk: {
+                    // Human-readable label from grammar annotation
+                    break :blk try std.fmt.allocPrint(alloc, "expected {s}, found '{s}'", .{ label, err_info.found });
                 } else if (err_info.expected_set.count() > 1) blk: {
                     break :blk try formatExpectedSet(alloc, err_info.expected_set);
                 } else try std.fmt.allocPrint(alloc, "unexpected '{s}'", .{err_info.found});

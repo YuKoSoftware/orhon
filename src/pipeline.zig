@@ -610,19 +610,23 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                         else
                             raw;
 
-                        // Duplicate detection (D-08 / CIMP-03)
-                        if (registry.get(lib_name)) |existing_mod| {
-                            const msg = try std.fmt.allocPrint(alloc,
-                                "duplicate #cimport \"{s}\" — already declared in module '{s}'",
-                                .{ lib_name, existing_mod });
-                            defer alloc.free(msg);
-                            try rep.report(.{ .message = msg });
-                            continue;
+                        // Split comma-separated library names and emit linkSystemLibrary for each (BLD-03)
+                        var lib_segments = std.ArrayListUnmanaged([]const u8){};
+                        defer lib_segments.deinit(alloc);
+                        try splitCimportLibNames(alloc, lib_name, &lib_segments);
+                        for (lib_segments.items) |seg| {
+                            // Duplicate detection per individual library name (D-08 / CIMP-03)
+                            if (registry.get(seg)) |existing_mod| {
+                                const msg = try std.fmt.allocPrint(alloc,
+                                    "duplicate #cimport \"{s}\" — already declared in module '{s}'",
+                                    .{ seg, existing_mod });
+                                defer alloc.free(msg);
+                                try rep.report(.{ .message = msg });
+                                continue;
+                            }
+                            try registry.put(alloc, seg, mod_name_inner);
+                            try link_libs.append(alloc, seg);
                         }
-                        try registry.put(alloc, lib_name, mod_name_inner);
-
-                        // Always emit linkSystemLibrary for the cimport name (BLD-03)
-                        try link_libs.append(alloc, lib_name);
 
                         // include: always required (D-06, validated earlier in declarations pass)
                         if (meta.metadata.cimport_include) |inc| {
@@ -776,8 +780,13 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                                 raw[1 .. raw.len - 1]
                             else
                                 raw;
-                            // Always emit linkSystemLibrary for the cimport name (BLD-03)
-                            try link_libs.append(allocator, lib_name);
+                            // Split comma-separated library names and emit linkSystemLibrary for each (BLD-03)
+                            var lib_segments = std.ArrayListUnmanaged([]const u8){};
+                            defer lib_segments.deinit(allocator);
+                            try splitCimportLibNames(allocator, lib_name, &lib_segments);
+                            for (lib_segments.items) |seg| {
+                                try link_libs.append(allocator, seg);
+                            }
                             if (meta.metadata.cimport_include) |inc| {
                                 try c_includes_st.append(allocator, inc);
                             }
@@ -809,12 +818,17 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                                     raw[1 .. raw.len - 1]
                                 else
                                     raw;
-                                // Always emit linkSystemLibrary for the cimport name (BLD-03)
-                                var lib_already = false;
-                                for (link_libs.items) |existing| {
-                                    if (std.mem.eql(u8, existing, lib_name)) { lib_already = true; break; }
+                                // Split comma-separated library names and emit linkSystemLibrary for each (BLD-03)
+                                var lib_segments = std.ArrayListUnmanaged([]const u8){};
+                                defer lib_segments.deinit(allocator);
+                                try splitCimportLibNames(allocator, lib_name, &lib_segments);
+                                for (lib_segments.items) |seg| {
+                                    var lib_already = false;
+                                    for (link_libs.items) |existing| {
+                                        if (std.mem.eql(u8, existing, seg)) { lib_already = true; break; }
+                                    }
+                                    if (!lib_already) try link_libs.append(allocator, seg);
                                 }
-                                if (!lib_already) try link_libs.append(allocator, lib_name);
                                 if (meta.metadata.cimport_include) |inc| {
                                     var inc_already = false;
                                     for (c_includes_st.items) |existing| {
@@ -945,6 +959,22 @@ fn collectBridgeNames(ast: *parser.Node, allocator: std.mem.Allocator) ![][]cons
         }
     }
     return names.toOwnedSlice(allocator);
+}
+
+/// Split a #cimport `name` field value on commas, trim whitespace from each segment,
+/// and append non-empty segments to `out`. Supports both single and multi-library names.
+/// Segments are slices into `name` — no allocation is performed.
+/// Example: "vulkan, SDL3" → ["vulkan", "SDL3"]
+fn splitCimportLibNames(
+    allocator: std.mem.Allocator,
+    name: []const u8,
+    out: *std.ArrayListUnmanaged([]const u8),
+) !void {
+    var it = std.mem.splitScalar(u8, name, ',');
+    while (it.next()) |segment| {
+        const trimmed = std.mem.trim(u8, segment, " \t");
+        if (trimmed.len > 0) try out.append(allocator, trimmed);
+    }
 }
 
 // ============================================================
@@ -1201,4 +1231,53 @@ test "codegen - bitfield declaration" {
     try std.testing.expect(std.mem.indexOf(u8, out, "Read") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "Write") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "Execute") != null);
+}
+
+test "splitCimportLibNames - single name" {
+    const alloc = std.testing.allocator;
+    var result = std.ArrayListUnmanaged([]const u8){};
+    defer result.deinit(alloc);
+    try splitCimportLibNames(alloc, "SDL3", &result);
+    try std.testing.expectEqual(@as(usize, 1), result.items.len);
+    try std.testing.expectEqualStrings("SDL3", result.items[0]);
+}
+
+test "splitCimportLibNames - two names with space" {
+    const alloc = std.testing.allocator;
+    var result = std.ArrayListUnmanaged([]const u8){};
+    defer result.deinit(alloc);
+    try splitCimportLibNames(alloc, "vulkan, SDL3", &result);
+    try std.testing.expectEqual(@as(usize, 2), result.items.len);
+    try std.testing.expectEqualStrings("vulkan", result.items[0]);
+    try std.testing.expectEqualStrings("SDL3", result.items[1]);
+}
+
+test "splitCimportLibNames - two names no spaces" {
+    const alloc = std.testing.allocator;
+    var result = std.ArrayListUnmanaged([]const u8){};
+    defer result.deinit(alloc);
+    try splitCimportLibNames(alloc, "vulkan,SDL3", &result);
+    try std.testing.expectEqual(@as(usize, 2), result.items.len);
+    try std.testing.expectEqualStrings("vulkan", result.items[0]);
+    try std.testing.expectEqualStrings("SDL3", result.items[1]);
+}
+
+test "splitCimportLibNames - extra whitespace" {
+    const alloc = std.testing.allocator;
+    var result = std.ArrayListUnmanaged([]const u8){};
+    defer result.deinit(alloc);
+    try splitCimportLibNames(alloc, " vulkan , SDL3 ", &result);
+    try std.testing.expectEqual(@as(usize, 2), result.items.len);
+    try std.testing.expectEqualStrings("vulkan", result.items[0]);
+    try std.testing.expectEqualStrings("SDL3", result.items[1]);
+}
+
+test "splitCimportLibNames - empty segments skipped" {
+    const alloc = std.testing.allocator;
+    var result = std.ArrayListUnmanaged([]const u8){};
+    defer result.deinit(alloc);
+    try splitCimportLibNames(alloc, "a,,b", &result);
+    try std.testing.expectEqual(@as(usize, 2), result.items.len);
+    try std.testing.expectEqualStrings("a", result.items[0]);
+    try std.testing.expectEqualStrings("b", result.items[1]);
 }

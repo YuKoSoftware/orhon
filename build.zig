@@ -42,6 +42,10 @@ pub fn build(b: *std.Build) void {
     // Test step — runs all embedded tests across all source files
     const test_files = [_][]const u8{
         "src/main.zig",
+        "src/cli.zig",
+        "src/init.zig",
+        "src/std_bundle.zig",
+        "src/interface.zig",
         "src/lexer.zig",
         "src/parser.zig",
         "src/module.zig",

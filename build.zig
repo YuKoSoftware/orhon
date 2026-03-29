@@ -55,6 +55,8 @@ pub fn build(b: *std.Build) void {
         "src/mir_types.zig",
         "src/mir_registry.zig",
         "src/mir_node.zig",
+        "src/mir_annotator.zig",
+        "src/mir_lowerer.zig",
         "src/codegen.zig",
         "src/codegen_decls.zig",
         "src/codegen_stmts.zig",

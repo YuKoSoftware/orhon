@@ -128,7 +128,10 @@ Plans:
   2. Handler groups (navigation, editing, view/hints) are in separate files
   3. JSON infrastructure and type definitions are isolated modules
   4. `./testall.sh` passes all tests — LSP unit tests pass in their new locations
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 32-01-PLAN.md — Extract foundation modules (lsp_types, lsp_json, lsp_utils, lsp_analysis)
+- [ ] 32-02-PLAN.md — Extract handler modules (lsp_nav, lsp_edit, lsp_view, lsp_semantic)
 
 ### Phase 33: MIR Split
 **Goal**: mir.zig is broken into focused files (types, registry, node, annotator, lowerer, utils) with no behavior change — all tests pass
@@ -188,7 +191,7 @@ Plans:
 | 29 | v0.17 | 1/1 | Complete    | 2026-03-28 |
 | 30 | v0.17 | 2/2 | Complete    | 2026-03-28 |
 | 31 | v0.17 | 1/1 | Complete    | 2026-03-28 |
-| 32 | v0.17 | 0/? | Not started | - |
+| 32 | v0.17 | 0/2 | Not started | - |
 | 33 | v0.17 | 0/? | Not started | - |
 | 34 | v0.17 | 0/? | Not started | - |
 | 35 | v0.17 | 0/? | Not started | - |

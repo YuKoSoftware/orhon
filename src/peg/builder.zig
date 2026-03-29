@@ -15,6 +15,12 @@ const Token = lexer.Token;
 const TokenKind = lexer.TokenKind;
 const LocMap = parser.LocMap;
 
+const decls_impl = @import("builder_decls.zig");
+const bridge_impl = @import("builder_bridge.zig");
+const stmts_impl = @import("builder_stmts.zig");
+const exprs_impl = @import("builder_exprs.zig");
+const types_impl = @import("builder_types.zig");
+
 // ============================================================
 // BUILD CONTEXT
 // ============================================================
@@ -71,11 +77,11 @@ pub const BuildContext = struct {
         }) catch {};
     }
 
-    fn alloc(self: *BuildContext) std.mem.Allocator {
+    pub fn alloc(self: *BuildContext) std.mem.Allocator {
         return self.arena.allocator();
     }
 
-    fn newNode(self: *BuildContext, node: Node) !*Node {
+    pub fn newNode(self: *BuildContext, node: Node) !*Node {
         const n = try self.alloc().create(Node);
         n.* = node;
         // Record source location from current_pos
@@ -86,7 +92,7 @@ pub const BuildContext = struct {
         return n;
     }
 
-    fn newNodeAt(self: *BuildContext, node: Node, pos: usize) !*Node {
+    pub fn newNodeAt(self: *BuildContext, node: Node, pos: usize) !*Node {
         const n = try self.alloc().create(Node);
         n.* = node;
         if (pos < self.tokens.len) {
@@ -126,95 +132,97 @@ pub fn buildASTWithArena(cap: *const CaptureNode, tokens: []const Token, arena: 
 
 /// Build an AST node from a capture node. Dispatches to rule-specific
 /// builders or passes through transparent rules.
-fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
+pub fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     const rule = cap.rule orelse return error.NoRule;
 
     // Track position for source location recording
     ctx.current_pos = cap.start_pos;
 
-    // Dispatch to rule-specific builders
-    if (std.mem.eql(u8, rule, "program")) return buildProgram(ctx, cap);
-    if (std.mem.eql(u8, rule, "module_decl")) return buildModuleDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "const_decl")) return buildConstDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "var_decl")) return buildVarDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "func_decl")) return buildFuncDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "block")) return buildBlock(ctx, cap);
-    if (std.mem.eql(u8, rule, "return_stmt")) return buildReturn(ctx, cap);
-    if (std.mem.eql(u8, rule, "if_stmt")) return buildIf(ctx, cap);
-    if (std.mem.eql(u8, rule, "elif_chain")) return buildElifChain(ctx, cap);
-    if (std.mem.eql(u8, rule, "while_stmt")) return buildWhile(ctx, cap);
-    if (std.mem.eql(u8, rule, "for_stmt")) return buildFor(ctx, cap);
-    if (std.mem.eql(u8, rule, "defer_stmt")) return buildDefer(ctx, cap);
-    if (std.mem.eql(u8, rule, "match_stmt")) return buildMatch(ctx, cap);
-    if (std.mem.eql(u8, rule, "match_arm")) return buildMatchArm(ctx, cap);
+    // Declaration builders
+    if (std.mem.eql(u8, rule, "program")) return decls_impl.buildProgram(ctx, cap);
+    if (std.mem.eql(u8, rule, "module_decl")) return decls_impl.buildModuleDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "const_decl")) return decls_impl.buildConstDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "var_decl")) return decls_impl.buildVarDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "func_decl")) return decls_impl.buildFuncDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "param")) return decls_impl.buildParam(ctx, cap);
+    if (std.mem.eql(u8, rule, "struct_decl")) return decls_impl.buildStructDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "enum_decl")) return decls_impl.buildEnumDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "field_decl")) return decls_impl.buildFieldDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "enum_variant")) return decls_impl.buildEnumVariant(ctx, cap);
+    if (std.mem.eql(u8, rule, "bitfield_decl")) return decls_impl.buildBitfieldDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "destruct_decl")) return decls_impl.buildDestructDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "test_decl")) return decls_impl.buildTestDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "import_decl")) return decls_impl.buildImport(ctx, cap);
+    if (std.mem.eql(u8, rule, "metadata")) return decls_impl.buildMetadata(ctx, cap);
+
+    // Statement builders
+    if (std.mem.eql(u8, rule, "block")) return stmts_impl.buildBlock(ctx, cap);
+    if (std.mem.eql(u8, rule, "return_stmt")) return stmts_impl.buildReturn(ctx, cap);
+    if (std.mem.eql(u8, rule, "if_stmt")) return stmts_impl.buildIf(ctx, cap);
+    if (std.mem.eql(u8, rule, "elif_chain")) return stmts_impl.buildElifChain(ctx, cap);
+    if (std.mem.eql(u8, rule, "while_stmt")) return stmts_impl.buildWhile(ctx, cap);
+    if (std.mem.eql(u8, rule, "for_stmt")) return stmts_impl.buildFor(ctx, cap);
+    if (std.mem.eql(u8, rule, "defer_stmt")) return stmts_impl.buildDefer(ctx, cap);
+    if (std.mem.eql(u8, rule, "match_stmt")) return stmts_impl.buildMatch(ctx, cap);
+    if (std.mem.eql(u8, rule, "match_arm")) return stmts_impl.buildMatchArm(ctx, cap);
     if (std.mem.eql(u8, rule, "break_stmt")) return ctx.newNode(.{ .break_stmt = {} });
     if (std.mem.eql(u8, rule, "continue_stmt")) return ctx.newNode(.{ .continue_stmt = {} });
-    if (std.mem.eql(u8, rule, "throw_stmt")) return buildThrowStmt(ctx, cap);
-    if (std.mem.eql(u8, rule, "param")) return buildParam(ctx, cap);
-    if (std.mem.eql(u8, rule, "struct_decl")) return buildStructDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "enum_decl")) return buildEnumDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "field_decl")) return buildFieldDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "enum_variant")) return buildEnumVariant(ctx, cap);
-    if (std.mem.eql(u8, rule, "bitfield_decl")) return buildBitfieldDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "destruct_decl")) return buildDestructDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "test_decl")) return buildTestDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "import_decl")) return buildImport(ctx, cap);
-    if (std.mem.eql(u8, rule, "metadata")) return buildMetadata(ctx, cap);
-    if (std.mem.eql(u8, rule, "expr_or_assignment")) return buildExprOrAssignment(ctx, cap);
-    if (std.mem.eql(u8, rule, "assign_expr")) return buildExprOrAssignment(ctx, cap);
+    if (std.mem.eql(u8, rule, "throw_stmt")) return stmts_impl.buildThrowStmt(ctx, cap);
+    if (std.mem.eql(u8, rule, "expr_or_assignment")) return stmts_impl.buildExprOrAssignment(ctx, cap);
+    if (std.mem.eql(u8, rule, "assign_expr")) return stmts_impl.buildExprOrAssignment(ctx, cap);
 
     // Expression builders
-    if (std.mem.eql(u8, rule, "int_literal")) return buildIntLiteral(ctx, cap);
-    if (std.mem.eql(u8, rule, "float_literal")) return buildFloatLiteral(ctx, cap);
-    if (std.mem.eql(u8, rule, "string_literal")) return buildStringLiteral(ctx, cap);
-    if (std.mem.eql(u8, rule, "bool_literal")) return buildBoolLiteral(ctx, cap);
+    if (std.mem.eql(u8, rule, "int_literal")) return exprs_impl.buildIntLiteral(ctx, cap);
+    if (std.mem.eql(u8, rule, "float_literal")) return exprs_impl.buildFloatLiteral(ctx, cap);
+    if (std.mem.eql(u8, rule, "string_literal")) return exprs_impl.buildStringLiteral(ctx, cap);
+    if (std.mem.eql(u8, rule, "bool_literal")) return exprs_impl.buildBoolLiteral(ctx, cap);
     if (std.mem.eql(u8, rule, "null_literal")) return ctx.newNode(.{ .null_literal = {} });
-    if (std.mem.eql(u8, rule, "identifier_expr")) return buildIdentifier(ctx, cap);
-    if (std.mem.eql(u8, rule, "compiler_func")) return buildCompilerFunc(ctx, cap);
-    if (std.mem.eql(u8, rule, "error_literal")) return buildErrorLiteral(ctx, cap);
-    if (std.mem.eql(u8, rule, "array_literal")) return buildArrayLiteral(ctx, cap);
-    if (std.mem.eql(u8, rule, "grouped_expr")) return buildGroupedExpr(ctx, cap);
-    if (std.mem.eql(u8, rule, "tuple_literal")) return buildTupleLiteral(ctx, cap);
-    if (std.mem.eql(u8, rule, "struct_expr")) return buildStructExpr(ctx, cap);
+    if (std.mem.eql(u8, rule, "identifier_expr")) return exprs_impl.buildIdentifier(ctx, cap);
+    if (std.mem.eql(u8, rule, "compiler_func")) return exprs_impl.buildCompilerFunc(ctx, cap);
+    if (std.mem.eql(u8, rule, "error_literal")) return exprs_impl.buildErrorLiteral(ctx, cap);
+    if (std.mem.eql(u8, rule, "array_literal")) return exprs_impl.buildArrayLiteral(ctx, cap);
+    if (std.mem.eql(u8, rule, "grouped_expr")) return exprs_impl.buildGroupedExpr(ctx, cap);
+    if (std.mem.eql(u8, rule, "tuple_literal")) return exprs_impl.buildTupleLiteral(ctx, cap);
+    if (std.mem.eql(u8, rule, "struct_expr")) return exprs_impl.buildStructExpr(ctx, cap);
 
     // Binary expression tower — all use the same builder
-    if (std.mem.eql(u8, rule, "or_expr")) return buildBinaryExpr(ctx, cap, "or");
-    if (std.mem.eql(u8, rule, "and_expr")) return buildBinaryExpr(ctx, cap, "and");
-    if (std.mem.eql(u8, rule, "bitor_expr")) return buildBinaryExpr(ctx, cap, "|");
-    if (std.mem.eql(u8, rule, "bitxor_expr")) return buildBinaryExpr(ctx, cap, "^");
-    if (std.mem.eql(u8, rule, "bitand_expr")) return buildBinaryExpr(ctx, cap, "&");
-    if (std.mem.eql(u8, rule, "shift_expr")) return buildBinaryExpr(ctx, cap, "<<");
-    if (std.mem.eql(u8, rule, "add_expr")) return buildBinaryExpr(ctx, cap, "+");
-    if (std.mem.eql(u8, rule, "mul_expr")) return buildBinaryExpr(ctx, cap, "*");
-    if (std.mem.eql(u8, rule, "compare_expr")) return buildCompareExpr(ctx, cap);
-    if (std.mem.eql(u8, rule, "range_expr")) return buildRangeExpr(ctx, cap);
-    if (std.mem.eql(u8, rule, "not_expr")) return buildNotExpr(ctx, cap);
-    if (std.mem.eql(u8, rule, "unary_expr")) return buildUnaryExpr(ctx, cap);
-    if (std.mem.eql(u8, rule, "postfix_expr")) return buildPostfixExpr(ctx, cap);
+    if (std.mem.eql(u8, rule, "or_expr")) return exprs_impl.buildBinaryExpr(ctx, cap, "or");
+    if (std.mem.eql(u8, rule, "and_expr")) return exprs_impl.buildBinaryExpr(ctx, cap, "and");
+    if (std.mem.eql(u8, rule, "bitor_expr")) return exprs_impl.buildBinaryExpr(ctx, cap, "|");
+    if (std.mem.eql(u8, rule, "bitxor_expr")) return exprs_impl.buildBinaryExpr(ctx, cap, "^");
+    if (std.mem.eql(u8, rule, "bitand_expr")) return exprs_impl.buildBinaryExpr(ctx, cap, "&");
+    if (std.mem.eql(u8, rule, "shift_expr")) return exprs_impl.buildBinaryExpr(ctx, cap, "<<");
+    if (std.mem.eql(u8, rule, "add_expr")) return exprs_impl.buildBinaryExpr(ctx, cap, "+");
+    if (std.mem.eql(u8, rule, "mul_expr")) return exprs_impl.buildBinaryExpr(ctx, cap, "*");
+    if (std.mem.eql(u8, rule, "compare_expr")) return exprs_impl.buildCompareExpr(ctx, cap);
+    if (std.mem.eql(u8, rule, "range_expr")) return exprs_impl.buildRangeExpr(ctx, cap);
+    if (std.mem.eql(u8, rule, "not_expr")) return exprs_impl.buildNotExpr(ctx, cap);
+    if (std.mem.eql(u8, rule, "unary_expr")) return exprs_impl.buildUnaryExpr(ctx, cap);
+    if (std.mem.eql(u8, rule, "postfix_expr")) return exprs_impl.buildPostfixExpr(ctx, cap);
 
     // Type builders
-    if (std.mem.eql(u8, rule, "named_type")) return buildNamedType(ctx, cap);
-    if (std.mem.eql(u8, rule, "keyword_type")) return buildKeywordType(ctx, cap);
-    if (std.mem.eql(u8, rule, "generic_type")) return buildGenericType(ctx, cap);
-    if (std.mem.eql(u8, rule, "scoped_type")) return buildScopedType(ctx, cap);
-    if (std.mem.eql(u8, rule, "scoped_generic_type")) return buildScopedGenericType(ctx, cap);
-    if (std.mem.eql(u8, rule, "borrow_type")) return buildBorrowType(ctx, cap);
-    if (std.mem.eql(u8, rule, "ref_type")) return buildRefType(ctx, cap);
-    if (std.mem.eql(u8, rule, "paren_type")) return buildParenType(ctx, cap);
-    if (std.mem.eql(u8, rule, "slice_type")) return buildSliceType(ctx, cap);
-    if (std.mem.eql(u8, rule, "array_type")) return buildArrayType(ctx, cap);
-    if (std.mem.eql(u8, rule, "func_type")) return buildFuncType(ctx, cap);
+    if (std.mem.eql(u8, rule, "named_type")) return types_impl.buildNamedType(ctx, cap);
+    if (std.mem.eql(u8, rule, "keyword_type")) return types_impl.buildKeywordType(ctx, cap);
+    if (std.mem.eql(u8, rule, "generic_type")) return types_impl.buildGenericType(ctx, cap);
+    if (std.mem.eql(u8, rule, "scoped_type")) return types_impl.buildScopedType(ctx, cap);
+    if (std.mem.eql(u8, rule, "scoped_generic_type")) return types_impl.buildScopedGenericType(ctx, cap);
+    if (std.mem.eql(u8, rule, "borrow_type")) return types_impl.buildBorrowType(ctx, cap);
+    if (std.mem.eql(u8, rule, "ref_type")) return types_impl.buildRefType(ctx, cap);
+    if (std.mem.eql(u8, rule, "paren_type")) return types_impl.buildParenType(ctx, cap);
+    if (std.mem.eql(u8, rule, "slice_type")) return types_impl.buildSliceType(ctx, cap);
+    if (std.mem.eql(u8, rule, "array_type")) return types_impl.buildArrayType(ctx, cap);
+    if (std.mem.eql(u8, rule, "func_type")) return types_impl.buildFuncType(ctx, cap);
 
     // Bridge declarations
-    if (std.mem.eql(u8, rule, "bridge_decl")) return buildBridgeDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "bridge_func")) return buildBridgeFunc(ctx, cap);
-    if (std.mem.eql(u8, rule, "bridge_const")) return buildBridgeConst(ctx, cap);
-    if (std.mem.eql(u8, rule, "bridge_struct")) return buildBridgeStruct(ctx, cap);
-    if (std.mem.eql(u8, rule, "thread_decl")) return buildThreadDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "bridge_decl")) return bridge_impl.buildBridgeDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "bridge_func")) return bridge_impl.buildBridgeFunc(ctx, cap);
+    if (std.mem.eql(u8, rule, "bridge_const")) return bridge_impl.buildBridgeConst(ctx, cap);
+    if (std.mem.eql(u8, rule, "bridge_struct")) return bridge_impl.buildBridgeStruct(ctx, cap);
+    if (std.mem.eql(u8, rule, "thread_decl")) return bridge_impl.buildThreadDecl(ctx, cap);
 
     // Context-setting rules (set flags on child node)
-    if (std.mem.eql(u8, rule, "pub_decl")) return buildPubDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "compt_decl")) return buildComptDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "pub_decl")) return bridge_impl.buildPubDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "compt_decl")) return bridge_impl.buildComptDecl(ctx, cap);
 
     // Transparent rules — recurse into first child
     if (cap.children.len > 0) return buildNode(ctx, &cap.children[0]);
@@ -228,13 +236,13 @@ fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
 // ============================================================
 
 /// Get token text at a position
-fn tokenText(ctx: *BuildContext, pos: usize) []const u8 {
+pub fn tokenText(ctx: *BuildContext, pos: usize) []const u8 {
     if (pos < ctx.tokens.len) return ctx.tokens[pos].text;
     return "";
 }
 
 /// Find first token of a kind within a capture range
-fn findTokenInRange(ctx: *BuildContext, start: usize, end: usize, kind: TokenKind) ?usize {
+pub fn findTokenInRange(ctx: *BuildContext, start: usize, end: usize, kind: TokenKind) ?usize {
     var i = start;
     while (i < end and i < ctx.tokens.len) : (i += 1) {
         if (ctx.tokens[i].kind == kind) return i;
@@ -243,7 +251,7 @@ fn findTokenInRange(ctx: *BuildContext, start: usize, end: usize, kind: TokenKin
 }
 
 /// Build a node from a terminal capture (identifier, literal, etc.)
-fn buildTokenNode(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+pub fn buildTokenNode(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     if (cap.start_pos >= ctx.tokens.len) return error.InvalidCapture;
     const tok = ctx.tokens[cap.start_pos];
     return switch (tok.kind) {
@@ -259,7 +267,7 @@ fn buildTokenNode(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 }
 
 /// Build all children with a specific rule name into a node slice
-fn buildChildrenByRule(ctx: *BuildContext, cap: *const CaptureNode, rule_name: []const u8) ![]*Node {
+pub fn buildChildrenByRule(ctx: *BuildContext, cap: *const CaptureNode, rule_name: []const u8) ![]*Node {
     var nodes = std.ArrayListUnmanaged(*Node){};
     for (cap.children) |*child| {
         if (child.rule) |r| {
@@ -272,7 +280,7 @@ fn buildChildrenByRule(ctx: *BuildContext, cap: *const CaptureNode, rule_name: [
 }
 
 /// Recursively collect expr nodes from a capture tree
-fn collectExprsRecursive(ctx: *BuildContext, cap: *const CaptureNode, out: *std.ArrayListUnmanaged(*Node)) anyerror!void {
+pub fn collectExprsRecursive(ctx: *BuildContext, cap: *const CaptureNode, out: *std.ArrayListUnmanaged(*Node)) anyerror!void {
     for (cap.children) |*child| {
         if (child.rule) |r| {
             if (std.mem.eql(u8, r, "expr")) {
@@ -287,7 +295,7 @@ fn collectExprsRecursive(ctx: *BuildContext, cap: *const CaptureNode, out: *std.
 }
 
 /// Collect call arguments with optional names
-fn collectCallArgs(ctx: *BuildContext, cap: *const CaptureNode, args: *std.ArrayListUnmanaged(*Node), names: *std.ArrayListUnmanaged([]const u8), has_names: *bool) anyerror!void {
+pub fn collectCallArgs(ctx: *BuildContext, cap: *const CaptureNode, args: *std.ArrayListUnmanaged(*Node), names: *std.ArrayListUnmanaged([]const u8), has_names: *bool) anyerror!void {
     for (cap.children) |*child| {
         if (child.rule) |r| {
             if (std.mem.eql(u8, r, "named_or_positional_arg")) {
@@ -319,7 +327,7 @@ fn collectCallArgs(ctx: *BuildContext, cap: *const CaptureNode, args: *std.Array
 }
 
 /// Recursively collect param nodes from a capture tree
-fn collectParamsRecursive(ctx: *BuildContext, cap: *const CaptureNode, out: *std.ArrayListUnmanaged(*Node)) anyerror!void {
+pub fn collectParamsRecursive(ctx: *BuildContext, cap: *const CaptureNode, out: *std.ArrayListUnmanaged(*Node)) anyerror!void {
     for (cap.children) |*child| {
         if (child.rule) |r| {
             if (std.mem.eql(u8, r, "param")) {
@@ -332,7 +340,7 @@ fn collectParamsRecursive(ctx: *BuildContext, cap: *const CaptureNode, out: *std
 }
 
 /// Build all children into nodes (any rule)
-fn buildAllChildren(ctx: *BuildContext, cap: *const CaptureNode) ![]*Node {
+pub fn buildAllChildren(ctx: *BuildContext, cap: *const CaptureNode) ![]*Node {
     var nodes = std.ArrayListUnmanaged(*Node){};
     for (cap.children) |*child| {
         try nodes.append(ctx.alloc(), try buildNode(ctx, child));
@@ -341,321 +349,12 @@ fn buildAllChildren(ctx: *BuildContext, cap: *const CaptureNode) ![]*Node {
 }
 
 // ============================================================
-// PROGRAM STRUCTURE BUILDERS
+// SHARED STRUCT/ENUM HELPERS (used by decls and bridge satellites)
 // ============================================================
 
-fn buildProgram(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // program <- _ module_decl (_ (doc_block / metadata / import_decl / top_level))* _ EOF
-    const mod = if (cap.findChild("module_decl")) |m| try buildNode(ctx, m) else return error.NoModule;
-
-    var metadata_list = std.ArrayListUnmanaged(*Node){};
-    var imports_list = std.ArrayListUnmanaged(*Node){};
-    var top_level_list = std.ArrayListUnmanaged(*Node){};
-
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "metadata")) {
-                try metadata_list.append(ctx.alloc(), try buildNode(ctx, child));
-            } else if (std.mem.eql(u8, r, "import_decl")) {
-                try imports_list.append(ctx.alloc(), try buildNode(ctx, child));
-            } else if (std.mem.eql(u8, r, "top_level")) {
-                // top_level is transparent — build its child
-                for (child.children) |*tl_child| {
-                    if (tl_child.rule) |_| {
-                        try top_level_list.append(ctx.alloc(), try buildNode(ctx, tl_child));
-                    }
-                }
-            } else if (std.mem.eql(u8, r, "top_level_decl")) {
-                try top_level_list.append(ctx.alloc(), try buildNode(ctx, child));
-            } else if (std.mem.eql(u8, r, "error_skip")) {
-                // Error recovery: report the skipped tokens as a syntax error
-                const start = child.start_pos;
-                const tok = if (start < ctx.tokens.len) ctx.tokens[start] else null;
-                if (tok) |t| {
-                    const msg = try std.fmt.allocPrint(ctx.alloc(), "unexpected '{s}'", .{t.text});
-                    ctx.reportError(msg, start);
-                }
-                // Don't add to AST — skipped tokens are discarded
-            }
-        }
-    }
-
-    return ctx.newNode(.{ .program = .{
-        .module = mod,
-        .metadata = try metadata_list.toOwnedSlice(ctx.alloc()),
-        .imports = try imports_list.toOwnedSlice(ctx.alloc()),
-        .top_level = try top_level_list.toOwnedSlice(ctx.alloc()),
-    } });
-}
-
-fn buildModuleDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // module_decl <- doc_block? 'module' (IDENTIFIER / 'main') NL
-    // Find the name token — it's the identifier or 'main' keyword after 'module'
-    const name_pos = findTokenInRange(ctx, cap.start_pos + 1, cap.end_pos, .identifier) orelse
-        findTokenInRange(ctx, cap.start_pos + 1, cap.end_pos, .kw_main) orelse
-        return error.NoModuleName;
-    return ctx.newNode(.{ .module_decl = .{ .name = tokenText(ctx, name_pos) } });
-}
-
-fn buildImport(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // import_decl <- 'import' import_path ('as' IDENTIFIER)? NL
-    //             / 'use' import_path NL
-    const is_include = ctx.tokens[cap.start_pos].kind == .kw_use;
-    var path: []const u8 = "";
-    var scope: ?[]const u8 = null;
-    var alias: ?[]const u8 = null;
-    var is_c_header = false;
-
-    // Walk tokens to extract path components
-    var i = cap.start_pos + 1;
-    while (i < cap.end_pos) : (i += 1) {
-        const tok = ctx.tokens[i];
-        if (tok.kind == .string_literal) {
-            path = tok.text;
-            is_c_header = true;
-        } else if (tok.kind == .identifier or tok.kind == .kw_main) {
-            if (i + 1 < cap.end_pos and ctx.tokens[i + 1].kind == .scope) {
-                scope = tok.text;
-                i += 2; // skip ::
-                if (i < cap.end_pos) path = ctx.tokens[i].text;
-            } else {
-                path = tok.text;
-            }
-        } else if (tok.kind == .kw_as) {
-            i += 1;
-            if (i < cap.end_pos) alias = ctx.tokens[i].text;
-        }
-    }
-
-    return ctx.newNode(.{ .import_decl = .{
-        .path = path,
-        .scope = scope,
-        .alias = alias,
-        .is_c_header = is_c_header,
-        .is_include = is_include,
-    } });
-}
-
-fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // metadata <- '#' metadata_body NL
-    // metadata_body <- 'dep' expr expr? / 'cimport' '=' cimport_block / IDENTIFIER '=' expr
-    const field_pos = cap.start_pos + 1; // after #
-    const field = tokenText(ctx, field_pos);
-
-    // Handle #cimport = { name: "lib", include: "...", source?: "..." }
-    if (std.mem.eql(u8, field, "cimport")) {
-        // Capture tree structure:
-        //   metadata_cap.children[0]            = metadata_body_cap
-        //   metadata_body_cap.children[0]        = cimport_block_cap
-        //   cimport_block_cap.children           = [_, cimport_entry, _, cimport_entry, ...]
-        //   cimport_entry.children               = [whitespace_cap, expr_cap]
-        //   (IDENTIFIER and ':' are terminals; key is at cimport_entry.start_pos)
-        //   expr_cap                             = the string literal value
-
-        // Navigate: metadata_cap -> metadata_body_cap -> cimport_block_cap
-        const metadata_body_cap = if (cap.children.len >= 1) &cap.children[0] else {
-            const dummy = try ctx.newNode(.{ .identifier = field });
-            return ctx.newNode(.{ .metadata = .{ .field = field, .value = dummy } });
-        };
-        const block_cap = if (metadata_body_cap.children.len >= 1) &metadata_body_cap.children[0] else {
-            const dummy = try ctx.newNode(.{ .identifier = field });
-            return ctx.newNode(.{ .metadata = .{ .field = field, .value = dummy } });
-        };
-
-        var lib_name_val: ?[]const u8 = null;
-        var include_val: ?[]const u8 = null;
-        var source_val: ?[]const u8 = null;
-
-        // Iterate cimport_block children and process cimport_entry nodes
-        for (block_cap.children) |*child| {
-            const child_rule = child.rule orelse continue;
-            if (!std.mem.eql(u8, child_rule, "cimport_entry")) continue;
-            // cimport_entry children: [whitespace_cap, expr_cap]
-            // (IDENTIFIER and ':' are terminals — no child capture nodes)
-            // Key token is at child.start_pos; expr is the last child
-            if (child.children.len < 2) continue;
-            const key = tokenText(ctx, child.start_pos);
-            const val_node = try buildNode(ctx, &child.children[child.children.len - 1]);
-            if (val_node.* == .string_literal) {
-                const raw = val_node.string_literal;
-                const unquoted = if (raw.len >= 2 and raw[0] == '"')
-                    raw[1 .. raw.len - 1]
-                else
-                    raw;
-                if (std.mem.eql(u8, key, "name")) {
-                    lib_name_val = raw;
-                } else if (std.mem.eql(u8, key, "include")) {
-                    include_val = unquoted;
-                } else if (std.mem.eql(u8, key, "source")) {
-                    source_val = unquoted;
-                } else {
-                    // D-05: Unknown key — compile error
-                    const msg = try std.fmt.allocPrint(ctx.alloc(),
-                        "unknown #cimport key '{s}' — only 'name', 'include', and 'source' are allowed", .{key});
-                    ctx.reportError(msg, child.children[0].start_pos);
-                }
-            }
-        }
-
-        // name: is always required
-        if (lib_name_val == null) {
-            ctx.reportError("#cimport requires 'name:' key", cap.start_pos);
-        }
-
-        // include: is always required (D-06)
-        if (include_val == null) {
-            ctx.reportError("#cimport requires 'include:' key", cap.start_pos);
-        }
-
-        // Build a string_literal node for the lib name value
-        const lib_name_node = try ctx.newNode(.{ .string_literal = if (lib_name_val) |n| n else "" });
-
-        return ctx.newNode(.{ .metadata = .{
-            .field = "cimport",
-            .value = lib_name_node,
-            .cimport_include = include_val,
-            .cimport_source = source_val,
-        } });
-    }
-
-    // Build value from first expr child
-    if (cap.children.len > 0) {
-        const value = try buildNode(ctx, &cap.children[0]);
-        var extra: ?*Node = null;
-        if (cap.children.len > 1) {
-            extra = try buildNode(ctx, &cap.children[1]);
-        }
-        return ctx.newNode(.{ .metadata = .{ .field = field, .value = value, .extra = extra } });
-    }
-
-    // Fallback — create a dummy value
-    const dummy = try ctx.newNode(.{ .identifier = field });
-    return ctx.newNode(.{ .metadata = .{ .field = field, .value = dummy } });
-}
-
-// ============================================================
-// DECLARATION BUILDERS
-// ============================================================
-
-fn buildFuncDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // func_decl <- 'func' func_name '(' _ param_list _ ')' type (block / TERM)
-    var name: []const u8 = "";
-    if (cap.findChild("func_name")) |fn_cap| {
-        const name_pos = fn_cap.start_pos;
-        name = tokenText(ctx, name_pos);
-    }
-
-    // Params may be nested inside param_list
-    var params_list = std.ArrayListUnmanaged(*Node){};
-    try collectParamsRecursive(ctx, cap, &params_list);
-    const params = try params_list.toOwnedSlice(ctx.alloc());
-
-    const ret_type = if (cap.findChild("type")) |t| try buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "void" });
-    const body = if (cap.findChild("block")) |b| try buildNode(ctx, b) else try ctx.newNode(.{ .block = .{ .statements = &.{} } });
-
-    return ctx.newNode(.{ .func_decl = .{
-        .name = name,
-        .params = params,
-        .return_type = ret_type,
-        .body = body,
-        .is_compt = false,
-        .is_pub = false,
-        .is_bridge = false,
-        .is_thread = false,
-    } });
-}
-
-fn buildParam(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // param <- param_name ':' type ('=' expr)?
-    var name: []const u8 = "";
-    if (cap.findChild("param_name")) |pn| {
-        name = tokenText(ctx, pn.start_pos);
-    }
-
-    const type_ann = if (cap.findChild("type")) |t| try buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "any" });
-    var default: ?*Node = null;
-    if (cap.findChild("expr")) |e| {
-        default = try buildNode(ctx, e);
-    }
-
-    return ctx.newNode(.{ .param = .{
-        .name = name,
-        .type_annotation = type_ann,
-        .default_value = default,
-    } });
-}
-
-fn buildConstDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // const_decl <- 'const' IDENTIFIER destruct_tail TERM
-    //            / 'const' IDENTIFIER (':' type)? '=' expr TERM
-
-    // Check for destructuring: const a, b = expr
-    if (cap.findChild("destruct_tail")) |dt| {
-        return buildDestructFromTail(ctx, cap, dt, true);
-    }
-
-    const name_pos = cap.start_pos + 1; // after 'const'
-    const name = tokenText(ctx, name_pos);
-
-    var type_ann: ?*Node = null;
-    if (cap.findChild("type")) |t| {
-        type_ann = try buildNode(ctx, t);
-    }
-
-    const value = if (cap.findChild("expr")) |e| try buildNode(ctx, e) else try ctx.newNode(.{ .int_literal = "0" });
-
-    return ctx.newNode(.{ .const_decl = .{
-        .name = name,
-        .type_annotation = type_ann,
-        .value = value,
-        .is_pub = false,
-    } });
-}
-
-fn buildVarDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // Check for destructuring: var a, b = expr
-    if (cap.findChild("destruct_tail")) |dt| {
-        return buildDestructFromTail(ctx, cap, dt, false);
-    }
-
-    const name_pos = cap.start_pos + 1;
-    const name = tokenText(ctx, name_pos);
-
-    var type_ann: ?*Node = null;
-    if (cap.findChild("type")) |t| {
-        type_ann = try buildNode(ctx, t);
-    }
-
-    const value = if (cap.findChild("expr")) |e| try buildNode(ctx, e) else try ctx.newNode(.{ .int_literal = "0" });
-
-    return ctx.newNode(.{ .var_decl = .{
-        .name = name,
-        .type_annotation = type_ann,
-        .value = value,
-        .is_pub = false,
-    } });
-}
-
-fn buildStructDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // struct_decl <- 'struct' IDENTIFIER generic_params? '{' _ struct_body _ '}'
-    const name_pos = cap.start_pos + 1;
-    const name = tokenText(ctx, name_pos);
-
-    var type_params_list = std.ArrayListUnmanaged(*Node){};
-    var members = std.ArrayListUnmanaged(*Node){};
-
-    // Walk children recursively to find params (from generic_params) and members
-    try collectStructParts(ctx, cap, &type_params_list, &members);
-
-    return ctx.newNode(.{ .struct_decl = .{
-        .name = name,
-        .type_params = try type_params_list.toOwnedSlice(ctx.alloc()),
-        .members = try members.toOwnedSlice(ctx.alloc()),
-        .is_pub = false,
-    } });
-}
-
-fn collectStructParts(ctx: *BuildContext, cap: *const CaptureNode, type_params: *std.ArrayListUnmanaged(*Node), members: *std.ArrayListUnmanaged(*Node)) anyerror!void {
+/// Walk a capture tree to collect struct/bridge struct type params and member nodes.
+/// Called by builder_decls.buildStructDecl and builder_bridge.buildBridgeStruct.
+pub fn collectStructParts(ctx: *BuildContext, cap: *const CaptureNode, type_params: *std.ArrayListUnmanaged(*Node), members: *std.ArrayListUnmanaged(*Node)) anyerror!void {
     for (cap.children) |*child| {
         if (child.rule) |r| {
             // Terminal declaration nodes — build and add as members
@@ -687,8 +386,9 @@ fn collectStructParts(ctx: *BuildContext, cap: *const CaptureNode, type_params: 
     }
 }
 
-/// Check if there's a 'pub' token in the capture range before the given position
-fn hasPubBefore(ctx: *BuildContext, cap: *const CaptureNode, before_pos: usize) bool {
+/// Check if there's a 'pub' token in the capture range before the given position.
+/// Used by collectStructParts and collectEnumMembers in satellites.
+pub fn hasPubBefore(ctx: *BuildContext, cap: *const CaptureNode, before_pos: usize) bool {
     var i = cap.start_pos;
     while (i < before_pos and i < ctx.tokens.len) : (i += 1) {
         if (ctx.tokens[i].kind == .kw_pub) return true;
@@ -696,277 +396,9 @@ fn hasPubBefore(ctx: *BuildContext, cap: *const CaptureNode, before_pos: usize) 
     return false;
 }
 
-fn buildEnumDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // enum_decl <- 'enum' '(' type ')' IDENTIFIER '{' _ enum_body _ '}'
-    const backing = if (cap.findChild("type")) |t| try buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "u8" });
-
-    // Name is the identifier after ')'
-    var name: []const u8 = "";
-    for (cap.start_pos..cap.end_pos) |i| {
-        if (i > 0 and i < ctx.tokens.len and ctx.tokens[i].kind == .identifier and ctx.tokens[i - 1].kind == .rparen) {
-            name = ctx.tokens[i].text;
-            break;
-        }
-    }
-
-    var members = std.ArrayListUnmanaged(*Node){};
-    try collectEnumMembers(ctx, cap, &members);
-
-    return ctx.newNode(.{ .enum_decl = .{
-        .name = name,
-        .backing_type = backing,
-        .members = try members.toOwnedSlice(ctx.alloc()),
-        .is_pub = false,
-    } });
-}
-
-fn collectEnumMembers(ctx: *BuildContext, cap: *const CaptureNode, members: *std.ArrayListUnmanaged(*Node)) anyerror!void {
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "enum_variant") or std.mem.eql(u8, r, "func_decl") or std.mem.eql(u8, r, "pub_decl")) {
-                const node = try buildNode(ctx, child);
-                if (hasPubBefore(ctx, cap, child.start_pos)) setPub(node, true);
-                try members.append(ctx.alloc(), node);
-            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM") or std.mem.eql(u8, r, "doc_block") or std.mem.eql(u8, r, "type")) {
-                // skip
-            } else {
-                try collectEnumMembers(ctx, child, members);
-            }
-        }
-    }
-}
-
-fn buildFieldDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // field_decl <- IDENTIFIER ':' type ('=' expr)? TERM
-    const name = tokenText(ctx, cap.start_pos);
-    const type_ann = if (cap.findChild("type")) |t| try buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "any" });
-    var default: ?*Node = null;
-    if (cap.findChild("expr")) |e| {
-        default = try buildNode(ctx, e);
-    }
-    return ctx.newNode(.{ .field_decl = .{
-        .name = name,
-        .type_annotation = type_ann,
-        .default_value = default,
-        .is_pub = false,
-    } });
-}
-
-fn buildEnumVariant(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const name = tokenText(ctx, cap.start_pos);
-    var value: ?*Node = null;
-    // Scan for '=' followed by int_literal within this variant's token range
-    for (cap.start_pos..cap.end_pos) |i| {
-        if (i < ctx.tokens.len and ctx.tokens[i].kind == .assign) {
-            if (i + 1 < ctx.tokens.len and ctx.tokens[i + 1].kind == .int_literal) {
-                value = try ctx.newNode(.{ .int_literal = ctx.tokens[i + 1].text });
-            }
-            break;
-        }
-    }
-    const fields = try buildChildrenByRule(ctx, cap, "param");
-    return ctx.newNode(.{ .enum_variant = .{
-        .name = name,
-        .fields = fields,
-        .value = value,
-    } });
-}
-
-fn buildDestructDecl(_: *BuildContext, _: *const CaptureNode) !*Node {
-    return error.DestructNotReached; // handled by buildDestructFromTail
-}
-
-fn buildDestructFromTail(ctx: *BuildContext, cap: *const CaptureNode, dt: *const CaptureNode, is_const: bool) !*Node {
-    // destruct_tail <- (',' IDENTIFIER)+ '=' expr
-    // First name is after 'const'/'var' keyword
-    const first_name = tokenText(ctx, cap.start_pos + 1);
-    var names = std.ArrayListUnmanaged([]const u8){};
-    try names.append(ctx.alloc(), first_name);
-    // Collect additional names from comma-separated identifiers in destruct_tail (before '=')
-    for (dt.start_pos..dt.end_pos) |i| {
-        if (i < ctx.tokens.len and ctx.tokens[i].kind == .assign) break;
-        if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
-            try names.append(ctx.alloc(), ctx.tokens[i].text);
-        }
-    }
-    // Value is the expr child
-    var value: *Node = try ctx.newNode(.{ .int_literal = "0" });
-    if (dt.findChild("expr")) |e| {
-        value = try buildNode(ctx, e);
-    } else {
-        // expr might be a sibling of destruct_tail in the const_decl capture
-        if (cap.findChild("expr")) |e| {
-            value = try buildNode(ctx, e);
-        }
-    }
-    return ctx.newNode(.{ .destruct_decl = .{
-        .names = try names.toOwnedSlice(ctx.alloc()),
-        .is_const = is_const,
-        .value = value,
-    } });
-}
-
-fn buildBitfieldDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // bitfield_decl <- 'bitfield' '(' type ')' IDENTIFIER '{' _ bitfield_body _ '}'
-    const backing = if (cap.findChild("type")) |t| try buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "u32" });
-
-    // Name is the identifier after ')'
-    var name: []const u8 = "";
-    for (cap.start_pos..cap.end_pos) |i| {
-        if (i > 0 and i < ctx.tokens.len and ctx.tokens[i].kind == .identifier and ctx.tokens[i - 1].kind == .rparen) {
-            name = ctx.tokens[i].text;
-            break;
-        }
-    }
-
-    // Collect flag names (just identifiers inside the body)
-    var members = std.ArrayListUnmanaged([]const u8){};
-    // Find the lbrace, then collect identifiers until rbrace
-    var in_body = false;
-    for (cap.start_pos..cap.end_pos) |i| {
-        if (i < ctx.tokens.len) {
-            if (ctx.tokens[i].kind == .lbrace) { in_body = true; continue; }
-            if (ctx.tokens[i].kind == .rbrace) break;
-            if (in_body and ctx.tokens[i].kind == .identifier) {
-                try members.append(ctx.alloc(), ctx.tokens[i].text);
-            }
-        }
-    }
-
-    return ctx.newNode(.{ .bitfield_decl = .{
-        .name = name,
-        .backing_type = backing,
-        .members = try members.toOwnedSlice(ctx.alloc()),
-        .is_pub = false,
-    } });
-}
-
-fn buildTestDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // test_decl <- 'test' STRING_LITERAL block
-    var desc: []const u8 = "";
-    if (findTokenInRange(ctx, cap.start_pos, cap.end_pos, .string_literal)) |pos| {
-        desc = tokenText(ctx, pos);
-    }
-    const body = if (cap.findChild("block")) |b| try buildNode(ctx, b) else try ctx.newNode(.{ .block = .{ .statements = &.{} } });
-    return ctx.newNode(.{ .test_decl = .{ .description = desc, .body = body } });
-}
-
-// ============================================================
-// CONTEXT FLAG BUILDERS
-// ============================================================
-
-fn buildPubDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // pub_decl <- 'pub' (func_decl / struct_decl / ...)
-    // Build the child, then set is_pub = true
-    for (cap.children) |*child| {
-        if (child.rule) |_| {
-            const node = try buildNode(ctx, child);
-            setPub(node, true);
-            return node;
-        }
-    }
-    return error.NoPubChild;
-}
-
-fn buildComptDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // compt_decl <- 'compt' func_decl
-    if (cap.findChild("func_decl")) |child| {
-        const node = try buildNode(ctx, child);
-        if (node.* == .func_decl) node.func_decl.is_compt = true;
-        return node;
-    }
-    return error.NoComptChild;
-}
-
-fn buildBridgeDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // bridge_decl <- 'bridge' (bridge_func / bridge_const / bridge_struct)
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "bridge_func") or
-                std.mem.eql(u8, r, "bridge_const") or
-                std.mem.eql(u8, r, "bridge_struct"))
-            {
-                return buildNode(ctx, child);
-            }
-        }
-    }
-    return error.NoBridgeChild;
-}
-
-fn buildBridgeFunc(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // bridge_func <- 'func' func_name '(' _ param_list _ ')' type TERM
-    var name: []const u8 = "";
-    if (cap.findChild("func_name")) |fn_cap| {
-        name = tokenText(ctx, fn_cap.start_pos);
-    }
-    var params_list = std.ArrayListUnmanaged(*Node){};
-    try collectParamsRecursive(ctx, cap, &params_list);
-    const ret_type = if (cap.findChild("type")) |t| try buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "void" });
-
-    return ctx.newNode(.{ .func_decl = .{
-        .name = name,
-        .params = try params_list.toOwnedSlice(ctx.alloc()),
-        .return_type = ret_type,
-        .body = try ctx.newNode(.{ .block = .{ .statements = &.{} } }),
-        .is_compt = false,
-        .is_pub = false,
-        .is_bridge = true,
-        .is_thread = false,
-    } });
-}
-
-fn buildBridgeConst(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // bridge_const <- 'const' IDENTIFIER ':' type TERM
-    const name = tokenText(ctx, cap.start_pos + 1);
-    const type_ann = if (cap.findChild("type")) |t| try buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "any" });
-    return ctx.newNode(.{ .const_decl = .{
-        .name = name,
-        .type_annotation = type_ann,
-        .value = try ctx.newNode(.{ .int_literal = "0" }),
-        .is_pub = false,
-        .is_bridge = true,
-    } });
-}
-
-fn buildBridgeStruct(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // bridge_struct <- 'struct' IDENTIFIER generic_params? ('{' _ bridge_struct_body _ '}' / TERM)
-    const name = tokenText(ctx, cap.start_pos + 1);
-    var type_params_list = std.ArrayListUnmanaged(*Node){};
-    var members = std.ArrayListUnmanaged(*Node){};
-    try collectStructParts(ctx, cap, &type_params_list, &members);
-    return ctx.newNode(.{ .struct_decl = .{
-        .name = name,
-        .type_params = try type_params_list.toOwnedSlice(ctx.alloc()),
-        .members = try members.toOwnedSlice(ctx.alloc()),
-        .is_pub = false,
-        .is_bridge = true,
-    } });
-}
-
-fn buildThreadDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // thread_decl <- 'thread' func_name '(' _ param_list _ ')' type block
-    var name: []const u8 = "";
-    if (cap.findChild("func_name")) |fn_cap| {
-        name = tokenText(ctx, fn_cap.start_pos);
-    }
-    var params_list = std.ArrayListUnmanaged(*Node){};
-    try collectParamsRecursive(ctx, cap, &params_list);
-    const ret_type = if (cap.findChild("type")) |t| try buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "void" });
-    const body = if (cap.findChild("block")) |b| try buildNode(ctx, b) else try ctx.newNode(.{ .block = .{ .statements = &.{} } });
-
-    return ctx.newNode(.{ .func_decl = .{
-        .name = name,
-        .params = try params_list.toOwnedSlice(ctx.alloc()),
-        .return_type = ret_type,
-        .body = body,
-        .is_compt = false,
-        .is_pub = false,
-        .is_bridge = false,
-        .is_thread = true,
-    } });
-}
-
-fn setPub(node: *Node, value: bool) void {
+/// Set the is_pub flag on a node (works for all declaration node types).
+/// Used by bridge and decls satellites.
+pub fn setPub(node: *Node, value: bool) void {
     switch (node.*) {
         .func_decl => |*d| d.is_pub = value,
         .struct_decl => |*d| d.is_pub = value,
@@ -979,733 +411,18 @@ fn setPub(node: *Node, value: bool) void {
     }
 }
 
-// ============================================================
-// STATEMENT BUILDERS
-// ============================================================
-
-fn buildBlock(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // block <- '{' _ statement* _ '}'
-    var stmts = std.ArrayListUnmanaged(*Node){};
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "statement")) {
-                // statement is transparent — build its actual content child
-                for (child.children) |*sc| {
-                    if (sc.rule) |sr| {
-                        // Skip whitespace/newline rules
-                        if (std.mem.eql(u8, sr, "_") or std.mem.eql(u8, sr, "TERM")) continue;
-                        try stmts.append(ctx.alloc(), try buildNode(ctx, sc));
-                    }
-                }
-            }
-            // Skip _ rules at block level
-        }
-    }
-    return ctx.newNode(.{ .block = .{ .statements = try stmts.toOwnedSlice(ctx.alloc()) } });
-}
-
-fn buildReturn(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    var value: ?*Node = null;
-    if (cap.findChild("expr")) |e| {
-        value = try buildNode(ctx, e);
-    }
-    return ctx.newNode(.{ .return_stmt = .{ .value = value } });
-}
-
-fn buildThrowStmt(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
-    var i = cap.start_pos;
-    while (i < cap.end_pos and i < ctx.tokens.len) : (i += 1) {
-        if (ctx.tokens[i].kind == .identifier) {
-            return ctx.newNodeAt(.{ .throw_stmt = .{ .variable = ctx.tokens[i].text } }, i);
-        }
-    }
-    return error.InvalidCapture;
-}
-
-fn buildIf(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // if_stmt <- 'if' '(' expr ')' block elif_chain?
-    const condition = if (cap.findChild("expr")) |e| try buildNode(ctx, e) else return error.NoCondition;
-    const then_block = if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
-    var else_block: ?*Node = null;
-    if (cap.findChild("elif_chain")) |chain| {
-        else_block = try buildNode(ctx, chain);
-    }
-    return ctx.newNode(.{ .if_stmt = .{
-        .condition = condition,
-        .then_block = then_block,
-        .else_block = else_block,
-    } });
-}
-
-// elif_chain <- 'elif' '(' expr ')' block elif_chain?  /  'else' block
-// Builds an if_stmt node (for the elif alternative) or a plain block (for the else alternative).
-// The result is used as the else_block of the parent if_stmt or elif_chain.
-fn buildElifChain(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // Check if this is an 'elif' or 'else' branch by looking for an expr child.
-    // An 'elif' branch has: expr (condition) + block (then) + optional elif_chain (else)
-    // An 'else' branch has: only a block child.
-    if (cap.findChild("expr")) |e| {
-        // elif branch
-        const condition = try buildNode(ctx, e);
-        const then_block = if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
-        var else_block: ?*Node = null;
-        if (cap.findChild("elif_chain")) |chain| {
-            else_block = try buildNode(ctx, chain);
-        }
-        return ctx.newNode(.{ .if_stmt = .{
-            .condition = condition,
-            .then_block = then_block,
-            .else_block = else_block,
-        } });
-    } else {
-        // else branch — just a block
-        return if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
-    }
-}
-
-fn buildWhile(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const condition = if (cap.findChild("expr")) |e| try buildNode(ctx, e) else return error.NoCondition;
-    var continue_expr: ?*Node = null;
-    if (cap.findChild("assign_expr")) |ae| {
-        continue_expr = try buildNode(ctx, ae);
-    }
-    const body = if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
-    return ctx.newNode(.{ .while_stmt = .{
-        .condition = condition,
-        .continue_expr = continue_expr,
-        .body = body,
-    } });
-}
-
-fn buildFor(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const iterable = if (cap.findChild("expr")) |e| try buildNode(ctx, e) else return error.NoIterable;
-    const body = if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
-
-    // Extract captures from for_captures child
-    var captures = std.ArrayListUnmanaged([]const u8){};
-    if (cap.findChild("for_captures")) |fc| {
-        for (fc.start_pos..fc.end_pos) |i| {
-            if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
-                try captures.append(ctx.alloc(), ctx.tokens[i].text);
-            }
-        }
-    }
-    // If two captures, the second is the index variable
-    var index_var: ?[]const u8 = null;
-    if (captures.items.len >= 2) {
-        index_var = captures.pop();
-    }
-    return ctx.newNode(.{ .for_stmt = .{
-        .iterable = iterable,
-        .captures = try captures.toOwnedSlice(ctx.alloc()),
-        .index_var = index_var,
-        .body = body,
-        .is_compt = false,
-        .is_tuple_capture = false,
-    } });
-}
-
-fn buildDefer(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const body = if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
-    return ctx.newNode(.{ .defer_stmt = .{ .body = body } });
-}
-
-fn buildMatch(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const value = if (cap.findChild("expr")) |e| try buildNode(ctx, e) else return error.NoMatchValue;
-    const arms = try buildChildrenByRule(ctx, cap, "match_arm");
-    return ctx.newNode(.{ .match_stmt = .{ .value = value, .arms = arms } });
-}
-
-fn buildMatchArm(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
-    const mp_cap = cap.findChild("match_pattern") orelse return error.NoPattern;
-    const body = if (cap.findChild("block")) |b| try buildNode(ctx, b) else return error.NoBlock;
-
-    // Check if match_pattern contains a parenthesized_pattern.
-    // parenthesized_pattern is a named rule ref, so it appears as a child of match_pattern
-    // when that alternative fires.
-    if (mp_cap.findChild("parenthesized_pattern")) |pp| {
-        // Determine which alternative matched by scanning tokens:
-        // Guarded:  '(' IDENTIFIER 'if' expr ')' — has kw_if between '(' and first expr
-        // Plain:    '(' expr ')'
-        //
-        // If there is a kw_if token in the pp token range (after the first identifier),
-        // it is a guarded binding. IDENTIFIER is a terminal token not a sub-rule, so we
-        // must scan tokens directly instead of using findChild.
-        const has_if_kw = findTokenInRange(ctx, pp.start_pos, pp.end_pos, .kw_if) != null;
-
-        if (has_if_kw) {
-            // Guarded pattern: (x if guard_expr)
-            // First token after '(' is the bound identifier
-            const ident_pos = pp.start_pos + 1; // '(' is at start_pos, IDENTIFIER is next
-            if (ident_pos >= ctx.tokens.len) return error.NoPattern;
-            const ident_text = ctx.tokens[ident_pos].text;
-            const pattern = try ctx.newNode(.{ .identifier = ident_text });
-            // The expr child of pp is the guard expression
-            const guard = if (pp.findChild("expr")) |e| try buildNode(ctx, e) else return error.NoGuardExpr;
-            return ctx.newNode(.{ .match_arm = .{ .pattern = pattern, .guard = guard, .body = body } });
-        }
-
-        // Non-guarded parenthesized pattern: (1..10) or (42)
-        // Build the inner expr as the pattern
-        const pattern = if (pp.findChild("expr")) |e| try buildNode(ctx, e) else return error.NoPattern;
-        return ctx.newNode(.{ .match_arm = .{ .pattern = pattern, .guard = null, .body = body } });
-    }
-
-    // Plain pattern (bare literal, identifier, or 'else')
-    const pattern = try buildNode(ctx, mp_cap);
-    return ctx.newNode(.{ .match_arm = .{ .pattern = pattern, .guard = null, .body = body } });
-}
-
-fn buildExprOrAssignment(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // expr_or_assignment <- expr assign_op expr TERM / expr TERM
-    // Check if there's an assign_op child
-    if (cap.findChild("assign_op")) |_| {
-        // Assignment: expr assign_op expr
-        var exprs = std.ArrayListUnmanaged(*const CaptureNode){};
-        for (cap.children) |*child| {
-            if (child.rule) |r| {
-                if (std.mem.eql(u8, r, "expr")) {
-                    try exprs.append(ctx.alloc(), child);
-                }
-            }
-        }
-        if (exprs.items.len >= 2) {
-            const lhs = try buildNode(ctx, exprs.items[0]);
-            const rhs = try buildNode(ctx, exprs.items[1]);
-            // Find the operator token
-            var op: []const u8 = "=";
-            for (cap.children) |*child| {
-                if (child.rule) |r| {
-                    if (std.mem.eql(u8, r, "assign_op")) {
-                        op = tokenText(ctx, child.start_pos);
-                        break;
-                    }
-                }
-            }
-            return ctx.newNode(.{ .assignment = .{ .op = op, .left = lhs, .right = rhs } });
-        }
-    }
-
-    // Plain expression
-    if (cap.findChild("expr")) |e| return buildNode(ctx, e);
-    return error.NoExpr;
-}
-
-// ============================================================
-// EXPRESSION BUILDERS
-// ============================================================
-
-fn buildIntLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    return ctx.newNode(.{ .int_literal = tokenText(ctx, cap.start_pos) });
-}
-
-fn buildFloatLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    return ctx.newNode(.{ .float_literal = tokenText(ctx, cap.start_pos) });
-}
-
-fn buildStringLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const raw = tokenText(ctx, cap.start_pos);
-    // Guard against malformed tokens (need at least opening and closing quote)
-    if (raw.len < 2) return ctx.newNode(.{ .string_literal = raw });
-    const inner = raw[1 .. raw.len - 1];
-
-    // Fast path: no interpolation — plain string literal (unchanged behavior)
-    if (std.mem.indexOf(u8, inner, "@{") == null) {
-        return ctx.newNode(.{ .string_literal = raw });
-    }
-
-    // Slow path: build InterpolatedPart list by scanning for @{...} markers
-    var parts = std.ArrayListUnmanaged(parser.InterpolatedPart){};
-    var pos: usize = 0;
-    while (pos < inner.len) {
-        if (std.mem.indexOf(u8, inner[pos..], "@{")) |rel| {
-            const abs = pos + rel;
-            // Emit literal text before @{
-            if (rel > 0) {
-                const lit = try ctx.alloc().dupe(u8, inner[pos..abs]);
-                try parts.append(ctx.alloc(), .{ .literal = lit });
-            }
-            // Find the closing }
-            const expr_start = abs + 2;
-            if (std.mem.indexOfScalarPos(u8, inner, expr_start, '}')) |close| {
-                const expr_text = try ctx.alloc().dupe(u8, inner[expr_start..close]);
-                const expr_node = try ctx.newNodeAt(.{ .identifier = expr_text }, cap.start_pos);
-                try parts.append(ctx.alloc(), .{ .expr = expr_node });
-                pos = close + 1;
-            } else {
-                // Unclosed @{ — emit remainder as literal (silent degradation)
-                const lit = try ctx.alloc().dupe(u8, inner[abs..]);
-                try parts.append(ctx.alloc(), .{ .literal = lit });
-                break;
-            }
-        } else {
-            // No more @{ — emit remainder as literal
-            const lit = try ctx.alloc().dupe(u8, inner[pos..]);
-            try parts.append(ctx.alloc(), .{ .literal = lit });
-            break;
-        }
-    }
-
-    return ctx.newNodeAt(.{
-        .interpolated_string = .{ .parts = try parts.toOwnedSlice(ctx.alloc()) },
-    }, cap.start_pos);
-}
-
-fn buildBoolLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const tok = ctx.tokens[cap.start_pos];
-    return ctx.newNode(.{ .bool_literal = tok.kind == .kw_true });
-}
-
-fn buildIdentifier(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    return ctx.newNode(.{ .identifier = tokenText(ctx, cap.start_pos) });
-}
-
-fn buildErrorLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // error_literal <- 'Error' '(' STRING_LITERAL ')'
-    if (findTokenInRange(ctx, cap.start_pos, cap.end_pos, .string_literal)) |pos| {
-        return ctx.newNode(.{ .error_literal = tokenText(ctx, pos) });
-    }
-    return ctx.newNode(.{ .error_literal = "" });
-}
-
-fn buildCompilerFunc(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // compiler_func <- compiler_func_name '(' _ arg_list _ ')'
-    var name: []const u8 = "";
-    if (cap.findChild("compiler_func_name")) |cn| {
-        name = tokenText(ctx, cn.start_pos);
-    }
-    var args_list = std.ArrayListUnmanaged(*Node){};
-    try collectExprsRecursive(ctx, cap, &args_list);
-    return ctx.newNode(.{ .compiler_func = .{ .name = name, .args = try args_list.toOwnedSlice(ctx.alloc()) } });
-}
-
-fn buildArrayLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const items = try buildChildrenByRule(ctx, cap, "expr");
-    return ctx.newNode(.{ .array_literal = items });
-}
-
-fn buildGroupedExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // grouped_expr <- '(' _ expr _ ')'
-    if (cap.findChild("expr")) |e| return buildNode(ctx, e);
-    return error.NoExpr;
-}
-
-fn buildTupleLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // tuple_literal <- '(' _ IDENTIFIER ':' expr (_ ',' _ IDENTIFIER ':' expr)* _ ')'
-    var names = std.ArrayListUnmanaged([]const u8){};
-    var values = std.ArrayListUnmanaged(*Node){};
-    var i = cap.start_pos + 1; // skip (
-    while (i < cap.end_pos) : (i += 1) {
-        const tok = ctx.tokens[i];
-        if (tok.kind == .identifier and i + 1 < cap.end_pos and ctx.tokens[i + 1].kind == .colon) {
-            try names.append(ctx.alloc(), tok.text);
-            // Find and build the corresponding expr
-            for (cap.children) |*child| {
-                if (child.rule) |r| {
-                    if (std.mem.eql(u8, r, "expr") and child.start_pos > i) {
-                        try values.append(ctx.alloc(), try buildNode(ctx, child));
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    return ctx.newNode(.{ .tuple_literal = .{
-        .is_named = true,
-        .fields = try values.toOwnedSlice(ctx.alloc()),
-        .field_names = try names.toOwnedSlice(ctx.alloc()),
-    } });
-}
-
-fn buildStructExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // struct_expr <- 'struct' '{' _ (('pub')? field_decl _)* _ '}'
-    var fields = std.ArrayListUnmanaged(*Node){};
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "field_decl")) {
-                const node = try buildNode(ctx, child);
-                if (hasPubBefore(ctx, cap, child.start_pos)) setPub(node, true);
-                try fields.append(ctx.alloc(), node);
-            }
-        }
-    }
-    return ctx.newNode(.{ .struct_type = try fields.toOwnedSlice(ctx.alloc()) });
-}
-
-/// Binary expression builder — handles the left-associative precedence tower.
-/// Grammar: left_operand (OP right_operand)*
-fn buildBinaryExpr(ctx: *BuildContext, cap: *const CaptureNode, _: []const u8) !*Node {
-    // The children are the operand sub-rules (e.g., and_expr children for or_expr)
-    if (cap.children.len == 0) return error.NoBinaryChildren;
-    if (cap.children.len == 1) return buildNode(ctx, &cap.children[0]);
-
-    // Multiple children — build left-associative chain
-    // The operator is the token between children
-    var left = try buildNode(ctx, &cap.children[0]);
-    var i: usize = 1;
-    while (i < cap.children.len) : (i += 1) {
-        // Find operator token between prev child end and this child start
-        const prev_end = cap.children[i - 1].end_pos;
-        const next_start = cap.children[i].start_pos;
-        var op: []const u8 = "+";
-        var j = prev_end;
-        while (j < next_start) : (j += 1) {
-            const tok = ctx.tokens[j];
-            if (tok.kind != .newline) {
-                op = tok.text;
-                break;
-            }
-        }
-        const right = try buildNode(ctx, &cap.children[i]);
-        left = try ctx.newNode(.{ .binary_expr = .{ .op = op, .left = left, .right = right } });
-    }
-    return left;
-}
-
-fn buildCompareExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // compare_expr <- bitor_expr compare_op bitor_expr / bitor_expr 'is' 'not'? (IDENTIFIER / 'null') / bitor_expr
-
-    // Check for 'is' type check
-    if (findTokenInRange(ctx, cap.start_pos, cap.end_pos, .kw_is)) |is_pos| {
-        // Find the operand (everything before 'is')
-        var operands = std.ArrayListUnmanaged(*const CaptureNode){};
-        for (cap.children) |*child| {
-            if (child.rule) |r| {
-                if (!std.mem.eql(u8, r, "compare_op") and
-                    !std.mem.eql(u8, r, "_") and
-                    !std.mem.eql(u8, r, "TERM"))
-                {
-                    operands.append(ctx.alloc(), child) catch {};
-                }
-            }
-        }
-        if (operands.items.len > 0) {
-            const expr_node = try buildNode(ctx, operands.items[0]);
-            // Build: type(expr) == TypeName / type(expr) != TypeName
-            const args = try ctx.alloc().alloc(*Node, 1);
-            args[0] = expr_node;
-            const type_call = try ctx.newNode(.{ .compiler_func = .{ .name = "type", .args = args } });
-
-            // Check for 'not' after 'is'
-            const negated = is_pos + 1 < cap.end_pos and ctx.tokens[is_pos + 1].kind == .kw_not;
-            const cmp_op: []const u8 = if (negated) "!=" else "==";
-
-            // Find the type name (last identifier, dotted path, or null keyword)
-            var rhs: *Node = try ctx.newNode(.{ .identifier = "unknown" });
-            var j = if (negated) is_pos + 2 else is_pos + 1;
-            // Scan for dotted identifier path: IDENTIFIER ('.' IDENTIFIER)* per D-01
-            var idents = std.ArrayListUnmanaged([]const u8){};
-            defer idents.deinit(ctx.alloc());
-            while (j < cap.end_pos) : (j += 1) {
-                if (ctx.tokens[j].kind == .identifier) {
-                    idents.append(ctx.alloc(), ctx.tokens[j].text) catch {};
-                    // Peek ahead: dot followed by identifier → continue collecting
-                    if (j + 2 < cap.end_pos and
-                        ctx.tokens[j + 1].kind == .dot and
-                        ctx.tokens[j + 2].kind == .identifier)
-                    {
-                        j += 1; // skip dot; loop increment lands on next identifier
-                    } else {
-                        break;
-                    }
-                } else if (ctx.tokens[j].kind == .kw_null) {
-                    rhs = try ctx.newNode(.{ .null_literal = {} });
-                    break;
-                }
-            }
-            // Build AST node from collected identifiers
-            if (idents.items.len == 1) {
-                // Single identifier — per D-04, no regression
-                rhs = try ctx.newNode(.{ .identifier = idents.items[0] });
-            } else if (idents.items.len > 1) {
-                // Dotted path — per D-05, build left-to-right field_expr chain
-                var chain: *Node = try ctx.newNode(.{ .identifier = idents.items[0] });
-                for (idents.items[1..]) |name| {
-                    chain = try ctx.newNode(.{ .field_expr = .{ .object = chain, .field = name } });
-                }
-                rhs = chain;
-            }
-            return ctx.newNode(.{ .binary_expr = .{ .op = cmp_op, .left = type_call, .right = rhs } });
-        }
-    }
-
-    // Regular comparison: bitor_expr compare_op bitor_expr
-    var operands = std.ArrayListUnmanaged(*const CaptureNode){};
-    var op: []const u8 = "==";
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "compare_op")) {
-                op = tokenText(ctx, child.start_pos);
-            } else if (!std.mem.eql(u8, r, "_") and !std.mem.eql(u8, r, "TERM")) {
-                operands.append(ctx.alloc(), child) catch {};
-            }
-        }
-    }
-    if (operands.items.len <= 1) {
-        if (operands.items.len == 1) return buildNode(ctx, operands.items[0]);
-        if (cap.children.len > 0) return buildNode(ctx, &cap.children[0]);
-        return error.NoCompareChildren;
-    }
-    const left = try buildNode(ctx, operands.items[0]);
-    const right = try buildNode(ctx, operands.items[1]);
-    return ctx.newNode(.{ .binary_expr = .{ .op = op, .left = left, .right = right } });
-}
-
-fn buildRangeExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    if (cap.children.len <= 1) {
-        if (cap.children.len == 1) return buildNode(ctx, &cap.children[0]);
-        return error.NoRangeChildren;
-    }
-    const left = try buildNode(ctx, &cap.children[0]);
-    const right = try buildNode(ctx, &cap.children[1]);
-    return ctx.newNode(.{ .range_expr = .{ .op = "..", .left = left, .right = right } });
-}
-
-fn buildNotExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // not_expr <- 'not' not_expr / compare_expr
-    if (ctx.tokens[cap.start_pos].kind == .kw_not) {
-        const operand = if (cap.children.len > 0) try buildNode(ctx, &cap.children[0]) else return error.NoOperand;
-        return ctx.newNode(.{ .unary_expr = .{ .op = "not", .operand = operand } });
-    }
-    if (cap.children.len > 0) return buildNode(ctx, &cap.children[0]);
-    return error.NoNotChildren;
-}
-
-fn buildUnaryExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // unary_expr <- '!' unary_expr / '-' unary_expr / '&' unary_expr / postfix_expr
-    const first_tok = ctx.tokens[cap.start_pos];
-    if (first_tok.kind == .bang) {
-        const operand = if (cap.children.len > 0) try buildNode(ctx, &cap.children[0]) else return error.NoOperand;
-        return ctx.newNode(.{ .unary_expr = .{ .op = "!", .operand = operand } });
-    }
-    if (first_tok.kind == .minus) {
-        const operand = if (cap.children.len > 0) try buildNode(ctx, &cap.children[0]) else return error.NoOperand;
-        return ctx.newNode(.{ .unary_expr = .{ .op = "-", .operand = operand } });
-    }
-    if (first_tok.kind == .ampersand) {
-        const operand = if (cap.children.len > 0) try buildNode(ctx, &cap.children[0]) else return error.NoOperand;
-        return ctx.newNode(.{ .borrow_expr = operand });
-    }
-    if (cap.children.len > 0) return buildNode(ctx, &cap.children[0]);
-    return error.NoUnaryChildren;
-}
-
-fn buildPostfixExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // postfix_expr <- primary_expr (method_call / field_access / slice_access / index_access / call_access)*
-    if (cap.children.len == 0) return error.NoPostfixChildren;
-
-    var expr = try buildNode(ctx, &cap.children[0]);
-
-    var i: usize = 1;
-    while (i < cap.children.len) : (i += 1) {
-        const child = &cap.children[i];
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "method_call")) {
-                // method_call <- '.' IDENTIFIER '(' _ arg_list _ ')'
-                const field_name = tokenText(ctx, child.start_pos + 1); // after '.'
-                var args_list = std.ArrayListUnmanaged(*Node){};
-                try collectExprsRecursive(ctx, child, &args_list);
-                const field_access = try ctx.newNode(.{ .field_expr = .{ .object = expr, .field = field_name } });
-                expr = try ctx.newNode(.{ .call_expr = .{ .callee = field_access, .args = try args_list.toOwnedSlice(ctx.alloc()), .arg_names = &.{} } });
-            } else if (std.mem.eql(u8, r, "field_access")) {
-                const field_name = tokenText(ctx, child.start_pos + 1);
-                expr = try ctx.newNode(.{ .field_expr = .{ .object = expr, .field = field_name } });
-            } else if (std.mem.eql(u8, r, "call_access")) {
-                var args_list = std.ArrayListUnmanaged(*Node){};
-                var names_list = std.ArrayListUnmanaged([]const u8){};
-                var has_names = false;
-                try collectCallArgs(ctx, child, &args_list, &names_list, &has_names);
-                expr = try ctx.newNode(.{ .call_expr = .{
-                    .callee = expr,
-                    .args = try args_list.toOwnedSlice(ctx.alloc()),
-                    .arg_names = if (has_names) try names_list.toOwnedSlice(ctx.alloc()) else &.{},
-                } });
-            } else if (std.mem.eql(u8, r, "index_access")) {
-                if (child.findChild("or_expr")) |ie| {
-                    const index = try buildNode(ctx, ie);
-                    expr = try ctx.newNode(.{ .index_expr = .{ .object = expr, .index = index } });
-                }
-            } else if (std.mem.eql(u8, r, "slice_access")) {
-                if (child.children.len >= 2) {
-                    const low = try buildNode(ctx, &child.children[0]);
-                    const high = try buildNode(ctx, &child.children[1]);
-                    expr = try ctx.newNode(.{ .slice_expr = .{ .object = expr, .low = low, .high = high } });
-                }
-            }
-        }
-    }
-
-    return expr;
-}
-
-// ============================================================
-// TYPE BUILDERS
-// ============================================================
-
-fn buildNamedType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    return ctx.newNode(.{ .type_named = tokenText(ctx, cap.start_pos) });
-}
-
-fn buildKeywordType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    return ctx.newNode(.{ .type_named = tokenText(ctx, cap.start_pos) });
-}
-
-/// scoped_type <- IDENTIFIER '.' IDENTIFIER
-/// Produces type_named("module.Type") so @import("module") lookup works in codegen.
-fn buildScopedType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const mod_name = tokenText(ctx, cap.start_pos);
-    // Second identifier follows the '.' token at start_pos+1
-    const type_name = tokenText(ctx, cap.start_pos + 2);
-    const qualified = try std.fmt.allocPrint(ctx.alloc(), "{s}.{s}", .{ mod_name, type_name });
-    return ctx.newNode(.{ .type_named = qualified });
-}
-
-/// scoped_generic_type <- IDENTIFIER '.' IDENTIFIER '(' _ generic_arg_list _ ')'
-/// Produces type_generic with name="module.Type" and collected type args.
-fn buildScopedGenericType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const mod_name = tokenText(ctx, cap.start_pos);
-    const type_name = tokenText(ctx, cap.start_pos + 2);
-    const qualified = try std.fmt.allocPrint(ctx.alloc(), "{s}.{s}", .{ mod_name, type_name });
-    var args_list = std.ArrayListUnmanaged(*Node){};
-    try collectGenericArgs(ctx, cap, &args_list);
-    return ctx.newNode(.{ .type_generic = .{ .name = qualified, .args = try args_list.toOwnedSlice(ctx.alloc()) } });
-}
-
-fn buildGenericType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    const name = tokenText(ctx, cap.start_pos);
-    // Collect type/expr args from generic_arg_list -> type_or_expr -> type/expr
-    var args_list = std.ArrayListUnmanaged(*Node){};
-    try collectGenericArgs(ctx, cap, &args_list);
-    return ctx.newNode(.{ .type_generic = .{ .name = name, .args = try args_list.toOwnedSlice(ctx.alloc()) } });
-}
-
-fn collectGenericArgs(ctx: *BuildContext, cap: *const CaptureNode, out: *std.ArrayListUnmanaged(*Node)) anyerror!void {
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "type") or std.mem.eql(u8, r, "expr")) {
-                try out.append(ctx.alloc(), try buildNode(ctx, child));
-            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM")) {
-                // skip
-            } else {
-                // Recurse into generic_arg_list, type_or_expr wrappers
-                try collectGenericArgs(ctx, child, out);
-            }
-        }
-    }
-}
-
-fn buildBorrowType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // borrow_type <- 'const' '&' type
-    if (cap.findChild("type")) |t| {
-        const inner = try buildNode(ctx, t);
-        return ctx.newNode(.{ .type_ptr = .{ .kind = "const &", .elem = inner } });
-    }
-    return error.NoBorrowInner;
-}
-
-fn buildRefType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // ref_type <- '&' type
-    if (cap.findChild("type")) |t| {
-        const inner = try buildNode(ctx, t);
-        return ctx.newNode(.{ .type_ptr = .{ .kind = "var &", .elem = inner } });
-    }
-    return error.NoRefInner;
-}
-
-fn buildParenType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // paren_type <- '(' ')' / '(' IDENTIFIER ':' type ... ')' / '(' type ('|' type)+ ')' / '(' type ')'
-    // Check for void: ()
-    if (cap.end_pos - cap.start_pos <= 2) return ctx.newNode(.{ .type_named = "void" });
-
-    // Collect type children
-    var type_children = std.ArrayListUnmanaged(*Node){};
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "type")) {
-                try type_children.append(ctx.alloc(), try buildNode(ctx, child));
-            }
-        }
-    }
-
-    // Check for named tuple: IDENTIFIER ':' type pattern (not union with '|')
-    var named_fields = std.ArrayListUnmanaged(parser.NamedTypeField){};
-    var type_idx: usize = 0;
-    var i = cap.start_pos;
-    while (i + 1 < cap.end_pos and i + 1 < ctx.tokens.len) : (i += 1) {
-        if (ctx.tokens[i].kind == .identifier and ctx.tokens[i + 1].kind == .colon) {
-            if (type_idx < type_children.items.len) {
-                try named_fields.append(ctx.alloc(), .{
-                    .name = ctx.tokens[i].text,
-                    .type_node = type_children.items[type_idx],
-                    .default = null,
-                });
-                type_idx += 1;
-            }
-        }
-    }
-    if (named_fields.items.len > 0 and named_fields.items.len == type_children.items.len) {
-        return ctx.newNode(.{ .type_tuple_named = try named_fields.toOwnedSlice(ctx.alloc()) });
-    }
-
-    // Union: multiple type children with | separators
-    if (type_children.items.len > 1) {
-        return ctx.newNode(.{ .type_union = try type_children.toOwnedSlice(ctx.alloc()) });
-    }
-    if (type_children.items.len == 1) return type_children.items[0];
-
-    return ctx.newNode(.{ .type_named = "void" });
-}
-
-fn buildSliceType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    if (cap.findChild("type")) |t| {
-        const elem = try buildNode(ctx, t);
-        return ctx.newNode(.{ .type_slice = elem });
-    }
-    return error.NoSliceElem;
-}
-
-fn buildArrayType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    if (cap.findChild("expr")) |size_cap| {
-        if (cap.findChild("type")) |type_cap| {
-            const size = try buildNode(ctx, size_cap);
-            const elem = try buildNode(ctx, type_cap);
-            return ctx.newNode(.{ .type_array = .{ .size = size, .elem = elem } });
-        }
-    }
-    return error.NoArrayComponents;
-}
-
-fn buildFuncType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // func_type <- 'func' '(' _ type_list _ ')' type
-    var params = std.ArrayListUnmanaged(*Node){};
-    // Collect param types from type_list child, plus return type (direct type child)
-    for (cap.children) |*child| {
-        if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "type_list")) {
-                // Param types are nested inside type_list
-                for (child.children) |*tc| {
-                    if (tc.rule) |tr| {
-                        if (std.mem.eql(u8, tr, "type")) {
-                            try params.append(ctx.alloc(), try buildNode(ctx, tc));
-                        }
-                    }
-                }
-            } else if (std.mem.eql(u8, r, "type")) {
-                try params.append(ctx.alloc(), try buildNode(ctx, child));
-            }
-        }
-    }
-    // Last type is the return type
-    if (params.items.len > 0) {
-        const ret = params.items[params.items.len - 1];
-        params.items.len -= 1;
-        return ctx.newNode(.{ .type_func = .{
-            .params = try params.toOwnedSlice(ctx.alloc()),
-            .ret = ret,
-        } });
-    }
-    return error.NoFuncTypeReturn;
-}
+// NOTE: All declaration, statement, expression, and type builder functions have
+// been extracted to their respective satellite files:
+//   builder_decls.zig  — program, module, import, metadata, func, param, const, var,
+//                        struct, enum, field, enum_variant, destruct, bitfield, test
+//   builder_bridge.zig — pub_decl, compt_decl, bridge_decl/func/const/struct, thread_decl
+//   builder_stmts.zig  — block, return, throw, if, elif, while, for, defer, match, match_arm,
+//                        expr_or_assignment
+//   builder_exprs.zig  — int/float/string/bool literals, identifier, error, compiler_func,
+//                        array, grouped, tuple, struct_expr, binary, compare, range, not,
+//                        unary, postfix
+//   builder_types.zig  — named, keyword, scoped, scoped_generic, generic, borrow, ref,
+//                        paren, slice, array, func types
 
 // ============================================================
 // TESTS

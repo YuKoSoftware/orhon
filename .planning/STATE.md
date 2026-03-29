@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: Codegen Refactor & Error Quality
 status: verifying
-stopped_at: Phase 32 context gathered
-last_updated: "2026-03-29T06:17:51.073Z"
+stopped_at: Completed 32-01-PLAN.md
+last_updated: "2026-03-29T07:00:57.212Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 4
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -59,6 +59,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 30-error-quality]: Borrow fixture updated to add use-while-borrowed scenario: existing conflict only triggered mutable-new-borrow path (no hint), new scenario triggers checkNotMutablyBorrowedPath which always shows const & hint
 - [Phase 31-peg-error-messages]: Use two fixed arrays instead of BoundedArray for PEG error accumulation — Zig 0.15 has no std.BoundedArray
 - [Phase 31-peg-error-messages]: Dedup-on-read for PEG expected set: accumulate raw during parsing, deduplicate only in getError() once on failure
+- [Phase 32-lsp-split]: Convenience aliases in lsp.zig for all moved functions to keep handler code unchanged
+- [Phase 32-lsp-split]: lspLog in lsp_utils.zig to avoid circular imports between lsp.zig and lsp_analysis.zig
 
 ### Pending Todos
 
@@ -76,9 +78,10 @@ None.
 | Phase 30-error-quality P01 | 45m | 2 tasks | 4 files |
 | Phase 30-error-quality P02 | 25m | 2 tasks | 6 files |
 | Phase 31-peg-error-messages P01 | 22 | 3 tasks | 3 files |
+| Phase 32-lsp-split P01 | 19m | 2 tasks | 6 files |
 
 ## Session Continuity
 
 Last activity: 2026-03-28
-Stopped at: Phase 32 context gathered
-Resume file: .planning/phases/32-lsp-split/32-CONTEXT.md
+Stopped at: Completed 32-01-PLAN.md
+Resume file: None

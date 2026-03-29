@@ -64,6 +64,10 @@ pub fn build(b: *std.Build) void {
         "src/cache.zig",
         "src/formatter.zig",
         "src/lsp.zig",
+        "src/lsp_types.zig",
+        "src/lsp_json.zig",
+        "src/lsp_utils.zig",
+        "src/lsp_analysis.zig",
         "src/peg.zig",
     };
 

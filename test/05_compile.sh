@@ -124,7 +124,7 @@ OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built: bin/buildproj"; then pass "rebuild succeeds"
 else fail "rebuild succeeds" "$OUTPUT"; fi
 
-if [ -f .orh-cache/timestamps ]; then pass "cache timestamps exist"
-else fail "cache timestamps exist"; fi
+if [ -f .orh-cache/hashes ]; then pass "cache hashes exist"
+else fail "cache hashes exist"; fi
 
 report_results

@@ -2,11 +2,13 @@
 
 **A simple yet powerful language that is safe.**
 
-Orhon is a compiled, memory-safe programming language that transpiles to Zig. It draws the best from Rust, Go, Swift, Zig, and Python — and discards the complexity.
+Orhon is a compiled, memory-safe programming language that transpiles to Zig. It takes Rust's ownership model and Zig's simplicity — and cuts the ceremony.
 
-You get ownership and borrow checking without lifetime annotations. Explicit error handling without exceptions. Compile-time generics without a type-level language. Zero-cost abstractions without a garbage collector.
+You get ownership and borrow checking without lifetime annotations. Thread safety enforcement at compile time. Explicit error handling without exceptions. Compile-time generics without the complexity. Zero-cost abstractions without a garbage collector.
 
-The compiler catches memory bugs, null dereference, and use-after-move at compile time. What it generates is readable Zig — one module, one `.zig` file, fully transparent.
+The compiler catches memory bugs, null dereference, use-after-move, and unsafe thread sharing at compile time. What it generates is readable Zig — one module, one `.zig` file, fully transparent.
+
+Cross-compiles to Linux, Windows, macOS, and WebAssembly. Ships with an LSP server and a VS Code extension.
 
 ---
 
@@ -55,6 +57,5 @@ The full language spec lives in [`docs/`](docs/):
 - Not garbage collected
 - Not platform-specific
 - Not a scripting language
-- No built-in async runtime forced on you
 - No operator overloading
 - No implicit anything

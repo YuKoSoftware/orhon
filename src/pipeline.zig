@@ -500,7 +500,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             try mod_import_lists.append(allocator, mod_slice);
 
             // Collect #cimport metadata from this module and its imported modules.
-            // One loop replaces the old separate #linkC / #cInclude / #csource / #linkCpp loops.
+            // One loop replaces the old separate #linkc / #cinclude / #csource / #linkcpp loops.
             // Per D-08: duplicate #cimport for the same library is a compile error.
             var mt_link_libs: std.ArrayListUnmanaged([]const u8) = .{};
             defer mt_link_libs.deinit(allocator);

@@ -5,6 +5,11 @@ Orhon is a compiled, memory-safe programming language that transpiles to Zig.
 Written in Zig 0.15.x. Lives entirely in `src/`.
 One-sentence pitch: *"A simple yet powerful language that is safe."*
 
+**IMPORTANT.txt** in project root is the **highest-authority document** in this project.
+It contains the enforced rules for all work. Only the user may edit it — Claude must NEVER
+modify IMPORTANT.txt. Read it at the start of every session and before making changes.
+Rules in IMPORTANT.txt override any conflicting guidance elsewhere.
+
 **Full language spec:** `docs/` folder — read relevant files before making any decisions about
 language behavior, syntax, or semantics. Do not rely on memory or assumptions — check the spec.
 
@@ -142,8 +147,14 @@ is no longer used, delete it — don't leave it around "just in case."
 ### Code quality
 - Write clean, structured code — no hacky code or workarounds
 - No messy code — if a solution feels fragile or unclear, rethink it
+- Correct mechanics — ensure the implementation is technically sound, not just passing
+- Modular and maintainable code — favor clear structure over clever shortcuts
 - Keep comments up to date — when code changes, update or remove nearby comments
   so they always reflect what the code actually does
+- Always log bugs and other problems — don't silently work around issues
+- Only well-researched changes — understand the problem and solution before coding.
+  Don't step into the dark.
+- Always be clear what you want to implement and about the changes being made
 
 ### Documentation rule
 Each doc file has one specific purpose — no overlap between files. If information

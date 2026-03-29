@@ -331,6 +331,22 @@ implementation.
 
 Unblocks: generic constraints (already in TODO), `#derive`, numerous library patterns.
 
+### Compile-time struct introspection
+
+Compiler functions for structural checks inside `compt` code. Complements blueprints
+(nominal contracts) with low-level introspection (structural queries). Needed for
+`#derive`, serialization, conditional codegen.
+
+```
+hasField(MyStruct, "x")       // does the struct have field "x"?
+hasDecl(MyStruct, "deinit")   // does it have a method or const "deinit"?
+fieldType(MyStruct, "x")      // returns the type of field "x"
+```
+
+These are tools for `compt` metaprogramming, not a substitute for blueprints at API
+boundaries. Blueprints say "this type must conform." Introspection says "what does
+this type have?"
+
 ### `#derive` for common traits
 
 Once traits exist, auto-generate standard implementations:
@@ -355,11 +371,29 @@ pub const GuiEvent: type = (...InputEvent | ButtonClickEvent | ScrollEvent)
 where `InputEvent` is itself a union. Avoids repeating type lists across modules.
 From Tamga feedback — needed for event hierarchies.
 
-### First-class closures
+### Explicit capture — `capture()` compiler function
 
-`fn(T) R` with captured environment. Currently captured variables must be simple
-identifiers. Full closures enable callbacks, event handlers, and functional patterns.
-Ownership of captures follows normal rules.
+Instead of implicit closures, use explicit `capture()` to bring outer variables into
+a nested function's scope. Follows Orhon's "no implicit anything" philosophy — you
+see exactly what's captured.
+
+```
+var x: i32 = 42
+var data: MyStruct = MyStruct(...)
+
+var callback = func() i32 {
+    capture(x)           // copies primitive
+    capture(copy(data))  // explicit copy of non-primitive
+    capture(&data)       // borrows as const
+    return x + data.value
+}
+```
+
+`capture()` is a compiler function like `copy()` and `move()`. Ownership rules apply
+normally — the borrow checker already handles moves, borrows, and copies. No new
+semantics needed, just explicit intent.
+
+This replaces the "first-class closures" idea. No implicit environment capture.
 
 ### `async` keyword — IO concurrency
 
@@ -384,9 +418,9 @@ struct SDL_Event {
 Maps to Zig's `extern struct`. Needed for direct C struct passing without wrapper
 overhead.
 
-### Comma-separated `#linkC`
+### Comma-separated `#linkc`
 
-`#linkC "vulkan, SDL3"` instead of multiple `#linkC` lines. Split on `,` + trim in
+`#linkc "vulkan, SDL3"` instead of multiple `#linkc` lines. Split on `,` + trim in
 directive handler.
 
 ---

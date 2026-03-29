@@ -460,7 +460,7 @@ pub fn emitIncludePath(
     try buf.appendSlice(allocator, chunk);
 }
 
-/// Generate shared @cImport wrapper .zig files for all unique #cInclude headers.
+/// Generate shared @cImport wrapper .zig files for all unique #cimport include headers.
 /// Each file is written to the generated cache dir as _{stem}_c.zig and exposes:
 ///   pub const c = @cImport({ @cInclude("header.h"); });
 /// Sidecars use: const c = @import("{stem}_c").c;
@@ -607,7 +607,7 @@ test "buildZigContent - project name in exe artifact" {
     try std.testing.expect(std.mem.indexOf(u8, content, "\"calculator\"") != null);
 }
 
-test "buildZigContent - linkC emits linkSystemLibrary and linkLibC" {
+test "buildZigContent - cimport link libs emit linkSystemLibrary and linkLibC" {
     const alloc = std.testing.allocator;
     const libs = [_][]const u8{"SDL3"};
     const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &libs, &.{}, &.{}, &.{}, &.{}, false, null);
@@ -617,7 +617,7 @@ test "buildZigContent - linkC emits linkSystemLibrary and linkLibC" {
     try std.testing.expect(std.mem.indexOf(u8, content, "linkLibC()") != null);
 }
 
-test "buildZigContent - no linkC means no linkLibC" {
+test "buildZigContent - no cimport link libs means no linkLibC" {
     const alloc = std.testing.allocator;
     const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);

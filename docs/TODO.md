@@ -7,6 +7,26 @@ Research sources: `.planning/research/` (compiler-techniques, zig-ecosystem, lan
 
 ## Bugs
 
+### Builtins — `List`, `Map`, `Set` hardcoded as builtin types
+
+`BUILTIN_TYPES` in `builtins.zig` includes `List`, `Map`, `Set`, `Version`. These are
+not compiler intrinsics — collections come from `std::collections` and `Version` is
+build metadata. Hardcoding them bypasses the import system and gives them special
+treatment they shouldn't have. (`VersionRule`, `Dependency` already removed — dead code.)
+
+**The problem:** The resolver uses `isBuiltinType()` as a shortcut to recognize
+`List`/`Map`/`Set` as valid generic types without requiring an import. This means
+they work even when the user hasn't imported `std::collections` — wrong behavior.
+
+**Fix:** Refactor the resolver so `List`, `Map`, `Set` are resolved through the import
+system like any other user-defined type. When the user writes `List(i32)`, the resolver
+should find it in the current scope (populated by `import std::collections` or
+`use std::collections`), not in a hardcoded list. After the resolver refactor, remove
+`List`, `Map`, `Set`, `Version` from `BUILTIN_TYPES`.
+
+**Correct `BUILTIN_TYPES`:** `Ptr`, `RawPtr`, `VolatilePtr`, `Handle`, `Error`, `Vector`
+— only types the compiler must understand natively for code generation.
+
 ### ~~Codegen — multi-type null union collapses to optional~~ — fixed v0.14 Phase 20
 
 ~~`(null | A | B | C)` generates `?A` instead of a proper tagged union with null.~~

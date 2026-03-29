@@ -156,6 +156,18 @@ is no longer used, delete it — don't leave it around "just in case."
   Don't step into the dark.
 - Always be clear what you want to implement and about the changes being made
 
+### No special treatment rule
+The compiler must not give special treatment to stdlib types or functions. Only
+**core language types** (`Ptr`, `RawPtr`, `VolatilePtr`, `Handle`, `Error`, `Vector`)
+and **compiler functions** (`@cast`, `@copy`, `@move`, `@swap`, `@typename`, `@typeid`,
+`@typeOf`, `@size`, `@align`, `@assert`) get hardcoded compiler awareness.
+
+Everything in `std::*` (collections, str, json, fs, etc.) must go through the normal
+import/use system — no hardcoded names, no shortcut recognition, no fallback lists.
+If a type requires `import std::collections` to use, the compiler must enforce that
+import. A user-defined `List` type in their own module must work identically to
+`std::collections.List`. The stdlib is just another set of bridge modules.
+
 ### Documentation rule
 Each doc file has one specific purpose — no overlap between files. If information
 belongs in an existing file, update it there instead of writing it somewhere else.

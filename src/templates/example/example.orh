@@ -87,7 +87,7 @@ pub func allocator_demo() i32 {
     // Mode 3: external allocator variable
     var smp: allocator.SMP = allocator.SMP.create()
     defer { smp.deinit() }
-    var a = smp.allocator()
+    const a = smp.allocator()
     var ext_list: List(i32) = List(i32).new(a)
     ext_list.add(3)
     defer { ext_list.free() }

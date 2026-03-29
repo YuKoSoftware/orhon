@@ -14,12 +14,13 @@ Split `src/peg/builder.zig` (1836 lines) into focused satellite files mirroring 
 ## Implementation Decisions
 
 ### Split granularity
-- **D-01:** Split into 5 satellite files: `builder_decls.zig`, `builder_stmts.zig`, `builder_exprs.zig`, `builder_types.zig`, plus `builder.zig` as the hub
+- **D-01:** Split into 6 files total: `builder_decls.zig`, `builder_bridge.zig`, `builder_stmts.zig`, `builder_exprs.zig`, `builder_types.zig` (5 satellites), plus `builder.zig` as the hub
 - **D-02:** `builder.zig` retains: BuildContext struct, SyntaxError, buildAST/buildASTWithArena entry points, buildNode dispatch function, shared helpers (tokenText, findTokenInRange, buildAllChildren, collectExprsRecursive, collectCallArgs, collectParamsRecursive, buildTokenNode, buildChildrenByRule)
 - **D-03:** No single satellite file should exceed ~510 lines (per success criteria)
 
 ### File boundaries
-- **D-04:** `builder_decls.zig` (~620 lines): buildProgram, buildModuleDecl, buildImport, buildMetadata, buildFuncDecl, buildParam, buildConstDecl, buildVarDecl, buildStructDecl, collectStructParts, hasPubBefore, buildEnumDecl, collectEnumMembers, buildFieldDecl, buildEnumVariant, buildDestructDecl, buildDestructFromTail, buildBitfieldDecl, buildTestDecl, buildPubDecl, buildComptDecl, buildBridgeDecl, buildBridgeFunc, buildBridgeConst, buildBridgeStruct, buildThreadDecl, setPub
+- **D-04:** `builder_decls.zig` (~507 lines): buildProgram, buildModuleDecl, buildImport, buildMetadata, buildFuncDecl, buildParam, buildConstDecl, buildVarDecl, buildStructDecl, collectStructParts, hasPubBefore, buildEnumDecl, collectEnumMembers, buildFieldDecl, buildEnumVariant, buildDestructDecl, buildDestructFromTail, buildBitfieldDecl, buildTestDecl, buildPubDecl, buildComptDecl
+- **D-04b:** `builder_bridge.zig` (~140 lines): buildBridgeDecl, buildBridgeFunc, buildBridgeConst, buildBridgeStruct, buildThreadDecl, setPub
 - **D-05:** `builder_stmts.zig` (~210 lines): buildBlock, buildReturn, buildThrowStmt, buildIf, buildElifChain, buildWhile, buildFor, buildDefer, buildMatch, buildMatchArm, buildExprOrAssignment
 - **D-06:** `builder_exprs.zig` (~350 lines): buildIntLiteral, buildFloatLiteral, buildStringLiteral, buildBoolLiteral, buildIdentifier, buildErrorLiteral, buildCompilerFunc, buildArrayLiteral, buildGroupedExpr, buildTupleLiteral, buildStructExpr, buildBinaryExpr, buildCompareExpr, buildRangeExpr, buildNotExpr, buildUnaryExpr, buildPostfixExpr
 - **D-07:** `builder_types.zig` (~170 lines): buildNamedType, buildKeywordType, buildScopedType, buildScopedGenericType, buildGenericType, collectGenericArgs, buildBorrowType, buildRefType, buildParenType, buildSliceType, buildArrayType, buildFuncType
@@ -34,7 +35,7 @@ Split `src/peg/builder.zig` (1836 lines) into focused satellite files mirroring 
 ### Claude's Discretion
 - Exact line where helpers end and satellite boundary begins
 - Whether buildDestructFromTail stays with buildDestructDecl in decls or goes to stmts (recommendation: keep with decls since it's part of destructuring declaration logic)
-- If decls exceeds 510 lines, whether to split further into `builder_bridge.zig`
+- Whether collectStructParts stays in decls or moves to hub (recommendation: keep with decls since buildStructDecl is the primary caller)
 
 </decisions>
 

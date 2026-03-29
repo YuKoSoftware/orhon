@@ -1,12 +1,13 @@
-// cache.zig — Orhon incremental compilation cache
-// Manages .orh-cache/timestamps and .orh-cache/deps.graph
+// cache.zig — Orhon incremental compilation cache (content hashing)
+// Manages .orh-cache/hashes and .orh-cache/deps.graph
 // Determines which modules need recompilation.
 
 const std = @import("std");
+const XxHash3 = std.hash.XxHash3;
 
 pub const CACHE_DIR = ".orh-cache";
 pub const GENERATED_DIR = ".orh-cache/generated";
-pub const TIMESTAMPS_FILE = ".orh-cache/timestamps";
+pub const HASHES_FILE = ".orh-cache/hashes";
 pub const DEPS_FILE = ".orh-cache/deps.graph";
 pub const WARNINGS_FILE = ".orh-cache/warnings";
 
@@ -14,30 +15,30 @@ pub const WARNINGS_FILE = ".orh-cache/warnings";
 pub const ModuleEntry = struct {
     name: []const u8,
     files: [][]const u8,
-    last_modified: i128,
+    content_hash: u64,
 };
 
 /// The cache state
 pub const Cache = struct {
-    timestamps: std.StringHashMap(i128),
+    hashes: std.StringHashMap(u64),
     deps: std.StringHashMap(std.ArrayListUnmanaged([]const u8)),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Cache {
         return .{
-            .timestamps = std.StringHashMap(i128).init(allocator),
+            .hashes = std.StringHashMap(u64).init(allocator),
             .deps = std.StringHashMap(std.ArrayListUnmanaged([]const u8)).init(allocator),
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *Cache) void {
-        // Free duped timestamp keys
-        var ts_it = self.timestamps.iterator();
-        while (ts_it.next()) |entry| {
+        // Free duped hash keys
+        var hs_it = self.hashes.iterator();
+        while (hs_it.next()) |entry| {
             self.allocator.free(entry.key_ptr.*);
         }
-        self.timestamps.deinit();
+        self.hashes.deinit();
         // Free deps keys and value lists
         var it = self.deps.iterator();
         while (it.next()) |entry| {
@@ -48,9 +49,9 @@ pub const Cache = struct {
         self.deps.deinit();
     }
 
-    /// Load timestamps from .orh-cache/timestamps
-    pub fn loadTimestamps(self: *Cache) !void {
-        const file = std.fs.cwd().openFile(TIMESTAMPS_FILE, .{}) catch |err| {
+    /// Load content hashes from .orh-cache/hashes
+    pub fn loadHashes(self: *Cache) !void {
+        const file = std.fs.cwd().openFile(HASHES_FILE, .{}) catch |err| {
             if (err == error.FileNotFound) return; // fresh build
             return err;
         };
@@ -62,27 +63,27 @@ pub const Cache = struct {
         var lines = std.mem.splitScalar(u8, content, '\n');
         while (lines.next()) |line| {
             if (line.len == 0) continue;
-            // Format: "path timestamp"
+            // Format: "path hash"
             var parts = std.mem.splitScalar(u8, line, ' ');
             const path = parts.next() orelse continue;
-            const ts_str = parts.next() orelse continue;
-            const ts = std.fmt.parseInt(i128, ts_str, 10) catch continue;
+            const hash_str = parts.next() orelse continue;
+            const hash_val = std.fmt.parseInt(u64, hash_str, 10) catch continue;
             const path_copy = try self.allocator.dupe(u8, path);
-            try self.timestamps.put(path_copy, ts);
+            try self.hashes.put(path_copy, hash_val);
         }
     }
 
-    /// Save timestamps to .orh-cache/timestamps
-    pub fn saveTimestamps(self: *Cache) !void {
+    /// Save content hashes to .orh-cache/hashes
+    pub fn saveHashes(self: *Cache) !void {
         try ensureGeneratedDir();
-        const file = try std.fs.cwd().createFile(TIMESTAMPS_FILE, .{});
+        const file = try std.fs.cwd().createFile(HASHES_FILE, .{});
         defer file.close();
 
         var buf: [4096]u8 = undefined;
         var w = file.writer(&buf);
         const writer = &w.interface;
 
-        var it = self.timestamps.iterator();
+        var it = self.hashes.iterator();
         while (it.next()) |entry| {
             try writer.print("{s} {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
         }
@@ -146,24 +147,25 @@ pub const Cache = struct {
         try writer.flush();
     }
 
-    /// Check if a file has changed since last build
+    /// Check if a file has changed since last build (compares content hash)
     pub fn hasChanged(self: *Cache, path: []const u8) !bool {
-        const stat = std.fs.cwd().statFile(path) catch return true; // file gone = changed
-        const current_ts = stat.mtime;
-        const cached_ts = self.timestamps.get(path) orelse return true; // not in cache = changed
-        return current_ts != cached_ts;
+        const content = std.fs.cwd().readFileAlloc(self.allocator, path, 10 * 1024 * 1024) catch return true;
+        defer self.allocator.free(content);
+        const current_hash = XxHash3.hash(0, content);
+        const cached_hash = self.hashes.get(path) orelse return true;
+        return current_hash != cached_hash;
     }
 
-    /// Update the timestamp for a file
-    pub fn updateTimestamp(self: *Cache, path: []const u8) !void {
-        const stat = try std.fs.cwd().statFile(path);
-        const result = try self.timestamps.getOrPut(path);
-        if (result.found_existing) {
-            result.value_ptr.* = stat.mtime;
-        } else {
+    /// Update the content hash for a file
+    pub fn updateHash(self: *Cache, path: []const u8) !void {
+        const content = try std.fs.cwd().readFileAlloc(self.allocator, path, 10 * 1024 * 1024);
+        defer self.allocator.free(content);
+        const hash_val = XxHash3.hash(0, content);
+        const result = try self.hashes.getOrPut(path);
+        if (!result.found_existing) {
             result.key_ptr.* = try self.allocator.dupe(u8, path);
-            result.value_ptr.* = stat.mtime;
         }
+        result.value_ptr.* = hash_val;
     }
 
     /// Check if a module needs recompilation (any file changed or dependency changed)
@@ -270,12 +272,59 @@ pub fn readGeneratedZig(module_name: []const u8, allocator: std.mem.Allocator) !
 test "cache init and deinit" {
     var cache = Cache.init(std.testing.allocator);
     defer cache.deinit();
-    try std.testing.expect(cache.timestamps.count() == 0);
+    try std.testing.expect(cache.hashes.count() == 0);
 }
 
 test "cache has changed - nonexistent file" {
     var cache = Cache.init(std.testing.allocator);
     defer cache.deinit();
     const changed = try cache.hasChanged("nonexistent_file_xyz.orh");
+    try std.testing.expect(changed);
+}
+
+test "cache unchanged file has same hash" {
+    var cache = Cache.init(std.testing.allocator);
+    defer cache.deinit();
+
+    // Write a temp file
+    const tmp_path = "/tmp/orhon_cache_test_unchanged.orh";
+    {
+        const f = try std.fs.cwd().createFile(tmp_path, .{});
+        defer f.close();
+        try f.writeAll("module test\n");
+    }
+    defer std.fs.cwd().deleteFile(tmp_path) catch {};
+
+    // Update hash, then hasChanged should return false
+    try cache.updateHash(tmp_path);
+    const changed = try cache.hasChanged(tmp_path);
+    try std.testing.expect(!changed);
+}
+
+test "cache detects content change" {
+    var cache = Cache.init(std.testing.allocator);
+    defer cache.deinit();
+
+    // Write a temp file
+    const tmp_path = "/tmp/orhon_cache_test_changed.orh";
+    {
+        const f = try std.fs.cwd().createFile(tmp_path, .{});
+        defer f.close();
+        try f.writeAll("module test\n");
+    }
+    defer std.fs.cwd().deleteFile(tmp_path) catch {};
+
+    // Record initial hash
+    try cache.updateHash(tmp_path);
+
+    // Modify the file
+    {
+        const f = try std.fs.cwd().createFile(tmp_path, .{});
+        defer f.close();
+        try f.writeAll("module test\nfunc main() {}\n");
+    }
+
+    // hasChanged should now return true
+    const changed = try cache.hasChanged(tmp_path);
     try std.testing.expect(changed);
 }

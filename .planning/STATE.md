@@ -57,8 +57,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 30-error-quality]: 12 guards before identifier error: primitive names, compiler funcs, arithmetic modes (wrap/sat/overflow), module names, enum variants, bitfield flags, else pattern, match guard bound vars
 - [Phase 30-error-quality]: Fix match guard body scope: guarded arm body resolves with guard_scope so bound variable x is accessible in arm body
 - [Phase 30-error-quality]: Borrow fixture updated to add use-while-borrowed scenario: existing conflict only triggered mutable-new-borrow path (no hint), new scenario triggers checkNotMutablyBorrowedPath which always shows const & hint
-- [Phase 31-peg-error-messages]: Use two fixed arrays instead of BoundedArray for PEG error accumulation — Zig 0.15 has no std.BoundedArray
-- [Phase 31-peg-error-messages]: Dedup-on-read for PEG expected set: accumulate raw during parsing, deduplicate only in getError() once on failure
+- [Phase 31-peg-error-messages]: PEG expected set now uses std.EnumSet(TokenKind) — automatic dedup, no buffer overflow (replaced fixed arrays in quick-260329-rb1)
 - [Phase 33-mir-split]: Underscore-prefixed module import names (_mir_types, _mir_registry, _mir_node) to avoid Zig shadowing conflicts with local variables
 - [Phase 33-mir-split]: pub const re-exports in mir.zig for all 9 moved types — zero downstream changes required
 - [Phase 33-mir-split]: mir.zig reduced to 15-line re-export facade — all 6 mir_*.zig files contain implementations
@@ -92,5 +91,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-29
-Stopped at: Completed quick task 260329-rb1: PEG expected set accumulation (EnumSet)
+Stopped at: Completed quick task 260329-rb1: PEG expected-set accumulation (EnumSet)
 Resume file: None

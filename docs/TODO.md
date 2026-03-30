@@ -334,6 +334,10 @@ in Developer Experience section.
 Compiled `.so`/`.dll` files should go in a separate output folder instead of
 cluttering `src/`. From Tamga feedback.
 
+**Blocked:** Splitting exe (`bin/`) and lib (`lib/`) breaks runtime discovery —
+the exe can't find the `.so` without an rpath. Either set `$ORIGIN/../lib` rpath
+in generated `build.zig`, or keep everything in `bin/`. Needs rpath support first.
+
 ### Interface file tagging
 
 When a dynamic library is compiled, its interface could be tagged as `interface`

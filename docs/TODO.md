@@ -19,15 +19,11 @@ Workaround: rely on const auto-borrow (the compiler auto-borrows const values as
 `*const T`). But for threads, the thread safety checker may need explicit borrow
 syntax to distinguish move vs borrow semantics.
 
-### `@` prefix for compiler functions
+### ~~`@` prefix for compiler functions~~ DONE (v0.10.30)
 
-Compiler intrinsics (`cast`, `copy`, `move`, `swap`, `assert`, `size`, `align`,
-`typename`, `typeid`, `typeOf`) should be prefixed with `@` to distinguish them
-from user functions. Currently bare names collide with method names (e.g.,
-`Atomic(T).swap()` fails because `swap` is a compiler function token).
-
-**Breaking change.** Touches lexer, parser, builtins, codegen, resolver, all
-fixtures, and the example module. Do before the language has a large user base.
+Compiler intrinsics now require `@` prefix: `@cast`, `@copy`, `@move`, `@swap`,
+`@assert`, `@size`, `@align`, `@typename`, `@typeid`, `@typeOf`. Bare names are
+regular identifiers — user methods can use them freely (e.g., `Atomic(T).swap()`).
 
 ---
 

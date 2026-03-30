@@ -94,18 +94,18 @@ func string_ne_demo() i32 {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 test "string upper" {
-    assert(upper_demo() == 1)
+    @assert(upper_demo() == 1)
 }
 
 test "string lower" {
-    assert(lower_demo() == 1)
+    @assert(lower_demo() == 1)
 }
 
 test "string interpolation" {
-    assert(interpolation_demo() == 1)
+    @assert(interpolation_demo() == 1)
 }
 
 test "string comparison" {
-    assert(string_eq_demo() == 1)
-    assert(string_ne_demo() == 1)
+    @assert(string_eq_demo() == 1)
+    @assert(string_ne_demo() == 1)
 }

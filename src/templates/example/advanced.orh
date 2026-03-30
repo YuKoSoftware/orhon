@@ -139,25 +139,25 @@ func atomic_demo() i32 {
 
 // ─── Cast ───────────────────────────────────────────────────────────────────
 
-// cast(TargetType, value) — explicit type conversion
+// @cast(TargetType, value) — explicit type conversion
 
 func cast_demo() i64 {
     const x: i32 = 42
-    return cast(i64, x)
+    return @cast(i64, x)
 }
 
 func cast_float() i32 {
-    return cast(i32, 3.7)
+    return @cast(i32, 3.7)
 }
 
 // ─── typeid ─────────────────────────────────────────────────────────────────
 
-// typeid(value) — compare types at runtime
+// @typeid(value) — compare types at runtime
 
 func typeid_demo() i32 {
     const x: i32 = 1
     const y: i32 = 2
-    if(typeid(x) == typeid(y)) { return 1 }
+    if(@typeid(x) == @typeid(y)) { return 1 }
     return 0
 }
 
@@ -177,7 +177,7 @@ func split_demo() i32 {
 // ─── Const Auto-Borrow ──────────────────────────────────────────────────────
 
 // const values auto-borrow as const & when passed to functions.
-// No silent deep copies. Use copy() for explicit owned copies.
+// No silent deep copies. Use @copy() for explicit owned copies.
 
 func read_point(p: Point) f64 {
     return p.x + p.y
@@ -237,44 +237,44 @@ func type_alias_local() i32 {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 test "const auto-borrow" {
-    assert(const_borrow_demo() == 1)
+    @assert(const_borrow_demo() == 1)
 }
 
 test "type alias" {
-    assert(type_alias_demo() == 42)
-    assert(type_alias_local() == 7)
+    @assert(type_alias_demo() == 42)
+    @assert(type_alias_local() == 7)
 }
 
 
 test "list" {
-    assert(list_demo() == 20)
+    @assert(list_demo() == 20)
 }
 
 test "map" {
-    assert(map_demo() == 1)
+    @assert(map_demo() == 1)
 }
 
 test "set" {
-    assert(set_demo() == 1)
+    @assert(set_demo() == 1)
 }
 
 test "bitfield" {
-    assert(bitfield_constructor() == 1)
-    assert(bitfield_methods() == 1)
+    @assert(bitfield_constructor() == 1)
+    @assert(bitfield_methods() == 1)
 }
 
 test "thread" {
-    assert(thread_demo() == 42)
+    @assert(thread_demo() == 42)
 }
 
 test "atomic" {
-    assert(atomic_demo() == 42)
+    @assert(atomic_demo() == 42)
 }
 
 test "cast" {
-    assert(cast_float() == 3)
+    @assert(cast_float() == 3)
 }
 
 test "split" {
-    assert(split_demo() == 21)
+    @assert(split_demo() == 21)
 }

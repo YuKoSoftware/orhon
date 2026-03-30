@@ -529,7 +529,7 @@ mkdir -p neg_ownership_hint/src
 cp "$FIXTURES/fail_ownership.orh" neg_ownership_hint/src/main.orh
 cd neg_ownership_hint
 NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -q "consider using copy()"; then
+if echo "$NEG_OUT" | grep -q "consider using @copy()"; then
     pass "move-after-use suggests copy()"
 else
     fail "move-after-use suggests copy()" "$NEG_OUT"

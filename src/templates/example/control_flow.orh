@@ -163,36 +163,36 @@ func find_pair(limit: i32) i32 {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 test "max" {
-    assert(max(3, 7) == 7)
+    @assert(max(3, 7) == 7)
 }
 
 test "classify sign" {
-    assert(classify_sign(5) == 1)
-    assert(classify_sign(0 - 3) == 0 - 1)
-    assert(classify_sign(0) == 0)
+    @assert(classify_sign(5) == 1)
+    @assert(classify_sign(0 - 3) == 0 - 1)
+    @assert(classify_sign(0) == 0)
 }
 
 test "countdown" {
-    assert(countdown(5) == 15)
+    @assert(countdown(5) == 15)
 }
 
 test "with cleanup" {
-    assert(with_cleanup() == 42)
+    @assert(with_cleanup() == 42)
 }
 
 test "match range" {
-    assert(match_range(2) == 1)
-    assert(match_range(5) == 2)
-    assert(match_range(9) == 0)
+    @assert(match_range(2) == 1)
+    @assert(match_range(5) == 2)
+    @assert(match_range(9) == 0)
 }
 
 test "match string" {
-    assert(match_string("hello") == 1)
-    assert(match_string("other") == 0)
+    @assert(match_string("hello") == 1)
+    @assert(match_string("other") == 0)
 }
 
 test "indexed sum" {
-    assert(indexed_sum() == 63)
+    @assert(indexed_sum() == 63)
 }
 
 // ─── Match Guards ────────────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ func match_guard_example(n: i32) i32 {
 }
 
 test "match guard" {
-    assert(match_guard_example(5) == 5)
-    assert(match_guard_example(0 - 3) == 3)
-    assert(match_guard_example(0) == 0)
+    @assert(match_guard_example(5) == 5)
+    @assert(match_guard_example(0 - 3) == 3)
+    @assert(match_guard_example(0) == 0)
 }

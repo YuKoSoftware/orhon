@@ -415,7 +415,7 @@ compiler_func
 compiler_func_name
     <- '@' 'cast' / '@' 'copy' / '@' 'move' / '@' 'swap'
      / '@' 'assert' / '@' 'size' / '@' 'align'
-     / '@' 'typename' / '@' 'typeid' / '@' 'typeof'
+     / '@' 'typename' / '@' 'typeid' / '@' 'typeOf'
 
 # Note: wrap(), sat(), overflow() are parsed as regular function calls
 # (identifier + call_access) and handled specially in codegen, not the parser.

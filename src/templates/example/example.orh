@@ -241,20 +241,20 @@ compt func Wrapper(T: type) type {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 test "add works" {
-    assert(add(2, 3) == 5)
+    @assert(add(2, 3) == 5)
 }
 
 test "fibonacci" {
-    assert(fibonacci(10) == 55)
+    @assert(fibonacci(10) == 55)
 }
 
 test "struct methods" {
     var p: Player = Player.create("test")
-    assert(p.is_alive())
+    @assert(p.is_alive())
     p.take_damage(150.0)
-    assert(not p.is_alive())
+    @assert(not p.is_alive())
     p = Player.create("revived")
-    assert(p.is_alive())
+    @assert(p.is_alive())
 }
 
 // ─── Terminal Colors ────────────────────────────────────────────────────────
@@ -269,5 +269,5 @@ func color_demo() bool {
 }
 
 test "console.supportsColor" {
-    assert(color_demo())
+    @assert(color_demo())
 }

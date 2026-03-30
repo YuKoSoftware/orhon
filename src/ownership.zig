@@ -360,7 +360,7 @@ pub const OwnershipChecker = struct {
                 if (scope.getState(name)) |state| {
                     if (state.state == .moved) {
                         const msg = try std.fmt.allocPrint(self.allocator,
-                            "use of moved value '{s}' — consider using copy()", .{name});
+                            "use of moved value '{s}' — consider using @copy()", .{name});
                         defer self.allocator.free(msg);
                         try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
                     }
@@ -414,7 +414,7 @@ pub const OwnershipChecker = struct {
                                 if (!is_prim) {
                                     // Known non-primitive field → struct atomicity error
                                     const msg = try std.fmt.allocPrint(self.allocator,
-                                        "cannot move field '{s}' out of '{s}' — structs are atomic ownership units — consider using copy()",
+                                        "cannot move field '{s}' out of '{s}' — structs are atomic ownership units — consider using @copy()",
                                         .{ f.field, obj_name });
                                     defer self.allocator.free(msg);
                                     try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });
@@ -422,7 +422,7 @@ pub const OwnershipChecker = struct {
                             } else if (self.isKnownStruct(scope, obj_name)) {
                                 // Known struct but field not found — conservative error
                                 const msg = try std.fmt.allocPrint(self.allocator,
-                                    "cannot move field '{s}' out of '{s}' — structs are atomic ownership units — consider using copy()",
+                                    "cannot move field '{s}' out of '{s}' — structs are atomic ownership units — consider using @copy()",
                                     .{ f.field, obj_name });
                                 defer self.allocator.free(msg);
                                 try self.ctx.reporter.report(.{ .message = msg, .loc = self.ctx.nodeLoc(node) });

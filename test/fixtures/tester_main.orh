@@ -646,7 +646,7 @@ func main() void {
         console.println("FAIL var_caller_promoted")
     }
 
-    // Test: copy() on const value bypasses auto-borrow (CBOR-02)
+    // Test: @copy() on const value bypasses auto-borrow (CBOR-02)
     if(tester.test_const_copy() == 11.0) {
         console.println("PASS const_copy")
     } else {
@@ -683,7 +683,7 @@ func main() void {
         console.println("FAIL error_void_fail")
     }
 
-    // Test: cast(EnumType, int) → @enumFromInt
+    // Test: @cast(EnumType, int) → @enumFromInt
     if(tester.test_cast_to_enum() == 1) {
         console.println("PASS cast_to_enum")
     } else {

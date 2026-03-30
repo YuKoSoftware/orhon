@@ -244,15 +244,15 @@ pub func call_via_ptr() i32 {
 // ─── Cast ────────────────────────────────────────────────────
 
 pub func cast_to_i64(x: i32) i64 {
-    return cast(i64, x)
+    return @cast(i64, x)
 }
 
 pub func cast_to_f32(x: i32) f32 {
-    return cast(f32, x)
+    return @cast(f32, x)
 }
 
 pub func cast_float_to_int() i32 {
-    return cast(i32, 3.7)
+    return @cast(i32, 3.7)
 }
 
 // ─── While with continue expression ─────────────────────────
@@ -542,152 +542,152 @@ pub func nested_scope() i32 {
 // ─── Tests ───────────────────────────────────────────────────
 
 test "add" {
-    assert(add(2, 3) == 5)
+    @assert(add(2, 3) == 5)
 }
 
 test "sub" {
-    assert(sub(10, 3) == 7)
+    @assert(sub(10, 3) == 7)
 }
 
 test "factorial" {
-    assert(factorial(5) == 120)
+    @assert(factorial(5) == 120)
 }
 
 test "is_positive" {
-    assert(is_positive(1))
-    assert(not is_positive(0 - 1))
+    @assert(is_positive(1))
+    @assert(not is_positive(0 - 1))
 }
 
 test "arithmetic" {
-    assert(test_arithmetic(10, 5) == 0)
+    @assert(test_arithmetic(10, 5) == 0)
 }
 
 test "compound assignment" {
-    assert(test_compound() == 70)
+    @assert(test_compound() == 70)
 }
 
 test "abs" {
-    assert(abs(5) == 5)
-    assert(abs(0 - 5) == 5)
+    @assert(abs(5) == 5)
+    @assert(abs(0 - 5) == 5)
 }
 
 test "sum_to" {
-    assert(sum_to(10) == 55)
+    @assert(sum_to(10) == 55)
 }
 
 test "match" {
-    assert(match_test(1) == 10)
-    assert(match_test(2) == 20)
-    assert(match_test(99) == 0)
+    @assert(match_test(1) == 10)
+    @assert(match_test(2) == 20)
+    @assert(match_test(99) == 0)
 }
 
 test "first_over" {
-    assert(first_over(5) == 6)
+    @assert(first_over(5) == 6)
 }
 
 test "compt func" {
-    assert(doubled(21) == 42)
+    @assert(doubled(21) == 42)
 }
 
 test "default param" {
-    assert(add_default(5, 20) == 25)
-    assert(add_default(5) == 15)
+    @assert(add_default(5, 20) == 25)
+    @assert(add_default(5) == 15)
 }
 
 test "struct instantiation" {
-    assert(make_internal() == 42)
+    @assert(make_internal() == 42)
 }
 
 test "default field values" {
-    assert(test_defaults() == 42)
+    @assert(test_defaults() == 42)
 }
 
 test "default field override" {
-    assert(test_defaults_override() == 99)
+    @assert(test_defaults_override() == 99)
 }
 
 test "static method" {
-    assert(test_static_method() == 10)
+    @assert(test_static_method() == 10)
 }
 
 test "mutable method" {
-    assert(test_mutable_method() == 3)
+    @assert(test_mutable_method() == 3)
 }
 
 test "error handling ok" {
-    assert(test_error_ok() == 5)
+    @assert(test_error_ok() == 5)
 }
 
 test "error handling fail" {
-    assert(test_error_fail() == 0 - 1)
+    @assert(test_error_fail() == 0 - 1)
 }
 
 test "null some" {
-    assert(test_null_some() == 50)
+    @assert(test_null_some() == 50)
 }
 
 test "null none" {
-    assert(test_null_none() == 0 - 1)
+    @assert(test_null_none() == 0 - 1)
 }
 
 test "null inferred" {
-    assert(test_null_inferred() == 50)
+    @assert(test_null_inferred() == 50)
 }
 
 test "error inferred" {
-    assert(test_error_inferred() == 5)
+    @assert(test_error_inferred() == 5)
 }
 
 test "null inferred real" {
-    assert(test_null_inferred_real() == 50)
+    @assert(test_null_inferred_real() == 50)
 }
 
 test "null reassign" {
-    assert(test_null_reassign() == 42)
+    @assert(test_null_reassign() == 42)
 }
 
 test "enum usage" {
-    assert(test_enum() == 1)
+    @assert(test_enum() == 1)
 }
 
 test "enum method" {
-    assert(test_enum_method() == 1)
+    @assert(test_enum_method() == 1)
 }
 
 test "nested scopes" {
-    assert(nested_scope() == 6)
+    @assert(nested_scope() == 6)
 }
 
 test "tuple" {
-    assert(test_tuple() == 10)
+    @assert(test_tuple() == 10)
 }
 
 test "tuple destructure" {
-    assert(test_tuple_destruct() == 10)
+    @assert(test_tuple_destruct() == 10)
 }
 
 test "slice for loop" {
-    assert(sum_slice_test() == 6)
+    @assert(sum_slice_test() == 6)
 }
 
 test "for with index" {
-    assert(indexed_sum() == 63)
+    @assert(indexed_sum() == 63)
 }
 
 test "for range" {
-    assert(sum_range(5) == 10)
+    @assert(sum_range(5) == 10)
 }
 
 test "while continue" {
-    assert(sum_while_continue(5) == 10)
+    @assert(sum_while_continue(5) == 10)
 }
 
 test "cast int" {
-    assert(cast_to_i64(42) == 42)
+    @assert(cast_to_i64(42) == 42)
 }
 
 test "cast float" {
-    assert(cast_to_f32(7) == 7.0)
+    @assert(cast_to_f32(7) == 7.0)
 }
 
 pub func raw_ptr_read() i32 {
@@ -710,13 +710,13 @@ pub func safe_ptr_read() i32 {
 }
 
 test "safe ptr" {
-    assert(safe_ptr_read() == 77)
+    @assert(safe_ptr_read() == 77)
 }
 
 pub func typeid_same() i32 {
     const x: i32 = 1
     const y: i32 = 2
-    if(typeid(x) == typeid(y)) {
+    if(@typeid(x) == @typeid(y)) {
         return 1
     }
     return 0
@@ -725,34 +725,34 @@ pub func typeid_same() i32 {
 pub func typeid_diff() i32 {
     const x: i32 = 1
     const f: f32 = 1.0
-    if(typeid(x) != typeid(f)) {
+    if(@typeid(x) != @typeid(f)) {
         return 1
     }
     return 0
 }
 
 test "cast float to int" {
-    assert(cast_float_to_int() == 3)
+    @assert(cast_float_to_int() == 3)
 }
 
 test "function pointer" {
-    assert(apply_fn(triple, 5) == 15)
-    assert(call_via_ptr() == 12)
+    @assert(apply_fn(triple, 5) == 15)
+    @assert(call_via_ptr() == 12)
 }
 
 test "fixed array" {
     const arr: [3]i32 = [10, 20, 30]
-    assert(sum_fixed_array(arr) == 60)
-    assert(array_index_test() == 20)
+    @assert(sum_fixed_array(arr) == 60)
+    @assert(array_index_test() == 20)
 }
 
 test "slice expr" {
-    assert(slice_expr_test() == 9)
+    @assert(slice_expr_test() == 9)
 }
 
 test "raw ptr" {
-    assert(raw_ptr_read() == 99)
-    assert(raw_ptr_index() == 2)
+    @assert(raw_ptr_read() == 99)
+    @assert(raw_ptr_index() == 2)
 }
 
 // ─── Match — ranges ──────────────────────────────────────────
@@ -772,11 +772,11 @@ pub func match_range(n: i32) i32 {
 }
 
 test "match_range" {
-    assert(match_range(1) == 1)
-    assert(match_range(3) == 1)
-    assert(match_range(4) == 2)
-    assert(match_range(6) == 2)
-    assert(match_range(7) == 0)
+    @assert(match_range(1) == 1)
+    @assert(match_range(3) == 1)
+    @assert(match_range(4) == 2)
+    @assert(match_range(6) == 2)
+    @assert(match_range(7) == 0)
 }
 
 // ─── Match — strings ─────────────────────────────────────────
@@ -796,53 +796,53 @@ pub func match_string(s: String) i32 {
 }
 
 test "match_string" {
-    assert(match_string("hello") == 1)
-    assert(match_string("world") == 2)
-    assert(match_string("other") == 0)
+    @assert(match_string("hello") == 1)
+    @assert(match_string("world") == 2)
+    @assert(match_string("other") == 0)
 }
 
 test "arb union return" {
-    assert(test_arb_union_return() == 1)
+    @assert(test_arb_union_return() == 1)
 }
 
 test "arb union match" {
-    assert(test_arb_union_match() == 1)
+    @assert(test_arb_union_match() == 1)
 }
 
 test "arb union field" {
-    assert(test_arb_union_field() == 99)
+    @assert(test_arb_union_field() == 99)
 }
 
 test "arb union assign" {
-    assert(test_arb_union_assign() == 1)
+    @assert(test_arb_union_assign() == 1)
 }
 
 test "arb union three" {
-    assert(test_arb_union_three() == 1)
+    @assert(test_arb_union_three() == 1)
 }
 
 test "arb union cross" {
-    assert(test_arb_union_cross() == 42)
+    @assert(test_arb_union_cross() == 42)
 }
 
 test "arb union inferred" {
-    assert(test_arb_union_inferred() == 1)
+    @assert(test_arb_union_inferred() == 1)
 }
 
 test "arb value positive" {
-    assert(test_arb_value_positive() == 42)
+    @assert(test_arb_value_positive() == 42)
 }
 
 test "arb value negative" {
-    assert(test_arb_value_negative() == 42)
+    @assert(test_arb_value_negative() == 42)
 }
 
 test "arb value inside" {
-    assert(test_arb_value_inside() == 42)
+    @assert(test_arb_value_inside() == 42)
 }
 
 test "arb value match" {
-    assert(test_arb_value_match() == 42)
+    @assert(test_arb_value_match() == 42)
 }
 
 // ─── Collections ────────────────────────────────────────────
@@ -1175,27 +1175,27 @@ pub func test_str_parse_float() i32 {
 }
 
 test "str upper" {
-    assert(test_str_upper() == 1)
+    @assert(test_str_upper() == 1)
 }
 
 test "str lower" {
-    assert(test_str_lower() == 1)
+    @assert(test_str_lower() == 1)
 }
 
 test "str replace" {
-    assert(test_str_replace() == 1)
+    @assert(test_str_replace() == 1)
 }
 
 test "str repeat" {
-    assert(test_str_repeat() == 1)
+    @assert(test_str_repeat() == 1)
 }
 
 test "str parseInt" {
-    assert(test_str_parse_int() == 42)
+    @assert(test_str_parse_int() == 42)
 }
 
 test "str parseFloat" {
-    assert(test_str_parse_float() == 1)
+    @assert(test_str_parse_float() == 1)
 }
 
 
@@ -1216,11 +1216,11 @@ pub func test_tostring_bool() i32 {
 }
 
 test "toString int" {
-    assert(test_tostring_int() == 1)
+    @assert(test_tostring_int() == 1)
 }
 
 test "toString bool" {
-    assert(test_tostring_bool() == 1)
+    @assert(test_tostring_bool() == 1)
 }
 
 // ─── String Interpolation ───────────────────────────────────
@@ -1240,11 +1240,11 @@ pub func test_interpolation_int() i32 {
 }
 
 test "interpolation" {
-    assert(test_interpolation() == 1)
+    @assert(test_interpolation() == 1)
 }
 
 test "interpolation int" {
-    assert(test_interpolation_int() == 1)
+    @assert(test_interpolation_int() == 1)
 }
 
 
@@ -1276,20 +1276,20 @@ pub func test_string_eq_param(a: String, b: String) i32 {
 }
 
 test "string eq" {
-    assert(test_string_eq() == 1)
+    @assert(test_string_eq() == 1)
 }
 
 test "string ne" {
-    assert(test_string_ne() == 1)
+    @assert(test_string_ne() == 1)
 }
 
 test "string eq literal" {
-    assert(test_string_eq_literal() == 1)
+    @assert(test_string_eq_literal() == 1)
 }
 
 test "string eq param" {
-    assert(test_string_eq_param("foo", "foo") == 1)
-    assert(test_string_eq_param("foo", "bar") == 0)
+    @assert(test_string_eq_param("foo", "foo") == 1)
+    @assert(test_string_eq_param("foo", "bar") == 0)
 }
 
 // ─── Bitfields ──────────────────────────────────────────────
@@ -1471,11 +1471,11 @@ pub func test_var_caller_promoted() f64 {
     return mul_point(pt)
 }
 
-// copy() on a const value produces an owned copy — auto-borrow is bypassed (CBOR-02)
+// @copy() on a const value produces an owned copy — auto-borrow is bypassed (CBOR-02)
 
 pub func test_const_copy() f64 {
     const pt: Point2D = Point2D(x: 1.0, y: 2.0)
-    var pt2: Point2D = copy(pt)
+    var pt2: Point2D = @copy(pt)
     pt2.x = 10.0
     return pt2.x + pt.x
 }
@@ -1513,11 +1513,11 @@ pub func test_error_void_fail() i32 {
     return 0
 }
 
-// ─── Bug fix: cast(EnumType, int) → @enumFromInt ─────────────
+// ─── Bug fix: @cast(EnumType, int) → @enumFromInt ─────────────
 
 pub func test_cast_to_enum() i32 {
     const raw: u8 = 1
-    const c: Color = cast(Color, raw)
+    const c: Color = @cast(Color, raw)
     match(c) {
         Green => { return 1 }
         else  => { return 0 }
@@ -1555,9 +1555,9 @@ pub func match_guard(n: i32) i32 {
 }
 
 test "match_guard" {
-    assert(match_guard(5) == 1)
-    assert(match_guard(0 - 3) == 0 - 1)
-    assert(match_guard(0) == 0)
+    @assert(match_guard(5) == 1)
+    @assert(match_guard(0 - 3) == 0 - 1)
+    @assert(match_guard(0) == 0)
 }
 
 pub func match_guard_scope(n: i32, threshold: i32) i32 {
@@ -1568,9 +1568,9 @@ pub func match_guard_scope(n: i32, threshold: i32) i32 {
 }
 
 test "match_guard_scope" {
-    assert(match_guard_scope(10, 5) == 1)
-    assert(match_guard_scope(3, 5) == 0)
-    assert(match_guard_scope(5, 5) == 0)
+    @assert(match_guard_scope(10, 5) == 1)
+    @assert(match_guard_scope(3, 5) == 0)
+    @assert(match_guard_scope(5, 5) == 0)
 }
 
 // ─── Negative literal arguments ──────────────────────────────
@@ -1588,5 +1588,5 @@ pub func test_negative_args() i32 {
 }
 
 test "negative literal args" {
-    assert(test_negative_args() == 1)
+    @assert(test_negative_args() == 1)
 }

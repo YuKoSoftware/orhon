@@ -82,20 +82,20 @@ func divide_with_throw(a: i32, b: i32) (Error | i32) {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 test "error handling" {
-    assert(divide_or_default(10, 2) == 5)
-    assert(divide_or_default(10, 0) == 0)
+    @assert(divide_or_default(10, 2) == 5)
+    @assert(divide_or_default(10, 0) == 0)
 }
 
 test "null handling" {
-    assert(value_or_default(5) == 50)
-    assert(value_or_default(0) == 0)
+    @assert(value_or_default(5) == 50)
+    @assert(value_or_default(0) == 0)
 }
 
 test "error void" {
-    assert(check_and_report(5) == 1)
-    assert(check_and_report(0 - 1) == 0)
+    @assert(check_and_report(5) == 1)
+    @assert(check_and_report(0 - 1) == 0)
 }
 
 test "throw propagation" {
-    assert(divide_with_throw(10, 2) == 5)
+    @assert(divide_with_throw(10, 2) == 5)
 }

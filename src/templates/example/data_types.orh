@@ -103,11 +103,11 @@ func read_via_ptr(n: i32) i32 {
 
 // ─── typeOf ─────────────────────────────────────────────────────────────────
 
-// typeOf(value) — returns the compile-time type of a value
+// @typeOf(value) — returns the compile-time type of a value
 
 compt func typeof_demo() bool {
     const x: i32 = 42
-    const T: type = typeOf(x)
+    const T: type = @typeOf(x)
     return T == i32
 }
 
@@ -144,60 +144,60 @@ func vector_scale() Vector(4, f32) {
 
 // ─── size / align / typename ─────────────────────────────────────────────────
 
-// size(T) — compile-time byte size of a type
+// @size(T) — compile-time byte size of a type
 
 func size_demo() i32 {
-    return size(i32)
+    return @size(i32)
 }
 
-// align(T) — compile-time alignment of a type
+// @align(T) — compile-time alignment of a type
 
 func align_demo() i32 {
-    return align(i64)
+    return @align(i64)
 }
 
-// typename(value) — returns the type name as a string at runtime
-// Example: typename(42) returns "i32"
+// @typename(value) — returns the type name as a string at runtime
+// Example: @typename(42) returns "i32"
 
 // ─── Ownership Builtins ───────────────────────────────────────────────────────
 
-// copy(value) — explicit deep copy, bypasses auto-borrow
-// move(value) — explicit move, original becomes invalid
+// @copy(value) — explicit deep copy, bypasses auto-borrow
+// @move(value) — explicit move, original becomes invalid
 
 func copy_demo() i32 {
     const a: [3]i32 = [1, 2, 3]
-    var b: [3]i32 = copy(a)
+    var b: [3]i32 = @copy(a)
     b[0] = 99
     return b[0]
 }
 
-// swap(a, b) — swaps two values in place
+// @swap(a, b) — swaps two values in place
 //   var x: i32 = 10
 //   var y: i32 = 20
-//   swap(x, y)     // x is now 20, y is now 10
+//   @swap(x, y)     // x is now 20, y is now 10
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 test "size and align" {
-    assert(size_demo() == 4)
-    assert(align_demo() == 8)
+    @assert(size_demo() == 4)
+    @assert(align_demo() == 8)
 }
 
 test "copy" {
-    assert(copy_demo() == 99)
+    @assert(copy_demo() == 99)
 }
 
 
 test "compound assignment" {
-    assert(compound_demo() == 19)
+    @assert(compound_demo() == 19)
 }
 
 test "safe pointer" {
-    assert(read_via_ptr(42) == 42)
+    @assert(read_via_ptr(42) == 42)
 }
 
 
 test "identity generic" {
     const x: i32 = identity(42)
-    assert(x == 42)
+    @assert(x == 42)
 }

@@ -120,8 +120,6 @@ param
 
 param_name
     <- IDENTIFIER / 'var' / 'const'
-     / 'cast' / 'copy' / 'move' / 'swap' / 'assert'
-     / 'size' / 'align' / 'typename' / 'typeid' / 'typeof'
 
 compt_decl
     <- 'compt' func_decl  {label: "compt declaration"}
@@ -415,9 +413,9 @@ compiler_func
     <- compiler_func_name '(' _ arg_list _ ')'  {label: "compiler function"}
 
 compiler_func_name
-    <- 'cast' / 'copy' / 'move' / 'swap'
-     / 'assert' / 'size' / 'align'
-     / 'typename' / 'typeid' / 'typeof'
+    <- '@' 'cast' / '@' 'copy' / '@' 'move' / '@' 'swap'
+     / '@' 'assert' / '@' 'size' / '@' 'align'
+     / '@' 'typename' / '@' 'typeid' / '@' 'typeof'
 
 # Note: wrap(), sat(), overflow() are parsed as regular function calls
 # (identifier + call_access) and handled specially in codegen, not the parser.
@@ -598,5 +596,6 @@ _               <- ([ \t\n] / '//' (!'\n' .)* '\n')*
 # func var const if else elif for while return throw import use
 # pub match struct enum bitfield defer thread null void compt
 # any module test and or not main as break continue true false
-# bridge is cast copy move swap assert size align typename
-# typeid typeof type
+# bridge is type
+# Compiler functions use @ prefix: @cast @copy @move @swap @assert
+# @size @align @typename @typeid @typeof

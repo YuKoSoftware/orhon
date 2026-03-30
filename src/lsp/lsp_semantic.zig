@@ -91,14 +91,13 @@ pub fn classifyToken(kind: lexer.TokenKind) TokenClassification {
         .kw_module, .kw_import, .kw_use, .kw_pub, .kw_bridge, .kw_compt, .kw_test,
         .kw_if, .kw_elif, .kw_else, .kw_for, .kw_while, .kw_return, .kw_match,
         .kw_break, .kw_continue, .kw_defer, .kw_thread, .kw_any,
-        .kw_and, .kw_or, .kw_not, .kw_as, .kw_is, .kw_cast,
-        .kw_copy, .kw_move, .kw_swap, .kw_true, .kw_false, .kw_null,
+        .kw_and, .kw_or, .kw_not, .kw_as, .kw_is,
+        .kw_true, .kw_false, .kw_null,
         .kw_void, .kw_main, .kw_type,
         => .{ .token_type = .keyword, .modifiers = 0 },
 
-        // Builtin functions
-        .kw_assert, .kw_size, .kw_align, .kw_typename, .kw_typeid, .kw_typeof,
-        => .{ .token_type = .function, .modifiers = SemanticModifier.readonly },
+        // @ prefix for compiler functions — classify as operator prefix
+        .at_sign => .{ .token_type = .operator, .modifiers = 0 },
 
         // Literals
         .string_literal => .{ .token_type = .string, .modifiers = 0 },

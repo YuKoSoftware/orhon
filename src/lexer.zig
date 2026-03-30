@@ -50,16 +50,6 @@ pub const TokenKind = enum {
     kw_false,
     kw_bridge,
     kw_is,
-    kw_cast,
-    kw_copy,
-    kw_move,
-    kw_swap,
-    kw_assert,
-    kw_size,
-    kw_align,
-    kw_typename,
-    kw_typeid,
-    kw_typeof,
     kw_throw,
     kw_type,
 
@@ -108,6 +98,7 @@ pub const TokenKind = enum {
     eof,
     invalid,
     hash,       // #
+    at_sign,    // @  (compiler function prefix)
     doc_comment, // /// documentation comment
 };
 
@@ -156,16 +147,6 @@ const KEYWORDS = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "false",    .kw_false },
     .{ "bridge",   .kw_bridge },
     .{ "is",       .kw_is },
-    .{ "cast",     .kw_cast },
-    .{ "copy",     .kw_copy },
-    .{ "move",     .kw_move },
-    .{ "swap",     .kw_swap },
-    .{ "assert",   .kw_assert },
-    .{ "size",     .kw_size },
-    .{ "align",    .kw_align },
-    .{ "typename", .kw_typename },
-    .{ "typeid",   .kw_typeid },
-    .{ "typeOf",   .kw_typeof },
     .{ "throw",    .kw_throw },
     .{ "type",     .kw_type },
 });
@@ -479,6 +460,7 @@ pub const Lexer = struct {
             '|' => .pipe,
             '&' => .ampersand,
             '#' => .hash,
+            '@' => .at_sign,
             else => .invalid,
         };
 

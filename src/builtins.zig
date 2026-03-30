@@ -15,7 +15,8 @@ pub const BUILTIN_TYPES = [_][]const u8{
     "Vector",
 };
 
-/// Compiler function names (called as keywords, no prefix)
+/// Compiler function names (called with @ prefix: @cast, @copy, etc.)
+/// The AST stores bare names (without @); this list is used for name-based lookups.
 pub const COMPILER_FUNCS = [_][]const u8{
     "typename",
     "typeid",

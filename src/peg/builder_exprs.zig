@@ -97,9 +97,12 @@ pub fn buildErrorLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 
 pub fn buildCompilerFunc(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // compiler_func <- compiler_func_name '(' _ arg_list _ ')'
+    // compiler_func_name <- '@' 'cast' / '@' 'copy' / ... (2 tokens: at_sign + identifier)
+    // The name is stored without '@' prefix so downstream passes are unchanged.
     var name: []const u8 = "";
     if (cap.findChild("compiler_func_name")) |cn| {
-        name = builder.tokenText(ctx, cn.start_pos);
+        // cn.start_pos = '@' token, cn.start_pos + 1 = identifier token (e.g. "cast")
+        name = builder.tokenText(ctx, cn.start_pos + 1);
     }
     var args_list = std.ArrayListUnmanaged(*Node){};
     try builder.collectExprsRecursive(ctx, cap, &args_list);

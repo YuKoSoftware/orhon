@@ -76,10 +76,10 @@ else fail "multi-target: exe built" "$OUTPUT"; fi
 if echo "$OUTPUT" | grep -q "Built:.*libmathlib.so"; then pass "multi-target: dynamic lib built"
 else fail "multi-target: dynamic lib built" "$OUTPUT"; fi
 
-if [ -f lib/libmathlib.so ]; then pass "multi-target: .so exists"
+if [ -f bin/libmathlib.so ]; then pass "multi-target: .so exists"
 else fail "multi-target: .so exists"; fi
 
-if [ -f lib/mathlib.orh ]; then pass "multi-target: interface file generated"
+if [ -f bin/mathlib.orh ]; then pass "multi-target: interface file generated"
 else fail "multi-target: interface file generated"; fi
 
 if ! echo "$OUTPUT" | grep -q "^error(gpa)"; then pass "multi-target: no memory leaks"
@@ -122,7 +122,7 @@ else fail "static-link: exe built" "$OUTPUT"; fi
 if echo "$OUTPUT" | grep -q "Built:.*libutils.a"; then pass "static-link: static lib built"
 else fail "static-link: static lib built" "$OUTPUT"; fi
 
-if [ -f lib/libutils.a ]; then pass "static-link: .a exists"
+if [ -f bin/libutils.a ]; then pass "static-link: .a exists"
 else fail "static-link: .a exists"; fi
 
 if ! echo "$OUTPUT" | grep -q "^error(gpa)"; then pass "static-link: no memory leaks"

@@ -1,0 +1,9 @@
+module async
+
+// async — atomic concurrency primitives for Orhon programs
+// Import with: use std::async (or import std::async)
+// Types are generic constructors: Atomic(i32), Atomic(bool)
+
+// Atomic(T) — lock-free atomic value
+
+pub bridge func Atomic(T: type) type

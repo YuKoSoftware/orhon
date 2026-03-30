@@ -1,0 +1,53 @@
+module snap_control
+
+// if/elif/else
+pub func classify(n: i32) i32 {
+    if(n < 0) {
+        return 0 - 1
+    } elif(n == 0) {
+        return 0
+    } else {
+        return 1
+    }
+}
+
+// match statement with 3 arms + default
+pub func day_name(d: i32) i32 {
+    match(d) {
+        1 => { return 10 }
+        2 => { return 20 }
+        3 => { return 30 }
+    }
+    return 0
+}
+
+// for loop over a slice parameter
+pub func sum_slice(arr: []i32) i32 {
+    var total: i32 = 0
+    for(arr) |val| {
+        total += val
+    }
+    return total
+}
+
+// while loop with break
+pub func first_positive(limit: i32) i32 {
+    var i: i32 = 0
+    while(i < limit) {
+        i += 1
+        if(i > 0) {
+            break
+        }
+    }
+    return i
+}
+
+// defer
+pub func with_defer() i32 {
+    var x: i32 = 0
+    defer {
+        x = 0
+    }
+    x = 42
+    return x
+}

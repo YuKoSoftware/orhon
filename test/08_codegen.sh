@@ -99,4 +99,40 @@ else
     fail "interpolation propagates OOM (no catch unreachable)"
 fi
 
+# ── Codegen snapshot tests ───────────────────────────────────
+
+section "Codegen snapshots"
+
+snapshot_test() {
+    local name="$1"
+    local projdir="$TESTDIR/snap_${name}"
+    mkdir -p "$projdir/src"
+    cp "$REPO_DIR/test/snapshots/snap_${name}.orh" "$projdir/src/snap_${name}.orh"
+    cp "$REPO_DIR/test/snapshots/snap_${name}_main.orh" "$projdir/src/main.orh"
+    cd "$projdir"
+    "$ORHON" build >/dev/null 2>&1 || true
+
+    local generated=".orh-cache/generated/snap_${name}.zig"
+    local expected="$REPO_DIR/test/snapshots/expected/snap_${name}.zig"
+
+    if [ ! -f "$generated" ]; then
+        fail "snapshot: $name" "generated file not found"
+        return
+    fi
+
+    local diff_out
+    diff_out=$(git diff --no-index "$expected" "$generated" 2>&1) || true
+    if [ -z "$diff_out" ]; then
+        pass "snapshot: $name"
+    else
+        fail "snapshot: $name" "codegen output differs from expected"
+        echo "$diff_out" | head -20
+    fi
+}
+
+snapshot_test "basics"
+snapshot_test "structs"
+snapshot_test "control"
+snapshot_test "errors"
+
 report_results

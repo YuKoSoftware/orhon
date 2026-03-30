@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v0.10
 milestone_name: milestone
 status: v0.17 shipped — ready for next milestone
-stopped_at: Completed quick-260330-doe
-last_updated: "2026-03-30T07:00:53.983Z"
+stopped_at: Completed quick-260330-e1b
+last_updated: "2026-03-30T07:15:36.909Z"
 last_activity: 2026-03-30
 progress:
-  total_phases: 14
+  total_phases: 13
   completed_phases: 13
   total_plans: 21
   completed_plans: 21
@@ -65,6 +65,9 @@ None.
 - 260330-04a: Comma-separated library names in #cimport name field
 - 260330-0pb: PEG labeled failures — 14 rules annotated
 - 260330-c0f: Expand PEG labeled failures — 42 total rules annotated (28 added)
+- 260330-ck9: Dynamic library output lib/ split — attempted and reverted (needs rpath)
+- 260330-doe: MIR residual AST audit — 4 migrated, 6 documented as permanent boundary
+- 260330-e1b: Codegen snapshot tests — 4 fixture pairs, diff-based regression detection
 
 ### Blockers/Concerns
 
@@ -73,5 +76,5 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-30
-Stopped at: Completed quick-260330-doe
+Stopped at: Completed quick-260330-e1b
 Resume file: None

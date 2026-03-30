@@ -1,0 +1,9 @@
+module main
+#name    = "snap_basics"
+#version = Version(1, 0, 0)
+#build   = exe
+
+import snap_basics
+
+func main() void {
+}

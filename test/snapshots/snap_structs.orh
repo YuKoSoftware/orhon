@@ -1,0 +1,47 @@
+module snap_structs
+
+// pub struct with pub fields
+pub struct Point {
+    pub x: f32
+    pub y: f32
+    pub label: String
+}
+
+// struct with a method (const &Self parameter)
+pub struct Circle {
+    pub radius: f32
+
+    pub func area(self: const &Circle) f32 {
+        return self.radius * self.radius
+    }
+}
+
+// struct with default field values
+pub struct Config {
+    pub name: String
+    pub count: i32 = 0
+    pub enabled: bool = true
+}
+
+// enum(u8) with 3 variants
+pub enum(u8) Direction {
+    North
+    South
+    East
+}
+
+// enum with a method
+pub enum(u8) Color {
+    Red
+    Green
+    Blue
+
+    pub func is_warm(self: const &Color) bool {
+        match(self) {
+            Red => { return true }
+            Green => { return false }
+            Blue => { return false }
+        }
+        return false
+    }
+}

@@ -1,0 +1,9 @@
+module main
+#name    = "snap_structs"
+#version = Version(1, 0, 0)
+#build   = exe
+
+import snap_structs
+
+func main() void {
+}

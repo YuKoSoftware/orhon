@@ -266,9 +266,9 @@ pub fn generateInterface(
         try emitInterfaceDecl(node, &buf, alloc);
     }
 
-    // Write to lib/<binary_name>.orh
-    try std.fs.cwd().makePath("lib");
-    const path = try std.fmt.allocPrint(alloc, "lib/{s}.orh", .{binary_name});
+    // Write to bin/<binary_name>.orh
+    try std.fs.cwd().makePath("bin");
+    const path = try std.fmt.allocPrint(alloc, "bin/{s}.orh", .{binary_name});
     defer alloc.free(path);
     const file = try std.fs.cwd().createFile(path, .{});
     defer file.close();

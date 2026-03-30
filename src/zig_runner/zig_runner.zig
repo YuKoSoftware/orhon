@@ -112,9 +112,8 @@ pub const ZigRunner = struct {
             return false;
         }
 
-        // Copy all artifacts to bin/ (executables) or lib/ (libraries)
+        // Copy all artifacts to bin/
         try std.fs.cwd().makePath("bin");
-        try std.fs.cwd().makePath("lib");
 
         for (targets) |t| {
             const is_lib = !std.mem.eql(u8, t.build_type, "exe");
@@ -127,7 +126,7 @@ pub const ZigRunner = struct {
             defer self.allocator.free(src_bin);
 
             const dst_name = if (is_lib)
-                try std.fmt.allocPrint(self.allocator, "lib/lib{s}{s}", .{ t.project_name, ext })
+                try std.fmt.allocPrint(self.allocator, "bin/lib{s}{s}", .{ t.project_name, ext })
             else
                 try std.fs.path.join(self.allocator, &.{ "bin", t.project_name });
             defer self.allocator.free(dst_name);
@@ -201,7 +200,7 @@ pub const ZigRunner = struct {
 
         // Determine source and destination paths based on build type.
         // exe  → zig-out/bin/<name>     → bin/<name>
-        // static/dynamic → zig-out/lib/lib<name>.a → lib/lib<name>.a
+        // static/dynamic → zig-out/lib/lib<name>.a → bin/lib<name>.a
         const is_lib = !std.mem.eql(u8, build_type, "exe");
         const ext: []const u8 = if (std.mem.eql(u8, build_type, "dynamic")) ".so" else ".a";
 
@@ -211,14 +210,10 @@ pub const ZigRunner = struct {
             try std.fs.path.join(self.allocator, &.{ cache.GENERATED_DIR, "zig-out", "bin", project_name });
         defer self.allocator.free(src_bin);
 
-        if (is_lib) {
-            try std.fs.cwd().makePath("lib");
-        } else {
-            try std.fs.cwd().makePath("bin");
-        }
+        try std.fs.cwd().makePath("bin");
 
         const dst_name = if (is_lib)
-            try std.fmt.allocPrint(self.allocator, "lib/lib{s}{s}", .{ project_name, ext })
+            try std.fmt.allocPrint(self.allocator, "bin/lib{s}{s}", .{ project_name, ext })
         else
             try std.fs.path.join(self.allocator, &.{ "bin", project_name });
         defer self.allocator.free(dst_name);

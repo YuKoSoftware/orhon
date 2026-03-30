@@ -45,7 +45,7 @@ module_decl
     <- doc_block? 'module' (IDENTIFIER / 'main') NL  {label: "module declaration"}
 
 metadata
-    <- '#' metadata_body NL
+    <- '#' metadata_body NL  {label: "metadata directive"}
 
 metadata_body
     <- 'dep' expr expr?                         # #dep "path" Version?
@@ -107,7 +107,7 @@ func_decl
     <- 'func' func_name '(' _ param_list _ ')' type (block / TERM)  {label: "function declaration"}
 
 thread_decl
-    <- 'thread' func_name '(' _ param_list _ ')' type block
+    <- 'thread' func_name '(' _ param_list _ ')' type block  {label: "thread declaration"}
 
 func_name
     <- IDENTIFIER / 'main'
@@ -116,7 +116,7 @@ param_list
     <- (param (_ ',' _ param)* (_ ',')?)?
 
 param
-    <- param_name ':' type ('=' expr)?
+    <- param_name ':' type ('=' expr)?  {label: "parameter"}
 
 param_name
     <- IDENTIFIER / 'var' / 'const'
@@ -124,7 +124,7 @@ param_name
      / 'size' / 'align' / 'typename' / 'typeid' / 'typeof'
 
 compt_decl
-    <- 'compt' func_decl
+    <- 'compt' func_decl  {label: "compt declaration"}
 
 
 # ============================================================
@@ -144,7 +144,7 @@ struct_member
     <- doc_block? 'pub'? (func_decl / var_decl / const_decl / compt_decl / field_decl)
 
 field_decl
-    <- IDENTIFIER ':' type ('=' expr)? TERM
+    <- IDENTIFIER ':' type ('=' expr)? TERM  {label: "field declaration"}
 
 
 # ============================================================
@@ -169,7 +169,7 @@ enum_variant
 # ============================================================
 
 bitfield_decl
-    <- 'bitfield' '(' type ')' IDENTIFIER '{' _ bitfield_body _ '}'
+    <- 'bitfield' '(' type ')' IDENTIFIER '{' _ bitfield_body _ '}'  {label: "bitfield declaration"}
 
 bitfield_body
     <- (IDENTIFIER TERM _)*
@@ -180,7 +180,7 @@ bitfield_body
 # ============================================================
 
 bridge_decl
-    <- 'bridge' (bridge_func / bridge_const / bridge_struct)
+    <- 'bridge' (bridge_func / bridge_const / bridge_struct)  {label: "bridge declaration"}
 
 bridge_func
     <- 'func' func_name '(' _ param_list _ ')' type TERM
@@ -216,7 +216,7 @@ destruct_tail
 # ============================================================
 
 test_decl
-    <- 'test' STRING_LITERAL block
+    <- 'test' STRING_LITERAL block  {label: "test declaration"}
 
 
 # ============================================================
@@ -245,7 +245,7 @@ return_stmt
     <- 'return' (!NL !'}' !EOF expr)? TERM  {label: "return statement"}
 
 throw_stmt
-    <- 'throw' IDENTIFIER TERM
+    <- 'throw' IDENTIFIER TERM  {label: "throw statement"}
 
 if_stmt
     <- 'if' '(' expr ')' block elif_chain?  {label: "if statement"}
@@ -265,13 +265,13 @@ for_captures
      / IDENTIFIER (',' IDENTIFIER)?                              # simple: |val, i|
 
 defer_stmt
-    <- 'defer' block
+    <- 'defer' block  {label: "defer statement"}
 
 match_stmt
     <- 'match' expr '{' _ match_arm* _ '}'  {label: "match statement"}
 
 match_arm
-    <- _ match_pattern '=>' block _
+    <- _ match_pattern '=>' block _  {label: "match arm"}
 
 match_pattern
     <- 'else'
@@ -283,10 +283,10 @@ parenthesized_pattern
      / '(' _ expr _ ')'                         # parenthesized value or range: (1..10)
 
 break_stmt
-    <- 'break' TERM
+    <- 'break' TERM  {label: "break statement"}
 
 continue_stmt
-    <- 'continue' TERM
+    <- 'continue' TERM  {label: "continue statement"}
 
 expr_or_assignment
     <- expr assign_op expr TERM
@@ -307,7 +307,7 @@ assign_op
 # Each level calls the next level down.
 
 expr
-    <- range_expr
+    <- range_expr  {label: "expression"}
 
 # Level 12 — Range (non-associative)
 range_expr
@@ -412,7 +412,7 @@ primary_expr
 
 # Built-in compiler functions
 compiler_func
-    <- compiler_func_name '(' _ arg_list _ ')'
+    <- compiler_func_name '(' _ arg_list _ ')'  {label: "compiler function"}
 
 compiler_func_name
     <- 'cast' / 'copy' / 'move' / 'swap'
@@ -432,17 +432,17 @@ string_literal
     <- STRING_LITERAL                           # may contain @{expr} interpolation
 
 array_literal
-    <- '[' _ (expr (_ ',' _ expr)* (_ ',')?)? _ ']'
+    <- '[' _ (expr (_ ',' _ expr)* (_ ',')?)? _ ']'  {label: "array literal"}
 
 tuple_literal
-    <- '(' _ IDENTIFIER ':' expr (_ ',' _ IDENTIFIER ':' expr)* (_ ',')? _ ')'
+    <- '(' _ IDENTIFIER ':' expr (_ ',' _ IDENTIFIER ':' expr)* (_ ',')? _ ')'  {label: "tuple literal"}
 
 grouped_expr
     <- '(' _ expr _ ')'
 
 # Error literal: Error("message")
 error_literal
-    <- 'Error' '(' STRING_LITERAL ')'
+    <- 'Error' '(' STRING_LITERAL ')'  {label: "error literal"}
 
 # Collection constructors
 collection_expr
@@ -456,7 +456,7 @@ oring_expr  <- 'ORing' '(' type ',' expr ')'
 
 # Anonymous struct expression: struct { field: Type ... }
 struct_expr
-    <- 'struct' '{' _ (('pub')? field_decl _)* _ '}'
+    <- 'struct' '{' _ (('pub')? field_decl _)* _ '}'  {label: "struct expression"}
 
 # Plain identifier — variable, function name, enum variant
 identifier_expr
@@ -497,11 +497,11 @@ type
 
 # const &T — immutable reference
 borrow_type
-    <- 'const' '&' type
+    <- 'const' '&' type  {label: "borrow type"}
 
 # &T — mutable reference
 ref_type
-    <- '&' type
+    <- '&' type  {label: "reference type"}
 
 # Parenthesized type — dispatches based on content:
 #   ()                          → void
@@ -512,19 +512,19 @@ paren_type
     <- '(' _ ')'                                                        # void
      / '(' _ IDENTIFIER ':' type (_ ',' _ IDENTIFIER ':' type)* _ ')'  # named tuple
      / '(' _ type (_ '|' _ type)+ _ ')'                                # union
-     / '(' _ type _ ')'                                                 # grouped
+     / '(' _ type _ ')'  {label: "parenthesized type"}                 # grouped
 
 # []T — slice type
 slice_type
-    <- '[' ']' type
+    <- '[' ']' type  {label: "slice type"}
 
 # [n]T — array type
 array_type
-    <- '[' expr ']' type
+    <- '[' expr ']' type  {label: "array type"}
 
 # func(T, U) R — function type
 func_type
-    <- 'func' '(' _ type_list _ ')' type
+    <- 'func' '(' _ type_list _ ')' type  {label: "function type"}
 
 type_list
     <- (type (_ ',' _ type)* (_ ',')?)?
@@ -540,7 +540,7 @@ scoped_type
 # Name(T, U) — generic type instantiation
 # Special: Vector first arg is expr, Ring/ORing second arg is expr
 generic_type
-    <- IDENTIFIER '(' _ generic_arg_list _ ')'
+    <- IDENTIFIER '(' _ generic_arg_list _ ')'  {label: "generic type"}
 
 generic_arg_list
     <- (type_or_expr (_ ',' _ type_or_expr)* (_ ',')?)?
@@ -564,7 +564,7 @@ keyword_type
 # Doc comments (///) attach to the declaration that follows them.
 # Multiple consecutive /// lines merge into a single doc block.
 doc_block
-    <- DOC_COMMENT+
+    <- DOC_COMMENT+  {label: "doc comment"}
 
 
 # ============================================================

@@ -30,18 +30,14 @@ regular identifiers — user methods can use them freely (e.g., `Atomic(T).swap(
 
 These are the highest-impact language changes. Every user benefits immediately.
 
-### Non-lexical lifetimes (NLL)
+### ~~Non-lexical lifetimes (NLL)~~ DONE (v0.10.33)
 
-Move borrow checker from lexical lifetimes to "borrow ends at last use." Currently
-borrows are dropped at scope exit (`dropBorrowsAtDepth`). NLL accepts more valid
-programs without sacrificing safety — eliminates the most common "fighting the borrow
-checker" scenarios.
-
-**Implementation:** build use-def chains during type resolution, use them in borrow
-checking. A borrow's lifetime extends from creation to the last use of the reference,
-not to the end of the scope. ~85% of Rust's safety for ~30% of Polonius complexity.
-
-Full Polonius (flow-sensitive dataflow analysis) is overkill for Orhon.
+~~Move borrow checker from lexical lifetimes to "borrow ends at last use."~~
+Shipped. Borrows now end at the last use of the reference variable, not at scope
+exit. Pre-scan builds a last-use map per block, `dropExpiredBorrows()` releases
+borrows after their reference is no longer needed. Temporary borrows (expression-level)
+keep existing immediate-cleanup behavior. `dropBorrowsAtDepth()` remains as a
+scope-exit safety net.
 
 ---
 

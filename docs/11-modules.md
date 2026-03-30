@@ -174,7 +174,7 @@ my_utils.doSomething()
 ```
 
 ### Library Interface File
-When compiling a `#build = static` or `#build = dynamic` module, the compiler generates
+When compiling a `#build = static` or `#build = dynamic` module (see [[13-build-cli]]), the compiler generates
 a `.orh` interface file alongside the binary output. This file contains only the
 `pub` declarations — functions, types, structs — and serves as the public API surface.
 

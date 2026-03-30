@@ -128,7 +128,7 @@ The exact mechanism for checking the flag inside the body is TBD (may be automat
 
 ## Sharing Data Between Threads
 
-No shared mutable state. Data must be explicitly split using `splitAt` — a single atomic operation that consumes the original and produces two non-overlapping pieces. Passing the same owned value to two threads is a compile time error.
+No shared mutable state. Data must be explicitly split using [[06-collections#`splitAt` — Atomic Slice Split|splitAt]] — a single atomic operation that consumes the original and produces two non-overlapping pieces. Passing the same owned value to two threads is a compile time error.
 
 ```
 // atomic split — data consumed, no overlap possible
@@ -147,7 +147,7 @@ const b: Handle([]i32) = process_right(right)
 
 ## Error Handling in Threads
 
-If the thread body can produce an error, the return type is `(Error | T)`. The error must be handled before scope exit — unhandled errors crash the program.
+If the thread body can produce an error, the return type is `(Error | T)` (see [[08-error-handling]]). The error must be handled before scope exit — unhandled errors crash the program.
 
 ```
 thread risky_work() Handle((Error | i32)) {

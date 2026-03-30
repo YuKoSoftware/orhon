@@ -111,7 +111,7 @@ Underscore separators are ignored by the compiler, purely for human readability.
 ## Type System
 
 ### Type annotation
-Explicit when ambiguous, optional when unambiguous. See the variables doc for full rules. Numeric literals always require an explicit type.
+Explicit when ambiguous, optional when unambiguous. See [[03-variables]] for full rules. Numeric literals always require an explicit type.
 
 ### Generics with `any`
 `any` replaces `<T>` syntax. Always resolved at compile time — the compiler generates a typed version per usage. Hard compiler error if the type cannot be determined at compile time.

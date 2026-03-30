@@ -342,9 +342,10 @@ pub const DeclCollector = struct {
 
         try self.table.structs.put(s.name, sig);
 
-        // Register bridge struct methods into struct_methods so MIR can detect const & params.
+        // Register struct methods into struct_methods so borrow checker and MIR can
+        // detect self parameter mutability. All structs, not just bridge structs.
         // Key: "StructName.method" to avoid collisions with same-named methods on other structs.
-        if (s.is_bridge) {
+        {
             for (s.members) |member| {
                 if (member.* == .func_decl) {
                     const f = member.func_decl;
@@ -366,7 +367,7 @@ pub const DeclCollector = struct {
                         .is_compt = f.is_compt,
                         .is_pub = f.is_pub,
                         .is_thread = f.is_thread,
-                        .is_bridge = true, // methods on bridge structs are always bridge
+                        .is_bridge = s.is_bridge,
                     };
                     const key = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ s.name, f.name });
                     try self.table.struct_methods.put(self.allocator, key, method_sig);

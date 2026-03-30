@@ -97,7 +97,7 @@ match s {
 }
 ```
 
-`match` works on integers, strings, ranges, enum variants, and union types:
+`match` works on integers, strings, ranges, [[10-structs-enums#Enums|enum]] variants, and [[02-types#Unions|union]] types:
 ```
 match value {
     0       => { }    // exact integer
@@ -161,7 +161,7 @@ Guarded and unguarded arms can coexist freely in the same match block.
 
 ### Matching on Union Types
 
-`match` can branch on which type a `(Error | T)` or `(null | T)` union currently holds.
+`match` can branch on which type a `(Error | T)` or `(null | T)` union currently holds (see [[08-error-handling]]).
 Arms are type names — no binding syntax needed, access the payload via the usual dot syntax.
 
 ```
@@ -182,7 +182,7 @@ The two arm kinds never mix in the same `match` block — value matching and typ
 
 ### Type Checking in `compt` Functions
 
-Use `is` / `is not` to branch on type inside a `compt func`:
+Use `is` / `is not` to branch on type inside a [[05-functions#`compt` Functions|compt func]]:
 
 ```
 compt func describe(val: any) String {

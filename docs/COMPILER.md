@@ -4,7 +4,7 @@
 
 ## Compilation Pipeline
 
-Each pass runs only if the previous succeeded. Multiple errors per pass are collected before stopping.
+Each pass runs only if the previous succeeded. Multiple errors per pass are collected before stopping. See [[13-build-cli]] for how to invoke the pipeline.
 
 ```
 Source (.orh)

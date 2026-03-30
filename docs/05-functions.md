@@ -117,7 +117,7 @@ for(arr) |val| {
     result = val * multiplier    // inner scope reads outer variable
 }
 ```
-For callback patterns, pass context as extra arguments or wrap state in a struct.
+For callback patterns, pass context as extra arguments or wrap state in a [[10-structs-enums|struct]].
 
 ---
 
@@ -184,7 +184,7 @@ size(i32) * 8      // 32 — bits, just multiply by 8
 ```
 
 ### `align` — alignment in bytes
-Returns the alignment requirement of a type or value in bytes. Essential for custom allocators, C interop, hardware access, and SIMD operations.
+Returns the alignment requirement of a type or value in bytes. Essential for custom [[09-memory#Memory Allocation|allocators]], [[14-zig-bridge|C interop]], hardware access, and SIMD operations.
 ```
 align(i32)         // 4 — must be on a 4 byte boundary
 align(f64)         // 8
@@ -198,7 +198,7 @@ align(MyStruct)    // largest alignment of any field in the struct
 Always available without any import. Have a real runtime presence — produce actual code in the output binary.
 
 ### Error
-`Error` is a distinct `String` type. An error is just a message — the `String` carries all the information needed to trace and fix the problem. Can be created inline or stored as a named constant for reuse.
+`Error` is a distinct `String` type (see [[08-error-handling]]). An error is just a message — the `String` carries all the information needed to trace and fix the problem. Can be created inline or stored as a named constant for reuse.
 
 ```
 // inline

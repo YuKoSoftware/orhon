@@ -17,7 +17,7 @@ test "is_positive works" {
 }
 ```
 
-Run all tests with `orhon test`. Tests live in the same file as the code they test.
+Run all tests with [[13-build-cli|`orhon test`]]. Tests live in the same file as the code they test.
 
 ---
 
@@ -35,7 +35,7 @@ assert(x > 0, "x must be positive")  // panics with custom message
 
 ### `std::testing` — stdlib assertions
 
-Import the testing module for richer assertions:
+[[11-modules#Import Syntax|Import]] the testing module for richer assertions:
 
 ```
 use std::testing

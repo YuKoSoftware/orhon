@@ -13,7 +13,7 @@
 - **Primitives** (`i32`, `i64`, `u8`, `f64`, `bool`, `usize`, `isize`, `String` etc.) — silently copy on assignment, compiler does not track them. `String` is `[]const u8` under the hood (a pointer + length), so copying is always cheap (16 bytes).
 - **`var` non-primitives** (structs, slices, user types) — move by default, compiler tracks ownership
 - **`const` non-primitives** — auto-borrowed as `const&` when passed by value. The compiler passes a read-only reference instead of copying. No silent deep copies. Use `copy()` when you actually need a copy.
-- `move` for explicit move intent
+- `move` for explicit move intent (see [[05-functions#Compiler Functions]])
 - `copy` for explicit copies of non-primitives
 - For mutable byte manipulation, use `[]u8` (mutable array) — this is a move type
 
@@ -75,7 +75,15 @@ struct Game {
 ```
 
 ### Lifetimes
-No lifetime annotations ever. The language stays simple — complexity lives in `@` compiler functions. Functions cannot return references — only owned values. If you need to return borrowed data, use `copy` to return an owned copy. Lexical lifetimes only — a borrow is valid only within the block it was created in.
+No lifetime annotations ever. The language stays simple — complexity lives in `@` compiler functions. Functions cannot return references — only owned values. If you need to return borrowed data, use `copy` to return an owned copy.
+
+Non-lexical lifetimes (NLL) — a borrow ends at the **last use** of the reference variable, not at the end of the block. This accepts more valid programs without sacrificing safety:
+```
+var data: MyStruct = getData()
+const ref: const& MyStruct = const& data    // borrow starts
+read(ref)                                    // last use of ref — borrow ends here
+mutate(mut& data)                           // OK — borrow already expired
+```
 
 ### Structs and Ownership
 Structs are atomic ownership units — all fields move together or none do.
@@ -268,4 +276,4 @@ All allocators follow the same interface: `Type.create()` to instantiate, `.allo
 
 ### Custom Allocators
 
-Custom allocators must be implemented in Zig as bridge sidecars — Orhon code uses allocators but does not build them. See the bridge module documentation for the pattern.
+Custom allocators must be implemented in Zig as bridge sidecars — Orhon code uses allocators but does not build them. See [[14-zig-bridge]] for the bridge pattern.

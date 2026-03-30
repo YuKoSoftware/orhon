@@ -46,7 +46,7 @@ In a correctly implemented compiler, Zig errors should never reach the user — 
 
 ## Generated Zig Output — One File per Module
 
-Each Orhon module compiles to exactly one Zig source file. Orhon is essentially a transpiler — its entire job is producing a valid Zig project from Orhon source. Everything after that is Zig's responsibility.
+Each Orhon module compiles to exactly one Zig source file. Orhon is essentially a transpiler — its entire job is producing a valid Zig project from Orhon source (see [[COMPILER]] for the full pipeline). Everything after that is Zig's responsibility.
 
 ```
 .orh source files

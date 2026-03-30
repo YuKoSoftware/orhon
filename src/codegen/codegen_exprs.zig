@@ -649,8 +649,13 @@ pub fn generateCoercedExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         },
         .value_to_const_ref => {
             // T → *const T: take address for const & parameter passing
-            try cg.emit("&");
-            try cg.generateExprMir(m);
+            // Skip extra & if the expression is already an explicit borrow (const &x)
+            if (m.kind == .borrow) {
+                try cg.generateExprMir(m);
+            } else {
+                try cg.emit("&");
+                try cg.generateExprMir(m);
+            }
         },
     }
 }

@@ -44,7 +44,7 @@ pub fn println(msg: []const u8) void {
 ## Bridge Safety Rules
 
 Mutable references cannot cross the bridge in either direction. This ensures Orhon's
-safety guarantees are maintained at the boundary.
+[[09-memory#Borrow Rules|safety guarantees]] are maintained at the boundary.
 
 | Direction | `T` (value) | `const& T` | `mut& T` (mutable) |
 |-----------|------------|------------|-----------------|
@@ -158,7 +158,7 @@ pub struct List(T: type) {
 
 ## Error Union Return Types
 
-When a `bridge func` returns `(Error | T)`, the Zig sidecar must return `anyerror!T`
+When a `bridge func` returns `(Error | T)` (see [[08-error-handling]]), the Zig sidecar must return `anyerror!T`
 (native Zig error union). Use Zig error codes for failures.
 
 ```zig
@@ -184,7 +184,7 @@ pub fn find(key: []const u8) ?[]const u8 {
 C interop goes through `.zig` bridge files. The `.orh` file exposes a clean Orhon API,
 the `.zig` file handles all C details internally.
 
-Use `#cimport` in the anchor file to declare C library dependencies. The block must
+Use `#cimport` in the [[11-modules#Module Declaration|anchor file]] to declare C library dependencies. The block must
 always include `name:` and `include:` keys. The compiler generates the correct
 `linkSystemLibrary` + `linkLibC` calls and a shared `@cImport` wrapper module
 in the build system.

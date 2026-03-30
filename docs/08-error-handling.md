@@ -2,7 +2,7 @@
 
 ## Error Handling
 
-Functions that can fail return a union of `Error` and the success type. No exceptions, no monads — just a union and a type check. Errors map directly to native Zig error codes. If unhandled before scope exit, the compiler rejects the code.
+Functions that can fail return a [[02-types#Unions|union]] of `Error` and the success type. No exceptions, no monads — just a union and a type check. Errors map directly to native Zig error codes (see [[14-zig-bridge#Error Union Return Types|Zig mapping]]). If unhandled before scope exit, the compiler rejects the code.
 
 ```
 const ErrDivByZero = Error("division by zero")

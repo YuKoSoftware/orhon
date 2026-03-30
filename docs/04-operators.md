@@ -77,7 +77,7 @@ var a: []i32 = [1, 2] ++ [3, 4]       // array concatenation, types must match
 ```
 
 ## No Implicit Numeric Casts
-Mixing numeric types in expressions is a compile error. All conversions must be explicit via `cast(T, x)`.
+Mixing numeric types in expressions is a compile error. All conversions must be explicit via `cast(T, x)` (see [[05-functions#Compiler Functions]]).
 ```
 var x: i32 = 42
 var f: f32 = 3.14
@@ -92,7 +92,7 @@ var z = cast(f32, x) + f    // OK — explicit cast
 Silent wrap around by default. Use explicit builtins when you need controlled behavior. All are builtin functions — no import needed.
 
 ```
-overflow(a + b)    // returns (Error | T) if overflow occurs — handle or propagates
+overflow(a + b)    // returns (Error | T) if overflow occurs — handle or propagate (see [[08-error-handling]])
 wrap(a + b)        // explicitly wraps around, documents intent, always succeeds
 sat(a + b)         // saturating arithmetic, clamps to max/min value, always succeeds
 ```

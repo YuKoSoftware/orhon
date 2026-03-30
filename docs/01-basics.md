@@ -54,7 +54,7 @@ cast, copy, move, swap, assert, size, align, typename, typeid
 - No semicolons — each line does one job, newline terminates a statement
 - Parentheses `()` required around `if` and `while` conditions
 - No naming conventions enforced — style is up to the programmer
-- No operator overloading — but math operators work element-wise on tuples (see operators doc)
+- No operator overloading — but math operators work element-wise on tuples (see [[04-operators]])
 - Shadowing is not allowed — compile time error
 - Inner scopes can read outer scope variables
 
@@ -122,19 +122,19 @@ the type name carries meaning.
 
 Exceptions create invisible control flow paths. Every function might throw, and nothing
 in the signature tells you. Orhon uses `(Error | T)` union types — the error possibility
-is visible in the return type. `throw` propagates errors explicitly. The compiler tracks
+is visible in the return type. `throw` propagates errors explicitly (see [[08-error-handling]]). The compiler tracks
 error flow through every path.
 
 ### No garbage collection — compile-time memory management
 
 Orhon is a systems language. GC pauses, unpredictable memory usage, and runtime overhead
 contradict the performance goals. Memory is managed through ownership, borrowing, and
-explicit allocators. The compiler verifies safety at compile time — no runtime cost.
+explicit allocators (see [[09-memory]]). The compiler verifies safety at compile time — no runtime cost.
 
 ### No macros — `compt` covers it
 
 Macros are powerful but create a language-within-a-language. Code that looks like Orhon
-but follows different rules. `compt` (compile-time evaluation) covers the same use
+but follows different rules. `compt` (compile-time evaluation, see [[05-functions]]) covers the same use
 cases — type generation, constant computation, conditional compilation — using regular
 Orhon syntax. What you write in a `compt` function is the same language you write
 everywhere else.

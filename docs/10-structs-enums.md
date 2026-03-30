@@ -70,7 +70,7 @@ var cfg = Config(width: 1920, height: 1080)                     // fullscreen us
 - Fields are private by default — `pub` makes them accessible outside the module
 
 ### Generic Structs
-Structs can take type parameters. The compiler generates a concrete type for each usage.
+Structs can take type parameters (see [[02-types#Generics with `any`]]). The compiler generates a concrete type for each usage.
 ```
 pub struct Pair(A: type, B: type) {
     pub first: A
@@ -158,7 +158,7 @@ var s: Shape = Circle(radius: 5.0)
 ```
 
 ### Methods on Enums
-Same rules as structs — `self` as first argument, match on self inside:
+Same rules as structs — `self` as first argument, [[07-control-flow#Pattern Matching|match]] on self inside:
 ```
 enum(u32) Shape {
     Circle(radius: f32)

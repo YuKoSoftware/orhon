@@ -193,7 +193,7 @@ pub const ResolvedType = union(enum) {
     };
 
     pub const Ptr = struct {
-        kind: []const u8, // "var &" or "const &"
+        kind: []const u8, // "mut&" or "const&"
         elem: *const ResolvedType,
     };
 

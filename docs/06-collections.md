@@ -31,7 +31,7 @@ var arr: []i32 = [1, 2, 3, 4, 5]
 
 ## `splitAt` — Atomic Slice Split
 
-Splits a slice into two non-overlapping owned halves in a single atomic operation. The original slice is consumed — invalid after split. Used for safely sharing data between threads.
+Splits a slice into two non-overlapping owned halves in a single atomic operation. The original slice is consumed — invalid after split. Used for safely sharing data between [[12-concurrency|threads]].
 
 ```
 var data: []i32 = [1, 2, 3, 4, 5, 6]
@@ -45,7 +45,7 @@ Hard compiler error if split index is out of range.
 
 ## Collection Types (stdlib)
 
-`List(T)`, `Map(K, V)`, and `Set(T)` are generic collection types in `std::collections`. They are **not** builtin types — they require an explicit import like any other module.
+`List(T)`, `Map(K, V)`, and `Set(T)` are generic collection types in `std::collections`. They are **not** builtin types — they require an explicit [[11-modules#Import Syntax|import]] like any other module.
 
 ```
 use std::collections

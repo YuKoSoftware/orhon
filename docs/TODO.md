@@ -162,6 +162,14 @@ learning = more adoption. Elm, Gleam, and Rust set the bar.
 - Common mistake detection — try token insertions/deletions at failure point
   ("missing ':' in variable declaration")
 
+### Docgen — wire `#description` as module summary
+
+`#description = "..."` in anchor files is accepted but ignored by docgen.
+Should be used as the module-level summary at the top of generated docs.
+`///` doc comments remain for individual declarations only — not for modules.
+This keeps multi-file modules clean: one description in the anchor, per-decl
+docs wherever the declaration lives.
+
 ### Formatter — line-length awareness
 
 Current formatter handles indentation and blank lines but has no concept of line length.

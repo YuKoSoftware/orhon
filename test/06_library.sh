@@ -14,19 +14,19 @@ cd "$TESTDIR/testlib"
 sed -i 's/#build   = exe/#build   = static/' src/main.orh
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
-if echo "$OUTPUT" | grep -q "Built: lib/libtestlib.a"; then pass "static: reports success"
+if echo "$OUTPUT" | grep -q "Built: bin/libtestlib.a"; then pass "static: reports success"
 else fail "static: reports success" "$OUTPUT"; fi
 
-if [ -f lib/libtestlib.a ]; then pass "static: produces .a archive"
+if [ -f bin/libtestlib.a ]; then pass "static: produces .a archive"
 else fail "static: produces .a archive"; fi
 
-if [ -f lib/testlib.orh ]; then pass "static: generates interface file"
+if [ -f bin/testlib.orh ]; then pass "static: generates interface file"
 else fail "static: generates interface file"; fi
 
-if head -1 lib/testlib.orh | grep -q "// Orhon interface file"; then pass "static: interface has header comment"
+if head -1 bin/testlib.orh | grep -q "// Orhon interface file"; then pass "static: interface has header comment"
 else fail "static: interface has header comment"; fi
 
-if grep -q "^module " lib/testlib.orh; then pass "static: interface has module declaration"
+if grep -q "^module " bin/testlib.orh; then pass "static: interface has module declaration"
 else fail "static: interface has module declaration"; fi
 
 if ! echo "$OUTPUT" | grep -q "^error(gpa)"; then pass "static: no memory leaks"
@@ -38,13 +38,13 @@ sed -i 's/#build   = static/#build   = dynamic/' src/main.orh
 rm -rf .orh-cache bin
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
-if echo "$OUTPUT" | grep -q "Built: lib/libtestlib.so"; then pass "dynamic: reports success"
+if echo "$OUTPUT" | grep -q "Built: bin/libtestlib.so"; then pass "dynamic: reports success"
 else fail "dynamic: reports success" "$OUTPUT"; fi
 
-if [ -f lib/libtestlib.so ]; then pass "dynamic: produces .so library"
+if [ -f bin/libtestlib.so ]; then pass "dynamic: produces .so library"
 else fail "dynamic: produces .so library"; fi
 
-if [ -f lib/testlib.orh ]; then pass "dynamic: generates interface file"
+if [ -f bin/testlib.orh ]; then pass "dynamic: generates interface file"
 else fail "dynamic: generates interface file"; fi
 
 if ! echo "$OUTPUT" | grep -q "^error(gpa)"; then pass "dynamic: no memory leaks"
@@ -67,7 +67,7 @@ ORHON
 cd ifacelib
 "$ORHON" build >/dev/null 2>&1 || true
 
-if [ -f lib/ifacelib.orh ]; then pass "iface: library interface generated"
+if [ -f bin/ifacelib.orh ]; then pass "iface: library interface generated"
 else fail "iface: library interface generated"; fi
 
 # Verify the interface file can be parsed by another project
@@ -82,7 +82,7 @@ import ifacelib
 func main() void {
 }
 ORHON
-cp "$TESTDIR/ifacelib/lib/ifacelib.orh" ifaceuser/src/ifacelib.orh
+cp "$TESTDIR/ifacelib/bin/ifacelib.orh" ifaceuser/src/ifacelib.orh
 cd ifaceuser
 IFACE_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$IFACE_OUT" | grep -q "Built:"; then pass "iface: consumer project builds"

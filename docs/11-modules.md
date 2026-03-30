@@ -22,7 +22,7 @@ and groups files by module name. Each group becomes one **compilation unit**.
 ### File Naming Rules — Anchor File
 Among all files in a module, exactly one must be named after the module — the **anchor file**.
 This is what `import math` resolves to. Only the anchor file can contain metadata
-(`#build`, `#name`, `#version`, `#dep`, `#cimport`, etc.).
+(`#build`, `#name`, `#version`, `#cimport`, etc.).
 
 - `module math` → one of the files must be `math.orh` (anywhere in `src/`)
 - `module main` → one of the files must be `main.orh`

@@ -309,6 +309,14 @@ pub const TypeResolver = struct {
             .var_decl => |v| {
                 if (v.type_annotation) |t| {
                     try self.validateType(t, scope);
+                    // Reference types (const& T, mut& T) are only valid in function parameters
+                    if (t.* == .type_ptr) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "reference type not allowed in variable declaration — use '{s}' by value or as a function parameter",
+                            .{v.name});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                    }
                 }
                 // Duplicate variable check (only inside functions/blocks, not top-level)
                 if (scope.parent != null and scope.vars.contains(v.name)) {
@@ -341,6 +349,14 @@ pub const TypeResolver = struct {
             .const_decl => |v| {
                 if (v.type_annotation) |t| {
                     try self.validateType(t, scope);
+                    // Reference types (const& T, mut& T) are only valid in function parameters
+                    if (t.* == .type_ptr) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "reference type not allowed in variable declaration — use '{s}' by value or as a function parameter",
+                            .{v.name});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                    }
                 }
                 if (scope.parent != null and scope.vars.contains(v.name)) {
                     const msg = try std.fmt.allocPrint(self.allocator,

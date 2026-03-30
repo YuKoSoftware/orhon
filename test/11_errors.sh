@@ -436,7 +436,7 @@ run_fixture neg_thread_freeze fail_threads.orh "cannot mutate.*borrowed by threa
 run_fixture neg_thread_mutborrow fail_threads.orh "cannot pass mutable borrow to thread" "fixture: catches mutable borrow to thread"
 
 # borrow errors
-run_fixture neg_borrow fail_borrow.orh "cannot borrow\|already borrowed" "fixture: catches borrow conflict"
+run_fixture neg_borrow fail_borrow.orh "reference type not allowed in variable declaration" "fixture: catches borrow conflict"
 # propagation errors
 run_fixture neg_prop fail_propagation.orh "unhandled.*union\|cannot propagate" "fixture: catches unhandled error union"
 run_fixture neg_unwrap fail_propagation.orh "unsafe unwrap" "fixture: catches unsafe union unwrap"
@@ -535,16 +535,16 @@ else
     fail "move-after-use suggests copy()" "$NEG_OUT"
 fi
 
-# borrow fix hint (ERR-03)
+# borrow ref hint (ERR-03)
 cd "$TESTDIR"
 mkdir -p neg_borrow_hint/src
 cp "$FIXTURES/fail_borrow.orh" neg_borrow_hint/src/main.orh
 cd neg_borrow_hint
 NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -q "consider borrowing with const"; then
-    pass "borrow violation suggests const &"
+if echo "$NEG_OUT" | grep -q "by value or as a function parameter"; then
+    pass "borrow violation suggests function parameter"
 else
-    fail "borrow violation suggests const &" "$NEG_OUT"
+    fail "borrow violation suggests function parameter" "$NEG_OUT"
 fi
 
 report_results

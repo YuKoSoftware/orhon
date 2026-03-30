@@ -9,20 +9,16 @@ struct Point {
     pub y: i32
 }
 
-// cannot borrow as mutable while immutably borrowed
+// reference types not allowed in variable declarations
 
-func borrow_conflict() void {
+func ref_in_var() void {
     var p: Point = Point(x: 1, y: 2)
-    const r1: const& Point = mut& p
-    const r2: mut& Point = mut& p
+    var r: mut& Point = mut& p
 }
 
-// use while mutably borrowed suggests const&
-
-func use_while_borrowed() void {
+func ref_in_const() void {
     var q: Point = Point(x: 3, y: 4)
-    const r: mut& Point = mut& q
-    const _ = q
+    const r: const& Point = const& q
 }
 
 func main() void { }

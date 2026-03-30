@@ -457,6 +457,12 @@ test "peg - validate std/time.orh" {
     try std.testing.expect(valid);
 }
 
+test "peg - validate std/async.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("std/async.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
 test "fuzz parser" {
     try std.testing.fuzz({}, struct {
         fn run(_: void, input: []const u8) !void {

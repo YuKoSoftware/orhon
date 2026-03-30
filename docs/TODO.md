@@ -114,10 +114,11 @@ left as-is — transitive bridge resolution requires all bridges to be available
 
 ## Core — Build System
 
-### Thread cancellation mechanism
+### ~~Thread cancellation mechanism~~ COVERED (std::async)
 
-`.cancel()` sets a flag, but the mechanism for checking it inside the thread body is TBD.
-May be automatic at loop boundaries or an explicit `thread.cancelled()` check.
+~~`.cancel()` sets a flag, but the mechanism for checking it inside the thread body is TBD.~~
+Covered by `Atomic(bool)` in `std::async` — threads check a shared atomic flag.
+Pattern: `var cancel: Atomic(bool) = Atomic(bool).new(false)`, pass to thread, check with `cancel.load()`.
 
 ---
 
@@ -342,10 +343,6 @@ cluttering `src/`. From Tamga feedback.
 the exe can't find the `.so` without an rpath. Either set `$ORIGIN/../lib` rpath
 in generated `build.zig`, or keep everything in `bin/`. Needs rpath support first.
 
-### Interface file tagging
-
-When a dynamic library is compiled, its interface could be tagged as `interface`
-instead of `module` to distinguish API surface from implementation. From Tamga feedback.
 
 ---
 

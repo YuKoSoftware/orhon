@@ -2,6 +2,7 @@ module example
 
 import std::console
 use std::collections
+use std::async
 
 // ─── Collections ────────────────────────────────────────────────────────────
 
@@ -124,6 +125,16 @@ func thread_join() i32 {
     var h: Handle(i32) = doubler(99)
     h.join()
     return 1
+}
+
+// ─── Atomics ────────────────────────────────────────────────────────────────
+
+// Atomic(T) — lock-free atomic value for thread-safe shared state
+
+func atomic_demo() i32 {
+    var counter: Atomic(i32) = Atomic(i32).new(0)
+    counter.store(42)
+    return counter.load()
 }
 
 // ─── Cast ───────────────────────────────────────────────────────────────────
@@ -254,6 +265,10 @@ test "bitfield" {
 
 test "thread" {
     assert(thread_demo() == 42)
+}
+
+test "atomic" {
+    assert(atomic_demo() == 42)
 }
 
 test "cast" {

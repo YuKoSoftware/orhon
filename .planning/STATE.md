@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v0.10
 milestone_name: milestone
 status: v0.17 shipped — ready for next milestone
-stopped_at: Completed quick-260330-e1b
+stopped_at: Completed quick-260330-ern
 last_updated: "2026-03-30T07:15:36.909Z"
 last_activity: 2026-03-30
 progress:
@@ -68,6 +68,7 @@ None.
 - 260330-ck9: Dynamic library output lib/ split — attempted and reverted (needs rpath)
 - 260330-doe: MIR residual AST audit — 4 migrated, 6 documented as permanent boundary
 - 260330-e1b: Codegen snapshot tests — 4 fixture pairs, diff-based regression detection
+- 260330-ern: std::async bridge module — Atomic(T) wrapping std.atomic.Value(T), 4 unit tests, PEG validated
 
 ### Blockers/Concerns
 

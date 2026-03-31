@@ -158,10 +158,12 @@ x is i32    // true
 
 Union values accessed via dot syntax with the type name:
 ```
-var result: (Error | i32) = divide(10, 0)
-result.Error.message    // access error message
-result.i32              // access the i32 value
+var x: MyUnion = 100
+x.i32     // access the i32 value
+x.f32     // access the f32 value (only valid when x is f32)
 ```
+
+Note: `Error` and `null` are not allowed in regular unions — use `ErrorUnion(T)` and `NullUnion(T)` wrapper types instead. See [[08-error-handling]].
 
 ### Tuples
 Named tuples only. Must be defined as named types with `const`. Nominal typing — two tuples with identical structure but different names are different types.

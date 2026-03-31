@@ -158,7 +158,7 @@ pub struct List(T: type) {
 
 ## Error Union Return Types
 
-When a `bridge func` returns `(Error | T)` (see [[08-error-handling]]), the Zig sidecar must return `anyerror!T`
+When a `bridge func` returns `ErrorUnion(T)` (see [[08-error-handling]]), the Zig sidecar must return `anyerror!T`
 (native Zig error union). Use Zig error codes for failures.
 
 ```zig
@@ -169,7 +169,7 @@ pub fn get() anyerror![]const u8 {
 }
 ```
 
-For nullable returns `(null | T)`, use `?T` (native Zig optional):
+For nullable returns `NullUnion(T)`, use `?T` (native Zig optional):
 
 ```zig
 pub fn find(key: []const u8) ?[]const u8 {

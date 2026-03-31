@@ -147,14 +147,14 @@ const b: Handle([]i32) = process_right(right)
 
 ## Error Handling in Threads
 
-If the thread body can produce an error, the return type is `(Error | T)` (see [[08-error-handling]]). The error must be handled before scope exit — unhandled errors crash the program.
+If the thread body can produce an error, the return type is `ErrorUnion(T)` (see [[08-error-handling]]). The error must be handled before scope exit — unhandled errors crash the program.
 
 ```
-thread risky_work() Handle((Error | i32)) {
+thread risky_work() Handle(ErrorUnion(i32)) {
     return Handle(risky_operation())
 }
 
-var result: (Error | i32) = risky_work().value
+var result: ErrorUnion(i32) = risky_work().value
 match result {
     Error => { console.println("failed") }
     i32   => { console.println("ok") }

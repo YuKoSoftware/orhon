@@ -336,31 +336,59 @@ fn classifyNamed(n: []const u8) ResolvedType {
     return .{ .named = n };
 }
 
-/// Resolve a union type node, detecting (Error | T) and (null | T) as special cases
+/// Resolve a union type node, detecting (Error | T) and (null | T) as special cases.
+/// Flattens nested unions: ((A | B) | C) becomes (A | B | C).
+/// Errors on duplicate type names after flattening.
 fn resolveUnion(alloc: std.mem.Allocator, members: []*parser.Node) !ResolvedType {
-    // Check for (Error | T) or (null | T) — two-member unions with a special first type
-    if (members.len == 2) {
-        const first = members[0];
-        const second = members[1];
-        if (first.* == .type_named) {
-            if (std.mem.eql(u8, first.type_named, K.Type.ERROR)) {
-                const inner = try alloc.create(ResolvedType);
-                inner.* = try resolveTypeNode(alloc, second);
-                return .{ .error_union = inner };
+    // Phase 1: Resolve all members, collecting into a flat list
+    var flat = std.ArrayList(ResolvedType){};
+    defer flat.deinit(alloc);
+
+    for (members) |m| {
+        const resolved = try resolveTypeNode(alloc, m);
+        // Flatten: if member is an arbitrary union, inline its members
+        if (resolved == .union_type) {
+            const slice = resolved.union_type;
+            for (slice) |inner| {
+                try flat.append(alloc, inner);
             }
-            if (std.mem.eql(u8, first.type_named, K.Type.NULL)) {
-                const inner = try alloc.create(ResolvedType);
-                inner.* = try resolveTypeNode(alloc, second);
-                return .{ .null_union = inner };
+            // Free the intermediate union slice (arena makes this a no-op in production)
+            alloc.free(slice);
+        } else {
+            try flat.append(alloc, resolved);
+        }
+    }
+
+    // Phase 2: Check for duplicate type names
+    for (flat.items, 0..) |a, i| {
+        const a_name = a.name();
+        for (flat.items[i + 1 ..]) |b| {
+            if (std.mem.eql(u8, a_name, b.name())) {
+                return error.DuplicateUnionMember;
             }
         }
     }
-    // General union: (A | B | C)
-    var resolved = try alloc.alloc(ResolvedType, members.len);
-    for (members, 0..) |m, i| {
-        resolved[i] = try resolveTypeNode(alloc, m);
+
+    // Phase 3: Apply Error/null special-case detection
+    if (flat.items.len == 2) {
+        const first = flat.items[0];
+        const second = flat.items[1];
+        if (first == .err) {
+            const inner = try alloc.create(ResolvedType);
+            inner.* = second;
+            return .{ .error_union = inner };
+        }
+        if (first == .null_type) {
+            const inner = try alloc.create(ResolvedType);
+            inner.* = second;
+            return .{ .null_union = inner };
+        }
     }
-    return .{ .union_type = resolved };
+
+    // Phase 4: General union
+    const result = try alloc.alloc(ResolvedType, flat.items.len);
+    @memcpy(result, flat.items);
+    return .{ .union_type = result };
 }
 
 /// Check if a name is a primitive type (copy semantics)
@@ -425,4 +453,54 @@ test "isPrimitiveName" {
     try std.testing.expect(isPrimitiveName("String"));
     try std.testing.expect(!isPrimitiveName("Player"));
     try std.testing.expect(!isPrimitiveName("List"));
+}
+
+test "resolveUnion - flattens inline nested union" {
+    const alloc = std.testing.allocator;
+
+    // Build inner union AST: (i32 | f32)
+    const i32_node = try alloc.create(parser.Node);
+    defer alloc.destroy(i32_node);
+    i32_node.* = .{ .type_named = "i32" };
+
+    const f32_node = try alloc.create(parser.Node);
+    defer alloc.destroy(f32_node);
+    f32_node.* = .{ .type_named = "f32" };
+
+    var inner_members = [_]*parser.Node{ i32_node, f32_node };
+    const inner_node = try alloc.create(parser.Node);
+    defer alloc.destroy(inner_node);
+    inner_node.* = .{ .type_union = &inner_members };
+
+    // Build outer union AST: ((i32 | f32) | bool)
+    const bool_node = try alloc.create(parser.Node);
+    defer alloc.destroy(bool_node);
+    bool_node.* = .{ .type_named = "bool" };
+
+    var outer_members = [_]*parser.Node{ inner_node, bool_node };
+
+    // Resolve — should flatten to (i32 | f32 | bool)
+    const resolved = try resolveUnion(alloc, &outer_members);
+    defer alloc.free(resolved.union_type);
+    try std.testing.expect(resolved == .union_type);
+    try std.testing.expectEqual(@as(usize, 3), resolved.union_type.len);
+}
+
+test "resolveUnion - errors on duplicate type after flattening" {
+    const alloc = std.testing.allocator;
+
+    // Build (i32 | i32) — direct duplicate
+    const n1 = try alloc.create(parser.Node);
+    defer alloc.destroy(n1);
+    n1.* = .{ .type_named = "i32" };
+
+    const n2 = try alloc.create(parser.Node);
+    defer alloc.destroy(n2);
+    n2.* = .{ .type_named = "i32" };
+
+    var members = [_]*parser.Node{ n1, n2 };
+
+    // Should return error for duplicate type name
+    const result = resolveUnion(alloc, &members);
+    try std.testing.expectError(error.DuplicateUnionMember, result);
 }

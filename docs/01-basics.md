@@ -121,7 +121,7 @@ the type name carries meaning.
 ### No exceptions — union-based errors
 
 Exceptions create invisible control flow paths. Every function might throw, and nothing
-in the signature tells you. Orhon uses `(Error | T)` union types — the error possibility
+in the signature tells you. Orhon uses `ErrorUnion(T)` wrapper types — the error possibility
 is visible in the return type. `throw` propagates errors explicitly (see [[08-error-handling]]). The compiler tracks
 error flow through every path.
 

@@ -80,7 +80,8 @@ pub fn buildModuleDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // Find the name token — it's the identifier after 'module'
     const name_pos = builder.findTokenInRange(ctx, cap.start_pos + 1, cap.end_pos, .identifier) orelse
         return error.NoModuleName;
-    return ctx.newNode(.{ .module_decl = .{ .name = builder.tokenText(ctx, name_pos) } });
+    const doc = if (cap.findChild("doc_block")) |db| builder.extractDoc(ctx, db) else null;
+    return ctx.newNode(.{ .module_decl = .{ .name = builder.tokenText(ctx, name_pos), .doc = doc } });
 }
 
 pub fn buildImport(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
@@ -370,12 +371,19 @@ pub fn buildBlueprintDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 }
 
 fn collectBlueprintMethods(ctx: *BuildContext, cap: *const CaptureNode, methods: *std.ArrayListUnmanaged(*Node)) anyerror!void {
+    var pending_doc: ?[]const u8 = null;
     for (cap.children) |*child| {
         if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "blueprint_method")) {
+            if (std.mem.eql(u8, r, "doc_block")) {
+                pending_doc = builder.extractDoc(ctx, child);
+            } else if (std.mem.eql(u8, r, "blueprint_method")) {
                 const node = try buildBlueprintMethod(ctx, child);
+                if (pending_doc) |doc| {
+                    builder.setDoc(node, doc);
+                    pending_doc = null;
+                }
                 try methods.append(ctx.alloc(), node);
-            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM") or std.mem.eql(u8, r, "doc_block")) {
+            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM")) {
                 // skip
             } else {
                 try collectBlueprintMethods(ctx, child, methods);

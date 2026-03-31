@@ -413,6 +413,37 @@ pub fn setPub(node: *Node, value: bool) void {
     }
 }
 
+/// Extract doc comment text from a doc_block capture node.
+/// Joins all DOC_COMMENT token texts with newlines.
+pub fn extractDoc(ctx: *BuildContext, doc_cap: *const CaptureNode) ?[]const u8 {
+    var parts = std.ArrayListUnmanaged([]const u8){};
+    var i = doc_cap.start_pos;
+    while (i < doc_cap.end_pos and i < ctx.tokens.len) : (i += 1) {
+        if (ctx.tokens[i].kind == .doc_comment) {
+            parts.append(ctx.alloc(), ctx.tokens[i].text) catch return null;
+        }
+    }
+    if (parts.items.len == 0) return null;
+    return std.mem.join(ctx.alloc(), "\n", parts.items) catch null;
+}
+
+/// Set the doc field on a declaration node.
+pub fn setDoc(node: *Node, doc: ?[]const u8) void {
+    switch (node.*) {
+        .func_decl => |*d| d.doc = doc,
+        .struct_decl => |*d| d.doc = doc,
+        .blueprint_decl => |*d| d.doc = doc,
+        .enum_decl => |*d| d.doc = doc,
+        .bitfield_decl => |*d| d.doc = doc,
+        .const_decl => |*d| d.doc = doc,
+        .var_decl => |*d| d.doc = doc,
+        .field_decl => |*d| d.doc = doc,
+        .enum_variant => |*d| d.doc = doc,
+        .module_decl => |*d| d.doc = doc,
+        else => {},
+    }
+}
+
 // NOTE: All declaration, statement, expression, and type builder functions have
 // been extracted to their respective satellite files:
 //   builder_decls.zig  — program, module, import, metadata, func, param, const, var,

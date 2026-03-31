@@ -38,7 +38,7 @@ error_skip
 
 # Token lookahead for top-level declaration starts (used by error_skip to resync)
 top_level_start
-    <- 'func' / 'pub' / 'struct' / 'enum' / 'bitfield' / 'const' / 'var'
+    <- 'func' / 'pub' / 'struct' / 'blueprint' / 'enum' / 'bitfield' / 'const' / 'var'
      / 'thread' / 'compt' / 'bridge' / 'test' / 'import' / '#'
 
 module_decl
@@ -81,6 +81,7 @@ top_level_decl
      / thread_decl
      / compt_decl
      / struct_decl
+     / blueprint_decl
      / enum_decl
      / bitfield_decl
      / const_decl
@@ -93,6 +94,7 @@ pub_decl
             / thread_decl
             / bridge_decl
             / struct_decl
+            / blueprint_decl
             / enum_decl
             / bitfield_decl
             / const_decl
@@ -130,7 +132,10 @@ compt_decl
 # ============================================================
 
 struct_decl
-    <- 'struct' IDENTIFIER generic_params? '{' _ struct_body _ '}'  {label: "struct declaration"}
+    <- 'struct' IDENTIFIER generic_params? (':' blueprint_list)? '{' _ struct_body _ '}'  {label: "struct declaration"}
+
+blueprint_list
+    <- IDENTIFIER (',' _ IDENTIFIER)*
 
 generic_params
     <- '(' _ param_list _ ')'
@@ -143,6 +148,20 @@ struct_member
 
 field_decl
     <- IDENTIFIER ':' type ('=' expr)? TERM  {label: "field declaration"}
+
+
+# ============================================================
+# BLUEPRINT DECLARATIONS
+# ============================================================
+
+blueprint_decl
+    <- 'blueprint' IDENTIFIER '{' _ blueprint_body _ '}'  {label: "blueprint declaration"}
+
+blueprint_body
+    <- (blueprint_method _)*
+
+blueprint_method
+    <- doc_block? 'func' IDENTIFIER '(' _ param_list? _ ')' type? TERM
 
 
 # ============================================================
@@ -598,7 +617,7 @@ _               <- ([ \t\n] / '//' (!'\n' .)* '\n')*
 # func var const if else elif for while return throw import use
 # pub match struct enum bitfield defer thread null void compt
 # any module test and or not main as break continue true false
-# bridge is type
+# bridge is type blueprint
 # Compound borrow tokens: const& mut&
 # Compiler functions use @ prefix: @cast @copy @move @swap @assert
 # @size @align @typename @typeid @typeOf

@@ -1,8 +1,8 @@
 // builder_decls.zig — Declaration builders for the PEG AST builder
 // Contains: buildProgram, buildModuleDecl, buildImport, buildMetadata,
 //           buildFuncDecl, buildParam, buildConstDecl, buildVarDecl,
-//           buildStructDecl, buildEnumDecl, buildFieldDecl, buildEnumVariant,
-//           buildDestructDecl, buildBitfieldDecl, buildTestDecl
+//           buildStructDecl, buildBlueprintDecl, buildEnumDecl, buildFieldDecl,
+//           buildEnumVariant, buildDestructDecl, buildBitfieldDecl, buildTestDecl
 // All functions receive *BuildContext as first parameter.
 
 const std = @import("std");
@@ -314,7 +314,7 @@ pub fn buildVarDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 }
 
 pub fn buildStructDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // struct_decl <- 'struct' IDENTIFIER generic_params? '{' _ struct_body _ '}'
+    // struct_decl <- 'struct' IDENTIFIER generic_params? (':' blueprint_list)? '{' _ struct_body _ '}'
     const name_pos = cap.start_pos + 1;
     const name = builder.tokenText(ctx, name_pos);
 
@@ -324,11 +324,93 @@ pub fn buildStructDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // Walk children recursively to find params (from generic_params) and members
     try builder.collectStructParts(ctx, cap, &type_params_list, &members);
 
+    // Collect blueprint names from ': Eq, Hash' syntax
+    var blueprints = std.ArrayListUnmanaged([]const u8){};
+    if (cap.findChild("blueprint_list")) |bl| {
+        // blueprint_list <- IDENTIFIER (',' _ IDENTIFIER)*
+        // Walk the token range and collect all identifiers
+        for (bl.start_pos..bl.end_pos) |i| {
+            if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
+                try blueprints.append(ctx.alloc(), ctx.tokens[i].text);
+            }
+        }
+    }
+
     return ctx.newNode(.{ .struct_decl = .{
         .name = name,
         .type_params = try type_params_list.toOwnedSlice(ctx.alloc()),
         .members = try members.toOwnedSlice(ctx.alloc()),
+        .blueprints = try blueprints.toOwnedSlice(ctx.alloc()),
         .is_pub = false,
+    } });
+}
+
+pub fn buildBlueprintDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    // blueprint_decl <- 'blueprint' IDENTIFIER '{' _ blueprint_body _ '}'
+    const name_pos = cap.start_pos + 1;
+    const name = builder.tokenText(ctx, name_pos);
+
+    var methods = std.ArrayListUnmanaged(*Node){};
+    try collectBlueprintMethods(ctx, cap, &methods);
+
+    return ctx.newNode(.{ .blueprint_decl = .{
+        .name = name,
+        .methods = try methods.toOwnedSlice(ctx.alloc()),
+        .is_pub = false,
+    } });
+}
+
+fn collectBlueprintMethods(ctx: *BuildContext, cap: *const CaptureNode, methods: *std.ArrayListUnmanaged(*Node)) anyerror!void {
+    for (cap.children) |*child| {
+        if (child.rule) |r| {
+            if (std.mem.eql(u8, r, "blueprint_method")) {
+                const node = try buildBlueprintMethod(ctx, child);
+                try methods.append(ctx.alloc(), node);
+            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM") or std.mem.eql(u8, r, "doc_block")) {
+                // skip
+            } else {
+                try collectBlueprintMethods(ctx, child, methods);
+            }
+        }
+    }
+}
+
+fn buildBlueprintMethod(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    // blueprint_method <- doc_block? 'func' IDENTIFIER '(' _ param_list? _ ')' type? TERM
+    // Find the function name — identifier after 'func' keyword
+    var name: []const u8 = "";
+    for (cap.start_pos..cap.end_pos) |i| {
+        if (i < ctx.tokens.len and ctx.tokens[i].kind == .kw_func) {
+            if (i + 1 < ctx.tokens.len and ctx.tokens[i + 1].kind == .identifier) {
+                name = ctx.tokens[i + 1].text;
+                break;
+            }
+        }
+    }
+
+    // Collect parameters
+    var params_list = std.ArrayListUnmanaged(*Node){};
+    try builder.collectParamsRecursive(ctx, cap, &params_list);
+
+    // Collect return type
+    const return_type = if (cap.findChild("type")) |t|
+        try builder.buildNode(ctx, t)
+    else
+        try ctx.newNode(.{ .type_named = "void" });
+
+    // Create a func_decl with an empty body (signature-only)
+    // Mark as bridge so codegen knows there's no real body
+    const empty_body = try ctx.newNode(.{ .block = .{ .statements = &.{} } });
+
+    return ctx.newNode(.{ .func_decl = .{
+        .name = name,
+        .params = try params_list.toOwnedSlice(ctx.alloc()),
+        .return_type = return_type,
+        .body = empty_body,
+        .is_compt = false,
+        .is_pub = true,
+        .is_bridge = true,
+        .is_thread = false,
     } });
 }
 

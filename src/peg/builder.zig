@@ -146,6 +146,7 @@ pub fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     if (std.mem.eql(u8, rule, "func_decl")) return decls_impl.buildFuncDecl(ctx, cap);
     if (std.mem.eql(u8, rule, "param")) return decls_impl.buildParam(ctx, cap);
     if (std.mem.eql(u8, rule, "struct_decl")) return decls_impl.buildStructDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "blueprint_decl")) return decls_impl.buildBlueprintDecl(ctx, cap);
     if (std.mem.eql(u8, rule, "enum_decl")) return decls_impl.buildEnumDecl(ctx, cap);
     if (std.mem.eql(u8, rule, "field_decl")) return decls_impl.buildFieldDecl(ctx, cap);
     if (std.mem.eql(u8, rule, "enum_variant")) return decls_impl.buildEnumVariant(ctx, cap);
@@ -402,6 +403,7 @@ pub fn setPub(node: *Node, value: bool) void {
     switch (node.*) {
         .func_decl => |*d| d.is_pub = value,
         .struct_decl => |*d| d.is_pub = value,
+        .blueprint_decl => |*d| d.is_pub = value,
         .enum_decl => |*d| d.is_pub = value,
         .bitfield_decl => |*d| d.is_pub = value,
         .const_decl => |*d| d.is_pub = value,

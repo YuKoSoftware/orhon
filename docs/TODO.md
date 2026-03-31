@@ -196,33 +196,23 @@ Simpler than DWARF manipulation but gives users `.orh`-level debugging.
 Ordered by how much they expand what Orhon programs can express and unblock downstream
 features.
 
-### Blueprints (abstract structs — Orhon's traits)
+### ~~Blueprints (abstract structs — Orhon's traits)~~ DONE (v0.12.0)
 
-The missing type system foundation. Unlocks constrained generics, `#derive`, and
-library patterns. Uses `blueprint` keyword — an abstract struct containing only
-definitions, no implementation. Keep it simple:
+~~The missing type system foundation.~~ Shipped. `blueprint` keyword defines named
+method contracts. Structs declare conformance via `: Blueprint` syntax. Multiple
+blueprints allowed per struct. All declared methods must be implemented — compiler
+enforces completeness. No `impl` blocks — conformance is declared inline on the struct.
 
 ```
-blueprint Drawable {
-    func draw(self: const& Self) void
+blueprint Describable {
+    func describe(self: const& Describable) str
 }
 
-impl Drawable for Circle {
-    func draw(self: const& Circle) void { ... }
-}
-
-func render(item: any where Drawable) void {
-    item.draw()
+struct Animal: Describable {
+    name: str
+    pub func describe(self: const& Animal) str { return self.name }
 }
 ```
-
-**Rules:** methods only, explicit `impl`, no inheritance, no associated types in v1.
-Composition via requiring multiple blueprints. No blueprint objects initially.
-
-**Open question:** Can `compt` type introspection complement or reduce the scope
-needed? Zig uses comptime + `@hasDecl` for structural generics without traits.
-Investigate whether extending compt is a simpler path before full blueprint
-implementation.
 
 Unblocks: generic constraints (already in TODO), `#derive`, numerous library patterns.
 

@@ -1,0 +1,41 @@
+module example
+
+// ─── Blueprints ─────────────────────────────────────────────────────────────
+
+// blueprints define strict contracts — structs must implement all methods
+
+blueprint Describable {
+    func describe(self: const& Describable) str
+}
+
+blueprint Resizable {
+    func resize(self: mut& Resizable, factor: f32) ()
+}
+
+// struct conformance — `: Blueprint` means "I satisfy this contract"
+
+struct Animal: Describable {
+    name: str
+    legs: i32
+
+    pub func describe(self: const& Animal) str {
+        return self.name
+    }
+}
+
+// multiple blueprints — all methods must be implemented
+
+struct Box: Describable, Resizable {
+    label: str
+    width: f32
+    height: f32
+
+    pub func describe(self: const& Box) str {
+        return self.label
+    }
+
+    pub func resize(self: mut& Box, factor: f32) () {
+        self.width = self.width * factor
+        self.height = self.height * factor
+    }
+}

@@ -17,6 +17,7 @@ const ERROR_HANDLING_TEMPLATE   = @embedFile("templates/example/error_handling.o
 const DATA_TYPES_TEMPLATE       = @embedFile("templates/example/data_types.orh");
 const STRINGS_TEMPLATE          = @embedFile("templates/example/strings.orh");
 const ADVANCED_TEMPLATE         = @embedFile("templates/example/advanced.orh");
+const BLUEPRINTS_TEMPLATE       = @embedFile("templates/example/blueprints.orh");
 
 // ============================================================
 // PROJECT INITIALIZATION
@@ -75,6 +76,7 @@ pub fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: boo
         .{ "data_types.orh",     DATA_TYPES_TEMPLATE },
         .{ "strings.orh",        STRINGS_TEMPLATE },
         .{ "advanced.orh",       ADVANCED_TEMPLATE },
+        .{ "blueprints.orh",    BLUEPRINTS_TEMPLATE },
     };
 
     inline for (example_files) |entry| {

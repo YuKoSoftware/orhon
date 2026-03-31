@@ -67,6 +67,21 @@ pub fn buildProgram(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         }
     }
 
+    // Wire #description metadata to module_decl.doc (takes precedence over /// on module)
+    for (metadata_list.items) |meta| {
+        if (meta.* == .metadata) {
+            if (std.mem.eql(u8, meta.metadata.field, "description")) {
+                if (meta.metadata.value.* == .string_literal) {
+                    const raw = meta.metadata.value.string_literal;
+                    // Strip surrounding quotes
+                    const text = if (raw.len >= 2 and raw[0] == '"') raw[1 .. raw.len - 1] else raw;
+                    builder.setDoc(mod, text);
+                }
+                break;
+            }
+        }
+    }
+
     return ctx.newNode(.{ .program = .{
         .module = mod,
         .metadata = try metadata_list.toOwnedSlice(ctx.alloc()),

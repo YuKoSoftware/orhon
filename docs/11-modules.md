@@ -25,10 +25,10 @@ This is what `import math` resolves to. Only the anchor file can contain metadat
 (`#build`, `#name`, `#version`, `#cimport`, etc.).
 
 - `module math` → one of the files must be `math.orh` (anywhere in `src/`)
-- `module main` → one of the files must be `main.orh`
+- `module myproj` → one of the files must be `myproj.orh`
 - Other files in the same module can be named anything
 - No anchor file found = hard compiler error
-- Every project root is `main.orh` / `module main` — for both executables and libraries
+- Every project root is named after the project folder — for both executables and libraries
 
 Example — module math spanning three files, freely organized:
 ```
@@ -57,14 +57,14 @@ pub func solve(a: f64, b: f64, c: f64) f64 { }
 ```
 Regular modules are only compiled if something imports them (dead code elimination).
 
-**Project root** — always `main.orh` / `module main`. Metadata uses `#key = value`:
+**Project root** — named after the project folder. Metadata uses `#key = value`:
 ```
-// main.orh — project root for executable
-module main
+// myproj.orh — project root for executable
+module myproj
 
 #build   = exe
 #version = Version(1, 0, 0)
-#name    = "my_project"
+#name    = "myproj"
 
 func main() void {
     // entry point — required for #build = exe
@@ -72,12 +72,32 @@ func main() void {
 ```
 
 ```
-// main.orh — project root for library
-module main
+// mylib.orh — project root for library
+module mylib
 
 #build   = static
 #version = Version(1, 0, 0)
 #name    = "mylib"
+```
+
+### Primary Module Detection
+
+The **primary module** is the exe module whose name matches the project folder name and
+whose anchor file lives directly in `src/` (not in a subdirectory). This is the module
+`orhon run` builds and executes.
+
+Rules:
+- Module name == project folder name → primary module
+- Anchor file must be at `src/<name>.orh` (top-level, not nested)
+- All other `#build = exe` modules must have their anchor file in a subdirectory of `src/`
+- Only one primary module per project — having two top-level exe anchors is a hard compiler error
+
+```
+myproj/
+    src/
+        myproj.orh          ← primary module anchor (module myproj, #build = exe)
+        player.orh          ← also module myproj — additional file
+        tools/tools.orh     ← module tools, #build = exe (non-primary exe — must be in subdir)
 ```
 
 ### Additional Library Modules
@@ -85,7 +105,7 @@ A project can contain additional library modules alongside the root.
 Each has its own anchor file and build declaration:
 ```
 src/
-    main.orh              ← module main, #build = exe (root)
+    myproj.orh            ← module myproj, #build = exe (root)
     math/math.orh         ← module math, #build = static (anchor)
     math/vectors.orh      ← module math (additional file)
     network/network.orh   ← module network, #build = dynamic (anchor)
@@ -94,10 +114,10 @@ Library modules are only built as separate artifacts if they are actually import
 
 ### Multi-module Project
 ```
-my_project/
+myproj/
     src/
-        main.orh                // root — module main, #build = exe
-        player.orh              // module main — additional file
+        myproj.orh              // root — module myproj, #build = exe
+        player.orh              // module myproj — additional file
         math/math.orh           // module math, #build = static (anchor)
         math/vectors.orh        // module math — additional file
         utils/utils.orh         // module utils — regular module (no #build)
@@ -198,7 +218,9 @@ a precompiled library without its full source.
 - Circular imports across any boundary
 - Project metadata written in any file other than the anchor file
 - No anchor file found — at least one file in the module must be named after the module
-- `module main` not in `main.orh`
+- Primary module anchor not at `src/<name>.orh` (must be top-level, not nested)
+- Two `#build = exe` anchors at `src/` top-level
+- `func main()` used outside a `#build = exe` anchor file
 - `func main()` missing when `#build = exe`
 - Unknown import scope (only `std` is supported)
 - `bridge func` with a body — bridge functions must have no body
@@ -214,10 +236,10 @@ file other than the anchor is a hard compiler error. No build files ever — the
 compiler is the build system.
 
 ```
-// main.orh — executable
-module main
+// myproj.orh — executable
+module myproj
 
-#name    = "my_project"
+#name    = "myproj"
 #version = Version(1, 0, 0)
 #build   = exe
 
@@ -225,8 +247,8 @@ func main() void { }
 ```
 
 ```
-// main.orh — library project root
-module main
+// mylib.orh — library project root
+module mylib
 
 #name    = "mylib"
 #version = Version(1, 0, 0)

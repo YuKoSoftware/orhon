@@ -71,7 +71,7 @@ bin/
         math.zig        // generated from module math
         player.zig      // generated from module player
         utils.zig       // generated from module utils
-        main.zig        // generated from module main
+        myproj.zig      // generated from module myproj (primary exe module)
         build.zig       // generated Zig build file
     timestamps          // flat text — maps .orh files to last modification time
     deps.graph          // flat text — module dependency graph
@@ -79,14 +79,14 @@ bin/
 
 `timestamps` format:
 ```
-src/player.orh 1710234567
-src/utils.orh  1710234123
-main.orh       1710234890
+src/player.orh  1710234567
+src/utils.orh   1710234123
+src/myproj.orh  1710234890
 ```
 
 `deps.graph` format:
 ```
-main → player, math, utils
+myproj → player, math, utils
 player → math
 math →
 utils →
@@ -109,9 +109,9 @@ pub fn divide(a: i32, b: i32) i32 {
 }
 ```
 
-Example generated `main.zig`:
+Example generated `myproj.zig`:
 ```zig
-// generated from module main — do not edit
+// generated from module myproj — do not edit
 const std = @import("std");
 const math = @import("math.zig");
 const player = @import("player.zig");

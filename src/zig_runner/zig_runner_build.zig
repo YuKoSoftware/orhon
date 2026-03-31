@@ -562,14 +562,14 @@ pub fn emitCSourceFiles(
 
 test "buildZigContent - exe" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
+    const content = try buildZigContent(alloc, "myapp", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addExecutable") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "addRunArtifact") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "installArtifact") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "\"myapp\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "\"main.zig\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "\"myapp.zig\"") != null);
     // test step always present
     try std.testing.expect(std.mem.indexOf(u8, content, "b.step(\"test\"") != null);
 }
@@ -602,7 +602,7 @@ test "buildZigContent - dynamic" {
 
 test "buildZigContent - project name in exe artifact" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "calculator", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
+    const content = try buildZigContent(alloc, "myapp", "exe", "calculator", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "\"calculator\"") != null);
 }
@@ -610,7 +610,7 @@ test "buildZigContent - project name in exe artifact" {
 test "buildZigContent - cimport link libs emit linkSystemLibrary and linkLibC" {
     const alloc = std.testing.allocator;
     const libs = [_][]const u8{"SDL3"};
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &libs, &.{}, &.{}, &.{}, &.{}, false, null);
+    const content = try buildZigContent(alloc, "myapp", "exe", "myapp", null, &libs, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary(\"SDL3\"") != null);
@@ -619,7 +619,7 @@ test "buildZigContent - cimport link libs emit linkSystemLibrary and linkLibC" {
 
 test "buildZigContent - no cimport link libs means no linkLibC" {
     const alloc = std.testing.allocator;
-    const content = try buildZigContent(alloc, "main", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
+    const content = try buildZigContent(alloc, "myapp", "exe", "myapp", null, &.{}, &.{}, &.{}, &.{}, &.{}, false, null);
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary") == null);

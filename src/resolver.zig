@@ -836,6 +836,39 @@ pub const TypeResolver = struct {
                 if (std.mem.eql(u8, cf.name, "copy") or std.mem.eql(u8, cf.name, "move")) {
                     return first_arg_type;
                 }
+                // Introspection functions
+                if (std.mem.eql(u8, cf.name, "hasField") or std.mem.eql(u8, cf.name, "hasDecl")) {
+                    if (cf.args.len != 2) {
+                        const msg = try std.fmt.allocPrint(self.allocator, "@{s} takes exactly 2 arguments", .{cf.name});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                    } else if (cf.args[1].* != .string_literal) {
+                        const msg = try std.fmt.allocPrint(self.allocator, "@{s} requires a string literal as second argument", .{cf.name});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                    }
+                    return RT{ .primitive = .bool };
+                }
+                if (std.mem.eql(u8, cf.name, "fieldType")) {
+                    if (cf.args.len != 2) {
+                        const msg = try std.fmt.allocPrint(self.allocator, "@fieldType takes exactly 2 arguments", .{});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                    } else if (cf.args[1].* != .string_literal) {
+                        const msg = try std.fmt.allocPrint(self.allocator, "@fieldType requires a string literal as second argument", .{});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                    }
+                    return RT{ .primitive = .@"type" };
+                }
+                if (std.mem.eql(u8, cf.name, "fieldNames")) {
+                    if (cf.args.len != 1) {
+                        const msg = try std.fmt.allocPrint(self.allocator, "@fieldNames takes exactly 1 argument", .{});
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = self.nodeLoc(node) });
+                    }
+                    return RT.inferred;
+                }
                 return RT.unknown;
             },
 

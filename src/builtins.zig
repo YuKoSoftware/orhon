@@ -28,6 +28,10 @@ pub const COMPILER_FUNCS = [_][]const u8{
     "assert",
     "size",
     "align",
+    "hasField",
+    "hasDecl",
+    "fieldType",
+    "fieldNames",
 };
 
 /// Builtin value keywords
@@ -131,6 +135,10 @@ test "compiler func detection" {
     try std.testing.expect(isCompilerFunc("cast"));
     try std.testing.expect(isCompilerFunc("typeOf"));
     try std.testing.expect(!isCompilerFunc("print"));
+    try std.testing.expect(isCompilerFunc("hasField"));
+    try std.testing.expect(isCompilerFunc("hasDecl"));
+    try std.testing.expect(isCompilerFunc("fieldType"));
+    try std.testing.expect(isCompilerFunc("fieldNames"));
 }
 
 test "value type detection" {

@@ -226,21 +226,14 @@ implementation.
 
 Unblocks: generic constraints (already in TODO), `#derive`, numerous library patterns.
 
-### Compile-time struct introspection
+### ~~Compile-time struct introspection~~ DONE (v0.11.0)
 
-Compiler functions for structural checks inside `compt` code. Complements blueprints
-(nominal contracts) with low-level introspection (structural queries). Needed for
-`#derive`, serialization, conditional codegen.
-
-```
-hasField(MyStruct, "x")       // does the struct have field "x"?
-hasDecl(MyStruct, "deinit")   // does it have a method or const "deinit"?
-fieldType(MyStruct, "x")      // returns the type of field "x"
-```
-
-These are tools for `compt` metaprogramming, not a substitute for blueprints at API
-boundaries. Blueprints say "this type must conform." Introspection says "what does
-this type have?"
+~~Compiler functions for structural checks inside `compt` code.~~ Shipped.
+`@hasField(T, "name")`, `@hasDecl(T, "name")`, `@fieldType(T, "name")`,
+`@fieldNames(T)` — map to Zig builtins. Accept type or value as first argument
+(values auto-wrapped in `@TypeOf`). Orhon-level argument validation (count +
+string literal checks). Complements blueprints (nominal contracts) with low-level
+introspection (structural queries).
 
 ### `#derive` for common traits
 

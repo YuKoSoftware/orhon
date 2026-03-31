@@ -356,10 +356,12 @@ pub fn buildAllChildren(ctx: *BuildContext, cap: *const CaptureNode) ![]*Node {
 /// Walk a capture tree to collect struct/bridge struct type params and member nodes.
 /// Called by builder_decls.buildStructDecl and builder_bridge.buildBridgeStruct.
 pub fn collectStructParts(ctx: *BuildContext, cap: *const CaptureNode, type_params: *std.ArrayListUnmanaged(*Node), members: *std.ArrayListUnmanaged(*Node)) anyerror!void {
+    var pending_doc: ?[]const u8 = null;
     for (cap.children) |*child| {
         if (child.rule) |r| {
-            // Terminal declaration nodes — build and add as members
-            if (std.mem.eql(u8, r, "field_decl") or
+            if (std.mem.eql(u8, r, "doc_block")) {
+                pending_doc = extractDoc(ctx, child);
+            } else if (std.mem.eql(u8, r, "field_decl") or
                 std.mem.eql(u8, r, "func_decl") or
                 std.mem.eql(u8, r, "compt_decl") or
                 std.mem.eql(u8, r, "const_decl") or
@@ -368,15 +370,25 @@ pub fn collectStructParts(ctx: *BuildContext, cap: *const CaptureNode, type_para
                 std.mem.eql(u8, r, "bridge_func") or
                 std.mem.eql(u8, r, "bridge_const"))
             {
+                // Terminal declaration nodes — build and add as members
                 const node = try buildNode(ctx, child);
                 if (hasPubBefore(ctx, cap, child.start_pos)) setPub(node, true);
+                if (pending_doc) |doc| {
+                    setDoc(node, doc);
+                    pending_doc = null;
+                }
                 try members.append(ctx.alloc(), node);
             } else if (std.mem.eql(u8, r, "pub_decl")) {
-                try members.append(ctx.alloc(), try buildNode(ctx, child));
+                const node = try buildNode(ctx, child);
+                if (pending_doc) |doc| {
+                    setDoc(node, doc);
+                    pending_doc = null;
+                }
+                try members.append(ctx.alloc(), node);
             } else if (std.mem.eql(u8, r, "generic_params") or std.mem.eql(u8, r, "param_list")) {
                 // Only collect params from generic_params context (not from functions)
                 try collectParamsRecursive(ctx, child, type_params);
-            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM") or std.mem.eql(u8, r, "doc_block") or std.mem.eql(u8, r, "type")) {
+            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM") or std.mem.eql(u8, r, "type")) {
                 // skip
             } else {
                 // Recurse into wrapper rules (struct_body, struct_member, bridge_struct_body, etc.)

@@ -448,13 +448,20 @@ pub fn buildEnumDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 }
 
 fn collectEnumMembers(ctx: *BuildContext, cap: *const CaptureNode, members: *std.ArrayListUnmanaged(*Node)) anyerror!void {
+    var pending_doc: ?[]const u8 = null;
     for (cap.children) |*child| {
         if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "enum_variant") or std.mem.eql(u8, r, "func_decl") or std.mem.eql(u8, r, "pub_decl")) {
+            if (std.mem.eql(u8, r, "doc_block")) {
+                pending_doc = builder.extractDoc(ctx, child);
+            } else if (std.mem.eql(u8, r, "enum_variant") or std.mem.eql(u8, r, "func_decl") or std.mem.eql(u8, r, "pub_decl")) {
                 const node = try builder.buildNode(ctx, child);
                 if (builder.hasPubBefore(ctx, cap, child.start_pos)) builder.setPub(node, true);
+                if (pending_doc) |doc| {
+                    builder.setDoc(node, doc);
+                    pending_doc = null;
+                }
                 try members.append(ctx.alloc(), node);
-            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM") or std.mem.eql(u8, r, "doc_block") or std.mem.eql(u8, r, "type")) {
+            } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM") or std.mem.eql(u8, r, "type")) {
                 // skip
             } else {
                 try collectEnumMembers(ctx, child, members);

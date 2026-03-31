@@ -35,6 +35,7 @@ pub const ParamSig = struct {
 pub const StructSig = struct {
     name: []const u8,
     fields: []FieldSig,
+    conforms_to: []const []const u8 = &.{},
     is_pub: bool,
 };
 
@@ -61,6 +62,18 @@ pub const BitfieldSig = struct {
     is_pub: bool,
 };
 
+pub const BlueprintMethodSig = struct {
+    name: []const u8,
+    params: []ParamSig,
+    return_type: types.ResolvedType,
+};
+
+pub const BlueprintSig = struct {
+    name: []const u8,
+    methods: []BlueprintMethodSig,
+    is_pub: bool,
+};
+
 /// A variable/constant declaration
 pub const VarSig = struct {
     name: []const u8,
@@ -78,6 +91,7 @@ pub const DeclTable = struct {
     bitfields: std.StringHashMap(BitfieldSig),
     vars: std.StringHashMap(VarSig),
     types: std.StringHashMap([]const u8), // type aliases and compt types
+    blueprints: std.StringHashMap(BlueprintSig),
     /// Bridge struct method signatures keyed by "StructName.method".
     /// Used by MIR annotator to detect const & param coercions for cross-module calls.
     struct_methods: std.StringHashMapUnmanaged(FuncSig),
@@ -97,6 +111,7 @@ pub const DeclTable = struct {
             .bitfields = std.StringHashMap(BitfieldSig).init(allocator),
             .vars = std.StringHashMap(VarSig).init(allocator),
             .types = std.StringHashMap([]const u8).init(allocator),
+            .blueprints = std.StringHashMap(BlueprintSig).init(allocator),
             .struct_methods = .{},
             .allocator = allocator,
             .type_arena = std.heap.ArenaAllocator.init(allocator),
@@ -132,6 +147,17 @@ pub const DeclTable = struct {
         self.bitfields.deinit();
         self.vars.deinit();
         self.types.deinit();
+        // Free owned slices stored in BlueprintSig values
+        {
+            var it = self.blueprints.iterator();
+            while (it.next()) |entry| {
+                for (entry.value_ptr.methods) |method| {
+                    self.allocator.free(method.params);
+                }
+                self.allocator.free(entry.value_ptr.methods);
+            }
+            self.blueprints.deinit();
+        }
         // Free struct_methods: keys are allocPrint strings, values have owned param slices
         var sm_it = self.struct_methods.iterator();
         while (sm_it.next()) |entry| {
@@ -230,6 +256,7 @@ pub const DeclCollector = struct {
         switch (node.*) {
             .func_decl => |f| try self.collectFunc(f, loc),
             .struct_decl => |s| try self.collectStruct(s, loc),
+            .blueprint_decl => |b| try self.collectBlueprint(b, loc),
             .enum_decl => |e| try self.collectEnum(e, loc),
             .bitfield_decl => |b| try self.collectBitfield(b, loc),
             .const_decl => |v| try self.collectVar(v, true, false, loc),
@@ -329,6 +356,7 @@ pub const DeclCollector = struct {
         const sig = StructSig{
             .name = s.name,
             .fields = try fields.toOwnedSlice(self.allocator),
+            .conforms_to = s.blueprints,
             .is_pub = s.is_pub,
         };
 
@@ -374,6 +402,44 @@ pub const DeclCollector = struct {
                 }
             }
         }
+    }
+
+    fn collectBlueprint(self: *DeclCollector, b: parser.BlueprintDecl, loc: ?errors.SourceLoc) anyerror!void {
+        var methods: std.ArrayListUnmanaged(BlueprintMethodSig) = .{};
+
+        for (b.methods) |member| {
+            if (member.* == .func_decl) {
+                const f = member.func_decl;
+                var params: std.ArrayListUnmanaged(ParamSig) = .{};
+                for (f.params) |param| {
+                    if (param.* == .param) {
+                        try params.append(self.allocator, .{
+                            .name = param.param.name,
+                            .type_ = try types.resolveTypeNode(self.table.typeAllocator(), param.param.type_annotation),
+                        });
+                    }
+                }
+                try methods.append(self.allocator, .{
+                    .name = f.name,
+                    .params = try params.toOwnedSlice(self.allocator),
+                    .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
+                });
+            }
+        }
+
+        if (self.table.blueprints.contains(b.name)) {
+            const msg = try std.fmt.allocPrint(self.allocator,
+                "duplicate blueprint declaration: '{s}'", .{b.name});
+            defer self.allocator.free(msg);
+            try self.reporter.report(.{ .message = msg, .loc = loc });
+            return;
+        }
+
+        try self.table.blueprints.put(b.name, .{
+            .name = b.name,
+            .methods = try methods.toOwnedSlice(self.allocator),
+            .is_pub = b.is_pub,
+        });
     }
 
     fn collectEnum(self: *DeclCollector, e: parser.EnumDecl, loc: ?errors.SourceLoc) anyerror!void {
@@ -775,6 +841,15 @@ fn isReservedTypeName(name: []const u8) bool {
     if (types.isPrimitiveName(name)) return true;
     if (std.mem.eql(u8, name, "Error")) return true;
     return builtins.isBuiltinType(name);
+}
+
+test "DeclTable.blueprints map initializes empty" {
+    const alloc = std.testing.allocator;
+    var reporter = @import("errors.zig").Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var table = DeclTable.init(alloc);
+    defer table.deinit();
+    try std.testing.expect(table.blueprints.count() == 0);
 }
 
 test "isTypeAlias - detects type keyword annotation" {

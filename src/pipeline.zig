@@ -170,6 +170,93 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         if (reporter.hasErrors()) return null;
         try all_module_decls.put(mod_name, &decl_collector.table);
 
+        // ── Validate 'main' as reserved name ─────────────────
+        // Check top-level declarations for misuse of the name "main"
+        {
+            const is_exe = mod_ptr.build_type == .exe;
+            var has_func_main = false;
+
+            // Helper to resolve source location for a node
+            const loc_helper = struct {
+                fn nodeLoc(locs: ?*const parser.LocMap, offsets: []const module.FileOffset, node: *parser.Node) ?errors.SourceLoc {
+                    if (locs) |l| {
+                        if (l.get(node)) |loc| {
+                            const resolved = module.resolveFileLoc(offsets, loc.line);
+                            return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
+                        }
+                    }
+                    return null;
+                }
+            };
+
+            for (ast.program.top_level) |node| {
+                switch (node.*) {
+                    .var_decl, .const_decl, .compt_decl => |v| {
+                        if (std.mem.eql(u8, v.name, "main")) {
+                            const msg = try std.fmt.allocPrint(allocator,
+                                "'main' is reserved for the executable entry point", .{});
+                            defer allocator.free(msg);
+                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                        }
+                    },
+                    .struct_decl => |s| {
+                        if (std.mem.eql(u8, s.name, "main")) {
+                            const msg = try std.fmt.allocPrint(allocator,
+                                "'main' is reserved for the executable entry point", .{});
+                            defer allocator.free(msg);
+                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                        }
+                    },
+                    .enum_decl => |e| {
+                        if (std.mem.eql(u8, e.name, "main")) {
+                            const msg = try std.fmt.allocPrint(allocator,
+                                "'main' is reserved for the executable entry point", .{});
+                            defer allocator.free(msg);
+                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                        }
+                    },
+                    .blueprint_decl => |b| {
+                        if (std.mem.eql(u8, b.name, "main")) {
+                            const msg = try std.fmt.allocPrint(allocator,
+                                "'main' is reserved for the executable entry point", .{});
+                            defer allocator.free(msg);
+                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                        }
+                    },
+                    .bitfield_decl => |bf| {
+                        if (std.mem.eql(u8, bf.name, "main")) {
+                            const msg = try std.fmt.allocPrint(allocator,
+                                "'main' is reserved for the executable entry point", .{});
+                            defer allocator.free(msg);
+                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                        }
+                    },
+                    .func_decl => |f| {
+                        if (std.mem.eql(u8, f.name, "main")) {
+                            if (!is_exe) {
+                                const msg = try std.fmt.allocPrint(allocator,
+                                    "func main() is only allowed in executable modules", .{});
+                                defer allocator.free(msg);
+                                try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                            } else {
+                                has_func_main = true;
+                            }
+                        }
+                    },
+                    else => {},
+                }
+            }
+
+            // Exe modules must have func main() in the anchor file
+            if (is_exe and !has_func_main) {
+                const msg = try std.fmt.allocPrint(allocator,
+                    "executable module '{s}' requires func main() in anchor file", .{mod_name});
+                defer allocator.free(msg);
+                try reporter.report(.{ .message = msg });
+            }
+        }
+        if (reporter.hasErrors()) return null;
+
         // Compute this module's current interface hash (after pass 4, before skip decision).
         // Stored here so it is available whether or not we recompile.
         const current_iface_hash = cache.hashInterface(&decl_collector.table);

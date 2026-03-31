@@ -212,6 +212,20 @@ pub const Resolver = struct {
                     continue;
                 };
 
+                // Reject 'module main' — reserved for the executable entry point
+                if (std.mem.eql(u8, mod_name, "main")) {
+                    const msg = try std.fmt.allocPrint(self.allocator,
+                        "'main' is reserved for the executable entry point — use your project name as the module name", .{});
+                    defer self.allocator.free(msg);
+                    try self.reporter.report(.{
+                        .message = msg,
+                        .loc = .{ .file = full_path, .line = 1, .col = 1 },
+                    });
+                    self.allocator.free(mod_name);
+                    self.allocator.free(full_path);
+                    continue;
+                }
+
                 const result = try file_map.getOrPut(mod_name);
                 if (!result.found_existing) {
                     result.value_ptr.* = .{};
@@ -712,6 +726,37 @@ pub const Resolver = struct {
                     };
                     mod.sidecar_path = sidecar;
                     break;
+                }
+            }
+        }
+
+        // Validate exe layout — exe modules with anchor file directly in src/ must
+        // match the project folder name (only the primary module gets #build = exe at root)
+        const project_folder = blk: {
+            const cwd_path = try std.fs.cwd().realpathAlloc(self.allocator, ".");
+            defer self.allocator.free(cwd_path);
+            break :blk try self.allocator.dupe(u8, std.fs.path.basename(cwd_path));
+        };
+        defer self.allocator.free(project_folder);
+
+        var exe_it = self.modules.iterator();
+        while (exe_it.next()) |entry| {
+            const mod = entry.value_ptr;
+            if (mod.build_type != .exe) continue;
+
+            // Check if anchor file is directly in src/ (not in a subdirectory)
+            if (mod.files.len > 0) {
+                const anchor = mod.files[0];
+                const dir = std.fs.path.dirname(anchor) orelse "";
+                // Anchor is directly in src/ if its directory is exactly "src"
+                if (std.mem.eql(u8, dir, "src")) {
+                    if (!std.mem.eql(u8, entry.key_ptr.*, project_folder)) {
+                        const msg = try std.fmt.allocPrint(self.allocator,
+                            "only the primary module '{s}' may use #build = exe in src/ — move '{s}' to a subdirectory",
+                            .{ project_folder, entry.key_ptr.* });
+                        defer self.allocator.free(msg);
+                        try self.reporter.report(.{ .message = msg, .loc = .{ .file = anchor, .line = 1, .col = 1 } });
+                    }
                 }
             }
         }

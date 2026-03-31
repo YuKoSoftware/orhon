@@ -8,7 +8,7 @@ const std = @import("std");
 
 // Templates are embedded from src/templates/ at compile time.
 // Never put multi-line file content inline in .zig source — use @embedFile instead.
-const MAIN_ORH_TEMPLATE         = @embedFile("templates/main.orh");
+const PROJECT_ORH_TEMPLATE      = @embedFile("templates/project.orh");
 
 // Example module — split across multiple files in templates/example/
 const EXAMPLE_ORH_TEMPLATE      = @embedFile("templates/example/example.orh");
@@ -46,26 +46,28 @@ pub fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: boo
     defer allocator.free(example_dir_path);
     try std.fs.cwd().makePath(example_dir_path);
 
-    // Write src/main.orh from template (skip if exists)
-    // Template contains a single {s} placeholder for the project name.
-    // Split on it and write in two parts — avoids allocPrint brace escaping issues.
-    const main_orh_path = try std.fs.path.join(allocator, &.{ base, "src", "main.orh" });
-    defer allocator.free(main_orh_path);
+    // Write src/{name}.orh from template (skip if exists)
+    // Template contains multiple {s} placeholders for the project name.
+    // Loop over all placeholders — avoids allocPrint brace escaping issues.
+    const project_orh_name = try std.fmt.allocPrint(allocator, "{s}.orh", .{name});
+    defer allocator.free(project_orh_name);
+    const project_orh_path = try std.fs.path.join(allocator, &.{ base, "src", project_orh_name });
+    defer allocator.free(project_orh_path);
 
-    if (std.fs.cwd().access(main_orh_path, .{})) |_| {
-        // main.orh exists — don't overwrite
+    if (std.fs.cwd().access(project_orh_path, .{})) |_| {
+        // project file exists — don't overwrite
     } else |_| {
-        const main_file = try std.fs.cwd().createFile(main_orh_path, .{});
-        defer main_file.close();
+        const file = try std.fs.cwd().createFile(project_orh_path, .{});
+        defer file.close();
 
         const placeholder = "{s}";
-        if (std.mem.indexOf(u8, MAIN_ORH_TEMPLATE, placeholder)) |pos| {
-            try main_file.writeAll(MAIN_ORH_TEMPLATE[0..pos]);
-            try main_file.writeAll(name);
-            try main_file.writeAll(MAIN_ORH_TEMPLATE[pos + placeholder.len..]);
-        } else {
-            try main_file.writeAll(MAIN_ORH_TEMPLATE);
+        var remaining: []const u8 = PROJECT_ORH_TEMPLATE;
+        while (std.mem.indexOf(u8, remaining, placeholder)) |pos| {
+            try file.writeAll(remaining[0..pos]);
+            try file.writeAll(name);
+            remaining = remaining[pos + placeholder.len..];
         }
+        try file.writeAll(remaining);
     }
 
     // Write example module files into src/example/ (skip each if exists)
@@ -94,7 +96,7 @@ pub fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: boo
 
     std.debug.print("Created project '{s}'\n", .{name});
     std.debug.print("  {s}/src/\n", .{base});
-    std.debug.print("  {s}/src/main.orh\n", .{base});
+    std.debug.print("  {s}/src/{s}.orh\n", .{ base, name });
     std.debug.print("  {s}/src/example/  (6 files — language manual)\n", .{base});
     if (!in_place) {
         std.debug.print("\nGet started:\n", .{});

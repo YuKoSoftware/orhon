@@ -49,7 +49,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     std.fs.cwd().access(cli.source_dir, .{}) catch {
         std.debug.print("error: source directory '{s}' not found\n", .{cli.source_dir});
         std.debug.print("  run `orhon build` from inside an orhon project directory\n", .{});
-        std.debug.print("  expected: {s}/main.orh\n", .{cli.source_dir});
+        std.debug.print("  expected: {s}/<project_name>.orh with #build = exe\n", .{cli.source_dir});
         return null;
     };
 

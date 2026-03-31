@@ -349,11 +349,8 @@ fn validateSource(source: []const u8, alloc: std.mem.Allocator) !bool {
 }
 
 // Template files (must all pass)
-test "peg - validate templates/main.orh" {
-    const alloc = std.testing.allocator;
-    const valid = try validateSource(@embedFile("templates/main.orh"), alloc);
-    try std.testing.expect(valid);
-}
+// Note: project.orh is a template with {s} placeholders — not valid Orhon source,
+// so it is not validated here. It is tested via orhon init integration tests.
 
 test "peg - validate templates/example/example.orh" {
     const alloc = std.testing.allocator;

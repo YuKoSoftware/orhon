@@ -28,26 +28,32 @@ pub fn buildProgram(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     var metadata_list = std.ArrayListUnmanaged(*Node){};
     var imports_list = std.ArrayListUnmanaged(*Node){};
     var top_level_list = std.ArrayListUnmanaged(*Node){};
+    var pending_doc: ?[]const u8 = null;
 
     for (cap.children) |*child| {
         if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "metadata")) {
+            if (std.mem.eql(u8, r, "doc_block")) {
+                // doc_block at program level — attach to the next top_level declaration
+                pending_doc = builder.extractDoc(ctx, child);
+            } else if (std.mem.eql(u8, r, "metadata")) {
                 try metadata_list.append(ctx.alloc(), try builder.buildNode(ctx, child));
             } else if (std.mem.eql(u8, r, "import_decl")) {
                 try imports_list.append(ctx.alloc(), try builder.buildNode(ctx, child));
             } else if (std.mem.eql(u8, r, "top_level")) {
                 // top_level <- doc_block? top_level_decl
-                var pending_doc: ?[]const u8 = null;
+                // doc_block may be inside top_level OR at program level (pending_doc)
+                var inner_doc: ?[]const u8 = null;
                 for (child.children) |*tl_child| {
                     if (tl_child.rule) |tl_rule| {
                         if (std.mem.eql(u8, tl_rule, "doc_block")) {
-                            pending_doc = builder.extractDoc(ctx, tl_child);
+                            inner_doc = builder.extractDoc(ctx, tl_child);
                         } else {
                             const node = try builder.buildNode(ctx, tl_child);
-                            if (pending_doc) |doc| {
-                                builder.setDoc(node, doc);
-                                pending_doc = null;
-                            }
+                            // Inner doc_block takes precedence over program-level pending_doc
+                            const doc = inner_doc orelse pending_doc;
+                            if (doc) |d| builder.setDoc(node, d);
+                            inner_doc = null;
+                            pending_doc = null;
                             try top_level_list.append(ctx.alloc(), node);
                         }
                     }

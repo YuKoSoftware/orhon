@@ -449,6 +449,7 @@ pub fn setDoc(node: *Node, doc: ?[]const u8) void {
         .bitfield_decl => |*d| d.doc = doc,
         .const_decl => |*d| d.doc = doc,
         .var_decl => |*d| d.doc = doc,
+        .compt_decl => |*d| d.doc = doc,
         .field_decl => |*d| d.doc = doc,
         .enum_variant => |*d| d.doc = doc,
         .module_decl => |*d| d.doc = doc,

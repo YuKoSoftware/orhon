@@ -559,4 +559,40 @@ else
     fail "rejects bad introspection args" "$NEG_OUT"
 fi
 
+# blueprint: missing method
+cd "$TESTDIR"
+mkdir -p neg_bp_missing/src
+cp "$FIXTURES/fail_blueprint_missing_method.orh" neg_bp_missing/src/main.orh
+cd neg_bp_missing
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "does not implement.*required by blueprint"; then
+    pass "rejects missing blueprint method"
+else
+    fail "rejects missing blueprint method" "$NEG_OUT"
+fi
+
+# blueprint: wrong signature
+cd "$TESTDIR"
+mkdir -p neg_bp_sig/src
+cp "$FIXTURES/fail_blueprint_wrong_sig.orh" neg_bp_sig/src/main.orh
+cd neg_bp_sig
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "does not match blueprint\|parameter"; then
+    pass "rejects wrong blueprint method signature"
+else
+    fail "rejects wrong blueprint method signature" "$NEG_OUT"
+fi
+
+# blueprint: unknown blueprint
+cd "$TESTDIR"
+mkdir -p neg_bp_unknown/src
+cp "$FIXTURES/fail_blueprint_unknown.orh" neg_bp_unknown/src/main.orh
+cd neg_bp_unknown
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "unknown blueprint"; then
+    pass "rejects unknown blueprint"
+else
+    fail "rejects unknown blueprint" "$NEG_OUT"
+fi
+
 report_results

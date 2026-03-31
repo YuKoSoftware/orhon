@@ -116,4 +116,50 @@ else fail "value → .? codegen"; fi
 if grep -q "@TypeOf" "$GEN_TESTER" 2>/dev/null; then pass "qualified is → @TypeOf codegen"
 else fail "qualified is → @TypeOf codegen"; fi
 
+section "Blueprint features"
+
+cd "$TESTDIR"
+mkdir -p bptest/src
+cp "$FIXTURES/blueprint_main.orh" bptest/src/main.orh
+cp "$FIXTURES/blueprint_basic.orh" bptest/src/blueprint_basic.orh
+cd bptest
+
+OUTPUT=$("$ORHON" build 2>&1 || true)
+if echo "$OUTPUT" | grep -q "Built: bin/bptest"; then
+    pass "basic blueprint compiles"
+else
+    fail "basic blueprint compiles" "$OUTPUT"
+fi
+
+GEN_TESTER=".orh-cache/generated/tester.zig"
+if [ -f "$GEN_TESTER" ]; then
+    # Verify blueprint is erased — no trace in generated Zig
+    if grep -q "blueprint" "$GEN_TESTER"; then
+        fail "blueprint erased from codegen"
+    else
+        pass "blueprint erased from codegen"
+    fi
+    # Verify struct and method are present
+    if grep -q "fn eq" "$GEN_TESTER"; then
+        pass "blueprint method present in struct codegen"
+    else
+        fail "blueprint method present in struct codegen"
+    fi
+else
+    fail "tester.zig generated for blueprint test"
+fi
+
+cd "$TESTDIR"
+mkdir -p bpmulti/src
+cp "$FIXTURES/blueprint_main.orh" bpmulti/src/main.orh
+cp "$FIXTURES/blueprint_multiple.orh" bpmulti/src/blueprint_multiple.orh
+cd bpmulti
+
+OUTPUT=$("$ORHON" build 2>&1 || true)
+if echo "$OUTPUT" | grep -q "Built: bin/bptest"; then
+    pass "multiple blueprints compile"
+else
+    fail "multiple blueprints compile" "$OUTPUT"
+fi
+
 report_results

@@ -155,6 +155,14 @@ const KEYWORDS = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "type",     .kw_type },
 });
 
+fn isBinaryDigit(ch: u8) bool {
+    return ch == '0' or ch == '1';
+}
+
+fn isOctalDigit(ch: u8) bool {
+    return ch >= '0' and ch <= '7';
+}
+
 /// The lexer state machine
 pub const Lexer = struct {
     source: []const u8,
@@ -265,49 +273,27 @@ pub const Lexer = struct {
         const start_col = self.col;
         var kind: TokenKind = .int_literal;
 
-        // Check for prefix
+        // Check for prefix (0x, 0b, 0o)
         if (self.peek() == '0') {
             const next_ch = self.peekAt(1);
-            if (next_ch == 'x' or next_ch == 'X') {
-                _ = self.advance(); _ = self.advance();
+            const digit_validator: ?*const fn (u8) bool = if (next_ch == 'x' or next_ch == 'X')
+                &std.ascii.isHex
+            else if (next_ch == 'b' or next_ch == 'B')
+                &isBinaryDigit
+            else if (next_ch == 'o' or next_ch == 'O')
+                &isOctalDigit
+            else
+                null;
+
+            if (digit_validator) |isValid| {
+                _ = self.advance();
+                _ = self.advance();
                 const digit_start = self.pos;
                 while (self.peek()) |ch| {
-                    if (std.ascii.isHex(ch) or ch == '_') _ = self.advance()
-                    else break;
+                    if (isValid(ch) or ch == '_') _ = self.advance() else break;
                 }
                 if (self.pos == digit_start)
                     return .{ .kind = .invalid, .text = self.source[start..self.pos], .line = start_line, .col = start_col };
-                // Check for invalid trailing alphanumeric (e.g. 0xGG)
-                if (self.peek()) |ch| {
-                    if (std.ascii.isAlphanumeric(ch))
-                        return .{ .kind = .invalid, .text = self.source[start..self.pos], .line = start_line, .col = start_col };
-                }
-                return .{ .kind = .int_literal, .text = self.source[start..self.pos], .line = start_line, .col = start_col };
-            } else if (next_ch == 'b' or next_ch == 'B') {
-                _ = self.advance(); _ = self.advance();
-                const digit_start = self.pos;
-                while (self.peek()) |ch| {
-                    if (ch == '0' or ch == '1' or ch == '_') _ = self.advance()
-                    else break;
-                }
-                if (self.pos == digit_start)
-                    return .{ .kind = .invalid, .text = self.source[start..self.pos], .line = start_line, .col = start_col };
-                // Check for invalid trailing digit (e.g. 0b12)
-                if (self.peek()) |ch| {
-                    if (std.ascii.isAlphanumeric(ch))
-                        return .{ .kind = .invalid, .text = self.source[start..self.pos], .line = start_line, .col = start_col };
-                }
-                return .{ .kind = .int_literal, .text = self.source[start..self.pos], .line = start_line, .col = start_col };
-            } else if (next_ch == 'o' or next_ch == 'O') {
-                _ = self.advance(); _ = self.advance();
-                const digit_start = self.pos;
-                while (self.peek()) |ch| {
-                    if ((ch >= '0' and ch <= '7') or ch == '_') _ = self.advance()
-                    else break;
-                }
-                if (self.pos == digit_start)
-                    return .{ .kind = .invalid, .text = self.source[start..self.pos], .line = start_line, .col = start_col };
-                // Check for invalid trailing digit (e.g. 0o89)
                 if (self.peek()) |ch| {
                     if (std.ascii.isAlphanumeric(ch))
                         return .{ .kind = .invalid, .text = self.source[start..self.pos], .line = start_line, .col = start_col };

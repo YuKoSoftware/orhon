@@ -371,8 +371,19 @@ pub const TypeArray = struct {
     elem: *Node,
 };
 
+/// Pointer kind — shared by AST TypePtr and ResolvedType.Ptr.
+/// Replaces string-based "mut&"/"const&" comparisons.
+pub const PtrKind = enum {
+    const_ref,
+    mut_ref,
+
+    pub fn isMutable(self: PtrKind) bool {
+        return self == .mut_ref;
+    }
+};
+
 pub const TypePtr = struct {
-    kind: []const u8,
+    kind: PtrKind,
     elem: *Node,
 };
 

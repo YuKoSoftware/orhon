@@ -204,22 +204,8 @@ pub fn buildZigContentMulti(
             if (shared_cimport_set.contains(hdr)) continue;
             try shared_cimport_set.put(allocator, hdr, {});
 
-            // Derive a Zig identifier from the header path: take the last segment,
-            // strip the extension, replace non-alphanumeric with '_'.
-            // E.g. "vulkan/vulkan.h" → "vulkan_c", "SDL3/SDL.h" → "SDL3_c"
-            const base = std.fs.path.basename(hdr);
-            const stem = if (std.mem.lastIndexOfScalar(u8, base, '.')) |dot|
-                base[0..dot]
-            else
-                base;
-
-            // Sanitize stem into a valid Zig identifier
-            var stem_buf: [64]u8 = undefined;
-            const stem_len = @min(stem.len, 63);
-            for (0..stem_len) |i| {
-                stem_buf[i] = if (std.ascii.isAlphanumeric(stem[i])) stem[i] else '_';
-            }
-            const safe_stem = stem_buf[0..stem_len];
+            const stem_result = _build.sanitizeHeaderStem(hdr);
+            const safe_stem = stem_result.slice();
 
             const cimport_chunk = try std.fmt.allocPrint(allocator,
                 \\    const cimport_{s} = b.createModule(.{{
@@ -238,17 +224,8 @@ pub fn buildZigContentMulti(
     for (targets) |*t| {
         if (!t.has_bridges) continue;
         for (t.c_includes) |hdr| {
-            const base = std.fs.path.basename(hdr);
-            const stem = if (std.mem.lastIndexOfScalar(u8, base, '.')) |dot|
-                base[0..dot]
-            else
-                base;
-            var stem_buf: [64]u8 = undefined;
-            const stem_len = @min(stem.len, 63);
-            for (0..stem_len) |i| {
-                stem_buf[i] = if (std.ascii.isAlphanumeric(stem[i])) stem[i] else '_';
-            }
-            const safe_stem = stem_buf[0..stem_len];
+            const stem_result = _build.sanitizeHeaderStem(hdr);
+            const safe_stem = stem_result.slice();
 
             const wire_chunk = try std.fmt.allocPrint(allocator,
                 \\    bridge_{s}.addImport("{s}_c", cimport_{s});

@@ -28,7 +28,7 @@ fn formatType(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc: std.m
             try formatType(a.elem, buf, alloc);
         },
         .type_ptr       => |p| {
-            try buf.appendSlice(alloc, p.kind);
+            try buf.appendSlice(alloc, if (p.kind == .mut_ref) "mut&" else "const&");
             try formatType(p.elem, buf, alloc);
         },
         .type_union     => |arms| {

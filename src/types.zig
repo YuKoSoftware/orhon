@@ -191,7 +191,7 @@ pub const ResolvedType = union(enum) {
     };
 
     pub const Ptr = struct {
-        kind: []const u8, // "mut&" or "const&"
+        kind: parser.PtrKind,
         elem: *const ResolvedType,
     };
 
@@ -253,7 +253,7 @@ pub const ResolvedType = union(enum) {
             .tuple => "(a: T, b: U)",
             .func_ptr => "func(T) U",
             .generic => |g| g.name,
-            .ptr => |p| p.kind,
+            .ptr => |p| if (p.kind == .mut_ref) "mut&" else "const&",
             .core_type => |ct| switch (ct.kind) {
                 .error_union => "ErrorUnion(T)",
                 .null_union => "NullUnion(T)",

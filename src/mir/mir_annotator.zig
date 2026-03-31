@@ -524,7 +524,7 @@ pub const MirAnnotator = struct {
             return .{ .kind = .optional_unwrap };
         // Value → const ref (T → const& T)
         if (dst == .ptr) {
-            if (std.mem.eql(u8, dst.ptr.kind, "const&")) {
+            if (dst.ptr.kind == .const_ref) {
                 if (typesMatch(src, dst.ptr.elem.*)) {
                     return .{ .kind = .value_to_const_ref };
                 }
@@ -764,7 +764,7 @@ test "detectCoercion - value to const ref" {
     elem.* = RT{ .named = "Vec2" };
 
     // named("Vec2") → const &Vec2 → value_to_const_ref
-    const dst = RT{ .ptr = .{ .kind = "const&", .elem = elem } };
+    const dst = RT{ .ptr = .{ .kind = .const_ref, .elem = elem } };
     const r1 = MirAnnotator.detectCoercion(RT{ .named = "Vec2" }, dst);
     try std.testing.expectEqual(Coercion.value_to_const_ref, r1.kind.?);
 

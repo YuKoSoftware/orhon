@@ -10,9 +10,3 @@ pub const Type = struct {
     pub const ANY = "any";
     pub const TYPE = "type";
 };
-
-/// Pointer kind strings (parser + borrow + codegen)
-pub const Ptr = struct {
-    pub const VAR_REF = "mut&";
-    pub const CONST_REF = "const&";
-};

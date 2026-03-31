@@ -604,7 +604,8 @@ fn hashResolvedType(seed: u64, rt: types.ResolvedType) u64 {
             }
         },
         .ptr => |p| {
-            s = XxHash3.hash(s, p.kind);
+            const kind_val: u8 = @intCast(@intFromEnum(p.kind));
+            s = XxHash3.hash(s, &[_]u8{kind_val});
             s = hashResolvedType(s, p.elem.*);
         },
         .core_type => |ct| {

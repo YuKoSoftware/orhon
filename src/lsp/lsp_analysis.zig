@@ -52,7 +52,7 @@ pub fn formatType(allocator: std.mem.Allocator, t: types.ResolvedType) anyerror!
             defer allocator.free(ret_s);
             break :blk std.fmt.allocPrint(allocator, "func(...) {s}", .{ret_s});
         },
-        .ptr => |p| allocator.dupe(u8, p.kind),
+        .ptr => |p| try allocator.dupe(u8, if (p.kind == .mut_ref) "mut&" else "const&"),
         .core_type => |ct| blk: {
             const inner_s = try formatType(allocator, ct.inner.*);
             defer allocator.free(inner_s);

@@ -8,7 +8,6 @@ const parser = @import("parser.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
-const K = @import("constants.zig");
 
 /// Tracks which variables have been moved into threads
 pub const ThreadSafetyChecker = struct {
@@ -257,7 +256,7 @@ pub const ThreadSafetyChecker = struct {
                     if (param_node.* == .param) {
                         const type_ann = param_node.param.type_annotation;
                         if (type_ann.* == .type_ptr and
-                            std.mem.eql(u8, type_ann.type_ptr.kind, K.Ptr.VAR_REF))
+                            type_ann.type_ptr.kind == .mut_ref)
                         {
                             // Mutable borrow to thread — immediate error
                             const msg = try std.fmt.allocPrint(self.allocator,
@@ -768,7 +767,7 @@ test "thread safety - const borrow arg freezes variable" {
     var void_node = parser.Node{ .identifier = "void" };
     var i32_elem = parser.Node{ .identifier = "i32" };
     var param_type = parser.Node{ .type_ptr = .{
-        .kind = K.Ptr.CONST_REF,
+        .kind = .const_ref,
         .elem = &i32_elem,
     } };
     var param_node = parser.Node{ .param = .{
@@ -834,7 +833,7 @@ test "thread safety - mutable borrow arg rejected" {
     var void_node = parser.Node{ .identifier = "void" };
     var i32_elem = parser.Node{ .identifier = "i32" };
     var param_type = parser.Node{ .type_ptr = .{
-        .kind = K.Ptr.VAR_REF,
+        .kind = .mut_ref,
         .elem = &i32_elem,
     } };
     var param_node = parser.Node{ .param = .{
@@ -946,8 +945,7 @@ test "thread safety - multi-arg thread call: move + const borrow" {
     // Register: thread worker(a: i32, b: const& i32) Handle(void)
     var void_node = parser.Node{ .identifier = "void" };
     var i32_node = parser.Node{ .identifier = "i32" };
-    const constants = @import("constants.zig");
-    var ref_node = parser.Node{ .type_ptr = .{ .kind = constants.Ptr.CONST_REF, .elem = &i32_node } };
+    var ref_node = parser.Node{ .type_ptr = .{ .kind = .const_ref, .elem = &i32_node } };
     var param_a = parser.Node{ .param = .{
         .name = "a",
         .type_annotation = &i32_node,

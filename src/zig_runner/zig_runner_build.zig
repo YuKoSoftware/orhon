@@ -6,6 +6,31 @@ const errors = @import("../errors.zig");
 const cache = @import("../cache.zig");
 const module = @import("../module.zig");
 
+/// Sanitize a C header filename into a valid Zig identifier.
+/// Returns the sanitized stem as a slice into the returned buffer.
+/// e.g. "vk_mem_alloc.h" → "vk_mem_alloc"
+pub const StemResult = struct {
+    buf: [64]u8,
+    len: usize,
+
+    pub fn slice(self: *const StemResult) []const u8 {
+        return self.buf[0..self.len];
+    }
+};
+
+pub fn sanitizeHeaderStem(hdr: []const u8) StemResult {
+    const base = std.fs.path.basename(hdr);
+    const stem = if (std.mem.lastIndexOfScalar(u8, base, '.')) |dot|
+        base[0..dot]
+    else
+        base;
+    var result = StemResult{ .buf = undefined, .len = @min(stem.len, 63) };
+    for (0..result.len) |i| {
+        result.buf[i] = if (std.ascii.isAlphanumeric(stem[i])) stem[i] else '_';
+    }
+    return result;
+}
+
 /// Build the content of build.zig for the given build type.
 /// Caller owns the returned slice.
 pub fn buildZigContent(
@@ -70,17 +95,8 @@ pub fn buildZigContent(
     for (c_includes) |hdr| {
         if (seen_cimport.contains(hdr)) continue;
         try seen_cimport.put(allocator, hdr, {});
-        const base = std.fs.path.basename(hdr);
-        const stem = if (std.mem.lastIndexOfScalar(u8, base, '.')) |dot|
-            base[0..dot]
-        else
-            base;
-        var stem_buf: [64]u8 = undefined;
-        const stem_len = @min(stem.len, 63);
-        for (0..stem_len) |i| {
-            stem_buf[i] = if (std.ascii.isAlphanumeric(stem[i])) stem[i] else '_';
-        }
-        const safe_stem = stem_buf[0..stem_len];
+        const stem_result = sanitizeHeaderStem(hdr);
+        const safe_stem = stem_result.slice();
         const cimport_chunk = try std.fmt.allocPrint(allocator,
             \\    const cimport_{s} = b.createModule(.{{
             \\        .root_source_file = b.path("_{s}_c.zig"),
@@ -96,17 +112,8 @@ pub fn buildZigContent(
     // Wire shared @cImport modules into all bridge modules that use them
     for (bridge_modules) |bmod_name| {
         for (c_includes) |hdr| {
-            const base = std.fs.path.basename(hdr);
-            const stem = if (std.mem.lastIndexOfScalar(u8, base, '.')) |dot|
-                base[0..dot]
-            else
-                base;
-            var stem_buf: [64]u8 = undefined;
-            const stem_len = @min(stem.len, 63);
-            for (0..stem_len) |i| {
-                stem_buf[i] = if (std.ascii.isAlphanumeric(stem[i])) stem[i] else '_';
-            }
-            const safe_stem = stem_buf[0..stem_len];
+            const stem_result = sanitizeHeaderStem(hdr);
+            const safe_stem = stem_result.slice();
             const wire_chunk = try std.fmt.allocPrint(allocator,
                 \\    bridge_{s}.addImport("{s}_c", cimport_{s});
                 \\
@@ -475,18 +482,8 @@ pub fn generateSharedCImportFiles(allocator: std.mem.Allocator, targets: anytype
             if (seen.contains(hdr)) continue;
             try seen.put(allocator, hdr, {});
 
-            // Derive safe stem from header filename (same logic as in buildZigContentMulti)
-            const base = std.fs.path.basename(hdr);
-            const stem = if (std.mem.lastIndexOfScalar(u8, base, '.')) |dot|
-                base[0..dot]
-            else
-                base;
-            var stem_buf: [64]u8 = undefined;
-            const stem_len = @min(stem.len, 63);
-            for (0..stem_len) |i| {
-                stem_buf[i] = if (std.ascii.isAlphanumeric(stem[i])) stem[i] else '_';
-            }
-            const safe_stem = stem_buf[0..stem_len];
+            const stem_result = sanitizeHeaderStem(hdr);
+            const safe_stem = stem_result.slice();
 
             // Generate wrapper content.
             // Callers use: const c = @import("{stem}_c").c;

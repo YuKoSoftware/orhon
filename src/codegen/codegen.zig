@@ -677,14 +677,11 @@ pub const CodeGen = struct {
                 break :blk try self.allocTypeStr("{s}", .{buf.items});
             },
             .type_ptr => |p| blk: {
-                if (std.mem.eql(u8, p.kind, K.Ptr.CONST_REF)) {
-                    const inner = try self.typeToZig(p.elem);
-                    break :blk try self.allocTypeStr("*const {s}", .{inner});
-                } else if (std.mem.eql(u8, p.kind, K.Ptr.VAR_REF)) {
-                    const inner = try self.typeToZig(p.elem);
-                    break :blk try self.allocTypeStr("*{s}", .{inner});
-                }
-                break :blk "?*anyopaque";
+                const inner = try self.typeToZig(p.elem);
+                break :blk switch (p.kind) {
+                    .const_ref => try self.allocTypeStr("*const {s}", .{inner}),
+                    .mut_ref => try self.allocTypeStr("*{s}", .{inner}),
+                };
             },
             .type_func => |f| blk: {
                 var params_str = std.ArrayListUnmanaged(u8){};

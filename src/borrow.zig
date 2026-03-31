@@ -7,7 +7,6 @@ const std = @import("std");
 const parser = @import("parser.zig");
 const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
-const K = @import("constants.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
 
@@ -596,7 +595,7 @@ fn extractBorrowTarget(node: *parser.Node) ?struct { variable: []const u8, field
 fn isMutableBorrowType(type_ann: ?*parser.Node) bool {
     const ann = type_ann orelse return false;
     if (ann.* == .type_ptr) {
-        return std.mem.eql(u8, ann.type_ptr.kind, K.Ptr.VAR_REF);
+        return ann.type_ptr.kind == .mut_ref;
     }
     return false;
 }
@@ -670,7 +669,7 @@ test "borrow checker - mutable borrow via var &T type" {
 
     // Then: var decl with var &T type = &data → mutable borrow → conflict
     var inner_type = parser.Node{ .type_named = "MyStruct" };
-    var type_ann = parser.Node{ .type_ptr = .{ .kind = "mut&", .elem = &inner_type } };
+    var type_ann = parser.Node{ .type_ptr = .{ .kind = .mut_ref, .elem = &inner_type } };
     var borrow_target = parser.Node{ .identifier = "data" };
     var borrow_val = parser.Node{ .mut_borrow_expr = &borrow_target };
     var decl = parser.Node{ .var_decl = .{
@@ -697,7 +696,7 @@ test "borrow checker - const &T borrow is immutable" {
 
     // Two const &T borrows — should be fine
     var inner_type = parser.Node{ .type_named = "MyStruct" };
-    var type_ann = parser.Node{ .type_ptr = .{ .kind = "const&", .elem = &inner_type } };
+    var type_ann = parser.Node{ .type_ptr = .{ .kind = .const_ref, .elem = &inner_type } };
     var borrow_target = parser.Node{ .identifier = "data" };
     var borrow_val = parser.Node{ .mut_borrow_expr = &borrow_target };
     var decl1 = parser.Node{ .var_decl = .{
@@ -894,7 +893,7 @@ test "borrow checker - field borrow from mut_borrow_expr field_expr" {
 
     // Simulate: var ref: var &String = &p.name
     var inner_type = parser.Node{ .type_named = "String" };
-    var type_ann = parser.Node{ .type_ptr = .{ .kind = "mut&", .elem = &inner_type } };
+    var type_ann = parser.Node{ .type_ptr = .{ .kind = .mut_ref, .elem = &inner_type } };
     var p_ident = parser.Node{ .identifier = "p" };
     var field_access = parser.Node{ .field_expr = .{ .object = &p_ident, .field = "name" } };
     var borrow_val = parser.Node{ .mut_borrow_expr = &field_access };

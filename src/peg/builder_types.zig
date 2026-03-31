@@ -75,7 +75,7 @@ pub fn buildBorrowType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // borrow_type <- 'const&' type
     if (cap.findChild("type")) |t| {
         const inner = try builder.buildNode(ctx, t);
-        return ctx.newNode(.{ .type_ptr = .{ .kind = "const&", .elem = inner } });
+        return ctx.newNode(.{ .type_ptr = .{ .kind = .const_ref, .elem = inner } });
     }
     return error.NoBorrowInner;
 }
@@ -84,7 +84,7 @@ pub fn buildRefType(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // ref_type <- 'mut&' type
     if (cap.findChild("type")) |t| {
         const inner = try builder.buildNode(ctx, t);
-        return ctx.newNode(.{ .type_ptr = .{ .kind = "mut&", .elem = inner } });
+        return ctx.newNode(.{ .type_ptr = .{ .kind = .mut_ref, .elem = inner } });
     }
     return error.NoRefInner;
 }

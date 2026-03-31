@@ -227,7 +227,7 @@ pub const TypeResolver = struct {
                     for (f.params) |param| {
                         if (param.* == .param) {
                             const ta = param.param.type_annotation;
-                            if (ta.* == .type_ptr and std.mem.eql(u8, ta.type_ptr.kind, K.Ptr.VAR_REF)) {
+                            if (ta.* == .type_ptr and ta.type_ptr.kind == .mut_ref) {
                                 // Allow self: &StructName on bridge struct methods
                                 if (std.mem.eql(u8, param.param.name, "self")) continue;
                                 const msg = try std.fmt.allocPrint(self.allocator,
@@ -240,7 +240,7 @@ pub const TypeResolver = struct {
                     }
                     // Bridge safety: bridge funcs cannot return mutable refs
                     if (f.return_type.* == .type_ptr and
-                        std.mem.eql(u8, f.return_type.type_ptr.kind, K.Ptr.VAR_REF))
+                        f.return_type.type_ptr.kind == .mut_ref)
                     {
                         try self.reporter.report(.{
                             .message = "mutable reference return not allowed across bridge — return by value or const&",
@@ -1318,7 +1318,7 @@ fn typesMatchWithSubstitution(struct_type: RT, bp_type: RT, bp_name: []const u8,
         .ptr => |bp_ptr| {
             return switch (struct_type) {
                 .ptr => |sp| {
-                    if (!std.mem.eql(u8, bp_ptr.kind, sp.kind)) return false;
+                    if (bp_ptr.kind != sp.kind) return false;
                     return typesMatchWithSubstitution(sp.elem.*, bp_ptr.elem.*, bp_name, struct_name);
                 },
                 else => false,

@@ -19,6 +19,7 @@ pub const NodeKind = enum {
     metadata,
     func_decl,
     struct_decl,
+    blueprint_decl,
     enum_decl,
     bitfield_decl,
     const_decl,
@@ -86,6 +87,7 @@ pub const Node = union(NodeKind) {
     metadata: Metadata,
     func_decl: FuncDecl,
     struct_decl: StructDecl,
+    blueprint_decl: BlueprintDecl,
     enum_decl: EnumDecl,
     bitfield_decl: BitfieldDecl,
     const_decl: VarDecl,
@@ -186,8 +188,16 @@ pub const StructDecl = struct {
     name: []const u8,
     type_params: []*Node, // generic params: (T: type, U: type)
     members: []*Node,
+    blueprints: []const []const u8 = &.{}, // blueprint names from `: Eq, Hash`
     is_pub: bool,
     is_bridge: bool = false,
+    doc: ?[]const u8 = null,
+};
+
+pub const BlueprintDecl = struct {
+    name: []const u8,
+    methods: []*Node, // func_decl nodes (signature only, no body)
+    is_pub: bool,
     doc: ?[]const u8 = null,
 };
 

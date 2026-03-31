@@ -99,6 +99,10 @@ pub const MirLowerer = struct {
             .struct_decl => |s| {
                 mir_node_ptr.children = try self.lowerSlice(s.members);
             },
+            .blueprint_decl => {
+                // Blueprints are erased at codegen — no children to lower
+                mir_node_ptr.children = &.{};
+            },
             .enum_decl => |e| {
                 mir_node_ptr.children = try self.lowerSlice(e.members);
             },

@@ -339,9 +339,6 @@ pub const CodeGen = struct {
         };
     }
 
-    /// Wrap a value for an arbitrary union: 42 → .{ ._i32 = 42 }
-    pub fn generateArbitraryUnionWrappedExpr(self: *CodeGen, value: *parser.Node, members_rt: ?[]const RT) anyerror!void { return exprs_impl.generateArbitraryUnionWrappedExpr(self, value, members_rt); }
-
     /// Infer which union tag a value belongs to based on its literal type.
     pub fn inferArbitraryUnionTag(value: *parser.Node, members_rt: ?[]const RT) ?[]const u8 { return exprs_impl.inferArbitraryUnionTag(value, members_rt); }
 
@@ -479,13 +476,6 @@ pub const CodeGen = struct {
 
     pub fn getRootIdentMir(m: *const mir.MirNode) ?[]const u8 { return decls_impl.getRootIdentMir(m); }
 
-    pub fn generateFunc(self: *CodeGen, f: parser.FuncDecl) anyerror!void { return decls_impl.generateFunc(self, f); }
-
-    /// Generate a thread function: body function + spawn wrapper.
-    /// `thread worker(n: i32) Handle(i32) { return n * 2 }` generates:
-    ///   fn _worker_body(n: i32) i32 { return (n * 2); }
-    ///   fn worker(n: i32) _OrhonHandle(i32) { ... spawn ... }
-    pub fn generateThreadFunc(self: *CodeGen, f: parser.FuncDecl) anyerror!void { return decls_impl.generateThreadFunc(self, f); }
 
     // ============================================================
     // STRUCTS
@@ -513,17 +503,7 @@ pub const CodeGen = struct {
     // VAR / CONST DECLARATIONS
     // ============================================================
 
-    pub fn generateConst(self: *CodeGen, node: *parser.Node, v: parser.VarDecl) anyerror!void { return decls_impl.generateConst(self, node, v); }
-
-    pub fn generateVar(self: *CodeGen, node: *parser.Node, v: parser.VarDecl) anyerror!void { return decls_impl.generateVar(self, node, v); }
-
-    pub fn generateDecl(self: *CodeGen, node: *parser.Node, v: parser.VarDecl, decl_keyword: []const u8) anyerror!void { return decls_impl.generateDecl(self, node, v, decl_keyword); }
-
-    pub fn generateStmtDecl(self: *CodeGen, node: *parser.Node, v: parser.VarDecl, decl_keyword: []const u8) anyerror!void { return decls_impl.generateStmtDecl(self, node, v, decl_keyword); }
-
     pub fn isTypeAlias(type_annotation: ?*parser.Node) bool { return decls_impl.isTypeAlias(type_annotation); }
-
-    pub fn generateCompt(self: *CodeGen, v: parser.VarDecl) anyerror!void { return decls_impl.generateCompt(self, v); }
 
     // ============================================================
     // TOP-LEVEL DISPATCH
@@ -567,11 +547,7 @@ pub const CodeGen = struct {
 
     pub fn generateContinueExprMir(self: *CodeGen, m: *mir.MirNode) anyerror!void { return exprs_impl.generateContinueExprMir(self, m); }
 
-    pub fn generateContinueExpr(self: *CodeGen, node: *parser.Node) anyerror!void { return exprs_impl.generateContinueExpr(self, node); }
-
     pub fn writeRangeExprMir(self: *CodeGen, m: *mir.MirNode) anyerror!void { return exprs_impl.writeRangeExprMir(self, m); }
-
-    pub fn writeRangeExpr(self: *CodeGen, r: parser.BinaryOp) anyerror!void { return exprs_impl.writeRangeExpr(self, r); }
 
     pub fn generateInterpolatedString(self: *CodeGen, interp: parser.InterpolatedString) anyerror!void { return exprs_impl.generateInterpolatedString(self, interp); }
 

@@ -1,5 +1,5 @@
 // codegen_exprs.zig — MIR expression generators (core expressions, continuations, ranges, interpolation, loops)
-// Contains: generateExprMir, generateCoercedExprMir, continue/range/interpolation/for/destruct generators.
+// Contains: generateExprMir, generateCoercedExprMir, continue/range/interpolation/for/destruct generators (MIR path).
 // Match generators, compiler-func generators, and arithmetic overflow helpers are in codegen_match.zig.
 // All functions receive *CodeGen as first parameter — cross-file calls route through stubs in codegen.zig.
 
@@ -19,18 +19,6 @@ const CodeGen = codegen.CodeGen;
 // ============================================================
 // UNION HELPERS (moved from codegen.zig per D-06)
 // ============================================================
-
-/// Wrap a value for an arbitrary union: 42 → .{ ._i32 = 42 }
-pub fn generateArbitraryUnionWrappedExpr(cg: *CodeGen, value: *parser.Node, members_rt: ?[]const RT) anyerror!void {
-    const tag = inferArbitraryUnionTag(value, members_rt);
-    if (tag) |t| {
-        try cg.emitFmt(".{{ ._{s} = ", .{t});
-        try cg.generateExpr(value);
-        try cg.emit(" }");
-    } else {
-        try cg.generateExpr(value);
-    }
-}
 
 /// Infer which union tag a value belongs to based on its literal type.
 pub fn inferArbitraryUnionTag(value: *parser.Node, members_rt: ?[]const RT) ?[]const u8 {
@@ -615,8 +603,28 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             }
             try cg.emit("}");
         },
-        .type_expr => try cg.generateExpr(m.ast), // type nodes are structural, no sub-expressions
-        .passthrough => try cg.generateExpr(m.ast), // structural fallback
+        .type_expr => {
+            // Type nodes are structural — emit via typeToZig, except struct_type which needs field-by-field emission
+            if (m.ast.* == .struct_type) {
+                try cg.emit("struct {\n");
+                cg.indent += 1;
+                for (m.ast.struct_type) |f| {
+                    if (f.* == .field_decl) {
+                        try cg.emitIndent();
+                        try cg.emitFmt("{s}: {s},\n", .{
+                            f.field_decl.name,
+                            try cg.typeToZig(f.field_decl.type_annotation),
+                        });
+                    }
+                }
+                cg.indent -= 1;
+                try cg.emitIndent();
+                try cg.emit("}");
+            } else {
+                try cg.emit(try cg.typeToZig(m.ast));
+            }
+        },
+        .passthrough => {}, // architectural nodes (metadata, module_decl) — no codegen
         else => {},
     }
 }
@@ -704,26 +712,6 @@ pub fn generateContinueExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     }
 }
 
-pub fn generateContinueExpr(cg: *CodeGen, node: *parser.Node) anyerror!void {
-    if (node.* == .assignment) {
-        const a = node.assignment;
-        if (std.mem.eql(u8, a.op, K.Op.DIV_ASSIGN)) {
-            try cg.generateExpr(a.left);
-            try cg.emit(" = @divTrunc(");
-            try cg.generateExpr(a.left);
-            try cg.emit(", ");
-            try cg.generateExpr(a.right);
-            try cg.emit(")");
-        } else {
-            try cg.generateExpr(a.left);
-            try cg.emitFmt(" {s} ", .{a.op});
-            try cg.generateExpr(a.right);
-        }
-    } else {
-        try cg.generateExpr(node);
-    }
-}
-
 /// MIR-path range expression for for-loops.
 pub fn writeRangeExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const left_is_literal = m.lhs().literal_kind == .int;
@@ -741,27 +729,6 @@ pub fn writeRangeExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     } else {
         try cg.emit("@intCast(");
         try cg.generateExprMir(m.rhs());
-        try cg.emit(")");
-    }
-}
-
-pub fn writeRangeExpr(cg: *CodeGen, r: parser.BinaryOp) anyerror!void {
-    // Zig for-range endpoints must be usize. Cast non-literal values.
-    const left_is_literal = r.left.* == .int_literal;
-    if (left_is_literal) {
-        try cg.generateExpr(r.left);
-    } else {
-        try cg.emit("@intCast(");
-        try cg.generateExpr(r.left);
-        try cg.emit(")");
-    }
-    try cg.emit("..");
-    const right_is_literal = r.right.* == .int_literal;
-    if (right_is_literal) {
-        try cg.generateExpr(r.right);
-    } else {
-        try cg.emit("@intCast(");
-        try cg.generateExpr(r.right);
         try cg.emit(")");
     }
 }

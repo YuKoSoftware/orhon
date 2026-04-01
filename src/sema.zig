@@ -7,14 +7,16 @@ const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
 
-/// Shared context built after declaration collection (pass 4) and type resolution (pass 5).
-/// Read-only for validation passes 6–9; extended by MIR (pass 10) and codegen (pass 11).
+/// Shared context built after declaration collection (pass 4).
+/// Used by type resolution (pass 5) and validation passes 6–9; extended by MIR (pass 10) and codegen (pass 11).
 pub const SemanticContext = struct {
     allocator: std.mem.Allocator,
     reporter: *errors.Reporter,
     decls: *declarations.DeclTable,
     locs: ?*const parser.LocMap,
     file_offsets: []const module.FileOffset,
+    /// All module DeclTables — for cross-module qualified generic type validation.
+    all_decls: ?*const std.StringHashMap(*declarations.DeclTable) = null,
 
     /// Resolve an AST node to its original source location.
     pub fn nodeLoc(self: *const SemanticContext, node: *parser.Node) ?errors.SourceLoc {

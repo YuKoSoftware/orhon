@@ -302,24 +302,22 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         // Snapshot warning count to capture new warnings from this module
         const warn_start = reporter.warnings.items.len;
 
-        // ── Pass 5: Type Resolution ────────────────────────────
-        var type_resolver = resolver.TypeResolver.init(allocator, &decl_collector.table, reporter);
-        defer type_resolver.deinit();
-        type_resolver.locs = locs_ptr;
-        type_resolver.file_offsets = file_offsets;
-        type_resolver.all_decls = &all_module_decls;
-
-        try type_resolver.resolve(ast);
-        if (reporter.hasErrors()) return null;
-
-        // ── Shared context for validation passes 6–9 ───────────
+        // ── Shared context for type resolution + validation passes 5–9 ──
         const sema_ctx = sema.SemanticContext{
             .allocator = allocator,
             .reporter = reporter,
             .decls = &decl_collector.table,
             .locs = locs_ptr,
             .file_offsets = file_offsets,
+            .all_decls = &all_module_decls,
         };
+
+        // ── Pass 5: Type Resolution ────────────────────────────
+        var type_resolver = resolver.TypeResolver.init(&sema_ctx);
+        defer type_resolver.deinit();
+
+        try type_resolver.resolve(ast);
+        if (reporter.hasErrors()) return null;
 
         // ── Pass 6: Ownership Analysis ─────────────────────────
         var ownership_checker = ownership.OwnershipChecker.init(allocator, &sema_ctx);
@@ -1099,13 +1097,7 @@ test "full pipeline - hello world" {
     try decl_collector.collect(ast);
     try std.testing.expect(!reporter.hasErrors());
 
-    // Type resolution
-    var type_resolver = resolver.TypeResolver.init(alloc, &decl_collector.table, &reporter);
-    defer type_resolver.deinit();
-    try type_resolver.resolve(ast);
-    try std.testing.expect(!reporter.hasErrors());
-
-    // Shared context for validation passes
+    // Shared context for type resolution + validation passes
     const sema_ctx = sema.SemanticContext{
         .allocator = alloc,
         .reporter = &reporter,
@@ -1113,6 +1105,12 @@ test "full pipeline - hello world" {
         .locs = null,
         .file_offsets = &.{},
     };
+
+    // Type resolution
+    var type_resolver = resolver.TypeResolver.init(&sema_ctx);
+    defer type_resolver.deinit();
+    try type_resolver.resolve(ast);
+    try std.testing.expect(!reporter.hasErrors());
 
     // Ownership check
     var ownership_checker = ownership.OwnershipChecker.init(alloc, &sema_ctx);
@@ -1203,7 +1201,14 @@ fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *errors
     defer decl_collector.deinit();
     try decl_collector.collect(ast);
     // Type resolution
-    var type_resolver = resolver.TypeResolver.init(alloc, &decl_collector.table, reporter);
+    const sema_ctx = sema.SemanticContext{
+        .allocator = alloc,
+        .reporter = reporter,
+        .decls = &decl_collector.table,
+        .locs = null,
+        .file_offsets = &.{},
+    };
+    var type_resolver = resolver.TypeResolver.init(&sema_ctx);
     defer type_resolver.deinit();
     try type_resolver.resolve(ast);
     // MIR annotation + lowering

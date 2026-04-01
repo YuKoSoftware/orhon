@@ -9,6 +9,7 @@ const declarations = @import("declarations.zig");
 const builtins = @import("builtins.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
+const sema = @import("sema.zig");
 const K = @import("constants.zig");
 const types = @import("types.zig");
 const scope_mod = @import("scope.zig");
@@ -33,47 +34,31 @@ pub const Scope = scope_mod.ScopeBase(RT);
 
 /// The type resolver
 pub const TypeResolver = struct {
-    decls: *declarations.DeclTable,
-    reporter: *errors.Reporter,
-    allocator: std.mem.Allocator,
+    ctx: *const sema.SemanticContext,
     bindings: std.ArrayListUnmanaged(TypeBinding),
     type_map: std.AutoHashMapUnmanaged(*parser.Node, RT),
-    locs: ?*const parser.LocMap = null,
-    file_offsets: []const module.FileOffset = &.{},
     loop_depth: u32 = 0, // track nesting depth for break/continue validation
     current_return_type: ?RT = null, // expected return type of current function
-    /// All module DeclTables — for cross-module qualified generic type validation.
-    all_decls: ?*const std.StringHashMap(*declarations.DeclTable) = null,
     /// Module names imported with `use` — their types are available unqualified.
     included_modules: std.ArrayListUnmanaged([]const u8) = .{},
 
-    pub fn init(
-        allocator: std.mem.Allocator,
-        decls: *declarations.DeclTable,
-        reporter: *errors.Reporter,
-    ) TypeResolver {
+    pub fn init(ctx: *const sema.SemanticContext) TypeResolver {
         return .{
-            .decls = decls,
-            .reporter = reporter,
-            .allocator = allocator,
+            .ctx = ctx,
             .bindings = .{},
             .type_map = .{},
         };
     }
 
-    fn nodeLoc(self: *const TypeResolver, node: *parser.Node) ?errors.SourceLoc {
-        return module.resolveNodeLoc(self.locs, self.file_offsets, node);
-    }
-
     pub fn deinit(self: *TypeResolver) void {
-        self.bindings.deinit(self.allocator);
-        self.type_map.deinit(self.allocator);
-        self.included_modules.deinit(self.allocator);
+        self.bindings.deinit(self.ctx.allocator);
+        self.type_map.deinit(self.ctx.allocator);
+        self.included_modules.deinit(self.ctx.allocator);
     }
 
     /// Check if a type name exists in any `use`-d (included) module's DeclTable.
     fn isIncludedType(self: *const TypeResolver, name: []const u8) bool {
-        const ad = self.all_decls orelse return false;
+        const ad = self.ctx.all_decls orelse return false;
         for (self.included_modules.items) |mod_name| {
             if (ad.get(mod_name)) |mod_decls| {
                 if (mod_decls.structs.contains(name) or
@@ -93,10 +78,10 @@ pub const TypeResolver = struct {
     }
 
     fn resolveTypeAnnotationInScope(self: *TypeResolver, node: *parser.Node, scope: ?*Scope) !RT {
-        const resolved = try types.resolveTypeNode(self.decls.typeAllocator(), node);
+        const resolved = try types.resolveTypeNode(self.ctx.decls.typeAllocator(), node);
         if (resolved == .named) {
             // Module-level type alias
-            if (self.decls.types.contains(resolved.named)) return RT.inferred;
+            if (self.ctx.decls.types.contains(resolved.named)) return RT.inferred;
             // Local type alias: stored in scope as RT.primitive(.@"type") (since "type" is a Primitive)
             if (scope) |s| {
                 if (s.lookup(resolved.named)) |t| {
@@ -114,11 +99,11 @@ pub const TypeResolver = struct {
         // Collect `use`-d module names for unqualified type resolution
         for (ast.program.imports) |imp| {
             if (imp.* == .import_decl and imp.import_decl.is_include) {
-                try self.included_modules.append(self.allocator, imp.import_decl.path);
+                try self.included_modules.append(self.ctx.allocator, imp.import_decl.path);
             }
         }
 
-        var scope = Scope.init(self.allocator, null);
+        var scope = Scope.init(self.ctx.allocator, null);
         defer scope.deinit();
 
         // First pass: register top-level declarations in scope
@@ -135,7 +120,7 @@ pub const TypeResolver = struct {
     fn registerDecl(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
         switch (node.*) {
             .func_decl => |f| {
-                const ret_type = try types.resolveTypeNode(self.decls.typeAllocator(), f.return_type);
+                const ret_type = try types.resolveTypeNode(self.ctx.decls.typeAllocator(), f.return_type);
                 try scope.define(f.name, ret_type);
             },
             .struct_decl => |s| {
@@ -172,7 +157,7 @@ pub const TypeResolver = struct {
     fn resolveNode(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
         switch (node.*) {
             .func_decl => |f| {
-                var func_scope = Scope.init(self.allocator, scope);
+                var func_scope = Scope.init(self.ctx.allocator, scope);
                 defer func_scope.deinit();
 
                 // Bridge safety: bridge funcs cannot accept mutable refs (&T)
@@ -184,7 +169,7 @@ pub const TypeResolver = struct {
                             if (ta.* == .type_ptr and ta.type_ptr.kind == .mut_ref) {
                                 // Allow self: &StructName on bridge struct methods
                                 if (std.mem.eql(u8, param.param.name, "self")) continue;
-                                try self.reporter.reportFmt(self.nodeLoc(node), "mutable reference 'mut& {s}' not allowed across bridge — use 'const& {s}' or pass by value",
+                                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "mutable reference 'mut& {s}' not allowed across bridge — use 'const& {s}' or pass by value",
                                     .{ param.param.name, param.param.name });
                             }
                         }
@@ -193,9 +178,9 @@ pub const TypeResolver = struct {
                     if (f.return_type.* == .type_ptr and
                         f.return_type.type_ptr.kind == .mut_ref)
                     {
-                        try self.reporter.report(.{
+                        try self.ctx.reporter.report(.{
                             .message = "mutable reference return not allowed across bridge — return by value or const&",
-                            .loc = self.nodeLoc(node),
+                            .loc = self.ctx.nodeLoc(node),
                         });
                     }
                 }
@@ -210,7 +195,7 @@ pub const TypeResolver = struct {
                             try func_scope.define(param.param.name, .{ .primitive = .@"type" });
                         } else {
                             try self.validateType(param.param.type_annotation, &func_scope);
-                            const t = try types.resolveTypeNode(self.decls.typeAllocator(), param.param.type_annotation);
+                            const t = try types.resolveTypeNode(self.ctx.decls.typeAllocator(), param.param.type_annotation);
                             try func_scope.define(param.param.name, t);
                         }
                     }
@@ -223,14 +208,14 @@ pub const TypeResolver = struct {
                 if (has_type_param) {
                     self.current_return_type = .inferred;
                 } else {
-                    self.current_return_type = try types.resolveTypeNode(self.decls.typeAllocator(), f.return_type);
+                    self.current_return_type = try types.resolveTypeNode(self.ctx.decls.typeAllocator(), f.return_type);
                 }
                 defer self.current_return_type = prev_return;
 
                 try self.resolveNode(f.body, &func_scope);
             },
             .struct_decl => |s| {
-                var struct_scope = Scope.init(self.allocator, scope);
+                var struct_scope = Scope.init(self.ctx.allocator, scope);
                 defer struct_scope.deinit();
                 // Add type params to scope (T: type → T is a known type)
                 for (s.type_params) |param| {
@@ -246,11 +231,11 @@ pub const TypeResolver = struct {
                     try self.resolveNode(member, &struct_scope);
                 }
                 // Check blueprint conformance
-                try self.checkBlueprintConformance(s, self.nodeLoc(node));
+                try self.checkBlueprintConformance(s, self.ctx.nodeLoc(node));
             },
             .blueprint_decl => |b| {
                 // Validate method signatures resolve correctly
-                var bp_scope = Scope.init(self.allocator, scope);
+                var bp_scope = Scope.init(self.ctx.allocator, scope);
                 defer bp_scope.deinit();
                 // Blueprint name is a valid type within its own methods
                 try bp_scope.define(b.name, .{ .primitive = .@"type" });
@@ -259,14 +244,14 @@ pub const TypeResolver = struct {
                 }
             },
             .enum_decl => |e| {
-                var enum_scope = Scope.init(self.allocator, scope);
+                var enum_scope = Scope.init(self.ctx.allocator, scope);
                 defer enum_scope.deinit();
                 for (e.members) |member| {
                     if (member.* == .func_decl) try self.resolveNode(member, &enum_scope);
                 }
             },
             .block => |b| {
-                var block_scope = Scope.init(self.allocator, scope);
+                var block_scope = Scope.init(self.ctx.allocator, scope);
                 defer block_scope.deinit();
                 for (b.statements) |stmt| {
                     try self.resolveStatement(stmt, &block_scope);
@@ -277,13 +262,13 @@ pub const TypeResolver = struct {
                     try self.validateType(t, scope);
                     // Reference types (const& T, mut& T) are only valid in function parameters
                     if (t.* == .type_ptr) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "reference type not allowed in variable declaration — use '{s}' by value or as a function parameter",
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "reference type not allowed in variable declaration — use '{s}' by value or as a function parameter",
                             .{v.name});
                     }
                 }
                 // Duplicate variable check (only inside functions/blocks, not top-level)
                 if (scope.parent != null and scope.vars.contains(v.name)) {
-                    try self.reporter.reportFmt(self.nodeLoc(node), "variable '{s}' already declared in this scope", .{v.name});
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "variable '{s}' already declared in this scope", .{v.name});
                 }
                 // bridge consts have no value — skip value type checking
                 if (v.is_bridge) {
@@ -303,9 +288,9 @@ pub const TypeResolver = struct {
                             (val_type.primitive == .numeric_literal or
                             val_type.primitive == .float_literal))
                         {
-                            try self.reporter.report(.{
+                            try self.ctx.reporter.report(.{
                                 .message = "numeric literal requires explicit type",
-                                .loc = self.nodeLoc(node),
+                                .loc = self.ctx.nodeLoc(node),
                             });
                         }
                     } else {
@@ -330,7 +315,7 @@ pub const TypeResolver = struct {
                             val_type != .unknown and val_type != .inferred and
                             !typesCompatible(val_type, expected))
                         {
-                            try self.reporter.reportFmt(self.nodeLoc(node), "return type mismatch: expected '{s}', got '{s}'",
+                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "return type mismatch: expected '{s}', got '{s}'",
                                 .{ expected.name(), val_type.name() });
                         }
                     }
@@ -341,7 +326,7 @@ pub const TypeResolver = struct {
                 if (cond_type == .primitive and cond_type.primitive != .bool and
                     cond_type != .unknown and cond_type != .inferred)
                 {
-                    try self.reporter.reportFmt(self.nodeLoc(node), "type mismatch in if condition: expected bool, got '{s}'", .{cond_type.name()});
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "type mismatch in if condition: expected bool, got '{s}'", .{cond_type.name()});
                 }
                 try self.resolveNode(i.then_block, scope);
                 if (i.else_block) |e| try self.resolveNode(e, scope);
@@ -351,7 +336,7 @@ pub const TypeResolver = struct {
                 if (cond_type == .primitive and cond_type.primitive != .bool and
                     cond_type != .unknown and cond_type != .inferred)
                 {
-                    try self.reporter.reportFmt(self.nodeLoc(node), "type mismatch in while condition: expected bool, got '{s}'", .{cond_type.name()});
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "type mismatch in while condition: expected bool, got '{s}'", .{cond_type.name()});
                 }
                 if (w.continue_expr) |c| _ = try self.resolveExpr(c, scope);
                 self.loop_depth += 1;
@@ -360,7 +345,7 @@ pub const TypeResolver = struct {
             },
             .for_stmt => |f| {
                 const iter_type = try self.resolveExpr(f.iterable, scope);
-                var for_scope = Scope.init(self.allocator, scope);
+                var for_scope = Scope.init(self.ctx.allocator, scope);
                 defer for_scope.deinit();
                 // Infer capture type from iterable
                 const capture_type = inferCaptureType(f.iterable, iter_type);
@@ -395,7 +380,7 @@ pub const TypeResolver = struct {
                         // resolving 'x > 0' would fail because 'x' is not in the enclosing scope.
                         if (ma.guard) |g| {
                             has_guard = true;
-                            var guard_scope = Scope.init(self.allocator, scope);
+                            var guard_scope = Scope.init(self.ctx.allocator, scope);
                             defer guard_scope.deinit();
                             if (pat.* == .identifier) {
                                 try guard_scope.define(pat.identifier, match_type);
@@ -410,7 +395,7 @@ pub const TypeResolver = struct {
                 }
                 // Guards require else arm for exhaustiveness — guards don't guarantee coverage
                 if (has_guard and !has_else) {
-                    try self.reporter.reportFmt(self.nodeLoc(node), "match with guards requires an 'else' arm", .{});
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "match with guards requires an 'else' arm", .{});
                 }
                 // Check exhaustiveness for union matches
                 if (!has_else) {
@@ -428,17 +413,17 @@ pub const TypeResolver = struct {
             },
             .break_stmt => {
                 if (self.loop_depth == 0) {
-                    try self.reporter.report(.{
+                    try self.ctx.reporter.report(.{
                         .message = "'break' outside of loop",
-                        .loc = self.nodeLoc(node),
+                        .loc = self.ctx.nodeLoc(node),
                     });
                 }
             },
             .continue_stmt => {
                 if (self.loop_depth == 0) {
-                    try self.reporter.report(.{
+                    try self.ctx.reporter.report(.{
                         .message = "'continue' outside of loop",
-                        .loc = self.nodeLoc(node),
+                        .loc = self.ctx.nodeLoc(node),
                     });
                 }
             },
@@ -450,7 +435,7 @@ pub const TypeResolver = struct {
     /// Resolve an expression and return its ResolvedType
     fn resolveExpr(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!RT {
         const result = try self.resolveExprInner(node, scope);
-        try self.type_map.put(self.allocator, node, result);
+        try self.type_map.put(self.ctx.allocator, node, result);
         return result;
     }
 
@@ -475,10 +460,10 @@ pub const TypeResolver = struct {
 
             .identifier => |id_name| {
                 if (scope.lookup(id_name)) |t| return t;
-                if (self.decls.funcs.get(id_name)) |sig| return sig.return_type;
-                if (self.decls.structs.contains(id_name)) return RT{ .named = id_name };
-                if (self.decls.enums.contains(id_name)) return RT{ .named = id_name };
-                if (self.decls.vars.get(id_name)) |v| return v.type_ orelse RT.unknown;
+                if (self.ctx.decls.funcs.get(id_name)) |sig| return sig.return_type;
+                if (self.ctx.decls.structs.contains(id_name)) return RT{ .named = id_name };
+                if (self.ctx.decls.enums.contains(id_name)) return RT{ .named = id_name };
+                if (self.ctx.decls.vars.get(id_name)) |v| return v.type_ orelse RT.unknown;
                 if (builtins.isBuiltinType(id_name)) return RT{ .named = id_name };
                 if (self.isIncludedType(id_name)) return RT{ .named = id_name };
                 if (builtins.isBuiltinValue(id_name)) return RT{ .named = id_name };
@@ -491,7 +476,7 @@ pub const TypeResolver = struct {
                     std.mem.eql(u8, id_name, "sat") or
                     std.mem.eql(u8, id_name, "overflow")) return RT.unknown;
                 // Known module names — used as qualified access prefixes (module.Type, module.func)
-                if (self.all_decls) |ad| {
+                if (self.ctx.all_decls) |ad| {
                     if (ad.contains(id_name)) return RT.unknown;
                 }
 
@@ -503,24 +488,24 @@ pub const TypeResolver = struct {
 
                 // Build candidate list from scope chain + module declarations for suggestion
                 var candidates: std.ArrayListUnmanaged([]const u8) = .{};
-                defer candidates.deinit(self.allocator);
+                defer candidates.deinit(self.ctx.allocator);
                 var sc: ?*const Scope = scope;
                 while (sc) |s| : (sc = s.parent) {
                     var it = s.vars.keyIterator();
-                    while (it.next()) |k| try candidates.append(self.allocator, k.*);
+                    while (it.next()) |k| try candidates.append(self.ctx.allocator, k.*);
                 }
-                var fit = self.decls.funcs.keyIterator();
-                while (fit.next()) |k| try candidates.append(self.allocator, k.*);
-                var sit = self.decls.structs.keyIterator();
-                while (sit.next()) |k| try candidates.append(self.allocator, k.*);
-                var eit = self.decls.enums.keyIterator();
-                while (eit.next()) |k| try candidates.append(self.allocator, k.*);
-                var vit = self.decls.vars.keyIterator();
-                while (vit.next()) |k| try candidates.append(self.allocator, k.*);
+                var fit = self.ctx.decls.funcs.keyIterator();
+                while (fit.next()) |k| try candidates.append(self.ctx.allocator, k.*);
+                var sit = self.ctx.decls.structs.keyIterator();
+                while (sit.next()) |k| try candidates.append(self.ctx.allocator, k.*);
+                var eit = self.ctx.decls.enums.keyIterator();
+                while (eit.next()) |k| try candidates.append(self.ctx.allocator, k.*);
+                var vit = self.ctx.decls.vars.keyIterator();
+                while (vit.next()) |k| try candidates.append(self.ctx.allocator, k.*);
 
-                const suggestion = try errors.formatSuggestion(id_name, candidates.items, self.allocator);
-                defer if (suggestion) |s| self.allocator.free(s);
-                try self.reporter.reportFmt(self.nodeLoc(node), "unknown identifier '{s}'{s}", .{ id_name, suggestion orelse "" });
+                const suggestion = try errors.formatSuggestion(id_name, candidates.items, self.ctx.allocator);
+                defer if (suggestion) |s| self.ctx.allocator.free(s);
+                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown identifier '{s}'{s}", .{ id_name, suggestion orelse "" });
                 return RT.unknown;
             },
 
@@ -558,25 +543,25 @@ pub const TypeResolver = struct {
                 if (c.callee.* == .identifier) {
                     const name = c.callee.identifier;
                     // Struct constructor: Player(...) → Player
-                    if (self.decls.structs.contains(name)) return RT{ .named = name };
+                    if (self.ctx.decls.structs.contains(name)) return RT{ .named = name };
                     // Builtin or included type constructor: Ptr(T)(...), List(i32)(...)
                     if (builtins.isBuiltinType(name) or self.isIncludedType(name)) return RT{ .named = name };
                     if (scope.lookup(name)) |t| {
                         if (t == .func_ptr) {
                             // Function pointer call — OK
-                        } else if (!self.decls.funcs.contains(name) and
-                            !self.decls.structs.contains(name) and
-                            !self.decls.enums.contains(name) and
-                            !self.decls.bitfields.contains(name) and
+                        } else if (!self.ctx.decls.funcs.contains(name) and
+                            !self.ctx.decls.structs.contains(name) and
+                            !self.ctx.decls.enums.contains(name) and
+                            !self.ctx.decls.bitfields.contains(name) and
                             !builtins.isBuiltinType(name) and
                             !self.isIncludedType(name))
                         {
                             // Non-callable variable
-                            try self.reporter.reportFmt(self.nodeLoc(node), "'{s}' is not callable — expected a function or constructor", .{name});
+                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "'{s}' is not callable — expected a function or constructor", .{name});
                             return t;
                         }
                     }
-                    if (self.decls.funcs.get(name)) |sig| {
+                    if (self.ctx.decls.funcs.get(name)) |sig| {
                         return sig.return_type;
                     }
                 }
@@ -585,14 +570,14 @@ pub const TypeResolver = struct {
                     if (fe.object.* == .identifier) {
                         const obj_id = fe.object.identifier;
                         // Module-level function: module.func()
-                        if (self.decls.funcs.get(fe.field)) |sig| {
+                        if (self.ctx.decls.funcs.get(fe.field)) |sig| {
                             return sig.return_type;
                         }
                         // Static or instance method on a bridge struct.
                         // obj_id may be the struct type name (static: Renderer.create())
                         // or a variable whose type is a struct (instance: r.draw(m)).
                         const struct_name: []const u8 = blk: {
-                            if (self.decls.structs.contains(obj_id)) break :blk obj_id;
+                            if (self.ctx.decls.structs.contains(obj_id)) break :blk obj_id;
                             if (scope.lookup(obj_id)) |var_type| {
                                 // Unwrap error_union and null_union to get the underlying named type
                                 if (var_type == .named) break :blk var_type.named;
@@ -604,12 +589,12 @@ pub const TypeResolver = struct {
                         };
                         if (struct_name.len > 0) {
                             // Build "StructName.method" key and look in struct_methods
-                            const key = std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ struct_name, fe.field }) catch "";
-                            defer if (key.len > 0) self.allocator.free(key);
+                            const key = std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ struct_name, fe.field }) catch "";
+                            defer if (key.len > 0) self.ctx.allocator.free(key);
                             if (key.len > 0) {
-                                if (self.decls.struct_methods.get(key)) |sig| return sig.return_type;
+                                if (self.ctx.decls.struct_methods.get(key)) |sig| return sig.return_type;
                                 // Cross-module: check all loaded module decls
-                                if (self.all_decls) |ad| {
+                                if (self.ctx.all_decls) |ad| {
                                     if (ad.get(obj_id)) |mod_decls| {
                                         if (mod_decls.struct_methods.get(key)) |sig| return sig.return_type;
                                     }
@@ -628,11 +613,11 @@ pub const TypeResolver = struct {
                         if (inner.object.* == .identifier) {
                             const type_name = inner.field;
                             const method_name = fe.field;
-                            const key = std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ type_name, method_name }) catch "";
-                            defer if (key.len > 0) self.allocator.free(key);
+                            const key = std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ type_name, method_name }) catch "";
+                            defer if (key.len > 0) self.ctx.allocator.free(key);
                             if (key.len > 0) {
-                                if (self.decls.struct_methods.get(key)) |sig| return sig.return_type;
-                                if (self.all_decls) |ad| {
+                                if (self.ctx.decls.struct_methods.get(key)) |sig| return sig.return_type;
+                                if (self.ctx.all_decls) |ad| {
                                     var it = ad.iterator();
                                     while (it.next()) |entry| {
                                         if (entry.value_ptr.*.struct_methods.get(key)) |sig| return sig.return_type;
@@ -648,7 +633,7 @@ pub const TypeResolver = struct {
                     if (inner_c.callee.* == .identifier) {
                         const name = inner_c.callee.identifier;
                         // compt func returning type: Vec2(f32)(...) → named type
-                        if (self.decls.funcs.get(name)) |sig| {
+                        if (self.ctx.decls.funcs.get(name)) |sig| {
                             if (sig.context == .compt) return RT{ .named = name };
                         }
                         if (builtins.isBuiltinType(name) or self.isIncludedType(name)) return RT{ .named = name };
@@ -665,7 +650,7 @@ pub const TypeResolver = struct {
                     if (obj_type.coreInner()) |ci| return ci.*;
                 }
                 const obj_name = obj_type.name();
-                if (self.decls.structs.get(obj_name)) |sig| {
+                if (self.ctx.decls.structs.get(obj_name)) |sig| {
                     for (sig.fields) |field| {
                         if (std.mem.eql(u8, field.name, f.field)) {
                             return field.type_;
@@ -682,7 +667,7 @@ pub const TypeResolver = struct {
                 if (obj_type == .primitive) {
                     const tn = obj_type.primitive;
                     if (tn == .bool or tn == .void) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "cannot index into type '{s}'", .{tn.toName()});
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot index into type '{s}'", .{tn.toName()});
                     }
                 }
                 return RT.inferred;
@@ -725,23 +710,23 @@ pub const TypeResolver = struct {
                 // Introspection functions
                 if (std.mem.eql(u8, cf.name, "hasField") or std.mem.eql(u8, cf.name, "hasDecl")) {
                     if (cf.args.len != 2) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "@{s} takes exactly 2 arguments", .{cf.name});
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@{s} takes exactly 2 arguments", .{cf.name});
                     } else if (cf.args[1].* != .string_literal) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "@{s} requires a string literal as second argument", .{cf.name});
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@{s} requires a string literal as second argument", .{cf.name});
                     }
                     return RT{ .primitive = .bool };
                 }
                 if (std.mem.eql(u8, cf.name, "fieldType")) {
                     if (cf.args.len != 2) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "@fieldType takes exactly 2 arguments", .{});
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@fieldType takes exactly 2 arguments", .{});
                     } else if (cf.args[1].* != .string_literal) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "@fieldType requires a string literal as second argument", .{});
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@fieldType requires a string literal as second argument", .{});
                     }
                     return RT{ .primitive = .@"type" };
                 }
                 if (std.mem.eql(u8, cf.name, "fieldNames")) {
                     if (cf.args.len != 1) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "@fieldNames takes exactly 1 argument", .{});
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@fieldNames takes exactly 1 argument", .{});
                     }
                     return RT.inferred;
                 }
@@ -785,15 +770,15 @@ pub const TypeResolver = struct {
     fn checkMatchExhaustiveness(self: *TypeResolver, match_type: RT, arms: []*parser.Node, match_node: *parser.Node) !void {
         // Collect covered arm names
         var covered: std.ArrayListUnmanaged([]const u8) = .{};
-        defer covered.deinit(self.allocator);
+        defer covered.deinit(self.ctx.allocator);
         for (arms) |arm| {
             if (arm.* == .match_arm) {
                 const pat = arm.match_arm.pattern;
                 if (pat.* == .identifier and !std.mem.eql(u8, pat.identifier, "else")) {
-                    try covered.append(self.allocator, pat.identifier);
+                    try covered.append(self.ctx.allocator, pat.identifier);
                 }
                 if (pat.* == .null_literal) {
-                    try covered.append(self.allocator, "null");
+                    try covered.append(self.ctx.allocator, "null");
                 }
             }
         }
@@ -813,7 +798,7 @@ pub const TypeResolver = struct {
                         if (std.mem.eql(u8, c, req)) { found = true; break; }
                     }
                     if (!found) {
-                        try self.reporter.reportFmt(self.nodeLoc(match_node), "non-exhaustive match — missing arm for '{s}', add it or use 'else'", .{req});
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(match_node), "non-exhaustive match — missing arm for '{s}', add it or use 'else'", .{req});
                         return;
                     }
                 }
@@ -825,7 +810,7 @@ pub const TypeResolver = struct {
                         if (std.mem.eql(u8, c, member.name())) { found = true; break; }
                     }
                     if (!found) {
-                        try self.reporter.reportFmt(self.nodeLoc(match_node), "non-exhaustive match — missing arm for '{s}', add it or use 'else'", .{member.name()});
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(match_node), "non-exhaustive match — missing arm for '{s}', add it or use 'else'", .{member.name()});
                         return;
                     }
                 }
@@ -842,12 +827,12 @@ pub const TypeResolver = struct {
                     .error_union => {
                         if (std.mem.eql(u8, pattern_name, builtins.BT.ERROR)) return;
                         if (std.mem.eql(u8, pattern_name, ct.inner.name())) return;
-                        try self.reporter.reportFmt(self.nodeLoc(arm_node), "match arm '{s}' is not a member of ErrorUnion({s})", .{ pattern_name, ct.inner.name() });
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(arm_node), "match arm '{s}' is not a member of ErrorUnion({s})", .{ pattern_name, ct.inner.name() });
                     },
                     .null_union => {
                         if (std.mem.eql(u8, pattern_name, "null")) return;
                         if (std.mem.eql(u8, pattern_name, ct.inner.name())) return;
-                        try self.reporter.reportFmt(self.nodeLoc(arm_node), "match arm '{s}' is not a member of NullUnion({s})", .{ pattern_name, ct.inner.name() });
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(arm_node), "match arm '{s}' is not a member of NullUnion({s})", .{ pattern_name, ct.inner.name() });
                     },
                     else => {}, // other core types don't have match arms
                 }
@@ -857,7 +842,7 @@ pub const TypeResolver = struct {
                 for (members) |member| {
                     if (std.mem.eql(u8, pattern_name, member.name())) return;
                 }
-                try self.reporter.reportFmt(self.nodeLoc(arm_node), "match arm '{s}' is not a member of this union type", .{pattern_name});
+                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(arm_node), "match arm '{s}' is not a member of this union type", .{pattern_name});
             },
             else => {
                 // Not a union type — pattern matching on integer/string values, not type arms
@@ -875,10 +860,10 @@ pub const TypeResolver = struct {
                 const is_qualified = std.mem.indexOfScalar(u8, type_name, '.') != null;
                 const is_primitive = types.isPrimitiveName(type_name);
                 const is_known = is_qualified or is_primitive or
-                    self.decls.structs.contains(type_name) or
-                    self.decls.enums.contains(type_name) or
-                    self.decls.bitfields.contains(type_name) or
-                    self.decls.types.contains(type_name) or // type aliases
+                    self.ctx.decls.structs.contains(type_name) or
+                    self.ctx.decls.enums.contains(type_name) or
+                    self.ctx.decls.bitfields.contains(type_name) or
+                    self.ctx.decls.types.contains(type_name) or // type aliases
                     builtins.isBuiltinType(type_name) or
                     self.isIncludedType(type_name) or
                     std.mem.eql(u8, type_name, K.Type.ANY) or
@@ -890,20 +875,20 @@ pub const TypeResolver = struct {
                 if (!is_known) {
                     // Build candidate list from declared types + primitives for suggestion
                     var candidates: std.ArrayListUnmanaged([]const u8) = .{};
-                    defer candidates.deinit(self.allocator);
-                    var sti = self.decls.structs.keyIterator();
-                    while (sti.next()) |k| try candidates.append(self.allocator, k.*);
-                    var eni = self.decls.enums.keyIterator();
-                    while (eni.next()) |k| try candidates.append(self.allocator, k.*);
-                    var bfi = self.decls.bitfields.keyIterator();
-                    while (bfi.next()) |k| try candidates.append(self.allocator, k.*);
-                    var tyi = self.decls.types.keyIterator();
-                    while (tyi.next()) |k| try candidates.append(self.allocator, k.*);
-                    for (&PRIMITIVE_NAMES) |pn| try candidates.append(self.allocator, pn);
+                    defer candidates.deinit(self.ctx.allocator);
+                    var sti = self.ctx.decls.structs.keyIterator();
+                    while (sti.next()) |k| try candidates.append(self.ctx.allocator, k.*);
+                    var eni = self.ctx.decls.enums.keyIterator();
+                    while (eni.next()) |k| try candidates.append(self.ctx.allocator, k.*);
+                    var bfi = self.ctx.decls.bitfields.keyIterator();
+                    while (bfi.next()) |k| try candidates.append(self.ctx.allocator, k.*);
+                    var tyi = self.ctx.decls.types.keyIterator();
+                    while (tyi.next()) |k| try candidates.append(self.ctx.allocator, k.*);
+                    for (&PRIMITIVE_NAMES) |pn| try candidates.append(self.ctx.allocator, pn);
 
-                    const suggestion = try errors.formatSuggestion(type_name, candidates.items, self.allocator);
-                    defer if (suggestion) |s| self.allocator.free(s);
-                    try self.reporter.reportFmt(self.nodeLoc(node), "unknown type '{s}'{s}", .{ type_name, suggestion orelse "" });
+                    const suggestion = try errors.formatSuggestion(type_name, candidates.items, self.ctx.allocator);
+                    defer if (suggestion) |s| self.ctx.allocator.free(s);
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown type '{s}'{s}", .{ type_name, suggestion orelse "" });
                 }
             },
             .type_slice => |elem| try self.validateType(elem, scope),
@@ -916,8 +901,8 @@ pub const TypeResolver = struct {
                 const dot_pos = std.mem.indexOfScalar(u8, g.name, '.');
                 const is_qualified = dot_pos != null;
                 var is_known = builtins.isBuiltinType(g.name) or
-                    self.decls.funcs.contains(g.name) or
-                    self.decls.structs.contains(g.name) or
+                    self.ctx.decls.funcs.contains(g.name) or
+                    self.ctx.decls.structs.contains(g.name) or
                     self.isIncludedType(g.name) or
                     scope.lookup(g.name) != null;
 
@@ -926,7 +911,7 @@ pub const TypeResolver = struct {
                     if (dot_pos) |dp| {
                         const module_name = g.name[0..dp];
                         const type_name = g.name[dp + 1 ..];
-                        if (self.all_decls) |ad| {
+                        if (self.ctx.all_decls) |ad| {
                             if (ad.get(module_name)) |mod_decls| {
                                 is_known = mod_decls.structs.contains(type_name) or
                                     mod_decls.enums.contains(type_name) or
@@ -947,7 +932,7 @@ pub const TypeResolver = struct {
                 }
 
                 if (!is_known) {
-                    try self.reporter.reportFmt(self.nodeLoc(node), "unknown generic type '{s}'", .{g.name});
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown generic type '{s}'", .{g.name});
                 }
                 // Validate type arguments (Ring/ORing second arg is a size, Vector first arg is a size)
                 const is_ring = std.mem.eql(u8, g.name, "Ring") or std.mem.eql(u8, g.name, "ORing");
@@ -983,29 +968,29 @@ pub const TypeResolver = struct {
         if (expected == .primitive and expected.primitive == .string and
             actual == .slice and actual.slice.* == .primitive and actual.slice.primitive == .u8)
         {
-            try self.reporter.report(.{
+            try self.ctx.reporter.report(.{
                 .message = "cannot assign '[]u8' to 'String' — use str.fromBytes() for explicit conversion",
-                .loc = self.nodeLoc(node),
+                .loc = self.ctx.nodeLoc(node),
             });
             return;
         }
         // Only check when both sides are primitive — that's where we can be confident
         if (expected != .primitive or actual != .primitive) return;
         if (typesCompatible(actual, expected)) return;
-        try self.reporter.reportFmt(self.nodeLoc(node), "type mismatch: expected '{s}', got '{s}'",
+        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "type mismatch: expected '{s}', got '{s}'",
             .{ expected.name(), actual.name() });
     }
 
     /// Returns true if `name` is a variant of any declared enum or a flag of any declared bitfield.
     /// Used to suppress false "unknown identifier" errors for enum variants used as match patterns.
     fn isEnumVariantOrBitfieldFlag(self: *const TypeResolver, name: []const u8) bool {
-        var enum_it = self.decls.enums.valueIterator();
+        var enum_it = self.ctx.decls.enums.valueIterator();
         while (enum_it.next()) |sig| {
             for (sig.variants) |v| {
                 if (std.mem.eql(u8, v, name)) return true;
             }
         }
-        var bf_it = self.decls.bitfields.valueIterator();
+        var bf_it = self.ctx.decls.bitfields.valueIterator();
         while (bf_it.next()) |sig| {
             for (sig.flags) |f| {
                 if (std.mem.eql(u8, f, name)) return true;
@@ -1024,7 +1009,7 @@ pub const TypeResolver = struct {
             c.callee.field_expr.field
         else
             return;
-        const sig = self.decls.funcs.get(func_name) orelse return;
+        const sig = self.ctx.decls.funcs.get(func_name) orelse return;
 
         const param_count = @min(sig.params.len, arg_types.len);
         for (0..param_count) |i| {
@@ -1034,7 +1019,7 @@ pub const TypeResolver = struct {
             if (param_type == .primitive and param_type.primitive == .string) {
                 if (arg_type == .slice) {
                     if (arg_type.slice.* == .primitive and arg_type.slice.primitive == .u8) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "cannot pass '[]u8' as 'String' — use str.fromBytes() for explicit conversion",
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass '[]u8' as 'String' — use str.fromBytes() for explicit conversion",
                             .{});
                     }
                 }
@@ -1043,7 +1028,7 @@ pub const TypeResolver = struct {
             if (param_type == .slice) {
                 if (param_type.slice.* == .primitive and param_type.slice.primitive == .u8) {
                     if (arg_type == .primitive and arg_type.primitive == .string) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "cannot pass 'String' as '[]u8' — use str.toBytes() for explicit conversion",
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass 'String' as '[]u8' — use str.toBytes() for explicit conversion",
                             .{});
                     }
                 }
@@ -1057,33 +1042,33 @@ pub const TypeResolver = struct {
         for (s.blueprints, 0..) |bp_name, i| {
             for (s.blueprints[0..i]) |prev| {
                 if (std.mem.eql(u8, bp_name, prev)) {
-                    try self.reporter.reportFmt(loc, "struct '{s}' lists blueprint '{s}' more than once", .{ s.name, bp_name });
+                    try self.ctx.reporter.reportFmt(loc, "struct '{s}' lists blueprint '{s}' more than once", .{ s.name, bp_name });
                 }
             }
         }
 
         for (s.blueprints) |bp_name| {
             // Look up blueprint in declarations
-            const bp_sig = self.decls.blueprints.get(bp_name) orelse {
-                try self.reporter.reportFmt(loc, "unknown blueprint '{s}'", .{bp_name});
+            const bp_sig = self.ctx.decls.blueprints.get(bp_name) orelse {
+                try self.ctx.reporter.reportFmt(loc, "unknown blueprint '{s}'", .{bp_name});
                 continue;
             };
 
             // Check each required method
             for (bp_sig.methods) |bp_method| {
-                const method_key = try std.fmt.allocPrint(self.allocator,
+                const method_key = try std.fmt.allocPrint(self.ctx.allocator,
                     "{s}.{s}", .{ s.name, bp_method.name });
-                defer self.allocator.free(method_key);
+                defer self.ctx.allocator.free(method_key);
 
-                const struct_method = self.decls.struct_methods.get(method_key) orelse {
-                    try self.reporter.reportFmt(loc, "struct '{s}' does not implement '{s}' required by blueprint '{s}'",
+                const struct_method = self.ctx.decls.struct_methods.get(method_key) orelse {
+                    try self.ctx.reporter.reportFmt(loc, "struct '{s}' does not implement '{s}' required by blueprint '{s}'",
                         .{ s.name, bp_method.name, bp_name });
                     continue;
                 };
 
                 // Compare parameter count
                 if (struct_method.params.len != bp_method.params.len) {
-                    try self.reporter.reportFmt(loc, "method '{s}' in struct '{s}' has {d} parameter(s), blueprint '{s}' requires {d}",
+                    try self.ctx.reporter.reportFmt(loc, "method '{s}' in struct '{s}' has {d} parameter(s), blueprint '{s}' requires {d}",
                         .{ bp_method.name, s.name, struct_method.params.len, bp_name, bp_method.params.len });
                     continue;
                 }
@@ -1091,7 +1076,7 @@ pub const TypeResolver = struct {
                 // Compare parameter types (with blueprint→struct name substitution)
                 for (struct_method.params, bp_method.params) |sp, bp| {
                     if (!typesMatchWithSubstitution(sp.type_, bp.type_, bp_name, s.name)) {
-                        try self.reporter.reportFmt(loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': parameter type mismatch",
+                        try self.ctx.reporter.reportFmt(loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': parameter type mismatch",
                             .{ bp_method.name, s.name, bp_name });
                         break;
                     }
@@ -1099,7 +1084,7 @@ pub const TypeResolver = struct {
 
                 // Compare return type
                 if (!typesMatchWithSubstitution(struct_method.return_type, bp_method.return_type, bp_name, s.name)) {
-                    try self.reporter.reportFmt(loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': return type mismatch",
+                    try self.ctx.reporter.reportFmt(loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': return type mismatch",
                         .{ bp_method.name, s.name, bp_name });
                 }
             }
@@ -1272,7 +1257,8 @@ test "resolver init" {
     var reporter = errors.Reporter.init(std.testing.allocator, .debug);
     defer reporter.deinit();
 
-    var resolver = TypeResolver.init(std.testing.allocator, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(std.testing.allocator, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
 
     try std.testing.expect(!reporter.hasErrors());
@@ -1329,7 +1315,8 @@ test "resolver - untyped numeric literal requires explicit type" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var type_resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var type_resolver = TypeResolver.init(&ctx);
     defer type_resolver.deinit();
 
     try type_resolver.resolve(program);
@@ -1362,7 +1349,8 @@ test "resolver - function return type resolves" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
 
     var scope = Scope.init(alloc, null);
@@ -1401,7 +1389,8 @@ test "resolver - struct field type resolves" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
 
     var scope = Scope.init(alloc, null);
@@ -1429,7 +1418,8 @@ test "resolver - explicit type annotation preferred" {
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
 
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
 
     var scope = Scope.init(alloc, null);
@@ -1464,7 +1454,8 @@ test "resolver - compiler func cast resolves to target type" {
     defer decl_table.deinit();
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
@@ -1495,7 +1486,8 @@ test "resolver - compiler func copy preserves type" {
     defer decl_table.deinit();
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
@@ -1523,7 +1515,8 @@ test "resolver - compiler func assert returns void" {
     defer decl_table.deinit();
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
@@ -1549,7 +1542,8 @@ test "resolver - for range capture is usize" {
     defer decl_table.deinit();
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
 
     // Range expressions produce usize captures
@@ -1572,7 +1566,8 @@ test "resolver - struct constructor resolves to named type" {
 
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
@@ -1601,7 +1596,8 @@ test "resolver - validateType catches unknown generic" {
     defer decl_table.deinit();
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
@@ -1628,7 +1624,8 @@ test "resolver - array literal infers element type" {
     defer decl_table.deinit();
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
     var scope = Scope.init(alloc, null);
     defer scope.deinit();
@@ -1659,7 +1656,8 @@ test "resolver - match exhaustiveness with many arms" {
     defer decl_table.deinit();
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &decl_table, &reporter);
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
     defer resolver.deinit();
 
     var arena = std.heap.ArenaAllocator.init(alloc);
@@ -1704,16 +1702,24 @@ test "resolver - validateType catches unknown qualified generic" {
     defer math_decls.deinit();
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &local_decls, &reporter);
-    defer resolver.deinit();
-    var scope = Scope.init(alloc, null);
-    defer scope.deinit();
 
     var all_decls = std.StringHashMap(*declarations.DeclTable).init(alloc);
     defer all_decls.deinit();
     // math module exists but does NOT have "Vec2"
     try all_decls.put("math", &math_decls);
-    resolver.all_decls = &all_decls;
+
+    const ctx = sema.SemanticContext{
+        .allocator = alloc,
+        .reporter = &reporter,
+        .decls = &local_decls,
+        .locs = null,
+        .file_offsets = &.{},
+        .all_decls = &all_decls,
+    };
+    var resolver = TypeResolver.init(&ctx);
+    defer resolver.deinit();
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
 
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -1738,10 +1744,6 @@ test "resolver - validateType accepts known qualified generic" {
     defer math_decls.deinit();
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();
-    var resolver = TypeResolver.init(alloc, &local_decls, &reporter);
-    defer resolver.deinit();
-    var scope = Scope.init(alloc, null);
-    defer scope.deinit();
 
     // Add Vec2 to the math module's structs
     try math_decls.structs.put("Vec2", .{
@@ -1753,7 +1755,19 @@ test "resolver - validateType accepts known qualified generic" {
     var all_decls = std.StringHashMap(*declarations.DeclTable).init(alloc);
     defer all_decls.deinit();
     try all_decls.put("math", &math_decls);
-    resolver.all_decls = &all_decls;
+
+    const ctx = sema.SemanticContext{
+        .allocator = alloc,
+        .reporter = &reporter,
+        .decls = &local_decls,
+        .locs = null,
+        .file_offsets = &.{},
+        .all_decls = &all_decls,
+    };
+    var resolver = TypeResolver.init(&ctx);
+    defer resolver.deinit();
+    var scope = Scope.init(alloc, null);
+    defer scope.deinit();
 
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();

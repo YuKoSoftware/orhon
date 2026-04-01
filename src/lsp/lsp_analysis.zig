@@ -242,9 +242,14 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         }
 
         // Pass 5: Type Resolution (uses scratch arena)
-        var tr = resolver.TypeResolver.init(a, &dc.table, &reporter);
-        tr.locs = locs_ptr;
-        tr.file_offsets = file_offsets;
+        const tr_ctx = sema.SemanticContext{
+            .allocator = a,
+            .reporter = &reporter,
+            .decls = &dc.table,
+            .locs = locs_ptr,
+            .file_offsets = file_offsets,
+        };
+        var tr = resolver.TypeResolver.init(&tr_ctx);
         tr.resolve(ast) catch {};
 
         // Extract symbols from DeclTable + AST locations (even if type resolution had errors).

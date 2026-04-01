@@ -195,7 +195,7 @@ pub fn generateThreadFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
 
     // Extract inner type T from Handle(T) return type
     const inner_type = if (ret_type.* == .type_generic and
-        std.mem.eql(u8, ret_type.type_generic.name, "Handle") and
+        std.mem.eql(u8, ret_type.type_generic.name, builtins.BT.HANDLE) and
         ret_type.type_generic.args.len > 0)
         ret_type.type_generic.args[0]
     else
@@ -445,7 +445,7 @@ pub fn generateFunc(cg: *CodeGen, node: *parser.Node, f: parser.FuncDecl) anyerr
 pub fn generateThreadFunc(cg: *CodeGen, node: *parser.Node, f: parser.FuncDecl) anyerror!void {
     // Extract inner type T from Handle(T) return type
     const inner_type = if (f.return_type.* == .type_generic and
-        std.mem.eql(u8, f.return_type.type_generic.name, "Handle") and
+        std.mem.eql(u8, f.return_type.type_generic.name, builtins.BT.HANDLE) and
         f.return_type.type_generic.args.len > 0)
         f.return_type.type_generic.args[0]
     else
@@ -749,7 +749,7 @@ pub fn generateDecl(cg: *CodeGen, node: *parser.Node, v: parser.VarDecl, decl_ke
             if (t.* != .type_generic) break :blk false;
             if (t.type_generic.args.len == 0) break :blk false;
             const n = t.type_generic.name;
-            if (!std.mem.eql(u8, n, "Ptr") and !std.mem.eql(u8, n, "RawPtr") and !std.mem.eql(u8, n, "VolatilePtr")) break :blk false;
+            if (!builtins.isPtrType(n)) break :blk false;
             try cg.generatePtrCoercion(n, t.type_generic.args[0], v.value);
             break :blk true;
         };
@@ -776,7 +776,7 @@ pub fn generateStmtDecl(cg: *CodeGen, node: *parser.Node, v: parser.VarDecl, dec
             if (t.* != .type_generic) break :blk false;
             if (t.type_generic.args.len == 0) break :blk false;
             const n = t.type_generic.name;
-            if (!std.mem.eql(u8, n, "Ptr") and !std.mem.eql(u8, n, "RawPtr") and !std.mem.eql(u8, n, "VolatilePtr")) break :blk false;
+            if (!builtins.isPtrType(n)) break :blk false;
             try cg.generatePtrCoercion(n, t.type_generic.args[0], v.value);
             break :blk true;
         };
@@ -849,7 +849,7 @@ pub fn generateTopLevelDeclMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             if (t.* != .type_generic) break :blk false;
             if (t.type_generic.args.len == 0) break :blk false;
             const n = t.type_generic.name;
-            if (!std.mem.eql(u8, n, "Ptr") and !std.mem.eql(u8, n, "RawPtr") and !std.mem.eql(u8, n, "VolatilePtr")) break :blk false;
+            if (!builtins.isPtrType(n)) break :blk false;
             try cg.generatePtrCoercionMir(n, t.type_generic.args[0], m.value());
             break :blk true;
         };

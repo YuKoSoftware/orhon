@@ -8,6 +8,7 @@ const parser = @import("parser.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
+const builtins = @import("builtins.zig");
 
 /// Tracks which variables have been moved into threads
 pub const ThreadSafetyChecker = struct {
@@ -484,7 +485,7 @@ pub const ThreadSafetyChecker = struct {
 /// Check if a type annotation node is Handle(T)
 fn isHandleType(type_ann: ?*parser.Node) bool {
     const t = type_ann orelse return false;
-    return t.* == .type_generic and std.mem.eql(u8, t.type_generic.name, "Handle");
+    return t.* == .type_generic and std.mem.eql(u8, t.type_generic.name, builtins.BT.HANDLE);
 }
 
 /// Collect variables that are borrowed (mut& x or const& x) in a node tree

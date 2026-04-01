@@ -4,6 +4,7 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 const K = @import("constants.zig");
+const builtins = @import("builtins.zig");
 
 /// Primitive type enum — replaces string-based primitive type identification.
 /// Exhaustive switching, zero-cost comparison, no typo risk.
@@ -321,17 +322,17 @@ pub fn resolveTypeNode(alloc: std.mem.Allocator, node: *parser.Node) anyerror!Re
 
         .type_generic => |g| {
             // Core language wrapper types → CoreType
-            const core_kind: ?ResolvedType.CoreType.Kind = if (std.mem.eql(u8, g.name, "ErrorUnion"))
+            const core_kind: ?ResolvedType.CoreType.Kind = if (std.mem.eql(u8, g.name, builtins.BT.ERROR_UNION))
                 .error_union
-            else if (std.mem.eql(u8, g.name, "NullUnion"))
+            else if (std.mem.eql(u8, g.name, builtins.BT.NULL_UNION))
                 .null_union
-            else if (std.mem.eql(u8, g.name, "Handle"))
+            else if (std.mem.eql(u8, g.name, builtins.BT.HANDLE))
                 .handle
-            else if (std.mem.eql(u8, g.name, "Ptr"))
+            else if (std.mem.eql(u8, g.name, builtins.BT.PTR))
                 .safe_ptr
-            else if (std.mem.eql(u8, g.name, "RawPtr"))
+            else if (std.mem.eql(u8, g.name, builtins.BT.RAW_PTR))
                 .raw_ptr
-            else if (std.mem.eql(u8, g.name, "VolatilePtr"))
+            else if (std.mem.eql(u8, g.name, builtins.BT.VOLATILE_PTR))
                 .volatile_ptr
             else
                 null;

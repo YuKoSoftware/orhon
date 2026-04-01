@@ -73,7 +73,7 @@ pub fn generateStatementMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                 try cg.generateStmtDeclMir(m, "const");
             } else {
                 const is_handle = if (m.type_annotation) |ta|
-                    ta.* == .type_generic and std.mem.eql(u8, ta.type_generic.name, "Handle")
+                    ta.* == .type_generic and std.mem.eql(u8, ta.type_generic.name, builtins.BT.HANDLE)
                 else
                     false;
                 const is_mutated = is_handle or cg.reassigned_vars.contains(var_name);
@@ -243,7 +243,7 @@ pub fn generateStmtDeclMir(cg: *CodeGen, m: *mir.MirNode, decl_keyword: []const 
             if (t.* != .type_generic) break :blk false;
             if (t.type_generic.args.len == 0) break :blk false;
             const n = t.type_generic.name;
-            if (!std.mem.eql(u8, n, "Ptr") and !std.mem.eql(u8, n, "RawPtr") and !std.mem.eql(u8, n, "VolatilePtr")) break :blk false;
+            if (!builtins.isPtrType(n)) break :blk false;
             try cg.generatePtrCoercionMir(n, t.type_generic.args[0], val_m);
             break :blk true;
         };
@@ -440,7 +440,7 @@ pub fn generateExpr(cg: *CodeGen, node: *parser.Node) anyerror!void {
         },
         .call_expr => |c| {
             // Version() is metadata-only — reject in expressions
-            if (c.callee.* == .identifier and std.mem.eql(u8, c.callee.identifier, "Version")) {
+            if (c.callee.* == .identifier and std.mem.eql(u8, c.callee.identifier, builtins.BT.VERSION)) {
                 try cg.reporter.report(.{
                     .message = "Version() can only be used in #version metadata",
                     .loc = cg.nodeLoc(node),
@@ -448,7 +448,7 @@ pub fn generateExpr(cg: *CodeGen, node: *parser.Node) anyerror!void {
                 return;
             }
             // Handle(value) → just emit the value (wrapping done by spawn wrapper)
-            if (c.callee.* == .identifier and std.mem.eql(u8, c.callee.identifier, "Handle") and c.args.len == 1) {
+            if (c.callee.* == .identifier and std.mem.eql(u8, c.callee.identifier, builtins.BT.HANDLE) and c.args.len == 1) {
                 try cg.generateExpr(c.args[0]);
                 return;
             }

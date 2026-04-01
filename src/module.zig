@@ -7,6 +7,7 @@ const parser = @import("parser.zig");
 const lexer = @import("lexer.zig");
 const errors = @import("errors.zig");
 const cache = @import("cache.zig");
+const builtins = @import("builtins.zig");
 
 const MODULE_KEYWORD = "module ";
 
@@ -974,7 +975,7 @@ pub fn extractVersion(node: *parser.Node) ?[3]u64 {
     if (node.* != .call_expr) return null;
     const call = node.call_expr;
     if (call.callee.* != .identifier) return null;
-    if (!std.mem.eql(u8, call.callee.identifier, "Version")) return null;
+    if (!std.mem.eql(u8, call.callee.identifier, builtins.BT.VERSION)) return null;
     if (call.args.len != 3) return null;
 
     var parts: [3]u64 = undefined;

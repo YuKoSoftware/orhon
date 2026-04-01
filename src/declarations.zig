@@ -846,7 +846,7 @@ test "declaration collector - #cimport with bridge is allowed" {
 /// Used to prevent field names like `String`, `i32`, `File` etc.
 fn isReservedTypeName(name: []const u8) bool {
     if (types.isPrimitiveName(name)) return true;
-    if (std.mem.eql(u8, name, "Error")) return true;
+    if (std.mem.eql(u8, name, builtins.BT.ERROR)) return true;
     return builtins.isBuiltinType(name);
 }
 

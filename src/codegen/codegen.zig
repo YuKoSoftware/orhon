@@ -689,13 +689,13 @@ pub const CodeGen = struct {
                     .{ params_str.items, ret });
             },
             .type_generic => |g| blk: {
-                if (std.mem.eql(u8, g.name, "ErrorUnion")) {
+                if (std.mem.eql(u8, g.name, builtins.BT.ERROR_UNION)) {
                     // ErrorUnion(T) → anyerror!T
                     if (g.args.len > 0) {
                         const inner = try self.typeToZig(g.args[0]);
                         break :blk try self.allocTypeStr("anyerror!{s}", .{inner});
                     }
-                } else if (std.mem.eql(u8, g.name, "NullUnion")) {
+                } else if (std.mem.eql(u8, g.name, builtins.BT.NULL_UNION)) {
                     // NullUnion(T) → ?T
                     if (g.args.len > 0) {
                         const inner = try self.typeToZig(g.args[0]);
@@ -703,31 +703,31 @@ pub const CodeGen = struct {
                     }
                 } else if (std.mem.eql(u8, g.name, "Thread")) {
                     break :blk "std.Thread"; // Thread handle type
-                } else if (std.mem.eql(u8, g.name, "Handle")) {
+                } else if (std.mem.eql(u8, g.name, builtins.BT.HANDLE)) {
                     // Handle(T) → _OrhonHandle(zigT) (emitted as file-level helper)
                     if (g.args.len > 0) {
                         const inner = try self.typeToZig(g.args[0]);
                         break :blk try self.allocTypeStr("_OrhonHandle({s})", .{inner});
                     }
-                } else if (std.mem.eql(u8, g.name, "Ptr")) {
+                } else if (std.mem.eql(u8, g.name, builtins.BT.PTR)) {
                     // Ptr(T) → *const T
                     if (g.args.len > 0) {
                         const inner = try self.typeToZig(g.args[0]);
                         break :blk try self.allocTypeStr("*const {s}", .{inner});
                     }
-                } else if (std.mem.eql(u8, g.name, "RawPtr")) {
+                } else if (std.mem.eql(u8, g.name, builtins.BT.RAW_PTR)) {
                     // RawPtr(T) → [*]T
                     if (g.args.len > 0) {
                         const inner = try self.typeToZig(g.args[0]);
                         break :blk try self.allocTypeStr("[*]{s}", .{inner});
                     }
-                } else if (std.mem.eql(u8, g.name, "VolatilePtr")) {
+                } else if (std.mem.eql(u8, g.name, builtins.BT.VOLATILE_PTR)) {
                     // VolatilePtr(T) → [*]volatile T
                     if (g.args.len > 0) {
                         const inner = try self.typeToZig(g.args[0]);
                         break :blk try self.allocTypeStr("[*]volatile {s}", .{inner});
                     }
-                } else if (std.mem.eql(u8, g.name, "Vector")) {
+                } else if (std.mem.eql(u8, g.name, builtins.BT.VECTOR)) {
                     // Vector(N, T) → @Vector(N, T)
                     if (g.args.len >= 2) {
                         const size_str = if (g.args[0].* == .int_literal) g.args[0].int_literal else "0";
@@ -796,7 +796,7 @@ pub const CodeGen = struct {
             .binary_expr => |b| blk: {
                 if (!std.mem.eql(u8, b.op, "|")) break :blk "anyopaque";
                 // Check for (Error | T) or (null | T) patterns
-                const left_is_error = b.left.* == .identifier and std.mem.eql(u8, b.left.identifier, "Error");
+                const left_is_error = b.left.* == .identifier and std.mem.eql(u8, b.left.identifier, builtins.BT.ERROR);
                 const left_is_null = b.left.* == .null_literal;
                 if (left_is_error) {
                     const inner = try self.typeToZig(b.right);
@@ -824,7 +824,7 @@ pub fn isResultValueField(name: []const u8, decls: ?*declarations.DeclTable) boo
 pub fn extractValueType(node: *parser.Node) ?*parser.Node {
     if (node.* == .type_generic) {
         const g = node.type_generic;
-        if ((std.mem.eql(u8, g.name, "ErrorUnion") or std.mem.eql(u8, g.name, "NullUnion")) and g.args.len > 0) {
+        if ((std.mem.eql(u8, g.name, builtins.BT.ERROR_UNION) or std.mem.eql(u8, g.name, builtins.BT.NULL_UNION)) and g.args.len > 0) {
             return g.args[0];
         }
     }

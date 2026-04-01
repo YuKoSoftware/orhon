@@ -10,6 +10,7 @@ const K = @import("constants.zig");
 const types = @import("types.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
+const builtins = @import("builtins.zig");
 const scope_mod = @import("scope.zig");
 
 /// A tracked union variable — needs handling before scope exit
@@ -422,8 +423,8 @@ pub const PropagationChecker = struct {
 fn typeNodeIsUnion(node: *parser.Node) ?bool {
     switch (node.*) {
         .type_generic => |g| {
-            if (std.mem.eql(u8, g.name, "ErrorUnion")) return true;
-            if (std.mem.eql(u8, g.name, "NullUnion")) return false;
+            if (std.mem.eql(u8, g.name, builtins.BT.ERROR_UNION)) return true;
+            if (std.mem.eql(u8, g.name, builtins.BT.NULL_UNION)) return false;
             return null;
         },
         else => return null,
@@ -458,8 +459,8 @@ fn typeCanPropagate(node: *parser.Node) bool {
     switch (node.*) {
         .type_generic => |g| {
             // ErrorUnion(T) can propagate errors, NullUnion(T) can propagate null
-            if (std.mem.eql(u8, g.name, "ErrorUnion")) return true;
-            if (std.mem.eql(u8, g.name, "NullUnion")) return true;
+            if (std.mem.eql(u8, g.name, builtins.BT.ERROR_UNION)) return true;
+            if (std.mem.eql(u8, g.name, builtins.BT.NULL_UNION)) return true;
             return false;
         },
         .type_named => |n| return std.mem.eql(u8, n, K.Type.VOID) == false,

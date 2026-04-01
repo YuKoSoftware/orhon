@@ -949,7 +949,7 @@ pub const TypeResolver = struct {
             .core_type => |ct| {
                 switch (ct.kind) {
                     .error_union => {
-                        if (std.mem.eql(u8, pattern_name, "Error")) return;
+                        if (std.mem.eql(u8, pattern_name, builtins.BT.ERROR)) return;
                         if (std.mem.eql(u8, pattern_name, ct.inner.name())) return;
                         const msg = try std.fmt.allocPrint(self.allocator,
                             "match arm '{s}' is not a member of ErrorUnion({s})", .{ pattern_name, ct.inner.name() });
@@ -1075,7 +1075,7 @@ pub const TypeResolver = struct {
                 }
                 // Validate type arguments (Ring/ORing second arg is a size, Vector first arg is a size)
                 const is_ring = std.mem.eql(u8, g.name, "Ring") or std.mem.eql(u8, g.name, "ORing");
-                const is_vector = std.mem.eql(u8, g.name, "Vector");
+                const is_vector = std.mem.eql(u8, g.name, builtins.BT.VECTOR);
                 for (g.args, 0..) |arg, idx| {
                     if (is_ring and idx == 1) continue; // size arg, not a type
                     if (is_vector and idx == 0) continue; // lane count, not a type

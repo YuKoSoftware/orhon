@@ -17,6 +17,26 @@ pub const BUILTIN_TYPES = [_][]const u8{
     "NullUnion",
 };
 
+/// Named constants for builtin type names used in comparisons across the compiler.
+pub const BT = struct {
+    pub const PTR = "Ptr";
+    pub const RAW_PTR = "RawPtr";
+    pub const VOLATILE_PTR = "VolatilePtr";
+    pub const HANDLE = "Handle";
+    pub const ERROR = "Error";
+    pub const ERROR_UNION = "ErrorUnion";
+    pub const NULL_UNION = "NullUnion";
+    pub const VECTOR = "Vector";
+    pub const VERSION = "Version";
+};
+
+/// Returns true if name is a pointer wrapper type (Ptr, RawPtr, or VolatilePtr).
+pub fn isPtrType(name: []const u8) bool {
+    return std.mem.eql(u8, name, BT.PTR) or
+        std.mem.eql(u8, name, BT.RAW_PTR) or
+        std.mem.eql(u8, name, BT.VOLATILE_PTR);
+}
+
 /// Compiler function names (called with @ prefix: @cast, @copy, etc.)
 /// The AST stores bare names (without @); this list is used for name-based lookups.
 pub const COMPILER_FUNCS = [_][]const u8{

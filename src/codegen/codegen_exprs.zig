@@ -242,7 +242,7 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             const callee_name = callee_mir.name orelse "";
             const call_args = m.callArgs();
             // Version() rejection
-            if (callee_is_ident and std.mem.eql(u8, callee_name, "Version")) {
+            if (callee_is_ident and std.mem.eql(u8, callee_name, builtins.BT.VERSION)) {
                 try cg.reporter.report(.{
                     .message = "Version() can only be used in #version metadata",
                     .loc = cg.nodeLocMir(m),
@@ -250,7 +250,7 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                 return;
             }
             // Handle(value) → just emit the value
-            if (callee_is_ident and std.mem.eql(u8, callee_name, "Handle") and call_args.len == 1) {
+            if (callee_is_ident and std.mem.eql(u8, callee_name, builtins.BT.HANDLE) and call_args.len == 1) {
                 try cg.generateExprMir(call_args[0]);
                 return;
             }
@@ -668,7 +668,7 @@ pub fn mirIsString(m: *const mir.MirNode) bool {
 /// Check if a MirNode represents a SIMD Vector type.
 pub fn mirIsVector(m: *const mir.MirNode) bool {
     if (m.resolved_type == .generic) {
-        return std.mem.eql(u8, m.resolved_type.generic.name, "Vector");
+        return std.mem.eql(u8, m.resolved_type.generic.name, builtins.BT.VECTOR);
     }
     return false;
 }

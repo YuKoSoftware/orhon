@@ -3,6 +3,7 @@
 const std = @import("std");
 const parser = @import("../parser.zig");
 const types = @import("../types.zig");
+const builtins = @import("../builtins.zig");
 
 pub const RT = types.ResolvedType;
 
@@ -27,11 +28,11 @@ pub fn classifyType(t: RT) TypeClass {
         .union_type => .arbitrary_union,
         .primitive => |p| if (p == .string) .string else .plain,
         .generic => |g| {
-            if (std.mem.eql(u8, g.name, "RawPtr") or std.mem.eql(u8, g.name, "VolatilePtr"))
+            if (std.mem.eql(u8, g.name, builtins.BT.RAW_PTR) or std.mem.eql(u8, g.name, builtins.BT.VOLATILE_PTR))
                 return .raw_ptr;
-            if (std.mem.eql(u8, g.name, "Ptr"))
+            if (std.mem.eql(u8, g.name, builtins.BT.PTR))
                 return .safe_ptr;
-            if (std.mem.eql(u8, g.name, "Handle"))
+            if (std.mem.eql(u8, g.name, builtins.BT.HANDLE))
                 return .thread_handle;
             return .plain;
         },

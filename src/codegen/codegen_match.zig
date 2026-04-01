@@ -526,10 +526,10 @@ pub fn generateCollectionExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
 /// Called from generateTopLevelDeclMir and generateStmtDeclMir when type annotation is Ptr/RawPtr/VolatilePtr.
 /// type_node is the first type argument (e.g. i32 from Ptr(i32)); val_m is the value MIR node.
 pub fn generatePtrCoercionMir(cg: *CodeGen, kind: []const u8, type_node: *parser.Node, val_m: *mir.MirNode) anyerror!void {
-    if (std.mem.eql(u8, kind, "Ptr")) {
+    if (std.mem.eql(u8, kind, builtins.BT.PTR)) {
         // Ptr(T) + &x → &x  (safe const pointer)
         try cg.generateExprMir(val_m);
-    } else if (std.mem.eql(u8, kind, "RawPtr")) {
+    } else if (std.mem.eql(u8, kind, builtins.BT.RAW_PTR)) {
         if (!cg.warned_rawptr) {
             std.debug.print("WARNING: RawPtr used — unsafe, no bounds checking\n", .{});
             cg.warned_rawptr = true;
@@ -546,7 +546,7 @@ pub fn generatePtrCoercionMir(cg: *CodeGen, kind: []const u8, type_node: *parser
             try cg.generateExprMir(val_m);
             try cg.emit("))");
         }
-    } else if (std.mem.eql(u8, kind, "VolatilePtr")) {
+    } else if (std.mem.eql(u8, kind, builtins.BT.VOLATILE_PTR)) {
         if (!cg.warned_rawptr) {
             std.debug.print("WARNING: VolatilePtr used — unsafe, hardware access only\n", .{});
             cg.warned_rawptr = true;
@@ -1040,10 +1040,10 @@ pub fn generateCompilerFunc(cg: *CodeGen, cf: parser.CompilerFunc) anyerror!void
 /// Called from generateDecl and generateStmtDecl when type annotation is Ptr/RawPtr/VolatilePtr.
 /// Emits the correct Zig for `const p: Ptr(T) = &x` style declarations.
 pub fn generatePtrCoercion(cg: *CodeGen, kind: []const u8, type_node: *parser.Node, value: *parser.Node) anyerror!void {
-    if (std.mem.eql(u8, kind, "Ptr")) {
+    if (std.mem.eql(u8, kind, builtins.BT.PTR)) {
         // Ptr(T) + &x → &x  (safe const pointer)
         try cg.generateExpr(value);
-    } else if (std.mem.eql(u8, kind, "RawPtr")) {
+    } else if (std.mem.eql(u8, kind, builtins.BT.RAW_PTR)) {
         if (!cg.warned_rawptr) {
             std.debug.print("WARNING: RawPtr used — unsafe, no bounds checking\n", .{});
             cg.warned_rawptr = true;
@@ -1060,7 +1060,7 @@ pub fn generatePtrCoercion(cg: *CodeGen, kind: []const u8, type_node: *parser.No
             try cg.generateExpr(value);
             try cg.emit("))");
         }
-    } else if (std.mem.eql(u8, kind, "VolatilePtr")) {
+    } else if (std.mem.eql(u8, kind, builtins.BT.VOLATILE_PTR)) {
         if (!cg.warned_rawptr) {
             std.debug.print("WARNING: VolatilePtr used — unsafe, hardware access only\n", .{});
             cg.warned_rawptr = true;

@@ -198,7 +198,7 @@ output. Catches subtle codegen regressions that runtime tests miss.
 | Exceptions | Union-based errors are better for compiled languages |
 | Operator overloading | Leads to unreadable code. Named methods are clearer |
 | Multiple inheritance | Composition via struct embedding is sufficient |
-| Implicit conversions | Explicit `cast()` is correct. Implicit conversions cause subtle bugs |
+| Implicit conversions | Explicit `@cast()` is correct. Implicit conversions cause subtle bugs |
 | Refinement types | Struct-validation pattern already covers this |
 | Full Polonius borrow checker | Overkill. NLL gives 85% of the benefit for 30% of the work |
 | Zig IR layer in codegen | Would model Zig semantics inside the compiler |

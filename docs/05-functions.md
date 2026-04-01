@@ -126,100 +126,100 @@ For callback patterns, pass context as extra arguments or wrap state in a [[10-s
 Compiler functions are reserved keywords that look like function calls. Zero runtime cost — they disappear entirely in the output binary. Cannot be shadowed or redefined by user code.
 
 ```
-typename(x)             // returns the type name as a String — usable for display
-typeid(x)               // returns unique compiler assigned integer ID — fast identity check
-cast(T, x)              // converts x to target type T — always explicit
-copy(x)                 // explicitly copies a non-primitive, original stays valid
-move(x)                 // explicitly moves a value, original becomes invalid
-swap(x, y)              // swaps ownership between two variables
-assert(x)               // assertion, checked at compile time or test time
-assert(x, "message")    // with custom failure message
-size(x)                 // returns size of type or value in bytes
-align(x)                // returns alignment requirement of type or value in bytes
-hasField(T, "name")     // true if struct T has a field named "name"
-hasDecl(T, "name")      // true if type T has a declaration (method, const) named "name"
-fieldType(T, "name")    // returns the type of field "name" on struct T
-fieldNames(T)           // returns comptime slice of all field names on struct T
+@typename(x)             // returns the type name as a String — usable for display
+@typeid(x)               // returns unique compiler assigned integer ID — fast identity check
+@cast(T, x)              // converts x to target type T — always explicit
+@copy(x)                 // explicitly copies a non-primitive, original stays valid
+@move(x)                 // explicitly moves a value, original becomes invalid
+@swap(x, y)              // swaps ownership between two variables
+@assert(x)               // assertion, checked at compile time or test time
+@assert(x, "message")    // with custom failure message
+@size(x)                 // returns size of type or value in bytes
+@align(x)                // returns alignment requirement of type or value in bytes
+@hasField(T, "name")     // true if struct T has a field named "name"
+@hasDecl(T, "name")      // true if type T has a declaration (method, const) named "name"
+@fieldType(T, "name")    // returns the type of field "name" on struct T
+@fieldNames(T)           // returns comptime slice of all field names on struct T
 ```
 
-### `typename` — type name as `String`
+### `@typename` — type name as `String`
 Returns the name of the type as a `String`. Useful for debugging, logging, and serialization. Cannot be used in type positions.
 ```
-typename(x)              // "Player"
-typename(42)             // "i32"
-typename(Error("x"))     // "Error"
-console.print(typename(x))
+@typename(x)              // "Player"
+@typename(42)             // "i32"
+@typename(Error("x"))     // "Error"
+console.print(@typename(x))
 ```
 
-### `typeid` — unique type identity
+### `@typeid` — unique type identity
 Returns a compiler assigned unique integer ID for the type. Fast, unambiguous. Two structurally identical types with different names have different IDs.
 ```
-typeid(p1) == typeid(p2)          // true only if exact same type
-typeid(Point) == typeid(Velocity) // false — different types despite identical structure
+@typeid(p1) == @typeid(p2)          // true only if exact same type
+@typeid(Point) == @typeid(Velocity) // false — different types despite identical structure
 ```
 
-### `typeOf` — first-class type value
+### `@typeOf` — first-class type value
 Returns the actual type of a value as a compile-time `type`. Can be stored in a `const` or passed to functions.
 ```
 const x: i32 = 42
-const T: type = typeOf(x)    // T is i32
+const T: type = @typeOf(x)    // T is i32
 ```
 
-### `cast` — type conversion
+### `@cast` — type conversion
 Target type is always explicit — no inference, no guessing:
 ```
 var x: i32 = 42
-var y: i64 = cast(i64, x)    // explicit target type
-var z: f32 = cast(f32, x)    // explicit conversion
+var y: i64 = @cast(i64, x)    // explicit target type
+var z: f32 = @cast(f32, x)    // explicit conversion
 func add(x: i64) i64 { }
-add(cast(i64, my_i32))       // explicit at call site
+add(@cast(i64, my_i32))       // explicit at call site
 ```
 Widening casts are always safe. Narrowing casts emit a compiler warning.
 
-### `size` — size in bytes
+### `@size` — size in bytes
 Returns the size of a type or value in bytes. Resolved at compile time whenever possible.
 ```
-size(i32)          // 4
-size(f64)          // 8
-size(my_struct)    // size of struct instance in bytes
-size([10]i32)      // 40 — fixed array, compt value
-size([]i32)        // size of slice header, not the data
-size(i32) * 8      // 32 — bits, just multiply by 8
+@size(i32)          // 4
+@size(f64)          // 8
+@size(my_struct)    // size of struct instance in bytes
+@size([10]i32)      // 40 — fixed array, compt value
+@size([]i32)        // size of slice header, not the data
+@size(i32) * 8      // 32 — bits, just multiply by 8
 ```
 
-### `align` — alignment in bytes
+### `@align` — alignment in bytes
 Returns the alignment requirement of a type or value in bytes. Essential for custom [[09-memory#Memory Allocation|allocators]], [[14-zig-bridge|C interop]], hardware access, and SIMD operations.
 ```
-align(i32)         // 4 — must be on a 4 byte boundary
-align(f64)         // 8
-align(MyStruct)    // largest alignment of any field in the struct
+@align(i32)         // 4 — must be on a 4 byte boundary
+@align(f64)         // 8
+@align(MyStruct)    // largest alignment of any field in the struct
 ```
 
-### `hasField` — struct field check
+### `@hasField` — struct field check
 Returns `true` if the struct type has a field with the given name. Works with types and values. Compile-time evaluation — zero runtime cost.
 ```
-hasField(Point, "x")       // true
-hasField(Point, "z")       // false
-hasField(my_point, "x")    // true — value is auto-wrapped in typeOf
+@hasField(Point, "x")       // true
+@hasField(Point, "z")       // false
+@hasField(my_point, "x")    // true — value is auto-wrapped in typeOf
 ```
 
-### `hasDecl` — declaration check
+### `@hasDecl` — declaration check
 Returns `true` if the type has any declaration (method, compt function, constant) with the given name. Useful for conditional logic based on type capabilities.
 ```
-hasDecl(Counter, "create")     // true — Counter has a create method
-hasDecl(Vec2, "nonexistent")   // false
+@hasDecl(Counter, "create")     // true — Counter has a create method
+@hasDecl(Vec2, "nonexistent")   // false
 ```
 
-### `fieldType` — field type extraction
+### `@fieldType` — field type extraction
 Returns the compile-time `type` of a named field on a struct. Can be stored in a `const` or used in compt code for type-level programming.
 ```
-const XType: type = fieldType(Point, "x")   // f32
+const XType: type = @fieldType(Point, "x")   // f32
 ```
 
-### `fieldNames` — all field names
+### `@fieldNames` — all field names
 Returns a compile-time slice of all field names on a struct. Primary use: iterating fields in compt for-loops for auto-derive patterns.
 ```
-compt for(fieldNames(Point)) |name| {
+compt for(@fieldNames(Point)) |name| {
     // name is a comptime string: "x", "y"
 }
 ```

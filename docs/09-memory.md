@@ -12,9 +12,9 @@
 ### Copy vs Move
 - **Primitives** (`i32`, `i64`, `u8`, `f64`, `bool`, `usize`, `isize`, `String` etc.) — silently copy on assignment, compiler does not track them. `String` is `[]const u8` under the hood (a pointer + length), so copying is always cheap (16 bytes).
 - **`var` non-primitives** (structs, slices, user types) — move by default, compiler tracks ownership
-- **`const` non-primitives** — auto-borrowed as `const&` when passed by value. The compiler passes a read-only reference instead of copying. No silent deep copies. Use `copy()` when you actually need a copy.
-- `move` for explicit move intent (see [[05-functions#Compiler Functions]])
-- `copy` for explicit copies of non-primitives
+- **`const` non-primitives** — auto-borrowed as `const&` when passed by value. The compiler passes a read-only reference instead of copying. No silent deep copies. Use `@copy()` when you actually need a copy.
+- `@move` for explicit move intent (see [[05-functions#Compiler Functions]])
+- `@copy` for explicit copies of non-primitives
 - For mutable byte manipulation, use `[]u8` (mutable array) — this is a move type
 
 ```
@@ -26,19 +26,19 @@ var s2: String = s        // copy, s still valid (String is a slice — cheap)
 
 var data: MyStruct = getData()
 var d2: MyStruct = data          // move, data is now invalid
-var d3: MyStruct = copy(d2)     // explicit copy, d2 still valid
-var d4: MyStruct = move(d2)     // explicit move, documents intent
+var d3: MyStruct = @copy(d2)     // explicit copy, d2 still valid
+var d4: MyStruct = @move(d2)     // explicit move, documents intent
 
 const config: Config = getConfig()
 processA(config)        // auto-borrowed as const&, no copy
 processB(config)        // still valid — never moved, never copied
-var mine: Config = copy(config)  // explicit copy when you need owned data
+var mine: Config = @copy(config)  // explicit copy when you need owned data
 ```
 
 Use-after-move is a compile time error. Zero runtime overhead — moved variables do not exist in the output binary.
 
 ### Why `const` Auto-Borrows
-`const` means immutable — the value will never change. Since it cannot change, passing it by reference is always safe. The compiler passes `const& T` under the hood, avoiding silent copies of large structs. This is zero-cost and invisible to the user. If you need an actual owned copy, use `copy()` explicitly.
+`const` means immutable — the value will never change. Since it cannot change, passing it by reference is always safe. The compiler passes `const& T` under the hood, avoiding silent copies of large structs. This is zero-cost and invisible to the user. If you need an actual owned copy, use `@copy()` explicitly.
 
 ### Borrowing
 `mut&` borrows a value mutably, `const&` borrows immutably. Caller retains ownership.

@@ -251,4 +251,4 @@ pub struct Pair(A: type, B: type) {
 }
 ```
 
-`type` is always resolved at compile time — it never exists at runtime. Use `typeOf(x)` to get the type of a value, `typename(x)` for a string name, and `typeid(x)` for a numeric identifier.
+`type` is always resolved at compile time — it never exists at runtime. Use `@typeOf(x)` to get the type of a value, `@typename(x)` for a string name, and `@typeid(x)` for a numeric identifier.

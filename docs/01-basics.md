@@ -141,9 +141,9 @@ everywhere else.
 
 **Inspiration:** Zig's `comptime` — same philosophy, same decision.
 
-### Explicit `cast()` — no implicit conversions
+### Explicit `@cast()` — no implicit conversions
 
 Implicit conversions cause subtle bugs. `i32` silently becoming `f64`, integers
 narrowing without warning, boolean coercion from integers. In Orhon, every type
-conversion is an explicit `cast(TargetType, value)`. The code shows exactly where
+conversion is an explicit `@cast(TargetType, value)`. The code shows exactly where
 types change. Narrowing casts emit a compiler warning.

@@ -8,12 +8,12 @@ No parentheses around the name — it's a string literal directly after `test`:
 ```
 test "adds two numbers correctly" {
     const result: i32 = add(1, 2)
-    assert(result == 3)
+    @assert(result == 3)
 }
 
 test "is_positive works" {
-    assert(is_positive(1))
-    assert(not is_positive(0 - 1))
+    @assert(is_positive(1))
+    @assert(not is_positive(0 - 1))
 }
 ```
 
@@ -23,14 +23,14 @@ Run all tests with [[13-build-cli|`orhon test`]]. Tests live in the same file as
 
 ## Assertions
 
-### `assert` — compiler function
+### `@assert` — compiler function
 
-The built-in `assert` is a compiler function. It checks a boolean condition and panics
+The built-in `@assert` is a compiler function. It checks a boolean condition and panics
 on failure. Optionally takes a message:
 
 ```
-assert(x > 0)                    // panics with generic message
-assert(x > 0, "x must be positive")  // panics with custom message
+@assert(x > 0)                    // panics with generic message
+@assert(x > 0, "x must be positive")  // panics with custom message
 ```
 
 ### `std::testing` — stdlib assertions

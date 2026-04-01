@@ -289,6 +289,13 @@ pub const MirLowerer = struct {
             .import_decl => {
                 mir_node_ptr.children = &.{};
             },
+            .param => |p| {
+                if (p.default_value) |dv| {
+                    var children = std.ArrayListUnmanaged(*MirNode){};
+                    try children.append(self.allocator, try self.lowerNode(dv));
+                    mir_node_ptr.children = try children.toOwnedSlice(self.allocator);
+                }
+            },
             // Leaf nodes — no children
             .int_literal,
             .float_literal,
@@ -301,7 +308,6 @@ pub const MirLowerer = struct {
             .continue_stmt,
             .throw_stmt,
             .enum_variant,
-            .param,
             .module_decl,
             .metadata,
             => {},

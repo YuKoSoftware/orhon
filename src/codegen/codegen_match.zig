@@ -894,41 +894,30 @@ pub fn fillDefaultArgsMir(cg: *CodeGen, callee_mir: *const mir.MirNode, actual_a
     else
         return;
 
-    var fsig: ?declarations.FuncSig = null;
-    if (cg.decls) |d| {
-        fsig = d.funcs.get(func_name);
-    }
-    if (fsig == null) {
-        if (callee_mir.kind == .field_access) {
-            const obj = callee_mir.children[0];
-            const module_name = if (obj.kind == .identifier)
-                obj.name
-            else if (obj.kind == .field_access and obj.children.len > 0 and obj.children[0].kind == .identifier)
-                obj.children[0].name
-            else
-                null;
-            if (module_name) |mn| {
-                if (cg.all_decls) |ad| {
-                    if (ad.get(mn)) |mod_decls| {
-                        fsig = mod_decls.funcs.get(func_name);
-                    }
-                }
-            }
-        }
-    }
+    // Find the function's MirNode from the MIR root to get param defaults
+    const func_mir = findFuncMir(cg, func_name) orelse return;
+    const mir_params = func_mir.params();
+    if (actual_arg_count >= mir_params.len) return;
 
-    const sig = fsig orelse return;
-    if (actual_arg_count >= sig.param_nodes.len) return;
     var wrote_any = actual_arg_count > 0;
-    for (sig.param_nodes[actual_arg_count..]) |p| {
-        if (p.* == .param) {
-            if (p.param.default_value) |dv| {
-                if (wrote_any) try cg.emit(", ");
-                try cg.generateExpr(dv);
-                wrote_any = true;
-            }
+    for (mir_params[actual_arg_count..]) |param_m| {
+        if (param_m.defaultChild()) |dv_mir| {
+            if (wrote_any) try cg.emit(", ");
+            try cg.generateExprMir(dv_mir);
+            wrote_any = true;
         }
     }
+}
+
+/// Find a function's MirNode by name in the MIR root.
+fn findFuncMir(cg: *CodeGen, func_name: []const u8) ?*mir.MirNode {
+    if (cg.mir_root) |root| {
+        for (root.children) |child| {
+            if (child.kind == .func and child.name != null and
+                std.mem.eql(u8, child.name.?, func_name)) return child;
+        }
+    }
+    return null;
 }
 
 pub fn generateCompilerFunc(cg: *CodeGen, cf: parser.CompilerFunc) anyerror!void {

@@ -702,15 +702,35 @@ pub fn generateCompilerFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     }
 }
 
+// ── Operator maps for arithmetic builtins ───────────────────────
+
+fn mapWrappingOp(op: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, op, "+")) return "+%";
+    if (std.mem.eql(u8, op, "-")) return "-%";
+    if (std.mem.eql(u8, op, "*")) return "*%";
+    return null;
+}
+
+fn mapSaturatingOp(op: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, op, "+")) return "+|";
+    if (std.mem.eql(u8, op, "-")) return "-|";
+    if (std.mem.eql(u8, op, "*")) return "*|";
+    return null;
+}
+
+fn mapOverflowBuiltin(op: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, op, "+")) return "@addWithOverflow";
+    if (std.mem.eql(u8, op, "-")) return "@subWithOverflow";
+    if (std.mem.eql(u8, op, "*")) return "@mulWithOverflow";
+    return null;
+}
+
+// ── Wrapping / saturating: AST and MIR paths ────────────────────
+
 pub fn generateWrappingExpr(cg: *CodeGen, arg: *parser.Node) anyerror!void {
     if (arg.* == .binary_expr) {
         const b = arg.binary_expr;
-        const wrap_op: ?[]const u8 =
-            if (std.mem.eql(u8, b.op, "+")) "+%"
-            else if (std.mem.eql(u8, b.op, "-")) "-%"
-            else if (std.mem.eql(u8, b.op, "*")) "*%"
-            else null;
-        if (wrap_op) |op| {
+        if (mapWrappingOp(b.op)) |op| {
             try cg.generateExpr(b.left);
             try cg.emitFmt(" {s} ", .{op});
             try cg.generateExpr(b.right);
@@ -723,12 +743,7 @@ pub fn generateWrappingExpr(cg: *CodeGen, arg: *parser.Node) anyerror!void {
 pub fn generateSaturatingExpr(cg: *CodeGen, arg: *parser.Node) anyerror!void {
     if (arg.* == .binary_expr) {
         const b = arg.binary_expr;
-        const sat_op: ?[]const u8 =
-            if (std.mem.eql(u8, b.op, "+")) "+|"
-            else if (std.mem.eql(u8, b.op, "-")) "-|"
-            else if (std.mem.eql(u8, b.op, "*")) "*|"
-            else null;
-        if (sat_op) |op| {
+        if (mapSaturatingOp(b.op)) |op| {
             try cg.generateExpr(b.left);
             try cg.emitFmt(" {s} ", .{op});
             try cg.generateExpr(b.right);
@@ -738,27 +753,58 @@ pub fn generateSaturatingExpr(cg: *CodeGen, arg: *parser.Node) anyerror!void {
     try cg.generateExpr(arg);
 }
 
+pub fn generateWrappingExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
+    if (m.kind == .binary) {
+        if (mapWrappingOp(m.op orelse "")) |op| {
+            try cg.generateExprMir(m.lhs());
+            try cg.emitFmt(" {s} ", .{op});
+            try cg.generateExprMir(m.rhs());
+            return;
+        }
+    }
+    try cg.generateExprMir(m);
+}
+
+pub fn generateSaturatingExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
+    if (m.kind == .binary) {
+        if (mapSaturatingOp(m.op orelse "")) |op| {
+            try cg.generateExprMir(m.lhs());
+            try cg.emitFmt(" {s} ", .{op});
+            try cg.generateExprMir(m.rhs());
+            return;
+        }
+    }
+    try cg.generateExprMir(m);
+}
+
+// ── Overflow: AST and MIR paths ─────────────────────────────────
+// overflow(a + b) → (blk: { const _ov = @addWithOverflow(a, b);
+//   if (_ov[1] != 0) break :blk @as(anyerror!@TypeOf(a), error.overflow)
+//   else break :blk @as(anyerror!@TypeOf(a), _ov[0]); })
+// When operands are literals, @TypeOf gives comptime_int which Zig rejects.
+// Use the concrete type from the enclosing decl's type_ctx if available.
+
+fn resolveOverflowTypeStr(cg: *CodeGen, left_is_literal: bool) anyerror!?[]const u8 {
+    if (left_is_literal) {
+        if (cg.type_ctx) |ctx| {
+            if (codegen.extractValueType(ctx)) |vt| return try cg.typeToZig(vt);
+        }
+    }
+    return null;
+}
+
+fn emitOverflowTail(cg: *CodeGen, type_str: ?[]const u8) anyerror!void {
+    if (type_str) |ts| {
+        try cg.emitFmt("); if (_ov[1] != 0) break :blk @as(anyerror!{s}, error.overflow) else break :blk @as(anyerror!{s}, _ov[0]); }})", .{ ts, ts });
+    }
+}
+
 pub fn generateOverflowExpr(cg: *CodeGen, arg: *parser.Node) anyerror!void {
     if (arg.* == .binary_expr) {
         const b = arg.binary_expr;
-        const builtin_name: ?[]const u8 =
-            if (std.mem.eql(u8, b.op, "+")) "@addWithOverflow"
-            else if (std.mem.eql(u8, b.op, "-")) "@subWithOverflow"
-            else if (std.mem.eql(u8, b.op, "*")) "@mulWithOverflow"
-            else null;
-        if (builtin_name) |builtin| {
-            // overflow(a + b) → (blk: { const _ov = @addWithOverflow(a, b);
-            //   if (_ov[1] != 0) break :blk @as(anyerror!@TypeOf(a), error.overflow)
-            //   else break :blk @as(anyerror!@TypeOf(a), _ov[0]); })
-            // When operands are literals, @TypeOf gives comptime_int which Zig rejects.
-            // Use the concrete type from the enclosing decl's type_ctx if available.
+        if (mapOverflowBuiltin(b.op)) |builtin| {
             const left_is_literal = b.left.* == .int_literal or b.left.* == .float_literal;
-            const type_str: ?[]const u8 = if (left_is_literal) blk: {
-                if (cg.type_ctx) |ctx| {
-                    if (codegen.extractValueType(ctx)) |vt| break :blk try cg.typeToZig(vt);
-                }
-                break :blk null;
-            } else null;
+            const type_str = try resolveOverflowTypeStr(cg, left_is_literal);
 
             try cg.emit("(blk: { const _ov = ");
             try cg.emitFmt("{s}(", .{builtin});
@@ -771,8 +817,8 @@ pub fn generateOverflowExpr(cg: *CodeGen, arg: *parser.Node) anyerror!void {
             }
             try cg.emit(", ");
             try cg.generateExpr(b.right);
-            if (type_str) |ts| {
-                try cg.emitFmt("); if (_ov[1] != 0) break :blk @as(anyerror!{s}, error.overflow) else break :blk @as(anyerror!{s}, _ov[0]); }})", .{ ts, ts });
+            if (type_str) |_| {
+                try emitOverflowTail(cg, type_str);
             } else {
                 try cg.emit("); if (_ov[1] != 0) break :blk @as(anyerror!@TypeOf(");
                 try cg.generateExpr(b.left);
@@ -786,61 +832,11 @@ pub fn generateOverflowExpr(cg: *CodeGen, arg: *parser.Node) anyerror!void {
     try cg.generateExpr(arg);
 }
 
-/// MIR-path wrapping arithmetic.
-pub fn generateWrappingExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
-    if (m.kind == .binary) {
-        const bin_op = m.op orelse "";
-        const wrap_op: ?[]const u8 =
-            if (std.mem.eql(u8, bin_op, "+")) "+%"
-            else if (std.mem.eql(u8, bin_op, "-")) "-%"
-            else if (std.mem.eql(u8, bin_op, "*")) "*%"
-            else null;
-        if (wrap_op) |op| {
-            try cg.generateExprMir(m.lhs());
-            try cg.emitFmt(" {s} ", .{op});
-            try cg.generateExprMir(m.rhs());
-            return;
-        }
-    }
-    try cg.generateExprMir(m);
-}
-
-/// MIR-path saturating arithmetic.
-pub fn generateSaturatingExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
-    if (m.kind == .binary) {
-        const bin_op = m.op orelse "";
-        const sat_op: ?[]const u8 =
-            if (std.mem.eql(u8, bin_op, "+")) "+|"
-            else if (std.mem.eql(u8, bin_op, "-")) "-|"
-            else if (std.mem.eql(u8, bin_op, "*")) "*|"
-            else null;
-        if (sat_op) |op| {
-            try cg.generateExprMir(m.lhs());
-            try cg.emitFmt(" {s} ", .{op});
-            try cg.generateExprMir(m.rhs());
-            return;
-        }
-    }
-    try cg.generateExprMir(m);
-}
-
-/// MIR-path overflow arithmetic.
 pub fn generateOverflowExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     if (m.kind == .binary) {
-        const bin_op = m.op orelse "";
-        const builtin_name: ?[]const u8 =
-            if (std.mem.eql(u8, bin_op, "+")) "@addWithOverflow"
-            else if (std.mem.eql(u8, bin_op, "-")) "@subWithOverflow"
-            else if (std.mem.eql(u8, bin_op, "*")) "@mulWithOverflow"
-            else null;
-        if (builtin_name) |builtin| {
+        if (mapOverflowBuiltin(m.op orelse "")) |builtin| {
             const left_is_literal = m.lhs().literal_kind == .int or m.lhs().literal_kind == .float;
-            const type_str: ?[]const u8 = if (left_is_literal) blk: {
-                if (cg.type_ctx) |ctx| {
-                    if (codegen.extractValueType(ctx)) |vt| break :blk try cg.typeToZig(vt);
-                }
-                break :blk null;
-            } else null;
+            const type_str = try resolveOverflowTypeStr(cg, left_is_literal);
 
             try cg.emit("(blk: { const _ov = ");
             try cg.emitFmt("{s}(", .{builtin});
@@ -853,8 +849,8 @@ pub fn generateOverflowExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             }
             try cg.emit(", ");
             try cg.generateExprMir(m.rhs());
-            if (type_str) |ts| {
-                try cg.emitFmt("); if (_ov[1] != 0) break :blk @as(anyerror!{s}, error.overflow) else break :blk @as(anyerror!{s}, _ov[0]); }})", .{ ts, ts });
+            if (type_str) |_| {
+                try emitOverflowTail(cg, type_str);
             } else {
                 try cg.emit("); if (_ov[1] != 0) break :blk @as(anyerror!@TypeOf(");
                 try cg.generateExprMir(m.lhs());

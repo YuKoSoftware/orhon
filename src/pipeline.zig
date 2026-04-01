@@ -1025,7 +1025,7 @@ fn collectBridgeNames(ast: *parser.Node, allocator: std.mem.Allocator) ![][]cons
     for (ast.program.top_level) |node| {
         switch (node.*) {
             .func_decl => |f| {
-                if (f.is_bridge) try names.append(allocator, try allocator.dupe(u8, f.name));
+                if (f.context == .bridge) try names.append(allocator, try allocator.dupe(u8, f.name));
             },
             .const_decl => |v| {
                 if (v.is_bridge) try names.append(allocator, try allocator.dupe(u8, v.name));
@@ -1038,7 +1038,7 @@ fn collectBridgeNames(ast: *parser.Node, allocator: std.mem.Allocator) ![][]cons
                     try names.append(allocator, try allocator.dupe(u8, s.name));
                 } else {
                     for (s.members) |m| {
-                        if (m.* == .func_decl and m.func_decl.is_bridge)
+                        if (m.* == .func_decl and m.func_decl.context == .bridge)
                             try names.append(allocator, try allocator.dupe(u8, m.func_decl.name));
                     }
                 }

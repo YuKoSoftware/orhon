@@ -382,8 +382,8 @@ pub const MirAnnotator = struct {
                 // by detectCoercion above when the declared param type is already `const &`.
                 // This guard covers all bridge call forms: direct calls (processTexture(tex)),
                 // struct method calls (ren.createMaterial(tex)), and error-union-returning bridge
-                // functions — all excluded via !sig.is_bridge regardless of return type.
-                if (is_direct_call and arg.* == .identifier and !sig.is_bridge) {
+                // functions — all excluded via sig.context != .bridge regardless of return type.
+                if (is_direct_call and arg.* == .identifier and sig.context != .bridge) {
                     const name = arg.identifier;
                     // Skip promoted params (already *const T — prevents double-borrow)
                     if (!self.promoted_params.contains(name) and self.const_vars.contains(name)) {
@@ -794,9 +794,8 @@ test "resolveCallSig - cross-module lookup" {
         .param_nodes = param_nodes,
         .return_type = RT{ .primitive = .f32 },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = true,
-        .is_thread = false,
     });
 
     var all_decls = std.StringHashMap(*declarations.DeclTable).init(alloc);
@@ -908,9 +907,8 @@ test "const auto-borrow - annotateCallCoercions applies value_to_const_ref" {
         .param_nodes = param_nodes,
         .return_type = RT{ .primitive = .void },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = false,
-        .is_thread = false,
     });
 
     // Mark "cfg_val" as a const var
@@ -980,9 +978,8 @@ test "const auto-borrow - primitives excluded" {
         .param_nodes = param_nodes,
         .return_type = RT{ .primitive = .i32 },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = false,
-        .is_thread = false,
     });
 
     // Mark "n" as a const var (i32)
@@ -1052,9 +1049,8 @@ test "const auto-borrow - const_ref_params populated" {
         .param_nodes = param_nodes,
         .return_type = RT{ .primitive = .void },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = false,
-        .is_thread = false,
     });
 
     // Mark "s" as const
@@ -1135,10 +1131,8 @@ test "const auto-borrow - bridge struct method with error-union return skips pro
         .param_nodes = param_nodes,
         .return_type = RT{ .core_type = .{ .kind = .error_union, .inner = ret_inner } },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .bridge, // bridge method — sidecar owns param types
         .is_pub = true,
-        .is_thread = false,
-        .is_bridge = true, // bridge method — sidecar owns param types
     });
 
     // Mark "tex" as a const var of type Texture
@@ -1183,7 +1177,7 @@ test "const auto-borrow - bridge struct method with error-union return skips pro
 test "const auto-borrow - direct bridge function call skips promotion" {
     // Verify that a DIRECT call to a bridge function (not a method) does NOT get const
     // auto-borrow promotion, even with error-union return type and a struct value param.
-    // The !sig.is_bridge guard at the call coercion site covers this case.
+    // The sig.context != .bridge guard at the call coercion site covers this case.
     const alloc = std.testing.allocator;
     var decls = declarations.DeclTable.init(alloc);
     defer decls.deinit();
@@ -1221,10 +1215,8 @@ test "const auto-borrow - direct bridge function call skips promotion" {
         .param_nodes = param_nodes,
         .return_type = RT{ .core_type = .{ .kind = .error_union, .inner = ret_inner } },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .bridge, // bridge function — sidecar owns param types
         .is_pub = true,
-        .is_thread = false,
-        .is_bridge = true, // bridge function — sidecar owns param types
     });
 
     // Mark "myTex" as a const var of type Texture

@@ -266,10 +266,8 @@ pub fn buildFuncDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         .params = params,
         .return_type = ret_type,
         .body = body,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = false,
-        .is_bridge = false,
-        .is_thread = false,
     } });
 }
 
@@ -445,10 +443,8 @@ fn buildBlueprintMethod(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         .params = try params_list.toOwnedSlice(ctx.alloc()),
         .return_type = return_type,
         .body = empty_body,
-        .is_compt = false,
+        .context = .bridge,
         .is_pub = true,
-        .is_bridge = true,
-        .is_thread = false,
     } });
 }
 

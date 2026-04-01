@@ -32,7 +32,7 @@ pub fn buildComptDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // compt_decl <- 'compt' func_decl
     if (cap.findChild("func_decl")) |child| {
         const node = try builder.buildNode(ctx, child);
-        if (node.* == .func_decl) node.func_decl.is_compt = true;
+        if (node.* == .func_decl) node.func_decl.context = .compt;
         return node;
     }
     return error.NoComptChild;
@@ -68,10 +68,8 @@ pub fn buildBridgeFunc(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         .params = try params_list.toOwnedSlice(ctx.alloc()),
         .return_type = ret_type,
         .body = try ctx.newNode(.{ .block = .{ .statements = &.{} } }),
-        .is_compt = false,
+        .context = .bridge,
         .is_pub = false,
-        .is_bridge = true,
-        .is_thread = false,
     } });
 }
 
@@ -119,9 +117,7 @@ pub fn buildThreadDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         .params = try params_list.toOwnedSlice(ctx.alloc()),
         .return_type = ret_type,
         .body = body,
-        .is_compt = false,
+        .context = .thread,
         .is_pub = false,
-        .is_bridge = false,
-        .is_thread = true,
     } });
 }

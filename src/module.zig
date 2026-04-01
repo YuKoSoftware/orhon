@@ -703,7 +703,7 @@ pub const Resolver = struct {
             // Detect bridge declarations — scan AST top-level for bridge func/const/struct
             for (build_result.node.program.top_level) |node| {
                 const is_bridge = switch (node.*) {
-                    .func_decl => |f| f.is_bridge,
+                    .func_decl => |f| f.context == .bridge,
                     .const_decl, .var_decl => |v| v.is_bridge,
                     .struct_decl => |s| s.is_bridge,
                     else => false,

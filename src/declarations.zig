@@ -17,13 +17,8 @@ pub const FuncSig = struct {
     param_nodes: []*parser.Node, // original AST param nodes (for default values)
     return_type: types.ResolvedType,
     return_type_node: *parser.Node, // original AST node (used by codegen)
-    is_compt: bool,
+    context: parser.FuncContext,
     is_pub: bool,
-    is_thread: bool,
-    /// True for bridge declarations — implementation lives in paired .zig sidecar.
-    /// Bridge function calls must not receive const auto-borrow promotion because
-    /// the Orhon compiler does not control the sidecar's parameter types.
-    is_bridge: bool = false,
 };
 
 pub const ParamSig = struct {
@@ -225,7 +220,7 @@ pub const DeclCollector = struct {
             var has_bridge = false;
             for (ast.program.top_level) |node| {
                 switch (node.*) {
-                    .func_decl => |f| if (f.is_bridge) { has_bridge = true; break; },
+                    .func_decl => |f| if (f.context == .bridge) { has_bridge = true; break; },
                     .struct_decl => |s| if (s.is_bridge) { has_bridge = true; break; },
                     .const_decl => |v| if (v.is_bridge) { has_bridge = true; break; },
                     else => {},
@@ -305,10 +300,8 @@ pub const DeclCollector = struct {
             .param_nodes = f.params,
             .return_type = return_type,
             .return_type_node = f.return_type,
-            .is_compt = f.is_compt,
+            .context = f.context,
             .is_pub = f.is_pub,
-            .is_thread = f.is_thread,
-            .is_bridge = f.is_bridge,
         };
 
         if (self.table.funcs.contains(f.name)) {
@@ -395,10 +388,8 @@ pub const DeclCollector = struct {
                         .param_nodes = f.params,
                         .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
                         .return_type_node = f.return_type,
-                        .is_compt = f.is_compt,
+                        .context = if (s.is_bridge) .bridge else f.context,
                         .is_pub = f.is_pub,
-                        .is_thread = f.is_thread,
-                        .is_bridge = s.is_bridge,
                     };
                     const key = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ s.name, f.name });
                     try self.table.struct_methods.put(self.allocator, key, method_sig);
@@ -567,10 +558,8 @@ test "declaration collector - func" {
         .params = &.{},
         .return_type = ret_type,
         .body = undefined,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = true,
-        .is_bridge = false,
-        .is_thread = false,
     }};
 
     const top_level = try a.alloc(*parser.Node, 1);
@@ -659,12 +648,12 @@ test "declaration collector - duplicate func error" {
     const func1 = try a.create(parser.Node);
     func1.* = .{ .func_decl = .{ .name = "foo", .params = &.{},
         .return_type = ret_type, .body = empty_block,
-        .is_compt = false, .is_pub = false, .is_bridge = false, .is_thread = false } };
+        .context = .normal, .is_pub = false } };
 
     const func2 = try a.create(parser.Node);
     func2.* = .{ .func_decl = .{ .name = "foo", .params = &.{},
         .return_type = ret_type, .body = empty_block,
-        .is_compt = false, .is_pub = false, .is_bridge = false, .is_thread = false } };
+        .context = .normal, .is_pub = false } };
 
     const top_level = try a.alloc(*parser.Node, 2);
     top_level[0] = func1;
@@ -741,10 +730,8 @@ test "declaration collector - bridge func is registered" {
         .params = &.{},
         .return_type = ret_type,
         .body = undefined,
-        .is_compt = false,
+        .context = .bridge,
         .is_pub = true,
-        .is_bridge = true,
-        .is_thread = false,
     }};
 
     const top_level = try a.alloc(*parser.Node, 1);
@@ -783,10 +770,8 @@ test "declaration collector - #cimport without bridge is an error" {
         .params = &.{},
         .return_type = ret_type,
         .body = undefined,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = true,
-        .is_bridge = false,
-        .is_thread = false,
     }};
 
     const top_level = try a.alloc(*parser.Node, 1);
@@ -830,10 +815,8 @@ test "declaration collector - #cimport with bridge is allowed" {
         .params = &.{},
         .return_type = ret_type,
         .body = undefined,
-        .is_compt = false,
+        .context = .bridge,
         .is_pub = true,
-        .is_bridge = true,
-        .is_thread = false,
     }};
 
     const top_level = try a.alloc(*parser.Node, 1);

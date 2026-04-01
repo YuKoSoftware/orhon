@@ -369,7 +369,7 @@ pub fn hashInterface(decls: *const declarations.DeclTable) u64 {
             var h = s;
             for (sig.params) |param| h = hashResolvedType(h, param.type_);
             h = hashResolvedType(h, sig.return_type);
-            return XxHash3.hash(h, &[_]u8{ @intFromBool(sig.is_compt), @intFromBool(sig.is_thread) });
+            return XxHash3.hash(h, &[_]u8{@intFromEnum(sig.context)});
         }
     }.hash);
 
@@ -755,10 +755,8 @@ fn makeTestTable(
         .param_nodes = &.{},
         .return_type = .{ .primitive = .void },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = is_pub,
-        .is_thread = false,
-        .is_bridge = false,
     };
     try table.funcs.put(func_name, sig);
     return table;
@@ -820,10 +818,8 @@ test "interface hash ignores private" {
             .param_nodes = &.{},
             .return_type = .{ .primitive = .void },
             .return_type_node = ret_node,
-            .is_compt = false,
+            .context = .normal,
             .is_pub = false, // private — must not affect the hash
-            .is_thread = false,
-            .is_bridge = false,
         };
         try pub_and_priv.funcs.put("helper", priv_sig);
     }
@@ -856,10 +852,8 @@ test "interface hash changes on public change" {
             .param_nodes = &.{},
             .return_type = .{ .primitive = .void },
             .return_type_node = ret_node,
-            .is_compt = false,
+            .context = .normal,
             .is_pub = true, // public — must change the hash
-            .is_thread = false,
-            .is_bridge = false,
         };
         try t2.funcs.put("farewell", new_pub);
     }

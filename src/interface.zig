@@ -103,7 +103,7 @@ fn formatExprSimple(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc:
 fn emitFuncSig(f: parser.FuncDecl, buf: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator, indent: []const u8) anyerror!void {
     try buf.appendSlice(alloc, indent);
     if (f.is_pub) try buf.appendSlice(alloc, "pub ");
-    if (f.is_compt) try buf.appendSlice(alloc, "compt ");
+    if (f.context == .compt) try buf.appendSlice(alloc, "compt ");
     try buf.appendSlice(alloc, "func ");
     try buf.appendSlice(alloc, f.name);
     try buf.append(alloc, '(');

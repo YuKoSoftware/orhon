@@ -93,8 +93,7 @@ simplify the compiler without removing features.
 
 - Unify `const_decl`/`var_decl`/`compt_decl`. All three map to `VarDecl`. Add
   `kind` enum field instead of three `NodeKind` variants. ~48 pattern matches.
-- `FuncDecl` flags → context enum. `is_compt`, `is_bridge`, `is_thread` are mutually
-  exclusive. Replace with `context: enum { normal, compt, bridge, thread }`.
+- ~~`FuncDecl` flags → context enum — done (v0.14.3, `parser.FuncContext`)~~
 - Merge `buildZigContent()`/`buildZigContentMulti()` shared logic.
 - ~~`hashInterface()` in `cache.zig` — done (v0.14.2, generic helpers)~~
 - Binary operator / builtin name enums in `constants.zig`.

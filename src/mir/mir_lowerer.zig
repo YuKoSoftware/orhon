@@ -535,9 +535,9 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
         .func_decl => |f| {
             m.name = f.name;
             m.is_pub = f.is_pub;
-            m.is_bridge = f.is_bridge;
-            m.is_thread = f.is_thread;
-            m.is_compt = f.is_compt;
+            m.is_bridge = (f.context == .bridge);
+            m.is_thread = (f.context == .thread);
+            m.is_compt = (f.context == .compt);
             m.return_type = f.return_type;
         },
         .struct_decl => |s| {

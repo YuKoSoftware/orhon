@@ -585,9 +585,8 @@ test "propagation - call expr resolved via decl table" {
         .param_nodes = &.{},
         .return_type = .{ .core_type = .{ .kind = .error_union, .inner = inner } },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = false,
-        .is_thread = false,
     });
 
     const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
@@ -728,9 +727,8 @@ test "propagation - reassignment resets handled status" {
         .param_nodes = &.{},
         .return_type = .{ .core_type = .{ .kind = .error_union, .inner = inner } },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = false,
-        .is_thread = false,
     });
 
     const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);

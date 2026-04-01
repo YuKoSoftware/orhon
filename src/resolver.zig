@@ -191,7 +191,7 @@ pub const TypeResolver = struct {
 
                 // Bridge safety: bridge funcs cannot accept mutable refs (&T)
                 // Exception: self param on bridge struct methods (Zig mutates its own data)
-                if (f.is_bridge) {
+                if (f.context == .bridge) {
                     for (f.params) |param| {
                         if (param.* == .param) {
                             const ta = param.param.type_annotation;
@@ -739,7 +739,7 @@ pub const TypeResolver = struct {
                         const name = inner_c.callee.identifier;
                         // compt func returning type: Vec2(f32)(...) → named type
                         if (self.decls.funcs.get(name)) |sig| {
-                            if (sig.is_compt) return RT{ .named = name };
+                            if (sig.context == .compt) return RT{ .named = name };
                         }
                         if (builtins.isBuiltinType(name) or self.isIncludedType(name)) return RT{ .named = name };
                     }
@@ -1458,10 +1458,8 @@ test "resolver - untyped numeric literal requires explicit type" {
         .params = &.{},
         .return_type = ret_type,
         .body = body,
+        .context = .normal,
         .is_pub = false,
-        .is_bridge = false,
-        .is_compt = false,
-        .is_thread = false,
     } };
 
     const module_node = try a.create(parser.Node);
@@ -1508,9 +1506,8 @@ test "resolver - function return type resolves" {
         .param_nodes = &.{},
         .return_type = .{ .primitive = .i32 },
         .return_type_node = ret_node,
-        .is_compt = false,
+        .context = .normal,
         .is_pub = false,
-        .is_thread = false,
     });
 
     var reporter = errors.Reporter.init(alloc, .debug);

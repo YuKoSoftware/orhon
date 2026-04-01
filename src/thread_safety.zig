@@ -237,7 +237,7 @@ pub const ThreadSafetyChecker = struct {
         if (c.callee.* != .identifier) return null;
         const callee_name = c.callee.identifier;
         if (self.ctx.decls.funcs.get(callee_name)) |sig| {
-            if (sig.is_thread) return .{ .name = callee_name, .sig = sig };
+            if (sig.context == .thread) return .{ .name = callee_name, .sig = sig };
         }
         return null;
     }
@@ -728,9 +728,8 @@ test "thread safety - owned arg moved into thread" {
         .param_nodes = &param_nodes,
         .return_type = types.ResolvedType{ .primitive = .void },
         .return_type_node = &void_node,
-        .is_compt = false,
+        .context = .thread,
         .is_pub = false,
-        .is_thread = true,
     });
 
     const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
@@ -782,9 +781,8 @@ test "thread safety - const borrow arg freezes variable" {
         .param_nodes = &param_nodes,
         .return_type = types.ResolvedType{ .primitive = .void },
         .return_type_node = &void_node,
-        .is_compt = false,
+        .context = .thread,
         .is_pub = false,
-        .is_thread = true,
     });
 
     const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
@@ -848,9 +846,8 @@ test "thread safety - mutable borrow arg rejected" {
         .param_nodes = &param_nodes,
         .return_type = types.ResolvedType{ .primitive = .void },
         .return_type_node = &void_node,
-        .is_compt = false,
+        .context = .thread,
         .is_pub = false,
-        .is_thread = true,
     });
 
     const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
@@ -963,9 +960,8 @@ test "thread safety - multi-arg thread call: move + const borrow" {
         .param_nodes = &param_nodes,
         .return_type = types.ResolvedType{ .primitive = .void },
         .return_type_node = &void_node,
-        .is_compt = false,
+        .context = .thread,
         .is_pub = false,
-        .is_thread = true,
     });
 
     const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);

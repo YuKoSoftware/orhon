@@ -340,15 +340,15 @@ pub fn getRootIdentMir(m: *const mir.MirNode) ?[]const u8 {
 
 pub fn generateFunc(cg: *CodeGen, node: *parser.Node, f: parser.FuncDecl) anyerror!void {
     // Thread function — generate body + spawn wrapper
-    if (f.is_thread) return cg.generateThreadFunc(node, f);
+    if (f.context == .thread) return cg.generateThreadFunc(node, f);
 
     // bridge func — re-export from paired sidecar file
-    if (f.is_bridge) return cg.generateBridgeReExport(f.name, f.is_pub);
+    if (f.context == .bridge) return cg.generateBridgeReExport(f.name, f.is_pub);
 
     // Body-less declaration (interface file import) — skip codegen.
     // Never skip main (it can legitimately have an empty body).
     if (f.body.* == .block and f.body.block.statements.len == 0 and
-        !f.is_bridge and !std.mem.eql(u8, f.name, "main")) return;
+        f.context != .bridge and !std.mem.eql(u8, f.name, "main")) return;
 
     // Track current function for MIR return type queries
     const prev_func_node = cg.current_func_node;
@@ -379,9 +379,9 @@ pub fn generateFunc(cg: *CodeGen, node: *parser.Node, f: parser.FuncDecl) anyerr
     // regular func               → fn (anytype params handled in loop below)
     const returns_type = f.return_type.* == .type_named and
         std.mem.eql(u8, f.return_type.type_named, K.Type.TYPE);
-    const is_type_generic = f.is_compt and returns_type;
+    const is_type_generic = (f.context == .compt) and returns_type;
 
-    if (f.is_compt and !is_type_generic) {
+    if (f.context == .compt and !is_type_generic) {
         try cg.emitFmt("inline fn {s}(", .{f.name});
     } else {
         try cg.emitFmt("fn {s}(", .{f.name});

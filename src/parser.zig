@@ -172,15 +172,20 @@ pub const Metadata = struct {
     cimport_source: ?[]const u8 = null,  // source file from #cimport { source: "..." }
 };
 
+pub const FuncContext = enum {
+    normal,
+    compt,
+    bridge, // no body — implementation in paired .zig file
+    thread, // thread declaration — generates spawn wrapper + body
+};
+
 pub const FuncDecl = struct {
     name: []const u8,
     params: []*Node,
     return_type: *Node,
     body: *Node,
-    is_compt: bool,
+    context: FuncContext,
     is_pub: bool,
-    is_bridge: bool, // no body — implementation in paired .zig file
-    is_thread: bool, // thread declaration — generates spawn wrapper + body
     doc: ?[]const u8 = null,
 };
 

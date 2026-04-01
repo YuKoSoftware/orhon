@@ -843,6 +843,17 @@ pub fn mirIsVector(m: *const mir.MirNode) bool { return exprs_impl.mirIsVector(m
 /// File-scope mirGetBitfieldName for helper modules.
 pub fn mirGetBitfieldName(m: *const mir.MirNode, decls_opt: ?*declarations.DeclTable) ?[]const u8 { return exprs_impl.mirGetBitfieldName(m, decls_opt); }
 
+/// Check if a type annotation is a pointer wrapper type (Ptr/RawPtr/VolatilePtr) with an inner type.
+/// Returns the wrapper name and inner type arg, or null if not a pointer coercion target.
+pub const PtrCoercionInfo = struct { name: []const u8, inner_type: *parser.Node };
+pub fn getPtrCoercionTarget(type_annotation: ?*parser.Node) ?PtrCoercionInfo {
+    const t = type_annotation orelse return null;
+    if (t.* != .type_generic) return null;
+    if (t.type_generic.args.len == 0) return null;
+    if (!builtins.isPtrType(t.type_generic.name)) return null;
+    return .{ .name = t.type_generic.name, .inner_type = t.type_generic.args[0] };
+}
+
 /// File-scope mirContainsIdentifier for helper modules (codegen_match.zig calls this recursively).
 pub fn mirContainsIdentifier(m: *mir.MirNode, name: []const u8) bool { return match_impl.mirContainsIdentifier(m, name); }
 

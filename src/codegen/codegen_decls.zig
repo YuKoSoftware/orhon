@@ -744,16 +744,11 @@ pub fn generateDecl(cg: *CodeGen, node: *parser.Node, v: parser.VarDecl, decl_ke
         try cg.generateArbitraryUnionWrappedExpr(v.value, cg.getUnionMembers(node));
     } else {
         // Native ?T and anyerror!T — Zig handles coercion, no wrapping needed
-        const did_coerce = blk: {
-            const t = v.type_annotation orelse break :blk false;
-            if (t.* != .type_generic) break :blk false;
-            if (t.type_generic.args.len == 0) break :blk false;
-            const n = t.type_generic.name;
-            if (!builtins.isPtrType(n)) break :blk false;
-            try cg.generatePtrCoercion(n, t.type_generic.args[0], v.value);
-            break :blk true;
-        };
-        if (!did_coerce) try cg.generateExpr(v.value);
+        if (codegen.getPtrCoercionTarget(v.type_annotation)) |ptr| {
+            try cg.generatePtrCoercion(ptr.name, ptr.inner_type, v.value);
+        } else {
+            try cg.generateExpr(v.value);
+        }
     }
     try cg.emit(";\n");
 }
@@ -771,16 +766,11 @@ pub fn generateStmtDecl(cg: *CodeGen, node: *parser.Node, v: parser.VarDecl, dec
         // Native ?T and anyerror!T — Zig handles coercion, no wrapping needed
         const prev_ctx = cg.type_ctx;
         cg.type_ctx = v.type_annotation;
-        const did_coerce = blk: {
-            const t = v.type_annotation orelse break :blk false;
-            if (t.* != .type_generic) break :blk false;
-            if (t.type_generic.args.len == 0) break :blk false;
-            const n = t.type_generic.name;
-            if (!builtins.isPtrType(n)) break :blk false;
-            try cg.generatePtrCoercion(n, t.type_generic.args[0], v.value);
-            break :blk true;
-        };
-        if (!did_coerce) try cg.generateExpr(v.value);
+        if (codegen.getPtrCoercionTarget(v.type_annotation)) |ptr| {
+            try cg.generatePtrCoercion(ptr.name, ptr.inner_type, v.value);
+        } else {
+            try cg.generateExpr(v.value);
+        }
         cg.type_ctx = prev_ctx;
     }
     try cg.emitFmt("; _ = &{s};", .{v.name});
@@ -844,16 +834,11 @@ pub fn generateTopLevelDeclMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         try cg.emit(".{}");
     } else {
         // Native ?T and anyerror!T — Zig handles coercion, no wrapping needed
-        const did_coerce = blk: {
-            const t = m.type_annotation orelse break :blk false;
-            if (t.* != .type_generic) break :blk false;
-            if (t.type_generic.args.len == 0) break :blk false;
-            const n = t.type_generic.name;
-            if (!builtins.isPtrType(n)) break :blk false;
-            try cg.generatePtrCoercionMir(n, t.type_generic.args[0], m.value());
-            break :blk true;
-        };
-        if (!did_coerce) try cg.generateExprMir(m.value());
+        if (codegen.getPtrCoercionTarget(m.type_annotation)) |ptr| {
+            try cg.generatePtrCoercionMir(ptr.name, ptr.inner_type, m.value());
+        } else {
+            try cg.generateExprMir(m.value());
+        }
     }
     try cg.emit(";\n");
 }

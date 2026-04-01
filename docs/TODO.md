@@ -103,8 +103,7 @@ simplify the compiler without removing features.
 - ~~`appendFmt()` helper for zig_runner — done (v0.14.3, 35 instances converted, -57 lines)~~
 - ~~Builtin type name constants — done (v0.14.3, `builtins.BT.*` + `isPtrType()`, 47 replacements)~~
 - ~~`reportFmt()` helper on Reporter — done (v0.14.3, 83 instances converted, -234 lines)~~
-- Extract Ptr/RawPtr/VolatilePtr coercion check — identical 5-line block repeated 4x
-  in codegen_decls.zig and codegen_stmts.zig.
+- ~~Extract Ptr coercion check — done (v0.14.3, `getPtrCoercionTarget()` replaces 4 identical blocks)~~
 
 ---
 

@@ -36,6 +36,45 @@ pub const COMPILER_FUNCS = [_][]const u8{
     "fieldNames",
 };
 
+/// Typed enum for compiler functions — use `fromName()` to convert AST string names.
+/// Eliminates if-else chains on string literals in codegen and analysis passes.
+pub const CompilerFunc = enum {
+    typename,
+    typeid,
+    typeOf,
+    cast,
+    copy,
+    move,
+    swap,
+    assert,
+    size,
+    @"align", // "align" is a Zig keyword
+    hasField,
+    hasDecl,
+    fieldType,
+    fieldNames,
+
+    pub fn fromName(name: []const u8) ?CompilerFunc {
+        const map = std.StaticStringMap(CompilerFunc).initComptime(.{
+            .{ "typename", .typename },
+            .{ "typeid", .typeid },
+            .{ "typeOf", .typeOf },
+            .{ "cast", .cast },
+            .{ "copy", .copy },
+            .{ "move", .move },
+            .{ "swap", .swap },
+            .{ "assert", .assert },
+            .{ "size", .size },
+            .{ "align", .@"align" },
+            .{ "hasField", .hasField },
+            .{ "hasDecl", .hasDecl },
+            .{ "fieldType", .fieldType },
+            .{ "fieldNames", .fieldNames },
+        });
+        return map.get(name);
+    }
+};
+
 /// Builtin value keywords
 pub const BUILTIN_VALUES = [_][]const u8{
     "null",
@@ -147,6 +186,16 @@ test "value type detection" {
     try std.testing.expect(isValueType("Vector"));
     try std.testing.expect(!isValueType("List"));
     try std.testing.expect(!isValueType("i32"));
+}
+
+test "CompilerFunc.fromName" {
+    try std.testing.expect(CompilerFunc.fromName("cast") == .cast);
+    try std.testing.expect(CompilerFunc.fromName("typename") == .typename);
+    try std.testing.expect(CompilerFunc.fromName("align") == .@"align");
+    try std.testing.expect(CompilerFunc.fromName("move") == .move);
+    try std.testing.expect(CompilerFunc.fromName("assert") == .assert);
+    try std.testing.expect(CompilerFunc.fromName("unknown") == null);
+    try std.testing.expect(CompilerFunc.fromName("") == null);
 }
 
 test "primitive mapping" {

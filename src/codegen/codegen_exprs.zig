@@ -105,9 +105,9 @@ pub fn inferArbitraryUnionTagMir(m: *const mir.MirNode, members_rt: ?[]const RT)
 pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     switch (m.kind) {
         .binary => {
-            const bin_op = m.op orelse "==";
-            const is_eq = std.mem.eql(u8, bin_op, "==");
-            const is_ne = std.mem.eql(u8, bin_op, "!=");
+            const bin_op = m.op orelse K.Op.EQ;
+            const is_eq = std.mem.eql(u8, bin_op, K.Op.EQ);
+            const is_ne = std.mem.eql(u8, bin_op, K.Op.NE);
             // `x is T` desugared form: @type(x) == T
             const lhs_mir = m.lhs();
             if ((is_eq or is_ne) and
@@ -184,13 +184,13 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             const any_vec = lhs_is_vec or rhs_is_vec;
 
             // Division → @divTrunc (skip for vectors — Zig @Vector supports native / and %)
-            if (!any_vec and std.mem.eql(u8, bin_op, "/")) {
+            if (!any_vec and std.mem.eql(u8, bin_op, K.Op.DIV)) {
                 try cg.emit("@divTrunc(");
                 try cg.generateExprMir(m.lhs());
                 try cg.emit(", ");
                 try cg.generateExprMir(m.rhs());
                 try cg.emit(")");
-            } else if (!any_vec and std.mem.eql(u8, bin_op, "%")) {
+            } else if (!any_vec and std.mem.eql(u8, bin_op, K.Op.MOD)) {
                 try cg.emit("@mod(");
                 try cg.generateExprMir(m.lhs());
                 try cg.emit(", ");
@@ -687,7 +687,7 @@ pub fn mirGetBitfieldName(m: *const mir.MirNode, decls_opt: ?*declarations.DeclT
 pub fn generateContinueExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     if (m.kind == .assignment) {
         const assign_op = m.op orelse "=";
-        if (std.mem.eql(u8, assign_op, "/=")) {
+        if (std.mem.eql(u8, assign_op, K.Op.DIV_ASSIGN)) {
             try cg.generateExprMir(m.lhs());
             try cg.emit(" = @divTrunc(");
             try cg.generateExprMir(m.lhs());
@@ -707,7 +707,7 @@ pub fn generateContinueExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
 pub fn generateContinueExpr(cg: *CodeGen, node: *parser.Node) anyerror!void {
     if (node.* == .assignment) {
         const a = node.assignment;
-        if (std.mem.eql(u8, a.op, "/=")) {
+        if (std.mem.eql(u8, a.op, K.Op.DIV_ASSIGN)) {
             try cg.generateExpr(a.left);
             try cg.emit(" = @divTrunc(");
             try cg.generateExpr(a.left);
@@ -858,7 +858,7 @@ pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const caps = m.captures orelse &.{};
     const idx_var = m.index_var;
     const iter_m = m.iterable();
-    const is_range = iter_m.kind == .binary and std.mem.eql(u8, iter_m.op orelse "", "..");
+    const is_range = iter_m.kind == .binary and std.mem.eql(u8, iter_m.op orelse "", K.Op.RANGE);
     const needs_cast = is_range or idx_var != null;
     if (m.is_compt) try cg.emit("inline ");
     try cg.emit("for (");

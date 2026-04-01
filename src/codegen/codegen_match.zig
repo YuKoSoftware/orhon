@@ -103,7 +103,7 @@ pub fn generateGuardedMatchMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             try cg.emitIndent();
             try cg.emit("}");
             guard_counter += 1;
-        } else if (pat_m.kind == .binary and std.mem.eql(u8, pat_m.op orelse "", "..")) {
+        } else if (pat_m.kind == .binary and std.mem.eql(u8, pat_m.op orelse "", K.Op.RANGE)) {
             // Range pattern: (1..10)
             try cg.emit("if (_m >= ");
             try cg.generateExprMir(pat_m.lhs());
@@ -198,7 +198,7 @@ pub fn generateMatchMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             if (pat_m.kind == .identifier and std.mem.eql(u8, pat_m.name orelse "", "else")) {
                 has_wildcard = true;
                 try cg.emit("else");
-            } else if (pat_m.kind == .binary and std.mem.eql(u8, pat_m.op orelse "", "..")) {
+            } else if (pat_m.kind == .binary and std.mem.eql(u8, pat_m.op orelse "", K.Op.RANGE)) {
                 try cg.generateExprMir(pat_m.lhs());
                 try cg.emit("...");
                 try cg.generateExprMir(pat_m.rhs());
@@ -598,107 +598,127 @@ fn emitIntrospectionType(cg: *CodeGen, arg: *mir.MirNode) anyerror!void {
 pub fn generateCompilerFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const cf_name = m.name orelse return;
     const args = m.children;
-    if (std.mem.eql(u8, cf_name, "typename")) {
-        try cg.emit("@typeName(@TypeOf(");
-        if (args.len > 0) try cg.generateExprMir(args[0]);
-        try cg.emit("))");
-    } else if (std.mem.eql(u8, cf_name, "typeid")) {
-        try cg.emit("@intFromPtr(@typeName(@TypeOf(");
-        if (args.len > 0) try cg.generateExprMir(args[0]);
-        try cg.emit(")).ptr)");
-    } else if (std.mem.eql(u8, cf_name, "cast")) {
-        if (args.len >= 2) {
-            const target_type = try cg.typeToZig(args[0].ast); // type trees are structural — typeToZig walks AST
-            const target_is_float = target_type.len > 0 and target_type[0] == 'f';
-            const target_is_enum = cg.isEnumTypeName(args[0].ast); // type trees are structural — isEnumTypeName reads AST
-            const source_is_float_literal = args[1].literal_kind == .float;
-            try cg.emitFmt("@as({s}, ", .{target_type});
-            if (target_is_enum) {
-                try cg.emit("@enumFromInt(");
-            } else if (target_is_float and source_is_float_literal) {
-                try cg.emit("@floatCast(");
-            } else if (target_is_float) {
-                try cg.emit("@floatFromInt(");
-            } else if (source_is_float_literal) {
-                try cg.emit("@intFromFloat(");
-            } else {
-                try cg.emit("@intCast(");
-            }
-            try cg.generateExprMir(args[1]);
-            try cg.emit("))");
-        } else if (args.len == 1) {
-            try cg.emit("@intCast(");
-            try cg.generateExprMir(args[0]);
-            try cg.emit(")");
-        }
-    } else if (std.mem.eql(u8, cf_name, "size")) {
-        try cg.emit("@sizeOf(");
-        if (args.len > 0) try cg.generateExprMir(args[0]);
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf_name, "align")) {
-        try cg.emit("@alignOf(");
-        if (args.len > 0) try cg.generateExprMir(args[0]);
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf_name, "copy")) {
-        if (args.len > 0) try cg.generateExprMir(args[0]);
-    } else if (std.mem.eql(u8, cf_name, "move")) {
-        if (args.len > 0) try cg.generateExprMir(args[0]);
-    } else if (std.mem.eql(u8, cf_name, "assert")) {
-        if (cg.in_test_block) {
-            try cg.emit("try std.testing.expect(");
-        } else {
-            try cg.emit("std.debug.assert(");
-        }
-        if (args.len > 0) try cg.generateExprMir(args[0]);
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf_name, "swap")) {
-        if (args.len == 2) {
-            try cg.emit("std.mem.swap(@TypeOf(");
-            try cg.generateExprMir(args[0]);
-            try cg.emit("), &");
-            try cg.generateExprMir(args[0]);
-            try cg.emit(", &");
-            try cg.generateExprMir(args[1]);
-            try cg.emit(")");
-        }
-    } else if (std.mem.eql(u8, cf_name, "hasField")) {
-        try cg.emit("@hasField(");
-        if (args.len >= 1) {
-            try emitIntrospectionType(cg, args[0]);
-        }
-        if (args.len >= 2) {
-            try cg.emit(", ");
-            try cg.generateExprMir(args[1]);
-        }
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf_name, "hasDecl")) {
-        try cg.emit("@hasDecl(");
-        if (args.len >= 1) {
-            try emitIntrospectionType(cg, args[0]);
-        }
-        if (args.len >= 2) {
-            try cg.emit(", ");
-            try cg.generateExprMir(args[1]);
-        }
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf_name, "fieldType")) {
-        try cg.emit("@FieldType(");
-        if (args.len >= 1) {
-            try emitIntrospectionType(cg, args[0]);
-        }
-        if (args.len >= 2) {
-            try cg.emit(", ");
-            try cg.generateExprMir(args[1]);
-        }
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf_name, "fieldNames")) {
-        try cg.emit("std.meta.fieldNames(");
-        if (args.len >= 1) {
-            try emitIntrospectionType(cg, args[0]);
-        }
-        try cg.emit(")");
-    } else {
+    switch (builtins.CompilerFunc.fromName(cf_name) orelse {
         try cg.emitFmt("/* unknown @{s} */", .{cf_name});
+        return;
+    }) {
+        .typename => {
+            try cg.emit("@typeName(@TypeOf(");
+            if (args.len > 0) try cg.generateExprMir(args[0]);
+            try cg.emit("))");
+        },
+        .typeid => {
+            try cg.emit("@intFromPtr(@typeName(@TypeOf(");
+            if (args.len > 0) try cg.generateExprMir(args[0]);
+            try cg.emit(")).ptr)");
+        },
+        .cast => {
+            if (args.len >= 2) {
+                const target_type = try cg.typeToZig(args[0].ast); // type trees are structural — typeToZig walks AST
+                const target_is_float = target_type.len > 0 and target_type[0] == 'f';
+                const target_is_enum = cg.isEnumTypeName(args[0].ast); // type trees are structural — isEnumTypeName reads AST
+                const source_is_float_literal = args[1].literal_kind == .float;
+                try cg.emitFmt("@as({s}, ", .{target_type});
+                if (target_is_enum) {
+                    try cg.emit("@enumFromInt(");
+                } else if (target_is_float and source_is_float_literal) {
+                    try cg.emit("@floatCast(");
+                } else if (target_is_float) {
+                    try cg.emit("@floatFromInt(");
+                } else if (source_is_float_literal) {
+                    try cg.emit("@intFromFloat(");
+                } else {
+                    try cg.emit("@intCast(");
+                }
+                try cg.generateExprMir(args[1]);
+                try cg.emit("))");
+            } else if (args.len == 1) {
+                try cg.emit("@intCast(");
+                try cg.generateExprMir(args[0]);
+                try cg.emit(")");
+            }
+        },
+        .size => {
+            try cg.emit("@sizeOf(");
+            if (args.len > 0) try cg.generateExprMir(args[0]);
+            try cg.emit(")");
+        },
+        .@"align" => {
+            try cg.emit("@alignOf(");
+            if (args.len > 0) try cg.generateExprMir(args[0]);
+            try cg.emit(")");
+        },
+        .copy => {
+            if (args.len > 0) try cg.generateExprMir(args[0]);
+        },
+        .move => {
+            if (args.len > 0) try cg.generateExprMir(args[0]);
+        },
+        .assert => {
+            if (cg.in_test_block) {
+                try cg.emit("try std.testing.expect(");
+            } else {
+                try cg.emit("std.debug.assert(");
+            }
+            if (args.len > 0) try cg.generateExprMir(args[0]);
+            try cg.emit(")");
+        },
+        .swap => {
+            if (args.len == 2) {
+                try cg.emit("std.mem.swap(@TypeOf(");
+                try cg.generateExprMir(args[0]);
+                try cg.emit("), &");
+                try cg.generateExprMir(args[0]);
+                try cg.emit(", &");
+                try cg.generateExprMir(args[1]);
+                try cg.emit(")");
+            }
+        },
+        .hasField => {
+            try cg.emit("@hasField(");
+            if (args.len >= 1) {
+                try emitIntrospectionType(cg, args[0]);
+            }
+            if (args.len >= 2) {
+                try cg.emit(", ");
+                try cg.generateExprMir(args[1]);
+            }
+            try cg.emit(")");
+        },
+        .hasDecl => {
+            try cg.emit("@hasDecl(");
+            if (args.len >= 1) {
+                try emitIntrospectionType(cg, args[0]);
+            }
+            if (args.len >= 2) {
+                try cg.emit(", ");
+                try cg.generateExprMir(args[1]);
+            }
+            try cg.emit(")");
+        },
+        .fieldType => {
+            try cg.emit("@FieldType(");
+            if (args.len >= 1) {
+                try emitIntrospectionType(cg, args[0]);
+            }
+            if (args.len >= 2) {
+                try cg.emit(", ");
+                try cg.generateExprMir(args[1]);
+            }
+            try cg.emit(")");
+        },
+        .fieldNames => {
+            try cg.emit("std.meta.fieldNames(");
+            if (args.len >= 1) {
+                try emitIntrospectionType(cg, args[0]);
+            }
+            try cg.emit(")");
+        },
+        .typeOf => {
+            try cg.emit("@TypeOf(");
+            if (args.len > 0) try cg.generateExprMir(args[0]);
+            try cg.emit(")");
+        },
     }
 }
 
@@ -913,90 +933,106 @@ pub fn fillDefaultArgsMir(cg: *CodeGen, callee_mir: *const mir.MirNode, actual_a
 
 pub fn generateCompilerFunc(cg: *CodeGen, cf: parser.CompilerFunc) anyerror!void {
     // Map Orhon compiler functions to Zig equivalents
-    if (std.mem.eql(u8, cf.name, "typename")) {
-        // typename(x) → @typeName(@TypeOf(x))
-        try cg.emit("@typeName(@TypeOf(");
-        if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
-        try cg.emit("))");
-    } else if (std.mem.eql(u8, cf.name, "typeid")) {
-        // typeid(x) → @intFromPtr(@typeName(@TypeOf(x)).ptr)
-        try cg.emit("@intFromPtr(@typeName(@TypeOf(");
-        if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
-        try cg.emit(")).ptr)");
-    } else if (std.mem.eql(u8, cf.name, "typeOf")) {
-        // typeOf(x) → @TypeOf(x)
-        try cg.emit("@TypeOf(");
-        if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf.name, "cast")) {
-        // cast(T, x) → Zig cast depending on target and source types:
-        //   enum target:  @as(T, @enumFromInt(x))
-        //   int target,   float source literal: @as(T, @intFromFloat(x))
-        //   int target,   other source:          @as(T, @intCast(x))
-        //   float target, float source:          @as(T, @floatCast(x))
-        //   float target, other source:          @as(T, @floatFromInt(x))
-        if (cf.args.len >= 2) {
-            const target_type = try cg.typeToZig(cf.args[0]);
-            const target_is_float = target_type.len > 0 and target_type[0] == 'f';
-            const target_is_enum = cg.isEnumTypeName(cf.args[0]);
-            const source_is_float_literal = cf.args[1].* == .float_literal;
-            try cg.emitFmt("@as({s}, ", .{target_type});
-            if (target_is_enum) {
-                try cg.emit("@enumFromInt(");
-            } else if (target_is_float and source_is_float_literal) {
-                // float literal to float type — direct cast
-                try cg.emit("@floatCast(");
-            } else if (target_is_float) {
-                try cg.emit("@floatFromInt(");
-            } else if (source_is_float_literal) {
-                try cg.emit("@intFromFloat(");
-            } else {
-                try cg.emit("@intCast(");
-            }
-            try cg.generateExpr(cf.args[1]);
-            try cg.emit("))");
-        } else if (cf.args.len == 1) {
-            try cg.emit("@intCast(");
-            try cg.generateExpr(cf.args[0]);
-            try cg.emit(")");
-        }
-    } else if (std.mem.eql(u8, cf.name, "size")) {
-        // size(T) → @sizeOf(T)
-        try cg.emit("@sizeOf(");
-        if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf.name, "align")) {
-        // align(T) → @alignOf(T)
-        try cg.emit("@alignOf(");
-        if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf.name, "copy")) {
-        // copy(x) — for non-primitives, generate a copy
-        if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
-    } else if (std.mem.eql(u8, cf.name, "move")) {
-        // move(x) — explicit move, same as value in Zig
-        if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
-    } else if (std.mem.eql(u8, cf.name, "assert")) {
-        if (cg.in_test_block) {
-            try cg.emit("try std.testing.expect(");
-        } else {
-            try cg.emit("std.debug.assert(");
-        }
-        if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
-        try cg.emit(")");
-    } else if (std.mem.eql(u8, cf.name, "swap")) {
-        // swap(a, b) → std.mem.swap(@TypeOf(a), &a, &b)
-        if (cf.args.len == 2) {
-            try cg.emit("std.mem.swap(@TypeOf(");
-            try cg.generateExpr(cf.args[0]);
-            try cg.emit("), &");
-            try cg.generateExpr(cf.args[0]);
-            try cg.emit(", &");
-            try cg.generateExpr(cf.args[1]);
-            try cg.emit(")");
-        }
-    } else {
+    switch (builtins.CompilerFunc.fromName(cf.name) orelse {
         try cg.emitFmt("/* unknown @{s} */", .{cf.name});
+        return;
+    }) {
+        .typename => {
+            // typename(x) → @typeName(@TypeOf(x))
+            try cg.emit("@typeName(@TypeOf(");
+            if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
+            try cg.emit("))");
+        },
+        .typeid => {
+            // typeid(x) → @intFromPtr(@typeName(@TypeOf(x)).ptr)
+            try cg.emit("@intFromPtr(@typeName(@TypeOf(");
+            if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
+            try cg.emit(")).ptr)");
+        },
+        .typeOf => {
+            // typeOf(x) → @TypeOf(x)
+            try cg.emit("@TypeOf(");
+            if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
+            try cg.emit(")");
+        },
+        .cast => {
+            // cast(T, x) → Zig cast depending on target and source types:
+            //   enum target:  @as(T, @enumFromInt(x))
+            //   int target,   float source literal: @as(T, @intFromFloat(x))
+            //   int target,   other source:          @as(T, @intCast(x))
+            //   float target, float source:          @as(T, @floatCast(x))
+            //   float target, other source:          @as(T, @floatFromInt(x))
+            if (cf.args.len >= 2) {
+                const target_type = try cg.typeToZig(cf.args[0]);
+                const target_is_float = target_type.len > 0 and target_type[0] == 'f';
+                const target_is_enum = cg.isEnumTypeName(cf.args[0]);
+                const source_is_float_literal = cf.args[1].* == .float_literal;
+                try cg.emitFmt("@as({s}, ", .{target_type});
+                if (target_is_enum) {
+                    try cg.emit("@enumFromInt(");
+                } else if (target_is_float and source_is_float_literal) {
+                    // float literal to float type — direct cast
+                    try cg.emit("@floatCast(");
+                } else if (target_is_float) {
+                    try cg.emit("@floatFromInt(");
+                } else if (source_is_float_literal) {
+                    try cg.emit("@intFromFloat(");
+                } else {
+                    try cg.emit("@intCast(");
+                }
+                try cg.generateExpr(cf.args[1]);
+                try cg.emit("))");
+            } else if (cf.args.len == 1) {
+                try cg.emit("@intCast(");
+                try cg.generateExpr(cf.args[0]);
+                try cg.emit(")");
+            }
+        },
+        .size => {
+            // size(T) → @sizeOf(T)
+            try cg.emit("@sizeOf(");
+            if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
+            try cg.emit(")");
+        },
+        .@"align" => {
+            // align(T) → @alignOf(T)
+            try cg.emit("@alignOf(");
+            if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
+            try cg.emit(")");
+        },
+        .copy => {
+            // copy(x) — for non-primitives, generate a copy
+            if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
+        },
+        .move => {
+            // move(x) — explicit move, same as value in Zig
+            if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
+        },
+        .assert => {
+            if (cg.in_test_block) {
+                try cg.emit("try std.testing.expect(");
+            } else {
+                try cg.emit("std.debug.assert(");
+            }
+            if (cf.args.len > 0) try cg.generateExpr(cf.args[0]);
+            try cg.emit(")");
+        },
+        .swap => {
+            // swap(a, b) → std.mem.swap(@TypeOf(a), &a, &b)
+            if (cf.args.len == 2) {
+                try cg.emit("std.mem.swap(@TypeOf(");
+                try cg.generateExpr(cf.args[0]);
+                try cg.emit("), &");
+                try cg.generateExpr(cf.args[0]);
+                try cg.emit(", &");
+                try cg.generateExpr(cf.args[1]);
+                try cg.emit(")");
+            }
+        },
+        .hasField, .hasDecl, .fieldType, .fieldNames => {
+            // Introspection functions not available in AST path — handled by MIR path
+            try cg.emitFmt("/* @{s} requires MIR path */", .{cf.name});
+        },
     }
 }
 
@@ -1111,9 +1147,9 @@ pub fn generateCollectionExpr(cg: *CodeGen, c: parser.CollectionExpr) anyerror!v
 // ============================================================
 
 pub fn opToZig(op: []const u8) []const u8 {
-    if (std.mem.eql(u8, op, "and")) return "and";
-    if (std.mem.eql(u8, op, "or")) return "or";
-    if (std.mem.eql(u8, op, "not")) return "!";
+    if (std.mem.eql(u8, op, K.Op.AND)) return "and";
+    if (std.mem.eql(u8, op, K.Op.OR)) return "or";
+    if (std.mem.eql(u8, op, K.Op.NOT)) return "!";
     return op; // most operators are the same in Zig
 }
 

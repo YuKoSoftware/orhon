@@ -342,13 +342,13 @@ pub const PropagationChecker = struct {
         switch (node.*) {
             .binary_expr => |be| {
                 // Compound conditions: walk both sides of `and` / `or`
-                if (std.mem.eql(u8, be.op, "and") or std.mem.eql(u8, be.op, "or")) {
+                if (std.mem.eql(u8, be.op, K.Op.AND) or std.mem.eql(u8, be.op, K.Op.OR)) {
                     self.extractTypeChecks(be.left, scope);
                     self.extractTypeChecks(be.right, scope);
                     return;
                 }
                 // Direct type check: @type(x) == Error / @type(x) != null
-                if (std.mem.eql(u8, be.op, "==") or std.mem.eql(u8, be.op, "!=")) {
+                if (std.mem.eql(u8, be.op, K.Op.EQ) or std.mem.eql(u8, be.op, K.Op.NE)) {
                     if (be.left.* == .compiler_func and std.mem.eql(u8, be.left.compiler_func.name, K.Type.TYPE)) {
                         if (be.left.compiler_func.args.len > 0) {
                             const checked_var = be.left.compiler_func.args[0];

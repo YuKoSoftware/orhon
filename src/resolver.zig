@@ -614,15 +614,15 @@ pub const TypeResolver = struct {
             .binary_expr => |b| {
                 const left = try self.resolveExpr(b.left, scope);
                 _ = try self.resolveExpr(b.right, scope);
-                if (std.mem.eql(u8, b.op, "and") or
-                    std.mem.eql(u8, b.op, "or") or
-                    std.mem.eql(u8, b.op, "==") or
-                    std.mem.eql(u8, b.op, "!=") or
-                    std.mem.eql(u8, b.op, "<") or
-                    std.mem.eql(u8, b.op, ">") or
-                    std.mem.eql(u8, b.op, "<=") or
-                    std.mem.eql(u8, b.op, ">=")) return RT{ .primitive = .bool };
-                if (std.mem.eql(u8, b.op, "++")) return left;
+                if (std.mem.eql(u8, b.op, K.Op.AND) or
+                    std.mem.eql(u8, b.op, K.Op.OR) or
+                    std.mem.eql(u8, b.op, K.Op.EQ) or
+                    std.mem.eql(u8, b.op, K.Op.NE) or
+                    std.mem.eql(u8, b.op, K.Op.LT) or
+                    std.mem.eql(u8, b.op, K.Op.GT) or
+                    std.mem.eql(u8, b.op, K.Op.LE) or
+                    std.mem.eql(u8, b.op, K.Op.GE)) return RT{ .primitive = .bool };
+                if (std.mem.eql(u8, b.op, K.Op.CONCAT)) return left;
                 return left;
             },
 

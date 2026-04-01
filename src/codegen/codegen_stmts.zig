@@ -137,7 +137,7 @@ pub fn generateStatementMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         },
         .assignment => {
             const assign_op = m.op orelse "=";
-            if (std.mem.eql(u8, assign_op, "/=")) {
+            if (std.mem.eql(u8, assign_op, K.Op.DIV_ASSIGN)) {
                 try cg.generateExprMir(m.lhs());
                 try cg.emit(" = @divTrunc(");
                 try cg.generateExprMir(m.lhs());
@@ -332,8 +332,8 @@ pub fn generateExpr(cg: *CodeGen, node: *parser.Node) anyerror!void {
             // `x is null`    → x == null    (?T check)
             // `x is T`       → @TypeOf(x) == T  (comptime type check for `any` params)
             // `x is not ...` → same but with !=
-            const is_eq = std.mem.eql(u8, b.op, "==");
-            const is_ne = std.mem.eql(u8, b.op, "!=");
+            const is_eq = std.mem.eql(u8, b.op, K.Op.EQ);
+            const is_ne = std.mem.eql(u8, b.op, K.Op.NE);
             if ((is_eq or is_ne) and
                 b.left.* == .compiler_func and
                 std.mem.eql(u8, b.left.compiler_func.name, K.Type.TYPE) and
@@ -403,13 +403,13 @@ pub fn generateExpr(cg: *CodeGen, node: *parser.Node) anyerror!void {
                 }
             }
             // Division on signed ints → @divTrunc in Zig
-            if (std.mem.eql(u8, b.op, "/")) {
+            if (std.mem.eql(u8, b.op, K.Op.DIV)) {
                 try cg.emit("@divTrunc(");
                 try cg.generateExpr(b.left);
                 try cg.emit(", ");
                 try cg.generateExpr(b.right);
                 try cg.emit(")");
-            } else if (std.mem.eql(u8, b.op, "%")) {
+            } else if (std.mem.eql(u8, b.op, K.Op.MOD)) {
                 try cg.emit("@mod(");
                 try cg.generateExpr(b.left);
                 try cg.emit(", ");

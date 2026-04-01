@@ -146,9 +146,11 @@ fn emitInterfaceDecl(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc
                         if (!f.is_pub) continue;
                         try emitFuncSig(f, buf, alloc, "    ");
                     },
-                    .const_decl => |v| {
+                    .var_decl => |v| {
                         if (!v.is_pub) continue;
-                        try buf.appendSlice(alloc, "    pub const ");
+                        const kw = if (v.mutability == .constant) "const " else "var ";
+                        try buf.appendSlice(alloc, "    pub ");
+                        try buf.appendSlice(alloc, kw);
                         try buf.appendSlice(alloc, v.name);
                         if (v.type_annotation) |t| {
                             try buf.appendSlice(alloc, ": ");
@@ -215,9 +217,11 @@ fn emitInterfaceDecl(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc
             }
             try buf.appendSlice(alloc, "}\n\n");
         },
-        .const_decl => |v| {
+        .var_decl => |v| {
             if (!v.is_pub) return;
-            try buf.appendSlice(alloc, "pub const ");
+            const kw = if (v.mutability == .constant) "const " else "var ";
+            try buf.appendSlice(alloc, "pub ");
+            try buf.appendSlice(alloc, kw);
             try buf.appendSlice(alloc, v.name);
             if (v.type_annotation) |t| {
                 try buf.appendSlice(alloc, ": ");

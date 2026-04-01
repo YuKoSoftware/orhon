@@ -418,7 +418,6 @@ pub fn setPub(node: *Node, value: bool) void {
         .blueprint_decl => |*d| d.is_pub = value,
         .enum_decl => |*d| d.is_pub = value,
         .bitfield_decl => |*d| d.is_pub = value,
-        .const_decl => |*d| d.is_pub = value,
         .var_decl => |*d| d.is_pub = value,
         .field_decl => |*d| d.is_pub = value,
         else => {},
@@ -447,9 +446,7 @@ pub fn setDoc(node: *Node, doc: ?[]const u8) void {
         .blueprint_decl => |*d| d.doc = doc,
         .enum_decl => |*d| d.doc = doc,
         .bitfield_decl => |*d| d.doc = doc,
-        .const_decl => |*d| d.doc = doc,
         .var_decl => |*d| d.doc = doc,
-        .compt_decl => |*d| d.doc = doc,
         .field_decl => |*d| d.doc = doc,
         .enum_variant => |*d| d.doc = doc,
         .module_decl => |*d| d.doc = doc,
@@ -558,9 +555,10 @@ test "builder - build program with const" {
     try std.testing.expectEqual(@as(usize, 1), prog.top_level.len);
 
     const decl = prog.top_level[0];
-    try std.testing.expect(decl.* == .const_decl);
-    try std.testing.expectEqualStrings("MAX", decl.const_decl.name);
-    try std.testing.expect(decl.const_decl.type_annotation != null);
+    try std.testing.expect(decl.* == .var_decl);
+    try std.testing.expectEqualStrings("MAX", decl.var_decl.name);
+    try std.testing.expect(decl.var_decl.type_annotation != null);
+    try std.testing.expect(decl.var_decl.mutability == .constant);
 }
 
 test "builder - build pub struct" {

@@ -77,11 +77,12 @@ pub fn buildBridgeConst(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // bridge_const <- 'const' IDENTIFIER ':' type TERM
     const name = builder.tokenText(ctx, cap.start_pos + 1);
     const type_ann = if (cap.findChild("type")) |t| try builder.buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "any" });
-    return ctx.newNode(.{ .const_decl = .{
+    return ctx.newNode(.{ .var_decl = .{
         .name = name,
         .type_annotation = type_ann,
         .value = try ctx.newNode(.{ .int_literal = "0" }),
         .is_pub = false,
+        .mutability = .constant,
         .is_bridge = true,
     } });
 }

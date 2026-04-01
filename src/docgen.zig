@@ -117,7 +117,7 @@ fn writeModuleDoc(allocator: std.mem.Allocator, buf: *std.ArrayListUnmanaged(u8)
             .struct_decl => |s| if (s.is_pub) try types_list.append(allocator, node),
             .enum_decl => |e| if (e.is_pub) try types_list.append(allocator, node),
             .bitfield_decl => |b| if (b.is_pub) try types_list.append(allocator, node),
-            .const_decl => |c| if (c.is_pub) try constants.append(allocator, node),
+            .var_decl => |v| if (v.is_pub and v.mutability == .constant) try constants.append(allocator, node),
             else => {},
         }
     }
@@ -177,7 +177,7 @@ fn writeModuleDoc(allocator: std.mem.Allocator, buf: *std.ArrayListUnmanaged(u8)
     if (constants.items.len > 0) {
         try buf.appendSlice(allocator, "## Constants\n\n");
         for (constants.items) |node| {
-            const c = node.const_decl;
+            const c = node.var_decl;
             try buf.appendSlice(allocator, "### `");
             try buf.appendSlice(allocator, c.name);
             if (c.type_annotation) |t| {

@@ -206,7 +206,7 @@ pub const OwnershipChecker = struct {
 
     fn checkStatement(self: *OwnershipChecker, node: *parser.Node, scope: *OwnershipScope) anyerror!void {
         switch (node.*) {
-            .var_decl, .const_decl, .compt_decl => |v| {
+            .var_decl => |v| {
                 // Check the value expression for use-after-move
                 try self.checkExpr(v.value, scope, false);
                 // Define the new variable as owned, with type name for field lookup
@@ -215,7 +215,7 @@ pub const OwnershipChecker = struct {
                     (types.isPrimitiveName(type_name) or builtins.isValueType(type_name))
                 else
                     inferPrimitiveFromValue(v.value, scope);
-                const is_const = (node.* == .const_decl or node.* == .compt_decl);
+                const is_const = v.mutability == .constant;
                 try scope.defineTyped(v.name, is_prim, type_name, is_const);
             },
 

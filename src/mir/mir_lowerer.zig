@@ -113,12 +113,7 @@ pub const MirLowerer = struct {
                 // Process block statements — hoist interpolation temps
                 mir_node_ptr.children = try self.lowerBlock(b.statements);
             },
-            .var_decl, .const_decl => |v| {
-                var children = std.ArrayListUnmanaged(*MirNode){};
-                try children.append(self.allocator, try self.lowerNode(v.value));
-                mir_node_ptr.children = try children.toOwnedSlice(self.allocator);
-            },
-            .compt_decl => |v| {
+            .var_decl => |v| {
                 var children = std.ArrayListUnmanaged(*MirNode){};
                 try children.append(self.allocator, try self.lowerNode(v.value));
                 mir_node_ptr.children = try children.toOwnedSlice(self.allocator);
@@ -400,7 +395,7 @@ pub const MirLowerer = struct {
     fn findInterpolation(self: *const MirLowerer, node: *parser.Node) ?*parser.Node {
         _ = self;
         switch (node.*) {
-            .var_decl, .const_decl => |v| return findInterpolationInExpr(v.value),
+            .var_decl => |v| return findInterpolationInExpr(v.value),
             .call_expr => |c| {
                 for (c.args) |arg| {
                     if (arg.* == .interpolated_string) return arg;
@@ -561,20 +556,7 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
             m.name = v.name;
             m.is_pub = v.is_pub;
             m.is_bridge = v.is_bridge;
-            m.type_annotation = v.type_annotation;
-        },
-        .const_decl => |v| {
-            m.name = v.name;
-            m.is_pub = v.is_pub;
-            m.is_bridge = v.is_bridge;
-            m.is_const = true;
-            m.type_annotation = v.type_annotation;
-        },
-        .compt_decl => |v| {
-            m.name = v.name;
-            m.is_pub = v.is_pub;
-            m.is_compt = true;
-            m.is_const = true;
+            m.is_const = v.mutability == .constant;
             m.type_annotation = v.type_annotation;
         },
         .test_decl => |t| {
@@ -682,7 +664,7 @@ fn astToMirKind(node: *parser.Node) MirKind {
         .bitfield_decl => .bitfield_def,
         .field_decl => .field_def,
         .enum_variant => .enum_variant_def,
-        .var_decl, .const_decl, .compt_decl => .var_decl,
+        .var_decl => .var_decl,
         .test_decl => .test_def,
         .destruct_decl => .destruct,
         .import_decl => .import,

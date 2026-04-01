@@ -22,9 +22,7 @@ pub const NodeKind = enum {
     blueprint_decl,
     enum_decl,
     bitfield_decl,
-    const_decl,
     var_decl,
-    compt_decl,
     destruct_decl,
     test_decl,
     field_decl,
@@ -90,9 +88,7 @@ pub const Node = union(NodeKind) {
     blueprint_decl: BlueprintDecl,
     enum_decl: EnumDecl,
     bitfield_decl: BitfieldDecl,
-    const_decl: VarDecl,
     var_decl: VarDecl,
-    compt_decl: VarDecl,
     destruct_decl: DestructDecl,
     test_decl: TestDecl,
     field_decl: FieldDecl,
@@ -222,11 +218,14 @@ pub const BitfieldDecl = struct {
     doc: ?[]const u8 = null,
 };
 
+pub const Mutability = enum { mutable, constant };
+
 pub const VarDecl = struct {
     name: []const u8,
     type_annotation: ?*Node,
     value: *Node,
     is_pub: bool,
+    mutability: Mutability = .mutable,
     is_bridge: bool = false,
     doc: ?[]const u8 = null,
 };

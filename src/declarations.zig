@@ -222,7 +222,7 @@ pub const DeclCollector = struct {
                 switch (node.*) {
                     .func_decl => |f| if (f.context == .bridge) { has_bridge = true; break; },
                     .struct_decl => |s| if (s.is_bridge) { has_bridge = true; break; },
-                    .const_decl => |v| if (v.is_bridge) { has_bridge = true; break; },
+                    .var_decl => |v| if (v.is_bridge) { has_bridge = true; break; },
                     else => {},
                 }
             }
@@ -248,11 +248,13 @@ pub const DeclCollector = struct {
             .blueprint_decl => |b| try self.collectBlueprint(b, loc),
             .enum_decl => |e| try self.collectEnum(e, loc),
             .bitfield_decl => |b| try self.collectBitfield(b, loc),
-            .const_decl => |v| try self.collectVar(v, true, false, loc),
-            .var_decl => {
-                try self.reporter.reportFmt(loc, "module-level 'var' is not allowed — use 'const' for module-level declarations", .{});
+            .var_decl => |v| {
+                if (v.mutability == .mutable) {
+                    try self.reporter.reportFmt(loc, "module-level 'var' is not allowed — use 'const' for module-level declarations", .{});
+                } else {
+                    try self.collectVar(v, true, false, loc);
+                }
             },
-            .compt_decl => |v| try self.collectVar(v, true, true, loc),
             else => {},
         }
     }

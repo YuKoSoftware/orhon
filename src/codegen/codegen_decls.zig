@@ -61,7 +61,6 @@ pub fn collectAssigned(node: *parser.Node, set: *std.StringHashMapUnmanaged(void
             try collectAssigned(s.high, set, alloc);
         },
         .var_decl => |v| try collectAssigned(v.value, set, alloc),
-        .const_decl => |v| try collectAssigned(v.value, set, alloc),
         .match_stmt => |m| {
             for (m.arms) |arm| {
                 if (arm.* == .match_arm) try collectAssigned(arm.match_arm.body, set, alloc);

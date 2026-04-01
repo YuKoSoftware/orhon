@@ -142,7 +142,7 @@ pub const PropagationChecker = struct {
 
     fn checkStatement(self: *PropagationChecker, node: *parser.Node, scope: *PropagationScope) anyerror!void {
         switch (node.*) {
-            .var_decl, .const_decl => |v| {
+            .var_decl => |v| {
                 // Check for unsafe unwrap in the value expression
                 try self.checkExprForUnsafeUnwrap(v.value, scope);
                 // Check type annotation first
@@ -242,14 +242,6 @@ pub const PropagationChecker = struct {
 
             .defer_stmt => |d| {
                 try self.checkNode(d.body, scope);
-            },
-
-            .compt_decl => |v| {
-                const from_value = try self.exprReturnsUnion(v.value);
-                if (from_value) |is_error| {
-                    const loc = self.ctx.nodeLoc(node);
-                    try scope.define(v.name, is_error, if (loc) |l| l.line else 0, if (loc) |l| l.col else 0);
-                }
             },
 
             .destruct_decl => |d| {

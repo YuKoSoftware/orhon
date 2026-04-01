@@ -681,7 +681,7 @@ pub const Resolver = struct {
             for (build_result.node.program.top_level) |node| {
                 const is_bridge = switch (node.*) {
                     .func_decl => |f| f.context == .bridge,
-                    .const_decl, .var_decl => |v| v.is_bridge,
+                    .var_decl => |v| v.is_bridge,
                     .struct_decl => |s| s.is_bridge,
                     else => false,
                 };
@@ -701,7 +701,7 @@ pub const Resolver = struct {
                     std.fs.cwd().access(sidecar, .{}) catch {
                         const bridge_name = switch (node.*) {
                             .func_decl => |f| f.name,
-                            .const_decl, .var_decl => |v| v.name,
+                            .var_decl => |v| v.name,
                             .struct_decl => |s| s.name,
                             else => "unknown",
                         };

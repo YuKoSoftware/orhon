@@ -310,11 +310,12 @@ pub fn buildConstDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 
     const value = if (cap.findChild("expr")) |e| try builder.buildNode(ctx, e) else try ctx.newNode(.{ .int_literal = "0" });
 
-    return ctx.newNode(.{ .const_decl = .{
+    return ctx.newNode(.{ .var_decl = .{
         .name = name,
         .type_annotation = type_ann,
         .value = value,
         .is_pub = false,
+        .mutability = .constant,
     } });
 }
 

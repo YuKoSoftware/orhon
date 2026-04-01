@@ -91,15 +91,14 @@ simplify the compiler without removing features.
 
 **Larger — needs careful planning:**
 
-- Unify `const_decl`/`var_decl`/`compt_decl`. All three map to `VarDecl`. Add
-  `kind` enum field instead of three `NodeKind` variants. ~48 pattern matches.
+- ~~Unify `const_decl`/`var_decl`/`compt_decl` — done (v0.14.3, `Mutability` enum on `VarDecl`, `compt_decl` removed as dead code, -151 lines across 19 files)~~
 - ~~`FuncDecl` flags → context enum — done (v0.14.3, `parser.FuncContext`)~~
 - ~~Merge `buildZigContent()`/`buildZigContentMulti()` — done (v0.14.3, unified into `buildZigContentMulti`)~~
 - ~~`hashInterface()` in `cache.zig` — done (v0.14.2, generic helpers)~~
 - ~~Binary operator / builtin name enums — done (v0.14.3, `CompilerFunc` enum + `Op` constants)~~
 - Remove AST-path remnants in codegen if fully replaced by MIR path.
 - ~~Unify union wrapping in codegen — done (v0.14.2, shared operator maps)~~
-- Standardize `catch` patterns across infrastructure.
+- ~~Standardize `catch` patterns — done (v0.14.3, `dispatchLsp`/`dispatchLspArray` helpers replace 13 identical handler blocks, -48 lines)~~
 - ~~`appendFmt()` helper for zig_runner — done (v0.14.3, 35 instances converted, -57 lines)~~
 - ~~Builtin type name constants — done (v0.14.3, `builtins.BT.*` + `isPtrType()`, 47 replacements)~~
 - ~~`reportFmt()` helper on Reporter — done (v0.14.3, 83 instances converted, -234 lines)~~

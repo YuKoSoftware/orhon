@@ -125,7 +125,7 @@ pub const ThreadSafetyChecker = struct {
 
     fn checkStatement(self: *ThreadSafetyChecker, node: *parser.Node) anyerror!void {
         switch (node.*) {
-            .var_decl, .const_decl => |v| {
+            .var_decl => |v| {
                 // Register Handle variables as thread handles
                 if (isHandleType(v.type_annotation)) {
                     try self.declared_threads.put(v.name, {});
@@ -212,10 +212,6 @@ pub const ThreadSafetyChecker = struct {
 
             .destruct_decl => |d| {
                 try self.checkExprForThreadMoves(d.value);
-            },
-
-            .compt_decl => |v| {
-                try self.checkExprForThreadMoves(v.value);
             },
 
             .break_stmt, .continue_stmt => {},
@@ -395,7 +391,7 @@ pub const ThreadSafetyChecker = struct {
             .return_stmt => |r| {
                 if (r.value) |v| try self.collectUsedVars(v, vars);
             },
-            .var_decl, .const_decl => |v| try self.collectUsedVars(v.value, vars),
+            .var_decl => |v| try self.collectUsedVars(v.value, vars),
             .assignment => |a| {
                 try self.collectUsedVars(a.left, vars);
                 try self.collectUsedVars(a.right, vars);
@@ -448,7 +444,6 @@ pub const ThreadSafetyChecker = struct {
                 for (b.statements) |stmt| try collectLocalDecls(stmt, decls);
             },
             .var_decl => |v| try decls.put(v.name, {}),
-            .const_decl => |v| try decls.put(v.name, {}),
             .destruct_decl => |d| {
                 for (d.names) |name| try decls.put(name, {});
             },
@@ -493,7 +488,7 @@ fn collectBorrowedVars(node: *parser.Node, vars: *std.StringHashMap(void)) anyer
         .block => |b| {
             for (b.statements) |stmt| try collectBorrowedVars(stmt, vars);
         },
-        .var_decl, .const_decl => |v| try collectBorrowedVars(v.value, vars),
+        .var_decl => |v| try collectBorrowedVars(v.value, vars),
         .assignment => |a| {
             try collectBorrowedVars(a.left, vars);
             try collectBorrowedVars(a.right, vars);

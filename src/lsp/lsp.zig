@@ -80,6 +80,28 @@ fn writeMessage(writer: *Io.Writer, json: []const u8) !void {
     try writer.flush();
 }
 
+/// Dispatch an LSP handler result: on success write response, on error log and send empty response.
+fn dispatchLsp(allocator: std.mem.Allocator, writer: *Io.Writer, id: std.json.Value, method: []const u8, result: anyerror![]const u8) !void {
+    const resp = result catch |err| {
+        lspLog("{s} error: {}", .{ method, err });
+        try writeMessage(writer, try buildEmptyResponse(allocator, id));
+        return;
+    };
+    defer allocator.free(resp);
+    try writeMessage(writer, resp);
+}
+
+/// Like dispatchLsp but sends an empty array `[]` on error instead of `null`.
+fn dispatchLspArray(allocator: std.mem.Allocator, writer: *Io.Writer, id: std.json.Value, method: []const u8, result: anyerror![]const u8) !void {
+    const resp = result catch |err| {
+        lspLog("{s} error: {}", .{ method, err });
+        try writeMessage(writer, try buildEmptyArrayResponse(allocator, id));
+        return;
+    };
+    defer allocator.free(resp);
+    try writeMessage(writer, resp);
+}
+
 const freeDiagnostics = lsp_types.freeDiagnostics;
 const freeSymbols = lsp_types.freeSymbols;
 const lspLog = lsp_utils.lspLog;
@@ -284,103 +306,53 @@ pub fn serve(allocator: std.mem.Allocator) !void {
 
         } else if (std.mem.eql(u8, method, "textDocument/hover")) {
             if (!initialized) continue;
-            const resp = lsp_nav.handleHover(allocator, root, id, cached_symbols, &doc_store) catch |err| {
-                lspLog("hover error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "hover",
+                lsp_nav.handleHover(allocator, root, id, cached_symbols, &doc_store));
 
         } else if (std.mem.eql(u8, method, "textDocument/definition")) {
             if (!initialized) continue;
-            const resp = lsp_nav.handleDefinition(allocator, root, id, cached_symbols, &doc_store) catch |err| {
-                lspLog("definition error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "definition",
+                lsp_nav.handleDefinition(allocator, root, id, cached_symbols, &doc_store));
 
         } else if (std.mem.eql(u8, method, "textDocument/documentSymbol")) {
             if (!initialized) continue;
-            const resp = lsp_view.handleDocumentSymbols(allocator, root, id, cached_symbols) catch |err| {
-                lspLog("documentSymbol error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "documentSymbol",
+                lsp_view.handleDocumentSymbols(allocator, root, id, cached_symbols));
 
         } else if (std.mem.eql(u8, method, "textDocument/completion")) {
             if (!initialized) continue;
-            const resp = lsp_edit.handleCompletion(allocator, root, id, cached_symbols, enable_snippets, &doc_store) catch |err| {
-                lspLog("completion error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "completion",
+                lsp_edit.handleCompletion(allocator, root, id, cached_symbols, enable_snippets, &doc_store));
 
         } else if (std.mem.eql(u8, method, "textDocument/references")) {
             if (!initialized) continue;
-            const resp = lsp_nav.handleReferences(allocator, root, id, cached_symbols) catch |err| {
-                lspLog("references error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "references",
+                lsp_nav.handleReferences(allocator, root, id, cached_symbols));
 
         } else if (std.mem.eql(u8, method, "textDocument/rename")) {
             if (!initialized) continue;
-            const resp = lsp_edit.handleRename(allocator, root, id, cached_symbols, project_root) catch |err| {
-                lspLog("rename error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "rename",
+                lsp_edit.handleRename(allocator, root, id, cached_symbols, project_root));
 
         } else if (std.mem.eql(u8, method, "textDocument/signatureHelp")) {
             if (!initialized) continue;
-            const resp = lsp_view.handleSignatureHelp(allocator, root, id, cached_symbols, &doc_store) catch |err| {
-                lspLog("signatureHelp error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "signatureHelp",
+                lsp_view.handleSignatureHelp(allocator, root, id, cached_symbols, &doc_store));
 
         } else if (std.mem.eql(u8, method, "textDocument/formatting")) {
             if (!initialized) continue;
-            const resp = lsp_edit.handleFormatting(allocator, root, id) catch |err| {
-                lspLog("formatting error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "formatting",
+                lsp_edit.handleFormatting(allocator, root, id));
 
         } else if (std.mem.eql(u8, method, "workspace/symbol")) {
             if (!initialized) continue;
-            const resp = lsp_view.handleWorkspaceSymbol(allocator, root, id, cached_symbols) catch |err| {
-                lspLog("workspaceSymbol error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "workspaceSymbol",
+                lsp_view.handleWorkspaceSymbol(allocator, root, id, cached_symbols));
 
         } else if (std.mem.eql(u8, method, "textDocument/codeAction")) {
             if (!initialized) continue;
-            const resp = lsp_edit.handleCodeAction(allocator, root, id, cached_diags) catch |err| {
-                lspLog("codeAction error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyArrayResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLspArray(allocator, stdout, id, "codeAction",
+                lsp_edit.handleCodeAction(allocator, root, id, cached_diags));
 
         } else if (std.mem.eql(u8, method, "textDocument/inlayHint")) {
             if (!initialized or !enable_inlay_hints) {
@@ -391,43 +363,23 @@ pub fn serve(allocator: std.mem.Allocator) !void {
                 }
                 continue;
             }
-            const resp = lsp_view.handleInlayHint(allocator, root, id, cached_symbols, &doc_store) catch |err| {
-                lspLog("inlayHint error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "inlayHint",
+                lsp_view.handleInlayHint(allocator, root, id, cached_symbols, &doc_store));
 
         } else if (std.mem.eql(u8, method, "textDocument/documentHighlight")) {
             if (!initialized) continue;
-            const resp = lsp_nav.handleDocumentHighlight(allocator, root, id, &doc_store) catch |err| {
-                lspLog("documentHighlight error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "documentHighlight",
+                lsp_nav.handleDocumentHighlight(allocator, root, id, &doc_store));
 
         } else if (std.mem.eql(u8, method, "textDocument/foldingRange")) {
             if (!initialized) continue;
-            const resp = lsp_view.handleFoldingRange(allocator, root, id, &doc_store) catch |err| {
-                lspLog("foldingRange error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "foldingRange",
+                lsp_view.handleFoldingRange(allocator, root, id, &doc_store));
 
         } else if (std.mem.eql(u8, method, "textDocument/semanticTokens/full")) {
             if (!initialized) continue;
-            const resp = lsp_semantic.handleSemanticTokens(allocator, root, id) catch |err| {
-                lspLog("semanticTokens error: {}", .{err});
-                try writeMessage(stdout, try buildEmptyResponse(allocator, id));
-                continue;
-            };
-            defer allocator.free(resp);
-            try writeMessage(stdout, resp);
+            try dispatchLsp(allocator, stdout, id, "semanticTokens",
+                lsp_semantic.handleSemanticTokens(allocator, root, id));
 
         } else {
             // Unknown request — respond with null result

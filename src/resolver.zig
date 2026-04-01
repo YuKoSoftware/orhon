@@ -158,21 +158,7 @@ pub const TypeResolver = struct {
             .blueprint_decl => |b| {
                 try scope.define(b.name, RT{ .named = b.name });
             },
-            .const_decl => |v| {
-                const t = if (v.type_annotation) |ta|
-                    try self.resolveTypeAnnotation(ta)
-                else
-                    RT.inferred;
-                try scope.define(v.name, t);
-            },
             .var_decl => |v| {
-                const t = if (v.type_annotation) |ta|
-                    try self.resolveTypeAnnotation(ta)
-                else
-                    RT.inferred;
-                try scope.define(v.name, t);
-            },
-            .compt_decl => |v| {
                 const t = if (v.type_annotation) |ta|
                     try self.resolveTypeAnnotation(ta)
                 else
@@ -299,39 +285,6 @@ pub const TypeResolver = struct {
                 if (scope.parent != null and scope.vars.contains(v.name)) {
                     try self.reporter.reportFmt(self.nodeLoc(node), "variable '{s}' already declared in this scope", .{v.name});
                 }
-                const val_type = try self.resolveExpr(v.value, scope);
-                const resolved = if (v.type_annotation) |t|
-                    try self.resolveTypeAnnotationInScope(t, scope)
-                else
-                    val_type;
-                if (v.type_annotation == null) {
-                    if (val_type == .primitive and
-                        (val_type.primitive == .numeric_literal or
-                        val_type.primitive == .float_literal))
-                    {
-                        try self.reporter.report(.{
-                            .message = "numeric literal requires explicit type",
-                            .loc = self.nodeLoc(node),
-                        });
-                    }
-                } else {
-                    // Type mismatch: annotation vs value
-                    try self.checkAssignCompat(resolved, val_type, node);
-                }
-                try scope.define(v.name, resolved);
-            },
-            .const_decl => |v| {
-                if (v.type_annotation) |t| {
-                    try self.validateType(t, scope);
-                    // Reference types (const& T, mut& T) are only valid in function parameters
-                    if (t.* == .type_ptr) {
-                        try self.reporter.reportFmt(self.nodeLoc(node), "reference type not allowed in variable declaration — use '{s}' by value or as a function parameter",
-                            .{v.name});
-                    }
-                }
-                if (scope.parent != null and scope.vars.contains(v.name)) {
-                    try self.reporter.reportFmt(self.nodeLoc(node), "variable '{s}' already declared in this scope", .{v.name});
-                }
                 // bridge consts have no value — skip value type checking
                 if (v.is_bridge) {
                     const resolved = if (v.type_annotation) |t|
@@ -361,24 +314,13 @@ pub const TypeResolver = struct {
                     try scope.define(v.name, resolved);
                 }
             },
-            .compt_decl => |v| {
-                if (v.type_annotation) |t| {
-                    try self.validateType(t, scope);
-                }
-                const val_type = try self.resolveExpr(v.value, scope);
-                const resolved = if (v.type_annotation) |t|
-                    try self.resolveTypeAnnotationInScope(t, scope)
-                else
-                    val_type;
-                try scope.define(v.name, resolved);
-            },
             else => {},
         }
     }
 
     fn resolveStatement(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
         switch (node.*) {
-            .var_decl, .const_decl, .compt_decl => try self.resolveNode(node, scope),
+            .var_decl => try self.resolveNode(node, scope),
             .return_stmt => |r| {
                 if (r.value) |v| {
                     const val_type = try self.resolveExpr(v, scope);

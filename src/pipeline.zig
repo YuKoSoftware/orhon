@@ -184,7 +184,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
             for (ast.program.top_level) |node| {
                 switch (node.*) {
-                    .var_decl, .const_decl, .compt_decl => |v| {
+                    .var_decl => |v| {
                         if (std.mem.eql(u8, v.name, "main")) {
                             try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), "'main' is reserved for the executable entry point", .{});
                         }
@@ -1002,9 +1002,6 @@ fn collectBridgeNames(ast: *parser.Node, allocator: std.mem.Allocator) ![][]cons
         switch (node.*) {
             .func_decl => |f| {
                 if (f.context == .bridge) try names.append(allocator, try allocator.dupe(u8, f.name));
-            },
-            .const_decl => |v| {
-                if (v.is_bridge) try names.append(allocator, try allocator.dupe(u8, v.name));
             },
             .var_decl => |v| {
                 if (v.is_bridge) try names.append(allocator, try allocator.dupe(u8, v.name));

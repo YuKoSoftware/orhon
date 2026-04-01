@@ -64,7 +64,7 @@ pub const MirNode = struct {
     is_compt: bool = false,
     /// Literal sub-kind (int, float, string, bool, null, error).
     literal_kind: ?LiteralKind = null,
-    /// Const declaration flag (true for const_decl, false for var_decl).
+    /// Const declaration flag (true for constant, false for mutable).
     is_const: bool = false,
     /// Type annotation AST node (borrowed pointer — lives as long as AST arena).
     type_annotation: ?*parser.Node = null,
@@ -190,7 +190,7 @@ pub const MirKind = enum {
     struct_def,
     enum_def,
     bitfield_def,
-    var_decl, // var_decl, const_decl, compt_decl
+    var_decl,
     test_def,
     destruct,
     import,

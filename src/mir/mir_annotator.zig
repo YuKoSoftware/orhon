@@ -34,7 +34,7 @@ pub const MirAnnotator = struct {
     current_func_name: ?[]const u8 = null,
     /// All module DeclTables — for cross-module function signature resolution.
     all_decls: ?*const std.StringHashMap(*declarations.DeclTable) = null,
-    /// Variable names declared via const_decl (for const auto-borrow detection).
+    /// Variable names declared as constant (for const auto-borrow detection).
     const_vars: std.StringHashMapUnmanaged(void) = .{},
     /// Function name → set of param indices that need *const T in Zig output.
     /// Populated by annotateCallCoercions when a const non-primitive arg is detected.
@@ -138,7 +138,7 @@ pub const MirAnnotator = struct {
                 }
             },
 
-            .var_decl, .const_decl => |v| {
+            .var_decl => |v| {
                 const t = self.lookupType(node) orelse blk: {
                     // Fall back: resolve from annotation or value
                     if (v.type_annotation) |ta| {
@@ -160,7 +160,7 @@ pub const MirAnnotator = struct {
                 try self.recordNode(node, t);
                 try self.var_types.put(self.allocator, v.name, info);
                 // Track const variables for const auto-borrow at call sites
-                if (node.* == .const_decl) {
+                if (v.mutability == .constant) {
                     try self.const_vars.put(self.allocator, v.name, {});
                 }
 
@@ -178,12 +178,6 @@ pub const MirAnnotator = struct {
                 try self.annotateNode(v.value);
                 // Coercion pass: detect wrapping needed for declarations
                 try self.annotateDeclCoercions(v.value, t);
-            },
-
-            .compt_decl => |v| {
-                const t = self.lookupType(node) orelse RT.unknown;
-                try self.recordNode(node, t);
-                try self.annotateNode(v.value);
             },
 
             .return_stmt => |r| {
@@ -830,8 +824,8 @@ test "resolveCallSig - cross-module lookup" {
 }
 
 test "const auto-borrow - const_vars tracking" {
-    // Verify that const_vars contains the name after annotating a const_decl,
-    // but NOT the name after annotating a var_decl.
+    // Verify that const_vars contains the name after annotating a constant var_decl,
+    // but NOT the name after annotating a mutable var_decl.
     const alloc = std.testing.allocator;
     var decls = declarations.DeclTable.init(alloc);
     defer decls.deinit();
@@ -851,7 +845,7 @@ test "const auto-borrow - const_vars tracking" {
     const val_node = try a.create(parser.Node);
     val_node.* = .{ .identifier = "someVal" };
     const const_node = try a.create(parser.Node);
-    const_node.* = .{ .const_decl = .{ .name = "c", .type_annotation = null, .value = val_node, .is_pub = false } };
+    const_node.* = .{ .var_decl = .{ .name = "c", .type_annotation = null, .value = val_node, .is_pub = false, .mutability = .constant } };
     try type_map.put(alloc, const_node, RT{ .named = "Vec2" });
     try type_map.put(alloc, val_node, RT{ .named = "Vec2" });
 

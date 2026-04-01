@@ -96,26 +96,8 @@ pub const BorrowChecker = struct {
         self.current_node = node;
         switch (node.*) {
             .var_decl => |v| {
-                // If the type is mut& T and value is mut& x, it's a mutable borrow
-                // If value is const& x, it's always an immutable borrow
-                // NLL: borrow_ref is the declared variable name
-                if (v.value.* == .mut_borrow_expr) {
-                    const is_mut = isMutableBorrowType(v.type_annotation);
-                    if (extractBorrowTarget(v.value.mut_borrow_expr)) |target| {
-                        try self.addBorrow(target.variable, target.field, is_mut, v.name);
-                    }
-                } else if (v.value.* == .const_borrow_expr) {
-                    if (extractBorrowTarget(v.value.const_borrow_expr)) |target| {
-                        try self.addBorrow(target.variable, target.field, false, v.name);
-                    }
-                } else {
-                    try self.checkExpr(v.value);
-                }
-            },
-            .const_decl => |v| {
                 // Borrow mutability comes from the type annotation (mut& T vs const& T),
                 // not from const/var — const binding to mut& T is still a mutable borrow
-                // const& x always produces an immutable borrow
                 // NLL: borrow_ref is the declared variable name
                 if (v.value.* == .mut_borrow_expr) {
                     const is_mut = isMutableBorrowType(v.type_annotation);
@@ -166,9 +148,6 @@ pub const BorrowChecker = struct {
             },
             .defer_stmt => |d| {
                 try self.checkNode(d.body);
-            },
-            .compt_decl => |v| {
-                try self.checkExpr(v.value);
             },
             .destruct_decl => |d| {
                 try self.checkExpr(d.value);
@@ -448,12 +427,6 @@ fn collectIdentifiers(node: *parser.Node, map: *std.StringHashMapUnmanaged(usize
         },
         .var_decl => |v| {
             // Scan value expression, not the declared name (that's a definition)
-            collectIdentifiers(v.value, map, allocator, stmt_idx);
-        },
-        .const_decl => |v| {
-            collectIdentifiers(v.value, map, allocator, stmt_idx);
-        },
-        .compt_decl => |v| {
             collectIdentifiers(v.value, map, allocator, stmt_idx);
         },
         .destruct_decl => |d| {

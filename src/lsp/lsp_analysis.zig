@@ -435,31 +435,16 @@ pub fn extractSymbols(
             },
             .var_decl => |v| {
                 const loc = nodeLocInfo(locs, node) orelse continue;
+                const sym_kind: SymbolKind = if (v.mutability == .constant) .constant else .variable;
+                const default_label = if (v.mutability == .constant) "const" else "var";
                 const detail = if (table.vars.get(v.name)) |sig| blk: {
-                    if (sig.type_) |t| break :blk formatType(allocator, t) catch try allocator.dupe(u8, "var");
-                    break :blk try allocator.dupe(u8, "var");
-                } else try allocator.dupe(u8, "var");
+                    if (sig.type_) |t| break :blk formatType(allocator, t) catch try allocator.dupe(u8, default_label);
+                    break :blk try allocator.dupe(u8, default_label);
+                } else try allocator.dupe(u8, default_label);
                 try symbols.append(allocator, .{
                     .name = try allocator.dupe(u8, v.name),
                     .detail = detail,
-                    .kind = .variable,
-                    .module = try allocator.dupe(u8, mod_name),
-                    .parent = "",
-                    .uri = try makeUri(allocator, source_file, project_root),
-                    .line = if (loc.line > 0) loc.line - 1 else 0,
-                    .col = if (loc.col > 0) loc.col - 1 else 0,
-                });
-            },
-            .const_decl => |cd| {
-                const loc = nodeLocInfo(locs, node) orelse continue;
-                const detail = if (table.vars.get(cd.name)) |sig| blk: {
-                    if (sig.type_) |t| break :blk formatType(allocator, t) catch try allocator.dupe(u8, "const");
-                    break :blk try allocator.dupe(u8, "const");
-                } else try allocator.dupe(u8, "const");
-                try symbols.append(allocator, .{
-                    .name = try allocator.dupe(u8, cd.name),
-                    .detail = detail,
-                    .kind = .constant,
+                    .kind = sym_kind,
                     .module = try allocator.dupe(u8, mod_name),
                     .parent = "",
                     .uri = try makeUri(allocator, source_file, project_root),
@@ -486,31 +471,16 @@ fn extractLocals(
         switch (stmt.*) {
             .var_decl => |v| {
                 const loc = nodeLocInfo(locs, stmt) orelse continue;
+                const sym_kind: SymbolKind = if (v.mutability == .constant) .constant else .variable;
+                const default_label = if (v.mutability == .constant) "const" else "var";
                 const detail = if (v.type_annotation) |ta|
                     nodeTypeStr(ta)
                 else
-                    "var";
+                    default_label;
                 try symbols.append(allocator, .{
                     .name = try allocator.dupe(u8, v.name),
                     .detail = try allocator.dupe(u8, detail),
-                    .kind = .variable,
-                    .module = try allocator.dupe(u8, mod_name),
-                    .parent = try allocator.dupe(u8, func_name),
-                    .uri = try allocator.dupe(u8, uri),
-                    .line = if (loc.line > 0) loc.line - 1 else 0,
-                    .col = if (loc.col > 0) loc.col - 1 else 0,
-                });
-            },
-            .const_decl => |c| {
-                const loc = nodeLocInfo(locs, stmt) orelse continue;
-                const detail = if (c.type_annotation) |ta|
-                    nodeTypeStr(ta)
-                else
-                    "const";
-                try symbols.append(allocator, .{
-                    .name = try allocator.dupe(u8, c.name),
-                    .detail = try allocator.dupe(u8, detail),
-                    .kind = .constant,
+                    .kind = sym_kind,
                     .module = try allocator.dupe(u8, mod_name),
                     .parent = try allocator.dupe(u8, func_name),
                     .uri = try allocator.dupe(u8, uri),

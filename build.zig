@@ -56,6 +56,7 @@ pub fn build(b: *std.Build) void {
         "src/borrow.zig",
         "src/thread_safety.zig",
         "src/propagation.zig",
+        "src/scope.zig",
         "src/types.zig",
         "src/errors.zig",
         "src/builtins.zig",

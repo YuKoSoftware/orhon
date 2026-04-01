@@ -10,6 +10,7 @@ const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
+const scope_mod = @import("scope.zig");
 
 /// Ownership state for a variable in current scope
 pub const VarState = struct {
@@ -22,24 +23,21 @@ pub const VarState = struct {
 
 /// Ownership scope — tracks variable states
 pub const OwnershipScope = struct {
-    vars: std.StringHashMap(VarState),
-    parent: ?*OwnershipScope,
-    allocator: std.mem.Allocator,
+    base: scope_mod.ScopeBase(VarState),
 
     pub fn init(allocator: std.mem.Allocator, parent: ?*OwnershipScope) OwnershipScope {
-        return .{
-            .vars = std.StringHashMap(VarState).init(allocator),
-            .parent = parent,
-            .allocator = allocator,
-        };
+        return .{ .base = scope_mod.ScopeBase(VarState).init(
+            allocator,
+            if (parent) |p| &p.base else null,
+        ) };
     }
 
     pub fn deinit(self: *OwnershipScope) void {
-        self.vars.deinit();
+        self.base.deinit();
     }
 
     pub fn define(self: *OwnershipScope, name: []const u8, is_primitive: bool) !void {
-        try self.vars.put(name, .{
+        try self.base.define(name, .{
             .name = name,
             .state = .owned,
             .is_primitive = is_primitive,
@@ -49,7 +47,7 @@ pub const OwnershipScope = struct {
     }
 
     pub fn defineTyped(self: *OwnershipScope, name: []const u8, is_primitive: bool, type_name: []const u8, is_const: bool) !void {
-        try self.vars.put(name, .{
+        try self.base.define(name, .{
             .name = name,
             .state = .owned,
             .is_primitive = is_primitive,
@@ -59,17 +57,14 @@ pub const OwnershipScope = struct {
     }
 
     pub fn getState(self: *const OwnershipScope, name: []const u8) ?VarState {
-        if (self.vars.get(name)) |v| return v;
-        if (self.parent) |p| return p.getState(name);
-        return null;
+        return self.base.lookup(name);
     }
 
     pub fn setState(self: *OwnershipScope, name: []const u8, state: types.OwnershipState) bool {
-        if (self.vars.getPtr(name)) |v| {
+        if (self.base.lookupPtr(name)) |v| {
             v.state = state;
             return true;
         }
-        if (self.parent) |p| return p.setState(name, state);
         return false;
     }
 };
@@ -500,7 +495,7 @@ pub const OwnershipChecker = struct {
 
     fn snapshotScope(self: *OwnershipChecker, scope: *OwnershipScope) ![]StateEntry {
         var entries = std.ArrayListUnmanaged(StateEntry){};
-        var it = scope.vars.iterator();
+        var it = scope.base.vars.iterator();
         while (it.next()) |entry| {
             try entries.append(self.allocator, .{
                 .name = entry.key_ptr.*,

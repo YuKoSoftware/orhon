@@ -10,6 +10,7 @@ const K = @import("constants.zig");
 const types = @import("types.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
+const scope_mod = @import("scope.zig");
 
 /// A tracked union variable — needs handling before scope exit
 pub const UnionVar = struct {
@@ -22,26 +23,25 @@ pub const UnionVar = struct {
 
 /// Scope frame for propagation tracking
 pub const PropagationScope = struct {
-    vars: std.StringHashMap(UnionVar),
-    parent: ?*PropagationScope,
-    allocator: std.mem.Allocator,
+    base: scope_mod.ScopeBase(UnionVar),
     func_returns_error: bool, // can this function propagate?
 
     pub fn init(allocator: std.mem.Allocator, parent: ?*PropagationScope, func_returns_error: bool) PropagationScope {
         return .{
-            .vars = std.StringHashMap(UnionVar).init(allocator),
-            .parent = parent,
-            .allocator = allocator,
+            .base = scope_mod.ScopeBase(UnionVar).init(
+                allocator,
+                if (parent) |p| &p.base else null,
+            ),
             .func_returns_error = func_returns_error,
         };
     }
 
     pub fn deinit(self: *PropagationScope) void {
-        self.vars.deinit();
+        self.base.deinit();
     }
 
     pub fn define(self: *PropagationScope, name: []const u8, is_error: bool, line: usize, col: usize) !void {
-        try self.vars.put(name, .{
+        try self.base.define(name, .{
             .name = name,
             .handled = false,
             .is_error_union = is_error,
@@ -51,28 +51,22 @@ pub const PropagationScope = struct {
     }
 
     pub fn markHandled(self: *PropagationScope, name: []const u8) void {
-        if (self.vars.getPtr(name)) |v| {
+        if (self.base.lookupPtr(name)) |v| {
             v.handled = true;
-            return;
         }
-        if (self.parent) |p| p.markHandled(name);
     }
 
     /// Check if a variable is tracked as a union in this scope or any parent
     pub fn isTracked(self: *const PropagationScope, name: []const u8) ?UnionVar {
-        if (self.vars.get(name)) |v| return v;
-        if (self.parent) |p| return p.isTracked(name);
-        return null;
+        return self.base.lookup(name);
     }
 
     /// Reset a variable to unhandled (e.g. after reassignment to a new union value)
     pub fn resetHandled(self: *PropagationScope, name: []const u8, is_error: bool) void {
-        if (self.vars.getPtr(name)) |v| {
+        if (self.base.lookupPtr(name)) |v| {
             v.handled = false;
             v.is_error_union = is_error;
-            return;
         }
-        if (self.parent) |p| p.resetHandled(name, is_error);
     }
 };
 
@@ -399,7 +393,7 @@ pub const PropagationChecker = struct {
 
     /// Check scope exit — unhandled unions either propagate or error
     fn checkScopeExit(self: *PropagationChecker, scope: *PropagationScope) anyerror!void {
-        var it = scope.vars.iterator();
+        var it = scope.base.vars.iterator();
         while (it.next()) |entry| {
             const uvar = entry.value_ptr.*;
             if (!uvar.handled) {
@@ -648,7 +642,7 @@ test "propagation - is not check marks union as handled" {
     try checker.checkStatement(&if_stmt, &scope);
 
     // result should be marked as handled
-    const uvar = scope.vars.get("result").?;
+    const uvar = scope.base.vars.get("result").?;
     try std.testing.expect(uvar.handled);
 }
 
@@ -673,7 +667,7 @@ test "propagation - return marks union as handled" {
     var ret = parser.Node{ .return_stmt = .{ .value = &result_id } };
     try checker.checkStatement(&ret, &scope);
 
-    const uvar = scope.vars.get("result").?;
+    const uvar = scope.base.vars.get("result").?;
     try std.testing.expect(uvar.handled);
 }
 
@@ -703,7 +697,7 @@ test "propagation - assignment propagation tracks union" {
     } };
     try checker.checkStatement(&y_decl, &scope);
 
-    const y_var = scope.vars.get("y").?;
+    const y_var = scope.base.vars.get("y").?;
     try std.testing.expect(!y_var.handled);
     try std.testing.expect(y_var.is_error_union);
 }
@@ -748,7 +742,7 @@ test "propagation - reassignment resets handled status" {
     // Define result, mark as handled
     try scope.define("result", true, 1, 1);
     scope.markHandled("result");
-    try std.testing.expect(scope.vars.get("result").?.handled);
+    try std.testing.expect(scope.base.vars.get("result").?.handled);
 
     // Reassign: result = divide(5, 0) — should reset to unhandled
     var result_id = parser.Node{ .identifier = "result" };
@@ -761,7 +755,7 @@ test "propagation - reassignment resets handled status" {
     var assign = parser.Node{ .assignment = .{ .op = "=", .left = &result_id, .right = &call_node } };
     try checker.checkStatement(&assign, &scope);
 
-    try std.testing.expect(!scope.vars.get("result").?.handled);
+    try std.testing.expect(!scope.base.vars.get("result").?.handled);
 }
 
 test "propagation - compound condition handles multiple unions" {
@@ -807,8 +801,8 @@ test "propagation - compound condition handles multiple unions" {
     try checker.checkStatement(&if_stmt, &scope);
 
     // Both should be marked as handled
-    try std.testing.expect(scope.vars.get("x").?.handled);
-    try std.testing.expect(scope.vars.get("y").?.handled);
+    try std.testing.expect(scope.base.vars.get("x").?.handled);
+    try std.testing.expect(scope.base.vars.get("y").?.handled);
 }
 
 test "propagation - scope isTracked walks parents" {

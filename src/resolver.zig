@@ -11,6 +11,7 @@ const errors = @import("errors.zig");
 const module = @import("module.zig");
 const K = @import("constants.zig");
 const types = @import("types.zig");
+const scope_mod = @import("scope.zig");
 
 const RT = types.ResolvedType;
 
@@ -29,33 +30,7 @@ pub const TypeBinding = struct {
 };
 
 /// Scope for variable type tracking
-pub const Scope = struct {
-    vars: std.StringHashMap(RT),
-    parent: ?*Scope,
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, parent: ?*Scope) Scope {
-        return .{
-            .vars = std.StringHashMap(RT).init(allocator),
-            .parent = parent,
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *Scope) void {
-        self.vars.deinit();
-    }
-
-    pub fn lookup(self: *const Scope, name_str: []const u8) ?RT {
-        if (self.vars.get(name_str)) |t| return t;
-        if (self.parent) |p| return p.lookup(name_str);
-        return null;
-    }
-
-    pub fn define(self: *Scope, name_str: []const u8, t: RT) !void {
-        try self.vars.put(name_str, t);
-    }
-};
+pub const Scope = scope_mod.ScopeBase(RT);
 
 /// The type resolver
 pub const TypeResolver = struct {

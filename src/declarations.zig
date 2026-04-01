@@ -202,13 +202,7 @@ pub const DeclCollector = struct {
     }
 
     fn nodeLoc(self: *const DeclCollector, node: *parser.Node) ?errors.SourceLoc {
-        if (self.locs) |l| {
-            if (l.get(node)) |loc| {
-                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
-                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
-            }
-        }
-        return null;
+        return module.resolveNodeLoc(self.locs, self.file_offsets, node);
     }
 
     pub fn deinit(self: *DeclCollector) void {

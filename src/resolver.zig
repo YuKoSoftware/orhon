@@ -12,7 +12,6 @@ const module = @import("module.zig");
 const K = @import("constants.zig");
 const types = @import("types.zig");
 const scope_mod = @import("scope.zig");
-
 const RT = types.ResolvedType;
 
 /// Primitive type name candidates for "did you mean?" suggestions on unknown types.
@@ -63,13 +62,7 @@ pub const TypeResolver = struct {
     }
 
     fn nodeLoc(self: *const TypeResolver, node: *parser.Node) ?errors.SourceLoc {
-        if (self.locs) |l| {
-            if (l.get(node)) |loc| {
-                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
-                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
-            }
-        }
-        return null;
+        return module.resolveNodeLoc(self.locs, self.file_offsets, node);
     }
 
     pub fn deinit(self: *TypeResolver) void {

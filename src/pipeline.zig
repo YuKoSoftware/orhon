@@ -181,18 +181,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             const is_exe = mod_ptr.build_type == .exe;
             var has_func_main = false;
 
-            // Helper to resolve source location for a node
-            const loc_helper = struct {
-                fn nodeLoc(locs: ?*const parser.LocMap, offsets: []const module.FileOffset, node: *parser.Node) ?errors.SourceLoc {
-                    if (locs) |l| {
-                        if (l.get(node)) |loc| {
-                            const resolved = module.resolveFileLoc(offsets, loc.line);
-                            return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
-                        }
-                    }
-                    return null;
-                }
-            };
 
             for (ast.program.top_level) |node| {
                 switch (node.*) {
@@ -201,7 +189,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                             const msg = try std.fmt.allocPrint(allocator,
                                 "'main' is reserved for the executable entry point", .{});
                             defer allocator.free(msg);
-                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                            try reporter.report(.{ .message = msg, .loc = module.resolveNodeLoc(locs_ptr, file_offsets, node) });
                         }
                     },
                     .struct_decl => |s| {
@@ -209,7 +197,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                             const msg = try std.fmt.allocPrint(allocator,
                                 "'main' is reserved for the executable entry point", .{});
                             defer allocator.free(msg);
-                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                            try reporter.report(.{ .message = msg, .loc = module.resolveNodeLoc(locs_ptr, file_offsets, node) });
                         }
                     },
                     .enum_decl => |e| {
@@ -217,7 +205,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                             const msg = try std.fmt.allocPrint(allocator,
                                 "'main' is reserved for the executable entry point", .{});
                             defer allocator.free(msg);
-                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                            try reporter.report(.{ .message = msg, .loc = module.resolveNodeLoc(locs_ptr, file_offsets, node) });
                         }
                     },
                     .blueprint_decl => |b| {
@@ -225,7 +213,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                             const msg = try std.fmt.allocPrint(allocator,
                                 "'main' is reserved for the executable entry point", .{});
                             defer allocator.free(msg);
-                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                            try reporter.report(.{ .message = msg, .loc = module.resolveNodeLoc(locs_ptr, file_offsets, node) });
                         }
                     },
                     .bitfield_decl => |bf| {
@@ -233,7 +221,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                             const msg = try std.fmt.allocPrint(allocator,
                                 "'main' is reserved for the executable entry point", .{});
                             defer allocator.free(msg);
-                            try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                            try reporter.report(.{ .message = msg, .loc = module.resolveNodeLoc(locs_ptr, file_offsets, node) });
                         }
                     },
                     .func_decl => |f| {
@@ -242,7 +230,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                                 const msg = try std.fmt.allocPrint(allocator,
                                     "func main() is only allowed in executable modules", .{});
                                 defer allocator.free(msg);
-                                try reporter.report(.{ .message = msg, .loc = loc_helper.nodeLoc(locs_ptr, file_offsets, node) });
+                                try reporter.report(.{ .message = msg, .loc = module.resolveNodeLoc(locs_ptr, file_offsets, node) });
                             } else {
                                 has_func_main = true;
                             }

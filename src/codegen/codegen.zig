@@ -178,13 +178,7 @@ pub const CodeGen = struct {
     }
 
     pub fn nodeLoc(self: *const CodeGen, node: *parser.Node) ?errors.SourceLoc {
-        if (self.locs) |l| {
-            if (l.get(node)) |loc| {
-                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
-                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
-            }
-        }
-        return null;
+        return module.resolveNodeLoc(self.locs, self.file_offsets, node);
     }
 
     /// Source location from MirNode — convenience wrapper over nodeLoc.

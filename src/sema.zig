@@ -1,6 +1,5 @@
 // sema.zig — Shared semantic analysis context
 // Holds the common state needed by all validation passes (6–9).
-// Eliminates repeated field wiring and duplicated nodeLoc() functions.
 
 const std = @import("std");
 const parser = @import("parser.zig");
@@ -18,15 +17,8 @@ pub const SemanticContext = struct {
     file_offsets: []const module.FileOffset,
 
     /// Resolve an AST node to its original source location.
-    /// Shared by all passes — replaces the per-checker nodeLoc() copies.
     pub fn nodeLoc(self: *const SemanticContext, node: *parser.Node) ?errors.SourceLoc {
-        if (self.locs) |l| {
-            if (l.get(node)) |loc| {
-                const resolved = module.resolveFileLoc(self.file_offsets, loc.line);
-                return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
-            }
-        }
-        return null;
+        return module.resolveNodeLoc(self.locs, self.file_offsets, node);
     }
 
     /// Create a minimal context for unit tests.

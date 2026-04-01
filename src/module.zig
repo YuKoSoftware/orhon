@@ -61,6 +61,18 @@ pub fn resolveFileLoc(file_offsets: []const FileOffset, combined_line: usize) st
     return .{ .file = off.file, .line = combined_line - off.start_line + off.original_start };
 }
 
+/// Resolve an AST node to its original source location via the location map.
+/// Single implementation shared by all compiler passes.
+pub fn resolveNodeLoc(locs: ?*const parser.LocMap, file_offsets: []const FileOffset, node: *parser.Node) ?errors.SourceLoc {
+    if (locs) |l| {
+        if (l.get(node)) |loc| {
+            const resolved = resolveFileLoc(file_offsets, loc.line);
+            return .{ .file = resolved.file, .line = resolved.line, .col = loc.col };
+        }
+    }
+    return null;
+}
+
 /// A resolved module — one or more .orh files sharing the same module name
 pub const Module = struct {
     name: []const u8,

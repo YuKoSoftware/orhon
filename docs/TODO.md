@@ -83,14 +83,11 @@ simplify the compiler without removing features.
 
 **Medium — cross-cutting but mechanical:**
 
-- Generic `ScopeBase(V)`. `resolver.zig`, `ownership.zig`, `propagation.zig` each
-  implement identical scope with `init/deinit/lookup/define` + parent-chain traversal.
-  Only the value type differs.
-- Consolidate `nodeLoc()`. Five copies across resolver, declarations, pipeline,
-  ownership, borrow. `sema.zig` has the canonical version — delegate through
-  `SemanticContext` everywhere.
+- ~~Generic `ScopeBase(V)` — done (v0.14.2, `src/scope.zig`)~~
+- ~~Consolidate `nodeLoc()` — done (v0.14.2, `module.resolveNodeLoc()`)~~
 - `TypeResolver` → `SemanticContext`. Every other checker takes `SemanticContext`.
-  TypeResolver takes individual fields. Standardize.
+  TypeResolver takes individual fields. Standardize. (Deferred — 183 mechanical
+  `self.X` → `self.ctx.X` changes for cosmetic consistency.)
 
 **Larger — needs careful planning:**
 
@@ -99,10 +96,10 @@ simplify the compiler without removing features.
 - `FuncDecl` flags → context enum. `is_compt`, `is_bridge`, `is_thread` are mutually
   exclusive. Replace with `context: enum { normal, compt, bridge, thread }`.
 - Merge `buildZigContent()`/`buildZigContentMulti()` shared logic.
-- `hashInterface()` in `cache.zig` — 6 nearly identical blocks. Generic helper.
+- ~~`hashInterface()` in `cache.zig` — done (v0.14.2, generic helpers)~~
 - Binary operator / builtin name enums in `constants.zig`.
 - Remove AST-path remnants in codegen if fully replaced by MIR path.
-- Unify union wrapping in codegen — AST and MIR variants share same logic.
+- ~~Unify union wrapping in codegen — done (v0.14.2, shared operator maps)~~
 - Standardize `catch` patterns across infrastructure.
 
 ---

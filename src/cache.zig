@@ -363,48 +363,21 @@ pub fn hashInterface(decls: *const declarations.DeclTable) u64 {
     var seed: u64 = 0;
 
     // Category 0x01: public functions
-    seed = XxHash3.hash(seed, &[_]u8{0x01});
-    {
-        var names: [256][]const u8 = undefined;
-        var count: usize = 0;
-        var it = decls.funcs.iterator();
-        while (it.next()) |entry| {
-            if (!entry.value_ptr.is_pub) continue;
-            if (count < 256) {
-                names[count] = entry.key_ptr.*;
-                count += 1;
-            }
+    const func_names = collectPublicNames(declarations.FuncSig, &decls.funcs);
+    seed = hashCategory(seed, 0x01, func_names.get(), decls.funcs, struct {
+        fn hash(s: u64, sig: declarations.FuncSig) u64 {
+            var h = s;
+            for (sig.params) |param| h = hashResolvedType(h, param.type_);
+            h = hashResolvedType(h, sig.return_type);
+            return XxHash3.hash(h, &[_]u8{ @intFromBool(sig.is_compt), @intFromBool(sig.is_thread) });
         }
-        sortNames(names[0..count]);
-        for (names[0..count]) |name| {
-            const sig = decls.funcs.get(name).?;
-            seed = XxHash3.hash(seed, name);
-            for (sig.params) |param| {
-                seed = hashResolvedType(seed, param.type_);
-            }
-            seed = hashResolvedType(seed, sig.return_type);
-            seed = XxHash3.hash(seed, &[_]u8{ @intFromBool(sig.is_compt), @intFromBool(sig.is_thread) });
-        }
-    }
+    }.hash);
 
     // Category 0x02: public structs
-    seed = XxHash3.hash(seed, &[_]u8{0x02});
-    {
-        var names: [256][]const u8 = undefined;
-        var count: usize = 0;
-        var it = decls.structs.iterator();
-        while (it.next()) |entry| {
-            if (!entry.value_ptr.is_pub) continue;
-            if (count < 256) {
-                names[count] = entry.key_ptr.*;
-                count += 1;
-            }
-        }
-        sortNames(names[0..count]);
-        for (names[0..count]) |name| {
-            const sig = decls.structs.get(name).?;
-            seed = XxHash3.hash(seed, name);
-            // Sort fields by name for determinism
+    const struct_names = collectPublicNames(declarations.StructSig, &decls.structs);
+    seed = hashCategory(seed, 0x02, struct_names.get(), decls.structs, struct {
+        fn hash(s: u64, sig: declarations.StructSig) u64 {
+            var h = s;
             var field_names: [256][]const u8 = undefined;
             var fc: usize = 0;
             for (sig.fields) |field| {
@@ -415,38 +388,24 @@ pub fn hashInterface(decls: *const declarations.DeclTable) u64 {
             }
             sortNames(field_names[0..fc]);
             for (field_names[0..fc]) |fname| {
-                // Find field by name
                 for (sig.fields) |field| {
                     if (std.mem.eql(u8, field.name, fname)) {
-                        seed = XxHash3.hash(seed, field.name);
-                        seed = hashResolvedType(seed, field.type_);
-                        seed = XxHash3.hash(seed, &[_]u8{@intFromBool(field.is_pub)});
+                        h = XxHash3.hash(h, field.name);
+                        h = hashResolvedType(h, field.type_);
+                        h = XxHash3.hash(h, &[_]u8{@intFromBool(field.is_pub)});
                         break;
                     }
                 }
             }
+            return h;
         }
-    }
+    }.hash);
 
     // Category 0x03: public enums
-    seed = XxHash3.hash(seed, &[_]u8{0x03});
-    {
-        var names: [256][]const u8 = undefined;
-        var count: usize = 0;
-        var it = decls.enums.iterator();
-        while (it.next()) |entry| {
-            if (!entry.value_ptr.is_pub) continue;
-            if (count < 256) {
-                names[count] = entry.key_ptr.*;
-                count += 1;
-            }
-        }
-        sortNames(names[0..count]);
-        for (names[0..count]) |name| {
-            const sig = decls.enums.get(name).?;
-            seed = XxHash3.hash(seed, name);
-            seed = hashResolvedType(seed, sig.backing_type);
-            // Sort variant names
+    const enum_names = collectPublicNames(declarations.EnumSig, &decls.enums);
+    seed = hashCategory(seed, 0x03, enum_names.get(), decls.enums, struct {
+        fn hash(s: u64, sig: declarations.EnumSig) u64 {
+            var h = hashResolvedType(s, sig.backing_type);
             var vnames: [256][]const u8 = undefined;
             var vc: usize = 0;
             for (sig.variants) |v| {
@@ -456,30 +415,16 @@ pub fn hashInterface(decls: *const declarations.DeclTable) u64 {
                 }
             }
             sortNames(vnames[0..vc]);
-            for (vnames[0..vc]) |vname| {
-                seed = XxHash3.hash(seed, vname);
-            }
+            for (vnames[0..vc]) |vname| h = XxHash3.hash(h, vname);
+            return h;
         }
-    }
+    }.hash);
 
     // Category 0x04: public bitfields
-    seed = XxHash3.hash(seed, &[_]u8{0x04});
-    {
-        var names: [256][]const u8 = undefined;
-        var count: usize = 0;
-        var it = decls.bitfields.iterator();
-        while (it.next()) |entry| {
-            if (!entry.value_ptr.is_pub) continue;
-            if (count < 256) {
-                names[count] = entry.key_ptr.*;
-                count += 1;
-            }
-        }
-        sortNames(names[0..count]);
-        for (names[0..count]) |name| {
-            const sig = decls.bitfields.get(name).?;
-            seed = XxHash3.hash(seed, name);
-            seed = hashResolvedType(seed, sig.backing_type);
+    const bitfield_names = collectPublicNames(declarations.BitfieldSig, &decls.bitfields);
+    seed = hashCategory(seed, 0x04, bitfield_names.get(), decls.bitfields, struct {
+        fn hash(s: u64, sig: declarations.BitfieldSig) u64 {
+            var h = hashResolvedType(s, sig.backing_type);
             var fnames: [256][]const u8 = undefined;
             var fc: usize = 0;
             for (sig.flags) |flag| {
@@ -489,53 +434,86 @@ pub fn hashInterface(decls: *const declarations.DeclTable) u64 {
                 }
             }
             sortNames(fnames[0..fc]);
-            for (fnames[0..fc]) |flag| {
-                seed = XxHash3.hash(seed, flag);
-            }
+            for (fnames[0..fc]) |flag| h = XxHash3.hash(h, flag);
+            return h;
         }
-    }
+    }.hash);
 
     // Category 0x05: public variables/constants
-    seed = XxHash3.hash(seed, &[_]u8{0x05});
-    {
-        var names: [256][]const u8 = undefined;
-        var count: usize = 0;
-        var it = decls.vars.iterator();
-        while (it.next()) |entry| {
-            if (!entry.value_ptr.is_pub) continue;
-            if (count < 256) {
-                names[count] = entry.key_ptr.*;
-                count += 1;
-            }
+    const var_names = collectPublicNames(declarations.VarSig, &decls.vars);
+    seed = hashCategory(seed, 0x05, var_names.get(), decls.vars, struct {
+        fn hash(s: u64, sig: declarations.VarSig) u64 {
+            var h = s;
+            if (sig.type_) |t| h = hashResolvedType(h, t);
+            return XxHash3.hash(h, &[_]u8{ @intFromBool(sig.is_const), @intFromBool(sig.is_compt) });
         }
-        sortNames(names[0..count]);
-        for (names[0..count]) |name| {
-            const sig = decls.vars.get(name).?;
-            seed = XxHash3.hash(seed, name);
-            if (sig.type_) |t| seed = hashResolvedType(seed, t);
-            seed = XxHash3.hash(seed, &[_]u8{ @intFromBool(sig.is_const), @intFromBool(sig.is_compt) });
-        }
-    }
+    }.hash);
 
-    // Category 0x06: public type aliases
-    seed = XxHash3.hash(seed, &[_]u8{0x06});
-    {
-        var names: [256][]const u8 = undefined;
-        var count: usize = 0;
-        var it = decls.types.iterator();
-        while (it.next()) |entry| {
-            if (count < 256) {
-                names[count] = entry.key_ptr.*;
-                count += 1;
-            }
+    // Category 0x06: type aliases (all public — no is_pub field)
+    const type_names = collectAllNames([]const u8, &decls.types);
+    seed = hashCategory(seed, 0x06, type_names.get(), decls.types, struct {
+        fn hash(s: u64, _: []const u8) u64 {
+            return s;
         }
-        sortNames(names[0..count]);
-        for (names[0..count]) |name| {
-            seed = XxHash3.hash(seed, name);
-        }
-    }
+    }.hash);
 
     return seed;
+}
+
+/// Collected names buffer — wraps a fixed-size array with a count.
+const NameBuf = struct {
+    names: [256][]const u8,
+    count: usize,
+
+    fn get(self: *const NameBuf) []const []const u8 {
+        return self.names[0..self.count];
+    }
+};
+
+/// Collect sorted public names from a hashmap whose values have an `is_pub` field.
+fn collectPublicNames(comptime V: type, map: *const std.StringHashMap(V)) NameBuf {
+    var buf = NameBuf{ .names = undefined, .count = 0 };
+    var it = map.iterator();
+    while (it.next()) |entry| {
+        if (!entry.value_ptr.is_pub) continue;
+        if (buf.count < 256) {
+            buf.names[buf.count] = entry.key_ptr.*;
+            buf.count += 1;
+        }
+    }
+    sortNames(buf.names[0..buf.count]);
+    return buf;
+}
+
+/// Collect sorted names from a hashmap unconditionally (no is_pub filter).
+fn collectAllNames(comptime V: type, map: *const std.StringHashMap(V)) NameBuf {
+    var buf = NameBuf{ .names = undefined, .count = 0 };
+    var it = map.iterator();
+    while (it.next()) |entry| {
+        if (buf.count < 256) {
+            buf.names[buf.count] = entry.key_ptr.*;
+            buf.count += 1;
+        }
+    }
+    sortNames(buf.names[0..buf.count]);
+    return buf;
+}
+
+/// Hash a category: tag byte, then for each sorted name hash the name + per-entry details.
+fn hashCategory(
+    seed: u64,
+    tag: u8,
+    sorted_names: []const []const u8,
+    map: anytype,
+    comptime hashEntry: anytype,
+) u64 {
+    var s = XxHash3.hash(seed, &[_]u8{tag});
+    for (sorted_names) |name| {
+        const sig = map.get(name).?;
+        s = XxHash3.hash(s, name);
+        s = hashEntry(s, sig);
+    }
+    return s;
 }
 
 /// Sort a slice of string slices alphabetically in-place using insertion sort.

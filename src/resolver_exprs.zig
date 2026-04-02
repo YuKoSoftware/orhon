@@ -154,7 +154,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                     if (self.ctx.decls.funcs.get(fe.field)) |sig| {
                         return sig.return_type;
                     }
-                    // Static or instance method on a bridge struct.
+                    // Static or instance method on a struct.
                     // obj_id may be the struct type name (static: Renderer.create())
                     // or a variable whose type is a struct (instance: r.draw(m)).
                     const struct_name: []const u8 = blk: {

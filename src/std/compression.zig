@@ -1,5 +1,5 @@
-// compression.zig — gzip and zlib compression sidecar for std::compression
-// Wraps Zig's std.compress for Orhon bridge.
+// compression.zig — gzip and zlib compression implementation for std::compression
+// Wraps Zig's std.compress for Orhon.
 
 const std = @import("std");
 

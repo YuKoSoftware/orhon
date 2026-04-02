@@ -89,8 +89,6 @@ pub const Module = struct {
     ast_arena: ?std.heap.ArenaAllocator, // owns the AST memory; null until parsed
     locs: ?parser.LocMap,     // AST node → source location map
     file_offsets: []FileOffset, // maps combined-buffer lines → original files
-    has_bridges: bool = false, // true if module has bridge declarations (detected during parsing)
-    sidecar_path: ?[]const u8 = null, // validated .zig sidecar path (set during parsing if has_bridges)
     is_zig_module: bool = false, // true if auto-generated from .zig file
     zig_source_path: ?[]const u8 = null, // path to original .zig file
 };
@@ -126,8 +124,6 @@ pub const Resolver = struct {
                 for (mod.imports) |imp| self.allocator.free(imp);
                 self.allocator.free(mod.imports);
             }
-            // Free sidecar path (allocated with allocPrint in bridge detection)
-            if (mod.sidecar_path) |sp| self.allocator.free(sp);
             // Free zig source path (allocated with allocPrint in pipeline zig module wiring)
             if (mod.zig_source_path) |zp| self.allocator.free(zp);
         }

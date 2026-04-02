@@ -19,7 +19,6 @@ pub const MultiTarget = struct {
     c_includes: []const []const u8 = &.{}, // C headers from #cimport include field (for shared @cImport module)
     c_source_files: []const []const u8 = &.{}, // C/C++ source files from #cimport source field
     needs_cpp: bool = false, // true when C++ source files are present (.cpp/.cc)
-    has_bridges: bool = false, // module has bridge declarations needing named Zig modules
     source_dir: ?[]const u8 = null, // source directory for addIncludePath (cimport module-relative headers)
 };
 
@@ -28,7 +27,6 @@ pub const MultiTarget = struct {
 pub fn buildZigContentMulti(
     allocator: std.mem.Allocator,
     targets: []const MultiTarget,
-    extra_bridge_modules: []const []const u8,
     extra_zig_modules: []const []const u8,
 ) ![]u8 {
     var buf = std.ArrayListUnmanaged(u8){};
@@ -109,65 +107,6 @@ pub fn buildZigContentMulti(
         remaining = all_lib_targets.items.len - sorted_libs.items.len;
     }
 
-    // Build a lookup: module_name → has_bridges for quick access
-    var bridge_set = std.StringHashMapUnmanaged(void){};
-    defer bridge_set.deinit(allocator);
-    for (targets) |*t| {
-        if (t.has_bridges) {
-            try bridge_set.put(allocator, t.module_name, {});
-        }
-    }
-    // Filter extra_bridge_modules to only those actually referenced by at least one
-    // target's mod_imports — avoids creating unused bridge variables in build.zig.
-    var used_extra_bridges = std.ArrayListUnmanaged([]const u8){};
-    defer used_extra_bridges.deinit(allocator);
-    for (extra_bridge_modules) |bmod_name| {
-        var used = false;
-        for (targets) |t| {
-            for (t.mod_imports) |mod_name| {
-                if (std.mem.eql(u8, mod_name, bmod_name)) {
-                    used = true;
-                    break;
-                }
-            }
-            if (used) break;
-        }
-        if (used) try used_extra_bridges.append(allocator, bmod_name);
-    }
-    const filtered_bridges = used_extra_bridges.items;
-
-    // Include non-root modules that have bridges (not represented as targets)
-    for (filtered_bridges) |bmod_name| {
-        try bridge_set.put(allocator, bmod_name, {});
-    }
-
-    // Bridge module creation — register bridge .zig files as named Zig modules
-    // so that @import("module_bridge") resolves through the build graph.
-    for (targets) |t| {
-        if (!t.has_bridges) continue;
-
-        try _build.appendFmt(&buf, allocator,
-            \\    const bridge_{s} = b.createModule(.{{
-            \\        .root_source_file = b.path("{s}_bridge.zig"),
-            \\        .target = target,
-            \\        .optimize = optimize,
-            \\    }});
-            \\
-        , .{ t.module_name, t.module_name });
-    }
-
-    // Also create bridge modules for non-root modules
-    for (filtered_bridges) |bmod_name| {
-        try _build.appendFmt(&buf, allocator,
-            \\    const bridge_{s} = b.createModule(.{{
-            \\        .root_source_file = b.path("{s}_bridge.zig"),
-            \\        .target = target,
-            \\        .optimize = optimize,
-            \\    }});
-            \\
-        , .{ bmod_name, bmod_name });
-    }
-
     // Build a lookup set for zig-backed modules
     var zig_mod_set = std.StringHashMapUnmanaged(void){};
     defer zig_mod_set.deinit(allocator);
@@ -198,21 +137,7 @@ pub fn buildZigContentMulti(
         }
     }
 
-    // Wire bridge-to-bridge imports: if target A has bridges and imports target B
-    // which also has bridges, bridge_A needs addImport for bridge_B.
-    for (targets) |t| {
-        if (!t.has_bridges) continue;
-        for (t.lib_imports) |dep_name| {
-            if (bridge_set.contains(dep_name)) {
-                try _build.appendFmt(&buf, allocator,
-                    \\    bridge_{s}.addImport("{s}_bridge", bridge_{s});
-                    \\
-                , .{ t.module_name, dep_name, dep_name });
-            }
-        }
-    }
-
-    // #cimport link libs are applied to lib/exe artifacts below, not to bridge modules.
+    // #cimport link libs are applied to lib/exe artifacts below, not to module declarations.
     // Build.Module doesn't have linkSystemLibrary/linkLibC — only Step.Compile does.
 
     // Shared @cImport module generation (Bug 8 fix):
@@ -262,20 +187,6 @@ pub fn buildZigContentMulti(
         }
     }
 
-    // Wire shared @cImport modules into bridge modules that use them
-    for (targets) |*t| {
-        if (!t.has_bridges) continue;
-        for (t.c_includes) |hdr| {
-            const stem_result = _build.sanitizeHeaderStem(hdr);
-            const safe_stem = stem_result.slice();
-
-            try _build.appendFmt(&buf, allocator,
-                \\    bridge_{s}.addImport("{s}_c", cimport_{s});
-                \\
-            , .{ t.module_name, safe_stem, safe_stem });
-        }
-    }
-
     // Shared module creation — non-root, non-lib modules that are imported by
     // multiple targets need named modules to avoid "file exists in two modules".
     var shared_set = std.StringHashMapUnmanaged(void){};
@@ -294,14 +205,6 @@ pub fn buildZigContentMulti(
                     \\    mod_{s}.addImport("_orhon_collections", coll_mod);
                     \\
                 , .{ mod_name, mod_name, mod_name, mod_name });
-
-                // If this shared module has a bridge, wire it
-                if (bridge_set.contains(mod_name)) {
-                    try _build.appendFmt(&buf, allocator,
-                        \\    mod_{s}.addImport("{s}_bridge", bridge_{s});
-                        \\
-                    , .{ mod_name, mod_name, mod_name });
-                }
 
                 // If this shared module is zig-backed, add self _zig import
                 // so its generated re-export code can @import("name_zig")
@@ -352,30 +255,6 @@ pub fn buildZigContentMulti(
             \\
         , .{ t.module_name, t.project_name, linkage, t.module_name, t.module_name, t.module_name });
 
-        // Add bridge module import for this lib target
-        if (t.has_bridges) {
-            try _build.appendFmt(&buf, allocator,
-                \\    lib_{s}.root_module.addImport("{s}_bridge", bridge_{s});
-                \\
-            , .{ t.module_name, t.module_name, t.module_name });
-        }
-
-        // Add imports for non-root bridge modules actually used by this target
-        for (filtered_bridges) |bmod_name| {
-            var uses_module = false;
-            for (t.mod_imports) |mod_name| {
-                if (std.mem.eql(u8, mod_name, bmod_name)) {
-                    uses_module = true;
-                    break;
-                }
-            }
-            if (!uses_module) continue;
-            try _build.appendFmt(&buf, allocator,
-                \\    lib_{s}.root_module.addImport("{s}_bridge", bridge_{s});
-                \\
-            , .{ t.module_name, bmod_name, bmod_name });
-        }
-
         // Emit addImport for lib-to-lib dependencies so Zig resolves them via the
         // build system module graph rather than falling back to file-path lookup.
         for (t.lib_imports) |dep_name| {
@@ -384,14 +263,6 @@ pub fn buildZigContentMulti(
                     \\    lib_{s}.root_module.addImport("{s}", lib_{s}.root_module);
                     \\
                 , .{ t.module_name, dep_name, dep_name });
-
-                // Also add bridge import for the dependency if it has bridges
-                if (bridge_set.contains(dep_name)) {
-                    try _build.appendFmt(&buf, allocator,
-                        \\    lib_{s}.root_module.addImport("{s}_bridge", bridge_{s});
-                        \\
-                    , .{ t.module_name, dep_name, dep_name });
-                }
             }
         }
 
@@ -444,29 +315,6 @@ pub fn buildZigContentMulti(
         , .{t.module_name});
     }
 
-    // Wire lib modules into bridge modules so sidecars can @import("lib_name").
-    // This must come after Pass 1 since lib_* variables are declared there.
-    for (targets) |t| {
-        if (!t.has_bridges) continue;
-        for (t.lib_imports) |dep_name| {
-            if (lib_targets.contains(dep_name)) {
-                try _build.appendFmt(&buf, allocator,
-                    \\    bridge_{s}.addImport("{s}", lib_{s}.root_module);
-                    \\
-                , .{ t.module_name, dep_name, dep_name });
-            }
-        }
-        // Also wire shared modules into bridge modules
-        for (t.mod_imports) |mod_name| {
-            if (shared_set.contains(mod_name)) {
-                try _build.appendFmt(&buf, allocator,
-                    \\    bridge_{s}.addImport("{s}", mod_{s});
-                    \\
-                , .{ t.module_name, mod_name, mod_name });
-            }
-        }
-    }
-
     // Pass 2: emit all exe targets, linking against libs
     for (targets) |t| {
         if (!std.mem.eql(u8, t.build_type, "exe")) continue;
@@ -491,30 +339,6 @@ pub fn buildZigContentMulti(
             \\
         , .{ t.module_name, t.project_name, ver_line, t.module_name, t.module_name, t.module_name });
 
-        // Add bridge module import for this exe target
-        if (t.has_bridges) {
-            try _build.appendFmt(&buf, allocator,
-                \\    exe_{s}.root_module.addImport("{s}_bridge", bridge_{s});
-                \\
-            , .{ t.module_name, t.module_name, t.module_name });
-        }
-
-        // Add imports for non-root bridge modules actually used by this target
-        for (filtered_bridges) |bmod_name| {
-            var uses_module = false;
-            for (t.mod_imports) |mod_name| {
-                if (std.mem.eql(u8, mod_name, bmod_name)) {
-                    uses_module = true;
-                    break;
-                }
-            }
-            if (!uses_module) continue;
-            try _build.appendFmt(&buf, allocator,
-                \\    exe_{s}.root_module.addImport("{s}_bridge", bridge_{s});
-                \\
-            , .{ t.module_name, bmod_name, bmod_name });
-        }
-
         // Link imported lib modules
         for (t.lib_imports) |lib_name| {
             if (lib_targets.contains(lib_name)) {
@@ -523,14 +347,6 @@ pub fn buildZigContentMulti(
                     \\    exe_{s}.linkLibrary(lib_{s});
                     \\
                 , .{ t.module_name, lib_name, lib_name, t.module_name, lib_name });
-
-                // Also add bridge import for the dependency if it has bridges
-                if (bridge_set.contains(lib_name)) {
-                    try _build.appendFmt(&buf, allocator,
-                        \\    exe_{s}.root_module.addImport("{s}_bridge", bridge_{s});
-                        \\
-                    , .{ t.module_name, lib_name, lib_name });
-                }
             }
         }
 
@@ -612,38 +428,6 @@ pub fn buildZigContentMulti(
             \\
         , .{t.module_name});
 
-        // Add bridge imports to test target
-        if (t.has_bridges) {
-            try _build.appendFmt(&buf, allocator,
-                \\    unit_tests.root_module.addImport("{s}_bridge", bridge_{s});
-                \\
-            , .{ t.module_name, t.module_name });
-        }
-        for (t.lib_imports) |lib_name| {
-            if (bridge_set.contains(lib_name)) {
-                try _build.appendFmt(&buf, allocator,
-                    \\    unit_tests.root_module.addImport("{s}_bridge", bridge_{s});
-                    \\
-                , .{ lib_name, lib_name });
-            }
-        }
-
-        // Add imports for non-root bridge modules actually used by this target
-        for (filtered_bridges) |bmod_name| {
-            var uses_module = false;
-            for (t.mod_imports) |mod_name| {
-                if (std.mem.eql(u8, mod_name, bmod_name)) {
-                    uses_module = true;
-                    break;
-                }
-            }
-            if (!uses_module) continue;
-            try _build.appendFmt(&buf, allocator,
-                \\    unit_tests.root_module.addImport("{s}_bridge", bridge_{s});
-                \\
-            , .{ bmod_name, bmod_name });
-        }
-
         // Add shared module imports to test target
         for (t.mod_imports) |mod_name| {
             if (shared_set.contains(mod_name)) {
@@ -687,7 +471,7 @@ test "buildZigContentMulti - exe with dynamic lib" {
         .{ .module_name = "mathlib", .project_name = "mathlib", .build_type = "dynamic", .lib_imports = &.{} },
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = @constCast(&[_][]const u8{lib_name}) },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     // Lib target present
@@ -709,7 +493,7 @@ test "buildZigContentMulti - exe with static lib" {
         .{ .module_name = "utils", .project_name = "utils", .build_type = "static", .lib_imports = &.{} },
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = @constCast(&[_][]const u8{lib_name}) },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, ".linkage = .static") != null);
@@ -722,7 +506,7 @@ test "buildZigContentMulti - single exe (no libs)" {
     const targets = [_]MultiTarget{
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addExecutable") != null);
@@ -742,7 +526,7 @@ test "buildZigContentMulti - lib-to-lib imports added to prevent file-module con
         .{ .module_name = "tamga_vk3d", .project_name = "tamga_vk3d", .build_type = "static", .lib_imports = @constCast(&vk3d_imports) },
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     // lib_tamga_vk3d must have tamga_sdl3 as an addImport
@@ -753,55 +537,20 @@ test "buildZigContentMulti - lib-to-lib imports added to prevent file-module con
     try std.testing.expect(sdl3_pos < vk3d_pos);
 }
 
-test "buildZigContentMulti - bridge modules registered as named modules" {
-    const alloc = std.testing.allocator;
-    const sdl3_name: []const u8 = "tamga_sdl3";
-    const vk3d_name: []const u8 = "tamga_vk3d";
-    const sdl3_libs = [_][]const u8{"SDL3"};
-    const vk3d_imports = [_][]const u8{sdl3_name};
-    const exe_imports = [_][]const u8{vk3d_name};
-    const vk_libs = [_][]const u8{"vulkan"};
-    const targets = [_]MultiTarget{
-        .{ .module_name = "tamga_sdl3", .project_name = "tamga_sdl3", .build_type = "static", .lib_imports = &.{}, .has_bridges = true, .link_libs = @constCast(&sdl3_libs) },
-        .{ .module_name = "tamga_vk3d", .project_name = "tamga_vk3d", .build_type = "static", .lib_imports = @constCast(&vk3d_imports), .has_bridges = true, .link_libs = @constCast(&vk_libs) },
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = @constCast(&exe_imports), .has_bridges = false },
-    };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
-    defer alloc.free(content);
-
-    // Bridge modules created
-    try std.testing.expect(std.mem.indexOf(u8, content, "bridge_tamga_sdl3 = b.createModule") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "bridge_tamga_vk3d = b.createModule") != null);
-    // No bridge for main (has_bridges = false)
-    try std.testing.expect(std.mem.indexOf(u8, content, "bridge_main") == null);
-    // Bridge-to-bridge wiring
-    try std.testing.expect(std.mem.indexOf(u8, content, "bridge_tamga_vk3d.addImport(\"tamga_sdl3_bridge\"") != null);
-    // linkSystemLibrary on lib artifact, not on bridge module
-    try std.testing.expect(std.mem.indexOf(u8, content, "lib_tamga_sdl3.linkSystemLibrary(\"SDL3\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "lib_tamga_vk3d.linkSystemLibrary(\"vulkan\")") != null);
-    // linkLibC on lib artifact
-    try std.testing.expect(std.mem.indexOf(u8, content, "lib_tamga_sdl3.linkLibC()") != null);
-    // Lib targets get bridge addImport
-    try std.testing.expect(std.mem.indexOf(u8, content, "lib_tamga_sdl3.root_module.addImport(\"tamga_sdl3_bridge\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "lib_tamga_vk3d.root_module.addImport(\"tamga_vk3d_bridge\"") != null);
-    // Exe target gets bridge import for its dependency (tamga_vk3d has bridges)
-    try std.testing.expect(std.mem.indexOf(u8, content, "exe_main.root_module.addImport(\"tamga_vk3d_bridge\"") != null);
-}
-
 test "buildZigContentMulti - shared cImport module for cross-module C type identity" {
-    // Bug 8: when multiple modules declare #cInclude for the same header, a shared
-    // cimport_* module must be created and wired into each module's bridge.
+    // Bug 8: when multiple modules declare #cInclude for the same header, generate a shared
+    // cimport_* module for type identity across module boundaries.
     const alloc = std.testing.allocator;
     const vk_libs = [_][]const u8{"vulkan"};
     const vk_includes = [_][]const u8{"vulkan/vulkan.h"};
     const vma_imports = [_][]const u8{};
     const vk3d_imports = [_][]const u8{"tamga_vma"};
     const targets = [_]MultiTarget{
-        .{ .module_name = "tamga_vma", .project_name = "tamga_vma", .build_type = "static", .lib_imports = @constCast(&vma_imports), .has_bridges = true, .link_libs = @constCast(&vk_libs), .c_includes = @constCast(&vk_includes) },
-        .{ .module_name = "tamga_vk3d", .project_name = "tamga_vk3d", .build_type = "static", .lib_imports = @constCast(&vk3d_imports), .has_bridges = true, .link_libs = @constCast(&vk_libs), .c_includes = @constCast(&vk_includes) },
+        .{ .module_name = "tamga_vma", .project_name = "tamga_vma", .build_type = "static", .lib_imports = @constCast(&vma_imports), .link_libs = @constCast(&vk_libs), .c_includes = @constCast(&vk_includes) },
+        .{ .module_name = "tamga_vk3d", .project_name = "tamga_vk3d", .build_type = "static", .lib_imports = @constCast(&vk3d_imports), .link_libs = @constCast(&vk_libs), .c_includes = @constCast(&vk_includes) },
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     // Shared cImport module created exactly once (not twice for the same header)
@@ -811,10 +560,6 @@ test "buildZigContentMulti - shared cImport module for cross-module C type ident
     };
     const second = std.mem.indexOf(u8, content[first + 1 ..], "cimport_vulkan = b.createModule");
     try std.testing.expect(second == null); // only created once
-
-    // Shared cImport module wired into both bridge modules
-    try std.testing.expect(std.mem.indexOf(u8, content, "bridge_tamga_vma.addImport(\"vulkan_c\", cimport_vulkan)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "bridge_tamga_vk3d.addImport(\"vulkan_c\", cimport_vulkan)") != null);
 }
 
 test "buildZigContentMulti - csource directive emits addCSourceFiles and linkLibCpp" {
@@ -826,7 +571,7 @@ test "buildZigContentMulti - csource directive emits addCSourceFiles and linkLib
         .{ .module_name = "tamga_vma", .project_name = "tamga_vma", .build_type = "static", .lib_imports = &.{}, .c_source_files = @constCast(&csources), .needs_cpp = true },
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     // addCSourceFiles emitted for the lib artifact
@@ -844,7 +589,7 @@ test "buildZigContentMulti - single exe basic" {
     const targets = [_]MultiTarget{
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addExecutable") != null);
@@ -860,7 +605,7 @@ test "buildZigContentMulti - single static lib" {
     const targets = [_]MultiTarget{
         .{ .module_name = "mylib", .project_name = "mylib", .build_type = "static", .lib_imports = &.{} },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -875,7 +620,7 @@ test "buildZigContentMulti - single dynamic lib" {
     const targets = [_]MultiTarget{
         .{ .module_name = "mylib", .project_name = "mylib", .build_type = "dynamic", .lib_imports = &.{} },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "addLibrary") != null);
@@ -890,7 +635,7 @@ test "buildZigContentMulti - project name in exe artifact" {
     const targets = [_]MultiTarget{
         .{ .module_name = "myapp", .project_name = "calculator", .build_type = "exe", .lib_imports = &.{} },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "\"calculator\"") != null);
 }
@@ -901,7 +646,7 @@ test "buildZigContentMulti - single target cimport link libs" {
     const targets = [_]MultiTarget{
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{}, .link_libs = @constCast(&libs) },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary(\"SDL3\"") != null);
@@ -913,22 +658,11 @@ test "buildZigContentMulti - single target no cimport means no linkLibC" {
     const targets = [_]MultiTarget{
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
     };
-    const content = try buildZigContentMulti(alloc, &targets, &.{}, &.{});
+    const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "linkSystemLibrary") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "linkLibC") == null);
 }
 
-test "buildZigContentMulti - single target with bridge modules" {
-    const alloc = std.testing.allocator;
-    const bridges = [_][]const u8{"console"};
-    const targets = [_]MultiTarget{
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
-    };
-    const content = try buildZigContentMulti(alloc, &targets, @constCast(&bridges), &.{});
-    defer alloc.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "bridge_console = b.createModule") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "\"console_bridge\"") != null);
-}

@@ -28,7 +28,7 @@ pub const CodeGen = struct {
     in_test_block: bool, // inside a test { } block — assert uses std.testing.expect
     destruct_counter: usize, // unique index for destructuring temp vars
     warned_rawptr: bool,     // RawPtr/VolatilePtr warning printed once per module
-    module_name: []const u8, // current module name — used for bridge re-exports
+    module_name: []const u8, // current module name — used for zig module re-exports
     reassigned_vars: std.StringHashMapUnmanaged(void), // vars assigned after declaration in current func
     type_ctx: ?*parser.Node, // expected type from enclosing decl (for overflow codegen)
     locs: ?*const parser.LocMap, // AST node → source location (set by main.zig)

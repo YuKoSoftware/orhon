@@ -206,28 +206,6 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
                     continue;
                 };
 
-                // If a paired .zig sidecar exists, copy it to the generated dir
-                // so that @import("name.zig") in generated code resolves correctly
-                const sidecar_src = try std.fmt.allocPrint(self.allocator,
-                    "{s}/{s}.zig", .{ scope_dir, decl.path });
-                defer self.allocator.free(sidecar_src);
-
-                const sidecar_exists = blk: {
-                    std.fs.cwd().access(sidecar_src, .{}) catch break :blk false;
-                    break :blk true;
-                };
-
-                if (sidecar_exists) {
-                    try cache.ensureGeneratedDir();
-                    const sidecar_dst = try std.fmt.allocPrint(self.allocator,
-                        "{s}/{s}_bridge.zig", .{ cache.GENERATED_DIR, decl.path });
-                    defer self.allocator.free(sidecar_dst);
-                    try std.fs.cwd().copyFile(sidecar_src, std.fs.cwd(), sidecar_dst, .{});
-                    // Note: no copySidecarImports here — stdlib sidecars are embedded
-                    // single files that don't use multi-file @import. Project-local
-                    // sidecars are handled in pipeline.zig during the codegen phase.
-                }
-
                 // Add to the file map so it gets parsed and compiled
                 const imp_mod_name = try self.allocator.dupe(u8, decl.path);
                 const result = try self.modules.getOrPut(imp_mod_name);

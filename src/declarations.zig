@@ -326,7 +326,7 @@ pub const DeclCollector = struct {
         try self.table.structs.put(s.name, sig);
 
         // Register struct methods into struct_methods so borrow checker and MIR can
-        // detect self parameter mutability. All structs, not just bridge structs.
+        // detect self parameter mutability for all structs.
         // Key: "StructName.method" to avoid collisions with same-named methods on other structs.
         {
             for (s.members) |member| {
@@ -657,7 +657,7 @@ test "declaration collector - enum" {
     try std.testing.expect(collector.table.enums.contains("Color"));
 }
 
-test "declaration collector - bridge func is registered" {
+test "declaration collector - pub func is registered" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
     defer reporter.deinit();

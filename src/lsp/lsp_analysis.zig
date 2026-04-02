@@ -1,4 +1,4 @@
-// lsp_analysis.zig -- Compiler analysis bridge and type formatting
+// lsp_analysis.zig -- Compiler analysis and type formatting
 
 const std = @import("std");
 const lsp_types = @import("lsp_types.zig");

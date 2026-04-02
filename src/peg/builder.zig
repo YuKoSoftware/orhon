@@ -343,7 +343,7 @@ pub fn buildAllChildren(ctx: *BuildContext, cap: *const CaptureNode) ![]*Node {
 }
 
 // ============================================================
-// SHARED STRUCT/ENUM HELPERS (used by decls and bridge satellites)
+// SHARED STRUCT/ENUM HELPERS (used by decls and builder satellites)
 // ============================================================
 
 /// Walk a capture tree to collect struct type params and member nodes.
@@ -400,7 +400,7 @@ pub fn hasPubBefore(ctx: *BuildContext, cap: *const CaptureNode, before_pos: usi
 }
 
 /// Set the is_pub flag on a node (works for all declaration node types).
-/// Used by bridge and decls satellites.
+/// Used by builder satellites.
 pub fn setPub(node: *Node, value: bool) void {
     switch (node.*) {
         .func_decl => |*d| d.is_pub = value,

@@ -86,53 +86,6 @@ pub fn validateMainReserved(
     return reporter.hasErrors();
 }
 
-/// Copy bridge sidecar to generated dir, fixing up `export fn` visibility.
-pub fn copySidecar(
-    allocator: std.mem.Allocator,
-    mod_name: []const u8,
-    mod_ptr: *module.Module,
-    cli: *_cli.CliArgs,
-    reporter: *errors.Reporter,
-    sidecar_copied: *std.StringHashMapUnmanaged([]const u8),
-) !bool {
-    if (!mod_ptr.has_bridges) return false;
-    const sidecar_src = mod_ptr.sidecar_path orelse return false;
-
-    try cache.ensureGeneratedDir();
-    const sidecar_dst = try std.fmt.allocPrint(allocator, "{s}/{s}_bridge.zig", .{ cache.GENERATED_DIR, mod_name });
-    defer allocator.free(sidecar_dst);
-
-    // Read sidecar content
-    const content = try std.fs.cwd().readFileAlloc(allocator, sidecar_src, 1024 * 1024);
-    defer allocator.free(content);
-
-    // Ensure all `export fn` have pub visibility
-    var result = std.ArrayListUnmanaged(u8){};
-    defer result.deinit(allocator);
-    var pos: usize = 0;
-    const needle = "export fn";
-    while (std.mem.indexOfPos(u8, content, pos, needle)) |idx| {
-        const already_pub = idx >= 4 and std.mem.eql(u8, content[idx - 4 .. idx], "pub ");
-        try result.appendSlice(allocator, content[pos..idx]);
-        if (!already_pub) {
-            try result.appendSlice(allocator, "pub ");
-        }
-        try result.appendSlice(allocator, needle);
-        pos = idx + needle.len;
-    }
-    try result.appendSlice(allocator, content[pos..]);
-
-    // Write modified sidecar
-    const dst_file = try std.fs.cwd().createFile(sidecar_dst, .{});
-    defer dst_file.close();
-    try dst_file.writeAll(result.items);
-
-    // Copy any additional .zig files imported by the sidecar
-    try cache.copySidecarImports(allocator, sidecar_src, cli.source_dir, mod_name, reporter, sidecar_copied);
-
-    return reporter.hasErrors();
-}
-
 /// Run semantic passes 5–9 and codegen passes 10–11 for a single module.
 /// Returns the generated Zig output string slice (owned by cg).
 pub fn runSemanticAndCodegen(

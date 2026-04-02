@@ -1,6 +1,6 @@
 // builtins.zig — Orhon builtin types and compiler intrinsics
 // Only language-level types that the compiler needs to understand natively.
-// Everything else (collections, strings, etc.) goes through the bridge.
+// Everything else (collections, strings, etc.) goes through the stdlib import system.
 
 const std = @import("std");
 

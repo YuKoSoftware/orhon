@@ -108,7 +108,7 @@ pub fn validateMatchArm(self: *TypeResolver, pattern_name: []const u8, match_typ
 pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
     switch (node.*) {
         .type_named => |type_name| {
-            // Qualified names (module.Type) refer to bridge/imported module types.
+            // Qualified names (module.Type) refer to imported module types.
             // The module import is validated by the module resolver; we trust the
             // qualified form here rather than trying to look up cross-module types.
             const is_qualified = std.mem.indexOfScalar(u8, type_name, '.') != null;

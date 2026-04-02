@@ -20,7 +20,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     // Ensure embedded std files exist in .orh-cache/std/
     try _std_bundle.ensureStdFiles(allocator);
 
-    // Copy internal bridges to generated dir — always available for all modules
+    // Copy internal support files to generated dir — always available for all modules
     try cache.ensureGeneratedDir();
     {
         const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_str.zig", .{});
@@ -215,17 +215,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         }
     }
 
-    // Track sidecar import destinations for collision detection
-    var sidecar_copied = std.StringHashMapUnmanaged([]const u8){};
-    defer {
-        var it = sidecar_copied.iterator();
-        while (it.next()) |entry| {
-            allocator.free(entry.key_ptr.*);
-            allocator.free(entry.value_ptr.*);
-        }
-        sidecar_copied.deinit(allocator);
-    }
-
     // Process each module in dependency order
     for (order) |mod_name| {
         const mod_ptr = mod_resolver.modules.getPtr(mod_name) orelse continue;
@@ -325,10 +314,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         // Snapshot warning count to capture new warnings from this module
         const warn_start = reporter.warnings.items.len;
 
-        // ── Bridge Sidecar Copy ─────────────────────────────────
-        if (try passes.copySidecar(allocator, mod_name, mod_ptr, cli, reporter, &sidecar_copied))
-            return null;
-
         // ── Zig Module Source Copy ──────────────────────────────
         // Copy the original .zig file to .orh-cache/generated/{name}_zig.zig
         // so the build system can register it as a named module.
@@ -415,24 +400,19 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             }
             const binary_name2 = if (project_name.len > 0) project_name else mod.name;
             last_binary_name = binary_name2;
-            // Collect bridge module names for test build.zig
-            var test_bridge_mods = std.ArrayListUnmanaged([]const u8){};
-            defer test_bridge_mods.deinit(allocator);
+            // Collect zig-backed module names for test build.zig
             var test_zig_mods = std.ArrayListUnmanaged([]const u8){};
             defer test_zig_mods.deinit(allocator);
             {
                 var bmod_it = mod_resolver.modules.iterator();
                 while (bmod_it.next()) |bmod_entry| {
                     const bmod = bmod_entry.value_ptr;
-                    if (bmod.has_bridges) {
-                        try test_bridge_mods.append(allocator, bmod.name);
-                    }
                     if (bmod.is_zig_module) {
                         try test_zig_mods.append(allocator, bmod.name);
                     }
                 }
             }
-            const passed = try runner.runTests(mod.name, binary_name2, test_bridge_mods.items, test_zig_mods.items);
+            const passed = try runner.runTests(mod.name, binary_name2, test_zig_mods.items);
             if (!passed) any_failed = true;
         }
         return if (!any_failed) try allocator.dupe(u8, last_binary_name) else null;
@@ -680,10 +660,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             const c_source_slice = try allocator.dupe([]const u8, mt_c_sources.items);
             try c_source_lists.append(allocator, c_source_slice);
 
-            const mt_source_dir: ?[]const u8 = if (mod.sidecar_path) |sp|
-                std.fs.path.dirname(sp)
-            else
-                null;
             try multi_targets.append(allocator, .{
                 .module_name = mod.name,
                 .project_name = binary_name,
@@ -695,14 +671,9 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 .c_includes = c_include_slice,
                 .c_source_files = c_source_slice,
                 .needs_cpp = mt_needs_cpp,
-                .has_bridges = mod.has_bridges,
-                .source_dir = mt_source_dir,
             });
         }
 
-        // Collect non-root modules with bridges for named module registration
-        var extra_bridge_mods = std.ArrayListUnmanaged([]const u8){};
-        defer extra_bridge_mods.deinit(allocator);
         // Collect non-root zig-backed modules for named module registration
         var extra_zig_mods = std.ArrayListUnmanaged([]const u8){};
         defer extra_zig_mods.deinit(allocator);
@@ -711,9 +682,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             while (bmod_it.next()) |bmod_entry| {
                 const bmod = bmod_entry.value_ptr;
                 if (bmod.is_root) continue;
-                if (bmod.has_bridges) {
-                    try extra_bridge_mods.append(allocator, bmod.name);
-                }
                 if (bmod.is_zig_module) {
                     try extra_zig_mods.append(allocator, bmod.name);
                 }
@@ -730,7 +698,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             }
 
             const use_subfolder = cli.targets.items.len > 1;
-            const built = try runner.buildAll(target_str, opt_str, multi_targets.items, extra_bridge_mods.items, extra_zig_mods.items);
+            const built = try runner.buildAll(target_str, opt_str, multi_targets.items, extra_zig_mods.items);
             if (!built) return null;
 
             // Move artifacts to target subfolder if multi-target
@@ -820,7 +788,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 }
             }
 
-            // Collect #cimport from all non-root modules (bridge modules declare their C deps).
+            // Collect #cimport from all non-root modules.
             var all_mod_it = mod_resolver.modules.iterator();
             while (all_mod_it.next()) |all_entry| {
                 const dep_mod = all_entry.value_ptr;
@@ -872,23 +840,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
             const binary_name = if (project_name.len > 0) project_name else mod.name;
 
-            // Collect all modules with bridges for named module registration
-            var bridge_mods = std.ArrayListUnmanaged([]const u8){};
-            defer bridge_mods.deinit(allocator);
-            if (mod.has_bridges) {
-                try bridge_mods.append(allocator, mod.name);
-            }
-            {
-                var bmod_it = mod_resolver.modules.iterator();
-                while (bmod_it.next()) |bmod_entry| {
-                    const bmod = bmod_entry.value_ptr;
-                    if (bmod.is_root) continue;
-                    if (bmod.has_bridges) {
-                        try bridge_mods.append(allocator, bmod.name);
-                    }
-                }
-            }
-
             // Collect shared (non-root, non-lib) modules transitively imported by this root.
             // Transitive closure: follow imports of imports to capture all needed modules.
             var shared_mods = std.ArrayListUnmanaged([]const u8){};
@@ -932,11 +883,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 }
             }
 
-            const single_source_dir: ?[]const u8 = if (mod.sidecar_path) |sp|
-                std.fs.path.dirname(sp)
-            else
-                null;
-            try runner.generateBuildZig(mod.name, build_type, binary_name, project_version, link_libs.items, bridge_mods.items, shared_mods.items, c_includes_st.items, c_sources_st.items, needs_cpp_st, single_source_dir, zig_mods.items);
+            try runner.generateBuildZig(mod.name, build_type, binary_name, project_version, link_libs.items, shared_mods.items, c_includes_st.items, c_sources_st.items, needs_cpp_st, zig_mods.items);
 
             for (cli.targets.items) |build_target| {
                 const target_str = build_target.toZigTriple();

@@ -1,5 +1,5 @@
-// allocator.zig — sidecar for std::allocator module
-// Wraps Zig allocators in uniform structs for the Orhon bridge.
+// allocator.zig — implementation for std::allocator module
+// Wraps Zig allocators in uniform structs for Orhon.
 
 const std = @import("std");
 

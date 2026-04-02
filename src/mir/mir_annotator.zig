@@ -235,19 +235,19 @@ pub const MirAnnotator = struct {
                 if (obj_type == .named) {
                     const struct_name = obj_type.named;
                     // Check current module's struct_methods first ("StructName.method" key).
-                    // This covers bridge struct methods which are not in funcs to avoid name collisions.
+                    // This covers struct methods which are not in funcs to avoid name collisions.
                     const qualified_key = std.fmt.allocPrint(
                         self.allocator, "{s}.{s}", .{ struct_name, method_name },
                     ) catch return null;
                     defer self.allocator.free(qualified_key);
                     if (self.decls.struct_methods.get(qualified_key)) |sig| return sig;
                     if (self.all_decls) |ad| {
-                        // Also check all modules' struct_methods for cross-module bridge calls.
+                        // Also check all modules' struct_methods for cross-module calls.
                         var it = ad.iterator();
                         while (it.next()) |entry| {
                             if (entry.value_ptr.*.struct_methods.get(qualified_key)) |sig| return sig;
                         }
-                        // Fallback: funcs lookup by method name (non-bridge methods).
+                        // Fallback: funcs lookup by method name.
                         var it2 = ad.iterator();
                         while (it2.next()) |entry| {
                             if (entry.value_ptr.*.structs.contains(struct_name)) {

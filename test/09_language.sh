@@ -176,4 +176,20 @@ else
     fail "union flattening compiles" "$FLAT_OUT"
 fi
 
+section "Multi-file sidecar"
+
+cd "$TESTDIR"
+mkdir -p multizig/src
+cp "$FIXTURES/multizig_main.orh" multizig/src/multizig.orh
+cp "$FIXTURES/multizig.zig" multizig/src/multizig.zig
+cp "$FIXTURES/multizig_helper.zig" multizig/src/helper.zig
+cd "$TESTDIR/multizig"
+
+OUTPUT=$("$ORHON" build 2>&1 || true)
+if [ -f ".orh-cache/generated/helper.zig" ]; then
+    pass "multi-file sidecar copies helper.zig"
+else
+    fail "multi-file sidecar copies helper.zig" "$OUTPUT"
+fi
+
 report_results

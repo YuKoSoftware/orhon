@@ -1,0 +1,5 @@
+module multizig
+#name    = "multizig"
+#version = Version(1, 0, 0)
+#build   = static
+bridge func helper_add(a: i32, b: i32) i32

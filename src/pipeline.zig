@@ -586,7 +586,18 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             var mt_c_includes: std.ArrayListUnmanaged([]const u8) = .{};
             defer mt_c_includes.deinit(allocator);
             var mt_c_sources: std.ArrayListUnmanaged([]const u8) = .{};
-            defer mt_c_sources.deinit(allocator);
+            defer {
+                // Free ../../-prefixed strings allocated by mergeZonConfigs
+                for (mt_c_sources.items) |s| {
+                    if (std.mem.startsWith(u8, s, "../../")) allocator.free(s);
+                }
+                mt_c_sources.deinit(allocator);
+            }
+            var mt_include_dirs: std.ArrayListUnmanaged([]const u8) = .{};
+            defer {
+                for (mt_include_dirs.items) |s| allocator.free(s);
+                mt_include_dirs.deinit(allocator);
+            }
             var mt_needs_cpp = false;
 
             // Registry maps lib name → module name for duplicate detection
@@ -671,7 +682,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
             // Merge .zon configs from zig-backed modules (this module and its imports)
             try mergeZonConfigs(allocator, mod.name, mod.imports, &zon_configs,
-                &mt_link_libs, &mt_c_includes, &mt_c_sources, &mt_needs_cpp);
+                &mt_link_libs, &mt_c_sources, &mt_include_dirs, &mt_needs_cpp);
 
             const link_slice = try allocator.dupe([]const u8, mt_link_libs.items);
             try link_lib_lists.append(allocator, link_slice);
@@ -679,6 +690,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             try c_include_lists.append(allocator, c_include_slice);
             const c_source_slice = try allocator.dupe([]const u8, mt_c_sources.items);
             try c_source_lists.append(allocator, c_source_slice);
+            const include_dir_slice = try allocator.dupe([]const u8, mt_include_dirs.items);
 
             try multi_targets.append(allocator, .{
                 .module_name = mod.name,
@@ -691,6 +703,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 .c_includes = c_include_slice,
                 .c_source_files = c_source_slice,
                 .needs_cpp = mt_needs_cpp,
+                .include_dirs = include_dir_slice,
             });
         }
 
@@ -751,7 +764,17 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             var c_includes_st: std.ArrayListUnmanaged([]const u8) = .{};
             defer c_includes_st.deinit(allocator);
             var c_sources_st: std.ArrayListUnmanaged([]const u8) = .{};
-            defer c_sources_st.deinit(allocator);
+            defer {
+                for (c_sources_st.items) |s| {
+                    if (std.mem.startsWith(u8, s, "../../")) allocator.free(s);
+                }
+                c_sources_st.deinit(allocator);
+            }
+            var include_dirs_st: std.ArrayListUnmanaged([]const u8) = .{};
+            defer {
+                for (include_dirs_st.items) |s| allocator.free(s);
+                include_dirs_st.deinit(allocator);
+            }
             var needs_cpp_st = false;
 
             // Collect build/name/version from root module only; collect #cimport from all modules.
@@ -860,7 +883,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
             // Merge .zon configs from zig-backed modules (this module and its imports)
             try mergeZonConfigs(allocator, mod.name, mod.imports, &zon_configs,
-                &link_libs, &c_includes_st, &c_sources_st, &needs_cpp_st);
+                &link_libs, &c_sources_st, &include_dirs_st, &needs_cpp_st);
 
             const binary_name = if (project_name.len > 0) project_name else mod.name;
 
@@ -907,7 +930,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 }
             }
 
-            try runner.generateBuildZig(mod.name, build_type, binary_name, project_version, link_libs.items, shared_mods.items, c_includes_st.items, c_sources_st.items, needs_cpp_st, zig_mods.items);
+            try runner.generateBuildZig(mod.name, build_type, binary_name, project_version, link_libs.items, shared_mods.items, c_includes_st.items, c_sources_st.items, needs_cpp_st, zig_mods.items, include_dirs_st.items);
 
             for (cli.targets.items) |build_target| {
                 const target_str = build_target.toZigTriple();
@@ -959,8 +982,8 @@ fn mergeZonConfigs(
     mod_imports: [][]const u8,
     zon_configs: *const std.StringHashMapUnmanaged(zig_module.ZonConfig),
     link_libs: *std.ArrayListUnmanaged([]const u8),
-    c_includes: *std.ArrayListUnmanaged([]const u8),
     c_sources: *std.ArrayListUnmanaged([]const u8),
+    include_dirs: *std.ArrayListUnmanaged([]const u8),
     needs_cpp: *bool,
 ) !void {
     // Helper to merge a single config
@@ -969,18 +992,31 @@ fn mergeZonConfigs(
             alloc: std.mem.Allocator,
             config: zig_module.ZonConfig,
             libs: *std.ArrayListUnmanaged([]const u8),
-            incs: *std.ArrayListUnmanaged([]const u8),
             srcs: *std.ArrayListUnmanaged([]const u8),
+            inc_dirs: *std.ArrayListUnmanaged([]const u8),
             cpp: *bool,
         ) !void {
             for (config.link) |lib| {
                 if (!contains(libs.items, lib)) try libs.append(alloc, lib);
             }
+            // .include paths are directories for addIncludePath, not header names.
+            // Prefix with ../../ because zig build runs from .orh-cache/generated/.
             for (config.include) |inc| {
-                if (!contains(incs.items, inc)) try incs.append(alloc, inc);
+                const prefixed = try std.fmt.allocPrint(alloc, "../../{s}", .{inc});
+                if (!contains(inc_dirs.items, prefixed)) {
+                    try inc_dirs.append(alloc, prefixed);
+                } else {
+                    alloc.free(prefixed);
+                }
             }
+            // .source paths need ../../ prefix for the same reason.
             for (config.source) |src| {
-                if (!contains(srcs.items, src)) try srcs.append(alloc, src);
+                const prefixed = try std.fmt.allocPrint(alloc, "../../{s}", .{src});
+                if (!contains(srcs.items, prefixed)) {
+                    try srcs.append(alloc, prefixed);
+                } else {
+                    alloc.free(prefixed);
+                }
                 if (std.mem.endsWith(u8, src, ".cpp") or
                     std.mem.endsWith(u8, src, ".cc") or
                     std.mem.endsWith(u8, src, ".cxx"))
@@ -1000,12 +1036,12 @@ fn mergeZonConfigs(
 
     // Check the module itself
     if (zon_configs.get(mod_name)) |config| {
-        try mergeOne(allocator, config, link_libs, c_includes, c_sources, needs_cpp);
+        try mergeOne(allocator, config, link_libs, c_sources, include_dirs, needs_cpp);
     }
     // Check all imports
     for (mod_imports) |imp_name| {
         if (zon_configs.get(imp_name)) |config| {
-            try mergeOne(allocator, config, link_libs, c_includes, c_sources, needs_cpp);
+            try mergeOne(allocator, config, link_libs, c_sources, include_dirs, needs_cpp);
         }
     }
 }

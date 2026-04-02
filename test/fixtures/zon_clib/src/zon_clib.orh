@@ -1,0 +1,10 @@
+module zon_clib
+#build = exe
+
+import mathlib
+import std::console
+
+func main() void {
+    const result: i32 = mathlib.add(10, 32)
+    console.println("zon works")
+}

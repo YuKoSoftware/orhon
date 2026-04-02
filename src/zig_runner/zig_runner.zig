@@ -331,7 +331,7 @@ pub const ZigRunner = struct {
     /// Run all test blocks in the generated Zig project
     pub fn runTests(self: *ZigRunner, module_name: []const u8, project_name: []const u8, zig_modules: []const []const u8) !bool {
         // Generate build.zig with test step included
-        try self.generateBuildZig(module_name, "exe", project_name, null, &.{}, &.{}, &.{}, &.{}, false, zig_modules);
+        try self.generateBuildZig(module_name, "exe", project_name, null, &.{}, &.{}, &.{}, &.{}, false, zig_modules, &.{});
 
         var args: std.ArrayListUnmanaged([]const u8) = .{};
         defer args.deinit(self.allocator);
@@ -366,6 +366,7 @@ pub const ZigRunner = struct {
         c_source_files: []const []const u8,
         needs_cpp: bool,
         zig_modules: []const []const u8,
+        include_dirs: []const []const u8,
     ) !void {
         const target = MultiTarget{
             .module_name = module_name,
@@ -378,6 +379,7 @@ pub const ZigRunner = struct {
             .c_includes = c_includes,
             .c_source_files = c_source_files,
             .needs_cpp = needs_cpp,
+            .include_dirs = include_dirs,
         };
         const targets = [1]MultiTarget{target};
         const content = try _zig_runner_multi.buildZigContentMulti(self.allocator, &targets, zig_modules);

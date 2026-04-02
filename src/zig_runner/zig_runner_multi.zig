@@ -15,11 +15,12 @@ pub const MultiTarget = struct {
     lib_imports: []const []const u8, // names of imported lib modules (for linking)
     mod_imports: []const []const u8 = &.{}, // names of non-lib imported modules (for named module refs)
     version: ?[3]u64 = null,
-    link_libs: []const []const u8 = &.{}, // C libraries from #cimport metadata
-    c_includes: []const []const u8 = &.{}, // C headers from #cimport include field (for shared @cImport module)
-    c_source_files: []const []const u8 = &.{}, // C/C++ source files from #cimport source field
+    link_libs: []const []const u8 = &.{}, // C libraries from #cimport or .zon .link
+    c_includes: []const []const u8 = &.{}, // C headers for shared @cImport module
+    c_source_files: []const []const u8 = &.{}, // C/C++ source files from #cimport or .zon .source
     needs_cpp: bool = false, // true when C++ source files are present (.cpp/.cc)
     source_dir: ?[]const u8 = null, // source directory for addIncludePath (cimport module-relative headers)
+    include_dirs: []const []const u8 = &.{}, // include search paths from .zon .include (for addIncludePath)
 };
 
 /// Build a unified build.zig for multiple targets.
@@ -132,6 +133,14 @@ pub fn buildZigContentMulti(
                         \\    }});
                         \\
                     , .{ mod_name, mod_name });
+
+                    // Apply .zon include dirs to zig module so @cInclude resolves
+                    for (t.include_dirs) |dir| {
+                        try _build.appendFmt(&buf, allocator,
+                            \\    zig_{s}.addIncludePath(.{{ .cwd_relative = "{s}" }});
+                            \\
+                        , .{ mod_name, dir });
+                    }
                 }
             }
         }
@@ -302,6 +311,14 @@ pub fn buildZigContentMulti(
             }
         }
 
+        // Apply .zon include directories (addIncludePath for each dir)
+        for (t.include_dirs) |dir| {
+            try _build.appendFmt(&buf, allocator,
+                \\    lib_{s}.root_module.addIncludePath(.{{ .cwd_relative = "{s}" }});
+                \\
+            , .{ t.module_name, dir });
+        }
+
         // Apply #cimport source files to this lib artifact
         if (t.c_source_files.len > 0 or t.needs_cpp) {
             const lib_art_name = try std.fmt.allocPrint(allocator, "lib_{s}", .{t.module_name});
@@ -384,6 +401,14 @@ pub fn buildZigContentMulti(
                 defer allocator.free(exe_art_name);
                 try _build.emitIncludePath(&buf, allocator, sdir, exe_art_name);
             }
+        }
+
+        // Apply .zon include directories (addIncludePath for each dir)
+        for (t.include_dirs) |dir| {
+            try _build.appendFmt(&buf, allocator,
+                \\    exe_{s}.root_module.addIncludePath(.{{ .cwd_relative = "{s}" }});
+                \\
+            , .{ t.module_name, dir });
         }
 
         // Apply #cimport source files to this exe artifact

@@ -1,0 +1,4 @@
+.{
+    .source = .{"src/native_add.c"},
+    .include = .{"src/"},
+}

@@ -242,4 +242,24 @@ else fail "runtime: zig_module_mul" "$BINOUT"; fi
 if echo "$BINOUT" | grep -q "ZIGMOD:DONE"; then pass "zig module binary ran to completion"
 else fail "zig module binary ran to completion" "$BINOUT"; fi
 
+section "Zon C library (.zon config)"
+
+cd "$TESTDIR"
+cp -r "$FIXTURES/zon_clib" "$TESTDIR/zon_clib"
+cd "$TESTDIR/zon_clib"
+
+OUTPUT=$("$ORHON" build 2>&1 || true)
+if echo "$OUTPUT" | grep -q "Built: bin/zon_clib"; then
+    pass "zon clib project compiles"
+else
+    fail "zon clib project compiles" "$OUTPUT"
+fi
+
+BINOUT=$(./bin/zon_clib 2>&1 || true)
+if echo "$BINOUT" | grep -q "zon works"; then
+    pass "zon clib binary runs correctly"
+else
+    fail "zon clib binary runs correctly" "$BINOUT"
+fi
+
 report_results

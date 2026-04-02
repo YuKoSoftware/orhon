@@ -13,10 +13,12 @@ const sema = @import("sema.zig");
 const K = @import("constants.zig");
 const types = @import("types.zig");
 const scope_mod = @import("scope.zig");
+const exprs_impl = @import("resolver_exprs.zig");
+const validation_impl = @import("resolver_validation.zig");
 const RT = types.ResolvedType;
 
 /// Primitive type name candidates for "did you mean?" suggestions on unknown types.
-const PRIMITIVE_NAMES = [_][]const u8{
+pub const PRIMITIVE_NAMES = [_][]const u8{
     "i8", "i16", "i32", "i64",
     "u8", "u16", "u32", "u64",
     "f32", "f64",
@@ -57,7 +59,7 @@ pub const TypeResolver = struct {
     }
 
     /// Check if a type name exists in any `use`-d (included) module's DeclTable.
-    fn isIncludedType(self: *const TypeResolver, name: []const u8) bool {
+    pub fn isIncludedType(self: *const TypeResolver, name: []const u8) bool {
         const ad = self.ctx.all_decls orelse return false;
         for (self.included_modules.items) |mod_name| {
             if (ad.get(mod_name)) |mod_decls| {
@@ -73,11 +75,11 @@ pub const TypeResolver = struct {
     /// Resolve a type node, treating type alias names as opaque (returns .inferred).
     /// Type aliases are transparent — Zig handles the real type checking at codegen.
     /// Pass scope to also detect local type aliases (declared inside function bodies).
-    fn resolveTypeAnnotation(self: *TypeResolver, node: *parser.Node) !RT {
+    pub fn resolveTypeAnnotation(self: *TypeResolver, node: *parser.Node) !RT {
         return self.resolveTypeAnnotationInScope(node, null);
     }
 
-    fn resolveTypeAnnotationInScope(self: *TypeResolver, node: *parser.Node, scope: ?*Scope) !RT {
+    pub fn resolveTypeAnnotationInScope(self: *TypeResolver, node: *parser.Node, scope: ?*Scope) !RT {
         const resolved = try types.resolveTypeNode(self.ctx.decls.typeAllocator(), node);
         if (resolved == .named) {
             // Module-level type alias
@@ -154,7 +156,7 @@ pub const TypeResolver = struct {
         }
     }
 
-    fn resolveNode(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
+    pub fn resolveNode(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
         switch (node.*) {
             .func_decl => |f| {
                 var func_scope = Scope.init(self.ctx.allocator, scope);
@@ -303,7 +305,7 @@ pub const TypeResolver = struct {
         }
     }
 
-    fn resolveStatement(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
+    pub fn resolveStatement(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
         switch (node.*) {
             .var_decl => try self.resolveNode(node, scope),
             .return_stmt => |r| {
@@ -433,557 +435,29 @@ pub const TypeResolver = struct {
     }
 
     /// Resolve an expression and return its ResolvedType
-    fn resolveExpr(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!RT {
-        const result = try self.resolveExprInner(node, scope);
-        try self.type_map.put(self.ctx.allocator, node, result);
-        return result;
+    pub fn resolveExpr(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!RT {
+        return exprs_impl.resolveExpr(self, node, scope);
     }
 
-    fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!RT {
-        return switch (node.*) {
-            .int_literal => RT{ .primitive = .numeric_literal },
-            .float_literal => RT{ .primitive = .float_literal },
-            .string_literal => RT{ .primitive = .string },
-            .interpolated_string => |interp| {
-                // Resolve inner expressions so they appear in type_map
-                for (interp.parts) |part| {
-                    switch (part) {
-                        .expr => |expr_node| _ = try self.resolveExpr(expr_node, scope),
-                        .literal => {},
-                    }
-                }
-                return RT{ .primitive = .string };
-            },
-            .bool_literal => RT{ .primitive = .bool },
-            .null_literal => RT.null_type,
-            .error_literal => RT.err,
-
-            .identifier => |id_name| {
-                if (scope.lookup(id_name)) |t| return t;
-                if (self.ctx.decls.funcs.get(id_name)) |sig| return sig.return_type;
-                if (self.ctx.decls.structs.contains(id_name)) return RT{ .named = id_name };
-                if (self.ctx.decls.enums.contains(id_name)) return RT{ .named = id_name };
-                if (self.ctx.decls.vars.get(id_name)) |v| return v.type_ orelse RT.unknown;
-                if (builtins.isBuiltinType(id_name)) return RT{ .named = id_name };
-                if (self.isIncludedType(id_name)) return RT{ .named = id_name };
-                if (builtins.isBuiltinValue(id_name)) return RT{ .named = id_name };
-                // Primitive type names (i32, f64, etc.) may appear as arguments to cast() and similar
-                if (types.isPrimitiveName(id_name)) return RT{ .named = id_name };
-                // Compiler-intrinsic functions are resolved by codegen, not tracked in decls
-                if (builtins.isCompilerFunc(id_name)) return RT{ .named = id_name };
-                // Arithmetic mode functions (wrap, sat, overflow) are codegen-level intrinsics
-                if (std.mem.eql(u8, id_name, "wrap") or
-                    std.mem.eql(u8, id_name, "sat") or
-                    std.mem.eql(u8, id_name, "overflow")) return RT.unknown;
-                // Known module names — used as qualified access prefixes (module.Type, module.func)
-                if (self.ctx.all_decls) |ad| {
-                    if (ad.contains(id_name)) return RT.unknown;
-                }
-
-                // Enum variants, bitfield flags, and the 'else' match pattern are used as bare
-                // identifiers in match patterns. They are not in the scope chain — silently
-                // return unknown to avoid false errors.
-                if (std.mem.eql(u8, id_name, "else")) return RT.unknown;
-                if (self.isEnumVariantOrBitfieldFlag(id_name)) return RT.unknown;
-
-                // Build candidate list from scope chain + module declarations for suggestion
-                var candidates: std.ArrayListUnmanaged([]const u8) = .{};
-                defer candidates.deinit(self.ctx.allocator);
-                var sc: ?*const Scope = scope;
-                while (sc) |s| : (sc = s.parent) {
-                    var it = s.vars.keyIterator();
-                    while (it.next()) |k| try candidates.append(self.ctx.allocator, k.*);
-                }
-                var fit = self.ctx.decls.funcs.keyIterator();
-                while (fit.next()) |k| try candidates.append(self.ctx.allocator, k.*);
-                var sit = self.ctx.decls.structs.keyIterator();
-                while (sit.next()) |k| try candidates.append(self.ctx.allocator, k.*);
-                var eit = self.ctx.decls.enums.keyIterator();
-                while (eit.next()) |k| try candidates.append(self.ctx.allocator, k.*);
-                var vit = self.ctx.decls.vars.keyIterator();
-                while (vit.next()) |k| try candidates.append(self.ctx.allocator, k.*);
-
-                const suggestion = try errors.formatSuggestion(id_name, candidates.items, self.ctx.allocator);
-                defer if (suggestion) |s| self.ctx.allocator.free(s);
-                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown identifier '{s}'{s}", .{ id_name, suggestion orelse "" });
-                return RT.unknown;
-            },
-
-            .binary_expr => |b| {
-                const left = try self.resolveExpr(b.left, scope);
-                _ = try self.resolveExpr(b.right, scope);
-                if (std.mem.eql(u8, b.op, K.Op.AND) or
-                    std.mem.eql(u8, b.op, K.Op.OR) or
-                    std.mem.eql(u8, b.op, K.Op.EQ) or
-                    std.mem.eql(u8, b.op, K.Op.NE) or
-                    std.mem.eql(u8, b.op, K.Op.LT) or
-                    std.mem.eql(u8, b.op, K.Op.GT) or
-                    std.mem.eql(u8, b.op, K.Op.LE) or
-                    std.mem.eql(u8, b.op, K.Op.GE)) return RT{ .primitive = .bool };
-                if (std.mem.eql(u8, b.op, K.Op.CONCAT)) return left;
-                return left;
-            },
-
-            .unary_expr => |u| try self.resolveExpr(u.operand, scope),
-            .mut_borrow_expr => |b| try self.resolveExpr(b, scope),
-            .const_borrow_expr => |b| try self.resolveExpr(b, scope),
-
-            .call_expr => |c| {
-                const callee_type = try self.resolveExpr(c.callee, scope);
-                // Resolve arg types and check for String/[]u8 coercion
-                var arg_types_buf: [16]RT = undefined;
-                const arg_count = @min(c.args.len, 16);
-                for (c.args, 0..) |arg, idx| {
-                    const at = try self.resolveExpr(arg, scope);
-                    if (idx < 16) arg_types_buf[idx] = at;
-                }
-                // Check args against function signature — reject []u8 → String
-                try self.checkByteSliceStringCoercion(c, arg_types_buf[0..arg_count], node);
-
-                if (c.callee.* == .identifier) {
-                    const name = c.callee.identifier;
-                    // Struct constructor: Player(...) → Player
-                    if (self.ctx.decls.structs.contains(name)) return RT{ .named = name };
-                    // Builtin or included type constructor: Ptr(T)(...), List(i32)(...)
-                    if (builtins.isBuiltinType(name) or self.isIncludedType(name)) return RT{ .named = name };
-                    if (scope.lookup(name)) |t| {
-                        if (t == .func_ptr) {
-                            // Function pointer call — OK
-                        } else if (!self.ctx.decls.funcs.contains(name) and
-                            !self.ctx.decls.structs.contains(name) and
-                            !self.ctx.decls.enums.contains(name) and
-                            !self.ctx.decls.bitfields.contains(name) and
-                            !builtins.isBuiltinType(name) and
-                            !self.isIncludedType(name))
-                        {
-                            // Non-callable variable
-                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "'{s}' is not callable — expected a function or constructor", .{name});
-                            return t;
-                        }
-                    }
-                    if (self.ctx.decls.funcs.get(name)) |sig| {
-                        return sig.return_type;
-                    }
-                }
-                if (c.callee.* == .field_expr) {
-                    const fe = c.callee.field_expr;
-                    if (fe.object.* == .identifier) {
-                        const obj_id = fe.object.identifier;
-                        // Module-level function: module.func()
-                        if (self.ctx.decls.funcs.get(fe.field)) |sig| {
-                            return sig.return_type;
-                        }
-                        // Static or instance method on a bridge struct.
-                        // obj_id may be the struct type name (static: Renderer.create())
-                        // or a variable whose type is a struct (instance: r.draw(m)).
-                        const struct_name: []const u8 = blk: {
-                            if (self.ctx.decls.structs.contains(obj_id)) break :blk obj_id;
-                            if (scope.lookup(obj_id)) |var_type| {
-                                // Unwrap error_union and null_union to get the underlying named type
-                                if (var_type == .named) break :blk var_type.named;
-                                if (var_type.coreInner()) |ci| {
-                                    if (ci.* == .named) break :blk ci.named;
-                                }
-                            }
-                            break :blk "";
-                        };
-                        if (struct_name.len > 0) {
-                            // Build "StructName.method" key and look in struct_methods
-                            const key = std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ struct_name, fe.field }) catch "";
-                            defer if (key.len > 0) self.ctx.allocator.free(key);
-                            if (key.len > 0) {
-                                if (self.ctx.decls.struct_methods.get(key)) |sig| return sig.return_type;
-                                // Cross-module: check all loaded module decls
-                                if (self.ctx.all_decls) |ad| {
-                                    if (ad.get(obj_id)) |mod_decls| {
-                                        if (mod_decls.struct_methods.get(key)) |sig| return sig.return_type;
-                                    }
-                                    var it = ad.iterator();
-                                    while (it.next()) |entry| {
-                                        if (entry.value_ptr.*.struct_methods.get(key)) |sig| return sig.return_type;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Cross-module static method: module.Type.method(args) — e.g. tamga_vk3d.Renderer.create()
-                    // callee is field_expr{object: field_expr{object: module_id, field: TypeName}, field: method}
-                    if (fe.object.* == .field_expr) {
-                        const inner = fe.object.field_expr;
-                        if (inner.object.* == .identifier) {
-                            const type_name = inner.field;
-                            const method_name = fe.field;
-                            const key = std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ type_name, method_name }) catch "";
-                            defer if (key.len > 0) self.ctx.allocator.free(key);
-                            if (key.len > 0) {
-                                if (self.ctx.decls.struct_methods.get(key)) |sig| return sig.return_type;
-                                if (self.ctx.all_decls) |ad| {
-                                    var it = ad.iterator();
-                                    while (it.next()) |entry| {
-                                        if (entry.value_ptr.*.struct_methods.get(key)) |sig| return sig.return_type;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                // Generic constructor call: Vec2(f32)(...) — callee is itself a call
-                if (c.callee.* == .call_expr) {
-                    const inner_c = c.callee.call_expr;
-                    if (inner_c.callee.* == .identifier) {
-                        const name = inner_c.callee.identifier;
-                        // compt func returning type: Vec2(f32)(...) → named type
-                        if (self.ctx.decls.funcs.get(name)) |sig| {
-                            if (sig.context == .compt) return RT{ .named = name };
-                        }
-                        if (builtins.isBuiltinType(name) or self.isIncludedType(name)) return RT{ .named = name };
-                    }
-                }
-                return callee_type;
-            },
-
-            .field_expr => |f| {
-                const obj_type = try self.resolveExpr(f.object, scope);
-                // .value on ErrorUnion(T) or NullUnion(T) unwraps to the inner type.
-                // This lets the resolver track variables assigned via `var x = result.value`.
-                if (std.mem.eql(u8, f.field, "value")) {
-                    if (obj_type.coreInner()) |ci| return ci.*;
-                }
-                const obj_name = obj_type.name();
-                if (self.ctx.decls.structs.get(obj_name)) |sig| {
-                    for (sig.fields) |field| {
-                        if (std.mem.eql(u8, field.name, f.field)) {
-                            return field.type_;
-                        }
-                    }
-                }
-                return RT.inferred;
-            },
-
-            .index_expr => |i| {
-                const obj_type = try self.resolveExpr(i.object, scope);
-                _ = try self.resolveExpr(i.index, scope);
-                // Reject indexing non-indexable types (bool, void, etc.)
-                if (obj_type == .primitive) {
-                    const tn = obj_type.primitive;
-                    if (tn == .bool or tn == .void) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot index into type '{s}'", .{tn.toName()});
-                    }
-                }
-                return RT.inferred;
-            },
-
-            .slice_expr => |s| {
-                _ = try self.resolveExpr(s.object, scope);
-                _ = try self.resolveExpr(s.low, scope);
-                _ = try self.resolveExpr(s.high, scope);
-                return RT.inferred;
-            },
-
-            .compiler_func => |cf| {
-                var first_arg_type: RT = RT.unknown;
-                for (cf.args, 0..) |arg, idx| {
-                    const t = try self.resolveExpr(arg, scope);
-                    if (idx == 0) first_arg_type = t;
-                }
-                if (std.mem.eql(u8, cf.name, "size") or std.mem.eql(u8, cf.name, "align")) return RT{ .primitive = .usize };
-                if (std.mem.eql(u8, cf.name, "typeid")) return RT{ .primitive = .usize };
-                if (std.mem.eql(u8, cf.name, "typename")) return RT{ .primitive = .string };
-                if (std.mem.eql(u8, cf.name, "typeOf")) return RT{ .primitive = .@"type" };
-                if (std.mem.eql(u8, cf.name, "assert")) return RT{ .primitive = .void };
-                if (std.mem.eql(u8, cf.name, "swap")) return RT{ .primitive = .void };
-                // cast(T, x) → returns T (first arg is the target type)
-                if (std.mem.eql(u8, cf.name, "cast")) {
-                    if (cf.args.len >= 1 and cf.args[0].* == .identifier) {
-                        return RT{ .named = cf.args[0].identifier };
-                    }
-                    if (cf.args.len >= 1 and cf.args[0].* == .type_named) {
-                        const tn = cf.args[0].type_named;
-                        if (types.Primitive.fromName(tn)) |prim| return RT{ .primitive = prim };
-                        return RT{ .named = tn };
-                    }
-                }
-                // copy(x), move(x) → returns same type as argument
-                if (std.mem.eql(u8, cf.name, "copy") or std.mem.eql(u8, cf.name, "move")) {
-                    return first_arg_type;
-                }
-                // Introspection functions
-                if (std.mem.eql(u8, cf.name, "hasField") or std.mem.eql(u8, cf.name, "hasDecl")) {
-                    if (cf.args.len != 2) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@{s} takes exactly 2 arguments", .{cf.name});
-                    } else if (cf.args[1].* != .string_literal) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@{s} requires a string literal as second argument", .{cf.name});
-                    }
-                    return RT{ .primitive = .bool };
-                }
-                if (std.mem.eql(u8, cf.name, "fieldType")) {
-                    if (cf.args.len != 2) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@fieldType takes exactly 2 arguments", .{});
-                    } else if (cf.args[1].* != .string_literal) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@fieldType requires a string literal as second argument", .{});
-                    }
-                    return RT{ .primitive = .@"type" };
-                }
-                if (std.mem.eql(u8, cf.name, "fieldNames")) {
-                    if (cf.args.len != 1) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "@fieldNames takes exactly 1 argument", .{});
-                    }
-                    return RT.inferred;
-                }
-                return RT.unknown;
-            },
-
-            .array_literal => |elems| {
-                // Resolve element types; infer array type from first element
-                var elem_type: RT = RT.inferred;
-                for (elems) |elem| {
-                    const t = try self.resolveExpr(elem, scope);
-                    if (elem_type == .inferred) elem_type = t;
-                }
-                return elem_type;
-            },
-
-            .collection_expr => |c| {
-                for (c.type_args) |arg| _ = try self.resolveExpr(arg, scope);
-                if (c.alloc_arg) |a| _ = try self.resolveExpr(a, scope);
-                return RT{ .named = c.kind };
-            },
-
-            .tuple_literal => |t| {
-                for (t.fields) |f| _ = try self.resolveExpr(f, scope);
-                return RT.inferred;
-            },
-
-            .range_expr => |r| {
-                _ = try self.resolveExpr(r.left, scope);
-                _ = try self.resolveExpr(r.right, scope);
-                return RT.inferred;
-            },
-
-            .break_stmt, .continue_stmt => RT.unknown,
-
-            else => RT.unknown,
-        };
+    pub fn checkMatchExhaustiveness(self: *TypeResolver, match_type: RT, arms: []*parser.Node, match_node: *parser.Node) !void {
+        return validation_impl.checkMatchExhaustiveness(self, match_type, arms, match_node);
     }
 
-    /// Check that a match on a union type covers all members
-    fn checkMatchExhaustiveness(self: *TypeResolver, match_type: RT, arms: []*parser.Node, match_node: *parser.Node) !void {
-        // Collect covered arm names
-        var covered: std.ArrayListUnmanaged([]const u8) = .{};
-        defer covered.deinit(self.ctx.allocator);
-        for (arms) |arm| {
-            if (arm.* == .match_arm) {
-                const pat = arm.match_arm.pattern;
-                if (pat.* == .identifier and !std.mem.eql(u8, pat.identifier, "else")) {
-                    try covered.append(self.ctx.allocator, pat.identifier);
-                }
-                if (pat.* == .null_literal) {
-                    try covered.append(self.ctx.allocator, "null");
-                }
-            }
-        }
-
-        const covered_slice = covered.items;
-
-        switch (match_type) {
-            .core_type => |ct| {
-                const required: [2][]const u8 = switch (ct.kind) {
-                    .error_union => .{ "Error", ct.inner.name() },
-                    .null_union => .{ "null", ct.inner.name() },
-                    else => return, // other core types don't have match exhaustiveness
-                };
-                for (required) |req| {
-                    var found = false;
-                    for (covered_slice) |c| {
-                        if (std.mem.eql(u8, c, req)) { found = true; break; }
-                    }
-                    if (!found) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(match_node), "non-exhaustive match — missing arm for '{s}', add it or use 'else'", .{req});
-                        return;
-                    }
-                }
-            },
-            .union_type => |members| {
-                for (members) |member| {
-                    var found = false;
-                    for (covered_slice) |c| {
-                        if (std.mem.eql(u8, c, member.name())) { found = true; break; }
-                    }
-                    if (!found) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(match_node), "non-exhaustive match — missing arm for '{s}', add it or use 'else'", .{member.name()});
-                        return;
-                    }
-                }
-            },
-            else => {}, // integer/string matches — no exhaustiveness required
-        }
+    pub fn validateMatchArm(self: *TypeResolver, pattern_name: []const u8, match_type: RT, arm_node: *parser.Node) !void {
+        return validation_impl.validateMatchArm(self, pattern_name, match_type, arm_node);
     }
 
-    /// Validate that a match arm pattern is a valid member of the matched union type
-    fn validateMatchArm(self: *TypeResolver, pattern_name: []const u8, match_type: RT, arm_node: *parser.Node) !void {
-        switch (match_type) {
-            .core_type => |ct| {
-                switch (ct.kind) {
-                    .error_union => {
-                        if (std.mem.eql(u8, pattern_name, builtins.BT.ERROR)) return;
-                        if (std.mem.eql(u8, pattern_name, ct.inner.name())) return;
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(arm_node), "match arm '{s}' is not a member of ErrorUnion({s})", .{ pattern_name, ct.inner.name() });
-                    },
-                    .null_union => {
-                        if (std.mem.eql(u8, pattern_name, "null")) return;
-                        if (std.mem.eql(u8, pattern_name, ct.inner.name())) return;
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(arm_node), "match arm '{s}' is not a member of NullUnion({s})", .{ pattern_name, ct.inner.name() });
-                    },
-                    else => {}, // other core types don't have match arms
-                }
-            },
-            .union_type => |members| {
-                // Valid arms: any member type name
-                for (members) |member| {
-                    if (std.mem.eql(u8, pattern_name, member.name())) return;
-                }
-                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(arm_node), "match arm '{s}' is not a member of this union type", .{pattern_name});
-            },
-            else => {
-                // Not a union type — pattern matching on integer/string values, not type arms
-                // These are validated by codegen, not here
-            },
-        }
+    pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
+        return validation_impl.validateType(self, node, scope);
     }
 
-    fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!void {
-        switch (node.*) {
-            .type_named => |type_name| {
-                // Qualified names (module.Type) refer to bridge/imported module types.
-                // The module import is validated by the module resolver; we trust the
-                // qualified form here rather than trying to look up cross-module types.
-                const is_qualified = std.mem.indexOfScalar(u8, type_name, '.') != null;
-                const is_primitive = types.isPrimitiveName(type_name);
-                const is_known = is_qualified or is_primitive or
-                    self.ctx.decls.structs.contains(type_name) or
-                    self.ctx.decls.enums.contains(type_name) or
-                    self.ctx.decls.bitfields.contains(type_name) or
-                    self.ctx.decls.types.contains(type_name) or // type aliases
-                    builtins.isBuiltinType(type_name) or
-                    self.isIncludedType(type_name) or
-                    std.mem.eql(u8, type_name, K.Type.ANY) or
-                    std.mem.eql(u8, type_name, K.Type.VOID) or
-                    std.mem.eql(u8, type_name, K.Type.NULL) or
-                    std.mem.eql(u8, type_name, "type") or
-                    scope.lookup(type_name) != null;
-
-                if (!is_known) {
-                    // Build candidate list from declared types + primitives for suggestion
-                    var candidates: std.ArrayListUnmanaged([]const u8) = .{};
-                    defer candidates.deinit(self.ctx.allocator);
-                    var sti = self.ctx.decls.structs.keyIterator();
-                    while (sti.next()) |k| try candidates.append(self.ctx.allocator, k.*);
-                    var eni = self.ctx.decls.enums.keyIterator();
-                    while (eni.next()) |k| try candidates.append(self.ctx.allocator, k.*);
-                    var bfi = self.ctx.decls.bitfields.keyIterator();
-                    while (bfi.next()) |k| try candidates.append(self.ctx.allocator, k.*);
-                    var tyi = self.ctx.decls.types.keyIterator();
-                    while (tyi.next()) |k| try candidates.append(self.ctx.allocator, k.*);
-                    for (&PRIMITIVE_NAMES) |pn| try candidates.append(self.ctx.allocator, pn);
-
-                    const suggestion = try errors.formatSuggestion(type_name, candidates.items, self.ctx.allocator);
-                    defer if (suggestion) |s| self.ctx.allocator.free(s);
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown type '{s}'{s}", .{ type_name, suggestion orelse "" });
-                }
-            },
-            .type_slice => |elem| try self.validateType(elem, scope),
-            .type_array => |a| try self.validateType(a.elem, scope),
-            .type_union => |u| {
-                for (u) |t| try self.validateType(t, scope);
-            },
-            .type_generic => |g| {
-                // Validate the base type name is known (builtin, compt func, or user-defined)
-                const dot_pos = std.mem.indexOfScalar(u8, g.name, '.');
-                const is_qualified = dot_pos != null;
-                var is_known = builtins.isBuiltinType(g.name) or
-                    self.ctx.decls.funcs.contains(g.name) or
-                    self.ctx.decls.structs.contains(g.name) or
-                    self.isIncludedType(g.name) or
-                    scope.lookup(g.name) != null;
-
-                // For qualified names (module.Type), validate against cross-module DeclTables
-                if (is_qualified and !is_known) {
-                    if (dot_pos) |dp| {
-                        const module_name = g.name[0..dp];
-                        const type_name = g.name[dp + 1 ..];
-                        if (self.ctx.all_decls) |ad| {
-                            if (ad.get(module_name)) |mod_decls| {
-                                is_known = mod_decls.structs.contains(type_name) or
-                                    mod_decls.enums.contains(type_name) or
-                                    mod_decls.funcs.contains(type_name) or
-                                    mod_decls.types.contains(type_name);
-                            } else {
-                                // Module not found in all_decls — may not yet be processed;
-                                // trust qualified names in this case (Zig validates at compile time)
-                                is_known = true;
-                            }
-                        } else {
-                            // No cross-module info available — trust qualified names (fallback)
-                            is_known = true;
-                        }
-                    }
-                } else if (is_qualified) {
-                    // Already known via local decls — nothing more to do
-                }
-
-                if (!is_known) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown generic type '{s}'", .{g.name});
-                }
-                // Validate type arguments (Ring/ORing second arg is a size, Vector first arg is a size)
-                const is_ring = std.mem.eql(u8, g.name, "Ring") or std.mem.eql(u8, g.name, "ORing");
-                const is_vector = std.mem.eql(u8, g.name, builtins.BT.VECTOR);
-                for (g.args, 0..) |arg, idx| {
-                    if (is_ring and idx == 1) continue; // size arg, not a type
-                    if (is_vector and idx == 0) continue; // lane count, not a type
-                    try self.validateType(arg, scope);
-                }
-            },
-            .type_ptr => |p| try self.validateType(p.elem, scope),
-            .type_func => |f| {
-                for (f.params) |p| try self.validateType(p, scope);
-                try self.validateType(f.ret, scope);
-            },
-            .type_tuple_anon => |members| {
-                for (members) |m| try self.validateType(m, scope);
-            },
-            .type_tuple_named => |fields| {
-                for (fields) |f| try self.validateType(f.type_node, scope);
-            },
-            else => {},
-        }
-    }
-
-    /// Check if a value type is compatible with an annotation type.
-    /// Only flags clear primitive-vs-primitive mismatches (e.g. i32 vs String).
-    /// Non-primitive types (arrays, structs, etc.) are left to Zig.
-    fn checkAssignCompat(self: *TypeResolver, expected: RT, actual: RT, node: *parser.Node) !void {
-        if (actual == .unknown or actual == .inferred) return;
-        if (expected == .unknown or expected == .inferred) return;
-        // Block []u8 → String coercion
-        if (expected == .primitive and expected.primitive == .string and
-            actual == .slice and actual.slice.* == .primitive and actual.slice.primitive == .u8)
-        {
-            try self.ctx.reporter.report(.{
-                .message = "cannot assign '[]u8' to 'String' — use str.fromBytes() for explicit conversion",
-                .loc = self.ctx.nodeLoc(node),
-            });
-            return;
-        }
-        // Only check when both sides are primitive — that's where we can be confident
-        if (expected != .primitive or actual != .primitive) return;
-        if (typesCompatible(actual, expected)) return;
-        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "type mismatch: expected '{s}', got '{s}'",
-            .{ expected.name(), actual.name() });
+    pub fn checkAssignCompat(self: *TypeResolver, expected: RT, actual: RT, node: *parser.Node) !void {
+        return validation_impl.checkAssignCompat(self, expected, actual, node);
     }
 
     /// Returns true if `name` is a variant of any declared enum or a flag of any declared bitfield.
     /// Used to suppress false "unknown identifier" errors for enum variants used as match patterns.
-    fn isEnumVariantOrBitfieldFlag(self: *const TypeResolver, name: []const u8) bool {
+    pub fn isEnumVariantOrBitfieldFlag(self: *const TypeResolver, name: []const u8) bool {
         var enum_it = self.ctx.decls.enums.valueIterator();
         while (enum_it.next()) |sig| {
             for (sig.variants) |v| {
@@ -999,103 +473,19 @@ pub const TypeResolver = struct {
         return false;
     }
 
-    /// Check function call args for illegal []u8 → String coercion.
-    /// String is not []u8 — use str.fromBytes() for explicit conversion.
-    fn checkByteSliceStringCoercion(self: *TypeResolver, c: parser.CallExpr, arg_types: []const RT, node: *parser.Node) !void {
-        // Look up the function signature
-        const func_name: []const u8 = if (c.callee.* == .identifier)
-            c.callee.identifier
-        else if (c.callee.* == .field_expr)
-            c.callee.field_expr.field
-        else
-            return;
-        const sig = self.ctx.decls.funcs.get(func_name) orelse return;
-
-        const param_count = @min(sig.params.len, arg_types.len);
-        for (0..param_count) |i| {
-            const param_type = sig.params[i].type_;
-            const arg_type = arg_types[i];
-            // Reject []u8 passed as String
-            if (param_type == .primitive and param_type.primitive == .string) {
-                if (arg_type == .slice) {
-                    if (arg_type.slice.* == .primitive and arg_type.slice.primitive == .u8) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass '[]u8' as 'String' — use str.fromBytes() for explicit conversion",
-                            .{});
-                    }
-                }
-            }
-            // Reject String passed as []u8
-            if (param_type == .slice) {
-                if (param_type.slice.* == .primitive and param_type.slice.primitive == .u8) {
-                    if (arg_type == .primitive and arg_type.primitive == .string) {
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass 'String' as '[]u8' — use str.toBytes() for explicit conversion",
-                            .{});
-                    }
-                }
-            }
-        }
+    pub fn checkByteSliceStringCoercion(self: *TypeResolver, c: parser.CallExpr, arg_types: []const RT, node: *parser.Node) !void {
+        return validation_impl.checkByteSliceStringCoercion(self, c, arg_types, node);
     }
 
-    /// Check that a struct implements all methods required by its blueprints.
-    fn checkBlueprintConformance(self: *TypeResolver, s: parser.StructDecl, loc: ?errors.SourceLoc) anyerror!void {
-        // Check for duplicate blueprint references
-        for (s.blueprints, 0..) |bp_name, i| {
-            for (s.blueprints[0..i]) |prev| {
-                if (std.mem.eql(u8, bp_name, prev)) {
-                    try self.ctx.reporter.reportFmt(loc, "struct '{s}' lists blueprint '{s}' more than once", .{ s.name, bp_name });
-                }
-            }
-        }
-
-        for (s.blueprints) |bp_name| {
-            // Look up blueprint in declarations
-            const bp_sig = self.ctx.decls.blueprints.get(bp_name) orelse {
-                try self.ctx.reporter.reportFmt(loc, "unknown blueprint '{s}'", .{bp_name});
-                continue;
-            };
-
-            // Check each required method
-            for (bp_sig.methods) |bp_method| {
-                const method_key = try std.fmt.allocPrint(self.ctx.allocator,
-                    "{s}.{s}", .{ s.name, bp_method.name });
-                defer self.ctx.allocator.free(method_key);
-
-                const struct_method = self.ctx.decls.struct_methods.get(method_key) orelse {
-                    try self.ctx.reporter.reportFmt(loc, "struct '{s}' does not implement '{s}' required by blueprint '{s}'",
-                        .{ s.name, bp_method.name, bp_name });
-                    continue;
-                };
-
-                // Compare parameter count
-                if (struct_method.params.len != bp_method.params.len) {
-                    try self.ctx.reporter.reportFmt(loc, "method '{s}' in struct '{s}' has {d} parameter(s), blueprint '{s}' requires {d}",
-                        .{ bp_method.name, s.name, struct_method.params.len, bp_name, bp_method.params.len });
-                    continue;
-                }
-
-                // Compare parameter types (with blueprint→struct name substitution)
-                for (struct_method.params, bp_method.params) |sp, bp| {
-                    if (!typesMatchWithSubstitution(sp.type_, bp.type_, bp_name, s.name)) {
-                        try self.ctx.reporter.reportFmt(loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': parameter type mismatch",
-                            .{ bp_method.name, s.name, bp_name });
-                        break;
-                    }
-                }
-
-                // Compare return type
-                if (!typesMatchWithSubstitution(struct_method.return_type, bp_method.return_type, bp_name, s.name)) {
-                    try self.ctx.reporter.reportFmt(loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': return type mismatch",
-                        .{ bp_method.name, s.name, bp_name });
-                }
-            }
-        }
+    pub fn checkBlueprintConformance(self: *TypeResolver, s: parser.StructDecl, loc: ?errors.SourceLoc) anyerror!void {
+        return validation_impl.checkBlueprintConformance(self, s, loc);
     }
 };
 
 /// Compare two ResolvedTypes with blueprint→struct name substitution.
 /// When a blueprint declares `self: const& Eq`, a struct implementing it
 /// should have `self: const& Point` — this function treats Eq↔Point as a match.
-fn typesMatchWithSubstitution(struct_type: RT, bp_type: RT, bp_name: []const u8, struct_name: []const u8) bool {
+pub fn typesMatchWithSubstitution(struct_type: RT, bp_type: RT, bp_name: []const u8, struct_name: []const u8) bool {
     switch (bp_type) {
         .named => |name| {
             if (std.mem.eql(u8, name, bp_name)) {
@@ -1146,7 +536,7 @@ fn typesMatchWithSubstitution(struct_type: RT, bp_type: RT, bp_name: []const u8,
 }
 
 /// Infer the element type for for-loop captures from the iterable.
-fn inferCaptureType(iterable: *parser.Node, iter_type: RT) RT {
+pub fn inferCaptureType(iterable: *parser.Node, iter_type: RT) RT {
     // Range expressions produce integers
     if (iterable.* == .range_expr) return RT{ .primitive = .usize };
     // String iteration produces u8 characters
@@ -1160,7 +550,7 @@ fn inferCaptureType(iterable: *parser.Node, iter_type: RT) RT {
 
 /// Check if two resolved types are compatible (same kind and name).
 /// Unions, error unions, and null unions are compatible with their inner types.
-fn isTypeParam(t: RT) bool {
+pub fn isTypeParam(t: RT) bool {
     // A type param is a .named type that isn't a known primitive and looks like a param name.
     // Type params defined via T: type get stored as .primitive = "type" in scope,
     // but field types referencing T resolve as .named = "T" since T isn't a declared struct.
@@ -1172,7 +562,7 @@ fn isTypeParam(t: RT) bool {
     return false;
 }
 
-fn typesCompatible(a: RT, b: RT) bool {
+pub fn typesCompatible(a: RT, b: RT) bool {
     const a_name = a.name();
     const b_name = b.name();
     if (a_name.len > 0 and b_name.len > 0 and std.mem.eql(u8, a_name, b_name)) return true;
@@ -1229,7 +619,7 @@ fn typesCompatible(a: RT, b: RT) bool {
 }
 
 /// Map CoreType.Kind to its Orhon wrapper type name
-fn coreTypeName(kind: types.ResolvedType.CoreType.Kind) []const u8 {
+pub fn coreTypeName(kind: types.ResolvedType.CoreType.Kind) []const u8 {
     return switch (kind) {
         .error_union => "ErrorUnion",
         .null_union => "NullUnion",
@@ -1242,7 +632,7 @@ fn coreTypeName(kind: types.ResolvedType.CoreType.Kind) []const u8 {
 
 /// Check if an unresolved literal type is compatible with a target type
 /// e.g. numeric_literal is compatible with any integer member of a union
-fn isLiteralCompatible(val: RT, target: RT) bool {
+pub fn isLiteralCompatible(val: RT, target: RT) bool {
     if (val != .primitive) return false;
     if (target != .primitive) return false;
     if (val.primitive == .numeric_literal and target.primitive.isInteger()) return true;

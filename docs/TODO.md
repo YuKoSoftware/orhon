@@ -80,14 +80,17 @@ Build a VS Code DAP adapter that reads these maps.
 
 **Hub+satellite splits (files over 1000 lines):**
 
-- `resolver.zig` (1785 lines) — split validation, match exhaustiveness, identifier
-  resolution into satellites.
-- `pipeline.zig` (1349 lines) — `runPipeline()` alone is 961 lines. Extract phase
+- ~~`resolver.zig`~~ — DONE (v0.14.5): split into hub + resolver_exprs.zig + resolver_validation.zig
+- `pipeline.zig` (1015 lines) — `runPipeline()` is the bulk. Extract phase
   helpers (module resolution, semantic passes, codegen, zig runner).
-- `mir_annotator.zig` (1248 lines) — separate concern areas into satellites.
-- `module.zig` (1070 lines) — split module resolution from filesystem operations.
-- `borrow.zig` (1069 lines) — extract helper analyses.
-- `ownership.zig` (1038 lines) — candidate for satellite extraction.
+- ~~`mir_annotator.zig`~~ — DONE (v0.17): split into hub + satellites
+- ~~`module.zig`~~ — DONE (v0.17): split into hub + module_parse.zig
+- ~~`borrow.zig`~~ — DONE: split into hub + borrow_checks.zig
+- ~~`ownership.zig`~~ — DONE: split into hub + ownership_checks.zig
+
+**Dead code:**
+
+- `collectAssigned()`/`getRootIdent()` in codegen_decls.zig — AST-path remnants
 
 ---
 

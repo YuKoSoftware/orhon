@@ -1,29 +1,18 @@
 // pipeline.zig — Compilation pipeline orchestration (runPipeline)
 
 const std = @import("std");
-const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const module = @import("module.zig");
 const declarations = @import("declarations.zig");
-const resolver = @import("resolver.zig");
-const ownership = @import("ownership.zig");
-const borrow = @import("borrow.zig");
-const thread_safety = @import("thread_safety.zig");
-const propagation = @import("propagation.zig");
-const sema = @import("sema.zig");
-const mir = @import("mir/mir.zig");
-const codegen = @import("codegen/codegen.zig");
 const zig_runner = @import("zig_runner/zig_runner.zig");
 const errors = @import("errors.zig");
 const cache = @import("cache.zig");
-const builtins = @import("builtins.zig");
-const constants = @import("constants.zig");
-const peg = @import("peg.zig");
 const _cli = @import("cli.zig");
 const _std_bundle = @import("std_bundle.zig");
 const _interface = @import("interface.zig");
 const _commands = @import("commands.zig");
 const build_helpers = @import("pipeline_build.zig");
+const passes = @import("pipeline_passes.zig");
 
 pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *errors.Reporter) !?[]const u8 {
 
@@ -189,58 +178,8 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         try all_module_decls.put(mod_name, &decl_collector.table);
 
         // ── Validate 'main' as reserved name ─────────────────
-        // Check top-level declarations for misuse of the name "main"
-        {
-            const is_exe = mod_ptr.build_type == .exe;
-            var has_func_main = false;
-
-
-            for (ast.program.top_level) |node| {
-                switch (node.*) {
-                    .var_decl => |v| {
-                        if (std.mem.eql(u8, v.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
-                        }
-                    },
-                    .struct_decl => |s| {
-                        if (std.mem.eql(u8, s.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
-                        }
-                    },
-                    .enum_decl => |e| {
-                        if (std.mem.eql(u8, e.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
-                        }
-                    },
-                    .blueprint_decl => |b| {
-                        if (std.mem.eql(u8, b.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
-                        }
-                    },
-                    .bitfield_decl => |bf| {
-                        if (std.mem.eql(u8, bf.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
-                        }
-                    },
-                    .func_decl => |f| {
-                        if (std.mem.eql(u8, f.name, "main")) {
-                            if (!is_exe) {
-                                try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), "func main() is only allowed in executable modules", .{});
-                            } else {
-                                has_func_main = true;
-                            }
-                        }
-                    },
-                    else => {},
-                }
-            }
-
-            // Exe modules must have func main() in the anchor file
-            if (is_exe and !has_func_main) {
-                try reporter.reportFmt(null, "executable module '{s}' requires func main() in anchor file", .{mod_name});
-            }
-        }
-        if (reporter.hasErrors()) return null;
+        if (try passes.validateMainReserved(ast, mod_ptr, locs_ptr, file_offsets, reporter))
+            return null;
 
         // Compute this module's current interface hash (after pass 4, before skip decision).
         // Stored here so it is available whether or not we recompile.
@@ -315,125 +254,15 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         // Snapshot warning count to capture new warnings from this module
         const warn_start = reporter.warnings.items.len;
 
-        // ── Shared context for type resolution + validation passes 5–9 ──
-        const sema_ctx = sema.SemanticContext{
-            .allocator = allocator,
-            .reporter = reporter,
-            .decls = &decl_collector.table,
-            .locs = locs_ptr,
-            .file_offsets = file_offsets,
-            .all_decls = &all_module_decls,
-        };
-
-        // ── Pass 5: Type Resolution ────────────────────────────
-        var type_resolver = resolver.TypeResolver.init(&sema_ctx);
-        defer type_resolver.deinit();
-
-        try type_resolver.resolve(ast);
-        if (reporter.hasErrors()) return null;
-
-        // ── Pass 6: Ownership Analysis ─────────────────────────
-        var ownership_checker = ownership.OwnershipChecker.init(allocator, &sema_ctx);
-        try ownership_checker.check(ast);
-        if (reporter.hasErrors()) return null;
-
-        // ── Pass 7: Borrow Checking ────────────────────────────
-        var borrow_checker = borrow.BorrowChecker.init(allocator, &sema_ctx);
-        defer borrow_checker.deinit();
-        try borrow_checker.check(ast);
-        if (reporter.hasErrors()) return null;
-
-        // ── Pass 8: Thread Safety ──────────────────────────────
-        var thread_checker = thread_safety.ThreadSafetyChecker.init(allocator, &sema_ctx);
-        defer thread_checker.deinit();
-        try thread_checker.check(ast);
-        if (reporter.hasErrors()) return null;
-
-        // ── Pass 9: Error Propagation ──────────────────────────
-        var prop_checker = propagation.PropagationChecker.init(allocator, &sema_ctx);
-        try prop_checker.check(ast);
-        if (reporter.hasErrors()) return null;
-
-        // ── Pass 10: MIR Annotation ─────────────────────────────
-        var mir_annotator = mir.MirAnnotator.init(allocator, reporter, &decl_collector.table, &type_resolver.type_map);
-        defer mir_annotator.deinit();
-        mir_annotator.all_decls = &all_module_decls;
-
-        try mir_annotator.annotate(ast);
-        if (reporter.hasErrors()) return null;
-
-        // ── Pass 10b: MIR Tree Lowering ───────────────────────
-        var mir_lowerer = mir.MirLowerer.init(
-            allocator,
-            &mir_annotator.node_map,
-            &mir_annotator.union_registry,
-            &decl_collector.table,
-            &mir_annotator.var_types,
-        );
-        defer mir_lowerer.deinit();
-        const mir_root = try mir_lowerer.lower(ast);
-
         // ── Bridge Sidecar Copy ─────────────────────────────────
-        // Validation already happened during module resolution (pass 3).
-        // Here we copy the validated sidecar to the generated dir, fixing up any
-        // `export fn` that lacks `pub` visibility so @import can resolve the symbol.
-        if (mod_ptr.has_bridges) {
-            if (mod_ptr.sidecar_path) |sidecar_src| {
-                try cache.ensureGeneratedDir();
-                const sidecar_dst = try std.fmt.allocPrint(allocator, "{s}/{s}_bridge.zig", .{ cache.GENERATED_DIR, mod_name });
-                defer allocator.free(sidecar_dst);
-                // Read sidecar content
-                const content = try std.fs.cwd().readFileAlloc(allocator, sidecar_src, 1024 * 1024);
-                defer allocator.free(content);
-                // Ensure all `export fn` have pub visibility
-                var result = std.ArrayListUnmanaged(u8){};
-                defer result.deinit(allocator);
-                var pos: usize = 0;
-                const needle = "export fn";
-                while (std.mem.indexOfPos(u8, content, pos, needle)) |idx| {
-                    // Check if already preceded by "pub "
-                    const already_pub = idx >= 4 and std.mem.eql(u8, content[idx - 4 .. idx], "pub ");
-                    // Append content up to (but not including) this occurrence
-                    try result.appendSlice(allocator, content[pos..idx]);
-                    if (!already_pub) {
-                        try result.appendSlice(allocator, "pub ");
-                    }
-                    // Append "export fn" itself and advance past it
-                    try result.appendSlice(allocator, needle);
-                    pos = idx + needle.len;
-                }
-                try result.appendSlice(allocator, content[pos..]);
-                // Write modified sidecar
-                const dst_file = try std.fs.cwd().createFile(sidecar_dst, .{});
-                defer dst_file.close();
-                try dst_file.writeAll(result.items);
+        if (try passes.copySidecar(allocator, mod_name, mod_ptr, cli, reporter, &sidecar_copied))
+            return null;
 
-                // Copy any additional .zig files imported by the sidecar
-                try cache.copySidecarImports(allocator, sidecar_src, cli.source_dir, mod_name, reporter, &sidecar_copied);
-            }
-        }
-        if (reporter.hasErrors()) return null;
-
-        // ── Pass 11: Zig Code Generation ───────────────────────
-        const is_debug = cli.optimize == .debug;
-        var cg = codegen.CodeGen.init(allocator, reporter, is_debug);
-        defer cg.deinit();
-        cg.decls = &decl_collector.table;
-        cg.all_decls = &all_module_decls;
-        cg.locs = locs_ptr;
-        cg.file_offsets = file_offsets;
-        cg.module_builds = &module_builds;
-        cg.node_map = &mir_annotator.node_map;
-        cg.union_registry = &mir_annotator.union_registry;
-        cg.var_types = &mir_annotator.var_types;
-        cg.const_ref_params = &mir_annotator.const_ref_params;
-        cg.mir_root = mir_root;
-
-        try cg.generate(ast, mod_name);
-        if (reporter.hasErrors()) return null;
-
-        // Write generated .zig file to cache
-        try cache.writeGeneratedZig(mod_name, cg.getOutput(), allocator);
+        // ── Passes 5–11: Type Resolution through Zig Code Generation ──
+        _ = try passes.runSemanticAndCodegen(
+            allocator, ast, mod_name, decl_collector, &all_module_decls,
+            locs_ptr, file_offsets, &module_builds, reporter, cli,
+        ) orelse return null;
 
         // Capture new warnings from this module for caching
         for (reporter.warnings.items[warn_start..]) |w| {
@@ -1009,7 +838,8 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     return exe_binary_name orelse try allocator.dupe(u8, "");
 }
 
-// Satellite module — tests and build helpers live in pipeline_build.zig
+// Satellite modules
 test {
     _ = build_helpers;
+    _ = passes;
 }

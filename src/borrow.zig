@@ -9,6 +9,7 @@ const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
+const checks_impl = @import("borrow_checks.zig");
 
 /// A borrow record — tracks active borrows
 /// `field` is null for whole-variable borrows, non-null for field-level borrows.
@@ -52,7 +53,7 @@ pub const BorrowChecker = struct {
         }
     }
 
-    fn checkNode(self: *BorrowChecker, node: *parser.Node) anyerror!void {
+    pub fn checkNode(self: *BorrowChecker, node: *parser.Node) anyerror!void {
         switch (node.*) {
             .func_decl => |f| {
                 self.scope_depth += 1;
@@ -92,195 +93,23 @@ pub const BorrowChecker = struct {
         }
     }
 
-    fn checkStatement(self: *BorrowChecker, node: *parser.Node) anyerror!void {
-        self.current_node = node;
-        switch (node.*) {
-            .var_decl => |v| {
-                // Borrow mutability comes from the type annotation (mut& T vs const& T),
-                // not from const/var — const binding to mut& T is still a mutable borrow
-                // NLL: borrow_ref is the declared variable name
-                if (v.value.* == .mut_borrow_expr) {
-                    const is_mut = isMutableBorrowType(v.type_annotation);
-                    if (extractBorrowTarget(v.value.mut_borrow_expr)) |target| {
-                        try self.addBorrow(target.variable, target.field, is_mut, v.name);
-                    }
-                } else if (v.value.* == .const_borrow_expr) {
-                    if (extractBorrowTarget(v.value.const_borrow_expr)) |target| {
-                        try self.addBorrow(target.variable, target.field, false, v.name);
-                    }
-                } else {
-                    try self.checkExpr(v.value);
-                }
-            },
-            .return_stmt => |r| {
-                if (r.value) |val| {
-                    // Cannot return a reference — only owned values
-                    if (val.* == .mut_borrow_expr) {
-                        try self.ctx.reporter.report(.{
-                            .message = "cannot return a reference — functions can only return owned values",
-                            .loc = self.ctx.nodeLoc(node),
-                        });
-                    }
-                    try self.checkExpr(val);
-                }
-            },
-            .if_stmt => |i| {
-                try self.checkExpr(i.condition);
-                try self.checkNode(i.then_block);
-                if (i.else_block) |e| try self.checkNode(e);
-            },
-            .while_stmt => |w| {
-                try self.checkExpr(w.condition);
-                if (w.continue_expr) |c| try self.checkExpr(c);
-                try self.checkNode(w.body);
-            },
-            .for_stmt => |f| {
-                try self.checkExpr(f.iterable);
-                try self.checkNode(f.body);
-            },
-            .match_stmt => |m| {
-                try self.checkExpr(m.value);
-                for (m.arms) |arm| {
-                    if (arm.* == .match_arm) {
-                        try self.checkNode(arm.match_arm.body);
-                    }
-                }
-            },
-            .defer_stmt => |d| {
-                try self.checkNode(d.body);
-            },
-            .destruct_decl => |d| {
-                try self.checkExpr(d.value);
-            },
-            .break_stmt, .continue_stmt => {},
-            .assignment => |a| {
-                // If assigning a borrow, check for conflicts
-                // NLL: borrow_ref is the LHS identifier (if it is one)
-                const assign_ref: ?[]const u8 = if (a.left.* == .identifier) a.left.identifier else null;
-                if (a.right.* == .mut_borrow_expr) {
-                    const is_mut = isMutableBorrowType(null); // no type context in assignment
-                    if (extractBorrowTarget(a.right.mut_borrow_expr)) |target| {
-                        try self.addBorrow(target.variable, target.field, is_mut, assign_ref);
-                    }
-                } else if (a.right.* == .const_borrow_expr) {
-                    if (extractBorrowTarget(a.right.const_borrow_expr)) |target| {
-                        try self.addBorrow(target.variable, target.field, false, assign_ref);
-                    }
-                }
-                // Check that borrowed variables aren't used while mutably borrowed
-                try self.checkExprAccess(a.left);
-                try self.checkExpr(a.right);
-            },
-            .block => try self.checkNode(node),
-            else => try self.checkExpr(node),
-        }
+    pub fn checkStatement(self: *BorrowChecker, node: *parser.Node) anyerror!void {
+        return checks_impl.checkStatement(self, node);
     }
 
-    fn checkExpr(self: *BorrowChecker, node: *parser.Node) anyerror!void {
-        switch (node.*) {
-            .mut_borrow_expr => |inner| {
-                // mut& in expression context (e.g. function call arg) — default immutable
-                // NLL: null ref — temporary borrow, not tracked for NLL
-                if (extractBorrowTarget(inner)) |target| {
-                    try self.addBorrow(target.variable, target.field, false, null);
-                }
-                try self.checkExpr(inner);
-            },
-            .const_borrow_expr => |inner| {
-                // Explicit const& in expression context — always immutable
-                // NLL: null ref — temporary borrow, not tracked for NLL
-                if (extractBorrowTarget(inner)) |target| {
-                    try self.addBorrow(target.variable, target.field, false, null);
-                }
-                try self.checkExpr(inner);
-            },
-            .identifier => |name| {
-                // Check if this variable is mutably borrowed — can't use it
-                try self.checkNotMutablyBorrowedPath(name, null);
-            },
-            .call_expr => |c| {
-                // Method call: obj.method(args) — temporary borrow for duration of call
-                if (c.callee.* == .field_expr) {
-                    const fe = c.callee.field_expr;
-                    if (fe.object.* == .identifier) {
-                        const obj_name = fe.object.identifier;
-                        const method_name = fe.field;
-                        // Look up method to check self parameter mutability.
-                        // Try top-level funcs first, then struct_methods ("Type.method" key).
-                        {
-                            if (self.ctx.decls.funcs.get(method_name) orelse
-                                self.lookupStructMethod(obj_name, method_name)) |sig| {
-                                if (sig.params.len > 0 and std.mem.eql(u8, sig.params[0].name, "self")) {
-                                    const self_node = sig.param_nodes[0];
-                                    if (self_node.* == .param) {
-                                        const is_mut = isMutableBorrowType(self_node.param.type_annotation);
-                                        // Temporary borrow: check conflicts, add, then remove after call
-                                        try self.addBorrow(obj_name, null, is_mut, null);
-                                        // Check args while borrow is active
-                                        for (c.args) |arg| try self.checkExpr(arg);
-                                        // Release temporary borrow
-                                        self.removeLastBorrow(obj_name);
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                try self.checkExpr(c.callee);
-                for (c.args) |arg| try self.checkExpr(arg);
-            },
-            .binary_expr => |b| {
-                try self.checkExpr(b.left);
-                try self.checkExpr(b.right);
-            },
-            .unary_expr => |u| try self.checkExpr(u.operand),
-            .field_expr => {
-                // Field access: check with field-level awareness
-                if (extractBorrowTarget(node)) |target| {
-                    try self.checkNotMutablyBorrowedPath(target.variable, target.field);
-                } else {
-                    // Cannot extract base — fall back to recursive check
-                    try self.checkExpr(node.field_expr.object);
-                }
-            },
-            .index_expr => |i| {
-                try self.checkExpr(i.object);
-                try self.checkExpr(i.index);
-            },
-            .slice_expr => |s| {
-                try self.checkExpr(s.object);
-                try self.checkExpr(s.low);
-                try self.checkExpr(s.high);
-            },
-            .compiler_func => |cf| {
-                for (cf.args) |arg| try self.checkExpr(arg);
-            },
-            else => {},
-        }
+    pub fn checkExpr(self: *BorrowChecker, node: *parser.Node) anyerror!void {
+        return checks_impl.checkExpr(self, node);
     }
 
     /// Check if accessing a variable/field that is mutably borrowed
-    fn checkExprAccess(self: *BorrowChecker, node: *parser.Node) anyerror!void {
-        switch (node.*) {
-            .identifier => |name| try self.checkNotMutablyBorrowedPath(name, null),
-            .field_expr => {
-                if (extractBorrowTarget(node)) |target| {
-                    try self.checkNotMutablyBorrowedPath(target.variable, target.field);
-                } else {
-                    try self.checkExprAccess(node.field_expr.object);
-                }
-            },
-            .index_expr => |i| try self.checkExprAccess(i.object),
-            .slice_expr => |s| try self.checkExprAccess(s.object),
-            else => {},
-        }
+    pub fn checkExprAccess(self: *BorrowChecker, node: *parser.Node) anyerror!void {
+        return checks_impl.checkExprAccess(self, node);
     }
 
     /// Error if a variable/field has an active mutable borrow that overlaps.
     /// Bare variable access (field=null) is blocked by any mutable borrow on the variable.
     /// Field access (field!=null) is only blocked by whole-variable or same-field borrows.
-    fn checkNotMutablyBorrowedPath(self: *BorrowChecker, name: []const u8, field: ?[]const u8) !void {
+    pub fn checkNotMutablyBorrowedPath(self: *BorrowChecker, name: []const u8, field: ?[]const u8) !void {
         for (self.active_borrows.items) |b| {
             if (!std.mem.eql(u8, b.variable, name) or !b.is_mutable) continue;
             if (!pathsOverlap(b.field, field)) continue;
@@ -297,7 +126,7 @@ pub const BorrowChecker = struct {
 
     /// Add a borrow — check for conflicts (field-level aware)
     /// `borrow_ref` is the variable holding the reference (null for temporaries).
-    fn addBorrow(self: *BorrowChecker, variable: []const u8, field: ?[]const u8, is_mutable: bool, borrow_ref: ?[]const u8) !void {
+    pub fn addBorrow(self: *BorrowChecker, variable: []const u8, field: ?[]const u8, is_mutable: bool, borrow_ref: ?[]const u8) !void {
         // Check existing borrows for conflicts
         for (self.active_borrows.items) |existing| {
             if (!std.mem.eql(u8, existing.variable, variable)) continue;
@@ -332,7 +161,7 @@ pub const BorrowChecker = struct {
     }
 
     /// Remove the last borrow for a variable (used for temporary method call borrows)
-    fn removeLastBorrow(self: *BorrowChecker, variable: []const u8) void {
+    pub fn removeLastBorrow(self: *BorrowChecker, variable: []const u8) void {
         var i: usize = self.active_borrows.items.len;
         while (i > 0) {
             i -= 1;
@@ -345,7 +174,7 @@ pub const BorrowChecker = struct {
 
     /// Look up a struct method by searching struct_methods with all known struct type names.
     /// Returns the FuncSig if found, null otherwise.
-    fn lookupStructMethod(self: *BorrowChecker, obj_name: []const u8, method_name: []const u8) ?declarations.FuncSig {
+    pub fn lookupStructMethod(self: *BorrowChecker, obj_name: []const u8, method_name: []const u8) ?declarations.FuncSig {
         // Try all struct types — check if "TypeName.method" exists in struct_methods.
         // The object variable's type name is not available here (borrow checker runs
         // without type info), so iterate known structs that have this method.
@@ -368,7 +197,7 @@ pub const BorrowChecker = struct {
     }
 
     /// Drop all borrows at or deeper than the given depth (scope exit)
-    fn dropBorrowsAtDepth(self: *BorrowChecker, depth: usize) void {
+    pub fn dropBorrowsAtDepth(self: *BorrowChecker, depth: usize) void {
         var i: usize = self.active_borrows.items.len;
         while (i > 0) {
             i -= 1;
@@ -383,7 +212,7 @@ pub const BorrowChecker = struct {
     /// - Expression-level borrows (borrow_ref == null): expire after the statement
     ///   that created them — these are borrows from function call args that should
     ///   not persist across statements
-    fn dropExpiredBorrows(self: *BorrowChecker, last_use: *const std.StringHashMapUnmanaged(usize), current_idx: usize) void {
+    pub fn dropExpiredBorrows(self: *BorrowChecker, last_use: *const std.StringHashMapUnmanaged(usize), current_idx: usize) void {
         var i: usize = self.active_borrows.items.len;
         while (i > 0) {
             i -= 1;
@@ -534,7 +363,7 @@ fn borrowLabel(variable: []const u8, field: ?[]const u8) []const u8 {
 /// Extract the base variable and optional field from a borrow target expression.
 /// Handles: identifier("x") → (x, null), field_expr(ident("p"), "name") → (p, name)
 /// For deeper chains like a.b.c, tracks the first field level from the base.
-fn extractBorrowTarget(node: *parser.Node) ?struct { variable: []const u8, field: ?[]const u8 } {
+pub fn extractBorrowTarget(node: *parser.Node) ?struct { variable: []const u8, field: ?[]const u8 } {
     switch (node.*) {
         .identifier => |name| return .{ .variable = name, .field = null },
         .field_expr => |f| {
@@ -556,7 +385,7 @@ fn extractBorrowTarget(node: *parser.Node) ?struct { variable: []const u8, field
 }
 
 /// Check if a type annotation is a mutable borrow type (var &T)
-fn isMutableBorrowType(type_ann: ?*parser.Node) bool {
+pub fn isMutableBorrowType(type_ann: ?*parser.Node) bool {
     const ann = type_ann orelse return false;
     if (ann.* == .type_ptr) {
         return ann.type_ptr.kind == .mut_ref;

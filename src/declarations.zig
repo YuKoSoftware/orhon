@@ -208,33 +208,6 @@ pub const DeclCollector = struct {
     pub fn collect(self: *DeclCollector, ast: *parser.Node) !void {
         if (ast.* != .program) return;
 
-        // Validate: #cimport is only allowed in modules that have bridge declarations.
-        var cimport_node: ?*parser.Node = null;
-        for (ast.program.metadata) |meta| {
-            if (std.mem.eql(u8, meta.metadata.field, "cimport")) {
-                cimport_node = meta;
-                break;
-            }
-        }
-        if (cimport_node != null) {
-            var has_bridge = false;
-            for (ast.program.top_level) |node| {
-                switch (node.*) {
-                    .func_decl => |f| if (f.context == .bridge) { has_bridge = true; break; },
-                    .struct_decl => |s| if (s.is_bridge) { has_bridge = true; break; },
-                    .var_decl => |v| if (v.is_bridge) { has_bridge = true; break; },
-                    else => {},
-                }
-            }
-            if (!has_bridge) {
-                try self.reporter.report(.{
-                    .message = "#cimport is only allowed in modules with bridge declarations",
-                    .loc = self.nodeLoc(cimport_node.?),
-                });
-                return;
-            }
-        }
-
         for (ast.program.top_level) |node| {
             try self.collectTopLevel(node);
         }
@@ -374,7 +347,7 @@ pub const DeclCollector = struct {
                         .param_nodes = f.params,
                         .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
                         .return_type_node = f.return_type,
-                        .context = if (s.is_bridge) .bridge else f.context,
+                        .context = f.context,
                         .is_pub = f.is_pub,
                     };
                     const key = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ s.name, f.name });
@@ -702,7 +675,7 @@ test "declaration collector - bridge func is registered" {
         .params = &.{},
         .return_type = ret_type,
         .body = undefined,
-        .context = .bridge,
+        .context = .normal,
         .is_pub = true,
     }};
 
@@ -722,96 +695,6 @@ test "declaration collector - bridge func is registered" {
     try collector.collect(prog);
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(collector.table.funcs.contains("print"));
-}
-
-test "declaration collector - #cimport without bridge is an error" {
-    const alloc = std.testing.allocator;
-    var reporter = errors.Reporter.init(alloc, .debug);
-    defer reporter.deinit();
-
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    // A normal (non-bridge) func
-    const ret_type = try a.create(parser.Node);
-    ret_type.* = .{ .type_named = "void" };
-    const func_node = try a.create(parser.Node);
-    func_node.* = .{ .func_decl = .{
-        .name = "foo",
-        .params = &.{},
-        .return_type = ret_type,
-        .body = undefined,
-        .context = .normal,
-        .is_pub = true,
-    }};
-
-    const top_level = try a.alloc(*parser.Node, 1);
-    top_level[0] = func_node;
-
-    // #cimport metadata node
-    const lib_name = try a.create(parser.Node);
-    lib_name.* = .{ .string_literal = "\"SDL3\"" };
-    const link_meta = try a.create(parser.Node);
-    link_meta.* = .{ .metadata = .{ .field = "cimport", .value = lib_name, .cimport_include = "SDL3/SDL.h" } };
-    const metadata = try a.alloc(*parser.Node, 1);
-    metadata[0] = link_meta;
-
-    const module_node = try a.create(parser.Node);
-    module_node.* = .{ .module_decl = .{ .name = "bad" } };
-    const prog = try a.create(parser.Node);
-    prog.* = .{ .program = .{ .module = module_node,
-        .metadata = metadata, .imports = &.{}, .top_level = top_level } };
-
-    var collector = DeclCollector.init(alloc, &reporter);
-    defer collector.deinit();
-
-    try collector.collect(prog);
-    try std.testing.expect(reporter.hasErrors());
-}
-
-test "declaration collector - #cimport with bridge is allowed" {
-    const alloc = std.testing.allocator;
-    var reporter = errors.Reporter.init(alloc, .debug);
-    defer reporter.deinit();
-
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const ret_type = try a.create(parser.Node);
-    ret_type.* = .{ .type_named = "void" };
-    const func_node = try a.create(parser.Node);
-    func_node.* = .{ .func_decl = .{
-        .name = "init",
-        .params = &.{},
-        .return_type = ret_type,
-        .body = undefined,
-        .context = .bridge,
-        .is_pub = true,
-    }};
-
-    const top_level = try a.alloc(*parser.Node, 1);
-    top_level[0] = func_node;
-
-    const lib_name = try a.create(parser.Node);
-    lib_name.* = .{ .string_literal = "\"SDL3\"" };
-    const link_meta = try a.create(parser.Node);
-    link_meta.* = .{ .metadata = .{ .field = "cimport", .value = lib_name, .cimport_include = "SDL3/SDL.h" } };
-    const metadata = try a.alloc(*parser.Node, 1);
-    metadata[0] = link_meta;
-
-    const module_node = try a.create(parser.Node);
-    module_node.* = .{ .module_decl = .{ .name = "sdl" } };
-    const prog = try a.create(parser.Node);
-    prog.* = .{ .program = .{ .module = module_node,
-        .metadata = metadata, .imports = &.{}, .top_level = top_level } };
-
-    var collector = DeclCollector.init(alloc, &reporter);
-    defer collector.deinit();
-
-    try collector.collect(prog);
-    try std.testing.expect(!reporter.hasErrors());
 }
 
 /// Check if a name conflicts with a primitive or builtin type name.

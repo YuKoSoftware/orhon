@@ -39,7 +39,7 @@ error_skip
 # Token lookahead for top-level declaration starts (used by error_skip to resync)
 top_level_start
     <- 'func' / 'pub' / 'struct' / 'blueprint' / 'enum' / 'bitfield' / 'const' / 'var'
-     / 'thread' / 'compt' / 'bridge' / 'test' / 'import' / '#'
+     / 'thread' / 'compt' / 'test' / 'import' / '#'
 
 module_decl
     <- doc_block? _ 'module' IDENTIFIER NL  {label: "module declaration"}
@@ -86,13 +86,11 @@ top_level_decl
      / bitfield_decl
      / const_decl
      / var_decl
-     / bridge_decl
      / test_decl
 
 pub_decl
     <- 'pub' (func_decl
             / thread_decl
-            / bridge_decl
             / struct_decl
             / blueprint_decl
             / enum_decl
@@ -191,25 +189,6 @@ bitfield_decl
 bitfield_body
     <- (IDENTIFIER TERM _)*
 
-
-# ============================================================
-# BRIDGE DECLARATIONS
-# ============================================================
-
-bridge_decl
-    <- 'bridge' (bridge_func / bridge_const / bridge_struct)  {label: "bridge declaration"}
-
-bridge_func
-    <- 'func' func_name '(' _ param_list _ ')' type TERM
-
-bridge_const
-    <- 'const' IDENTIFIER ':' type TERM
-
-bridge_struct
-    <- 'struct' IDENTIFIER generic_params? ('{' _ bridge_struct_body _ '}' / TERM)
-
-bridge_struct_body
-    <- (doc_block? 'pub'? (bridge_decl / field_decl) _)*
 
 
 # ============================================================
@@ -617,7 +596,7 @@ _               <- ([ \t\n] / '//' (!'\n' .)* '\n')*
 # func var const if else elif for while return throw import use
 # pub match struct enum bitfield defer thread null void compt
 # any module test and or not as break continue true false
-# bridge is type blueprint
+# is type blueprint
 # Compound borrow tokens: const& mut&
 # Compiler functions use @ prefix: @cast @copy @move @swap @assert
 # @size @align @typename @typeid @typeOf

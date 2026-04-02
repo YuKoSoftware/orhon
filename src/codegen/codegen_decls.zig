@@ -22,14 +22,6 @@ const CodeGen = codegen.CodeGen;
 /// Walk a node tree and collect all variable names that appear as the
 /// LHS of an assignment (simple, compound, field, or index). Stops at
 /// nested func_decl boundaries so inner functions don't pollute the outer set.
-/// Emit a re-export for a bridge declaration from the named bridge module.
-/// Bridge .zig files are registered as named Zig modules in the build graph,
-/// so we import by module name (no .zig extension).
-pub fn generateBridgeReExport(cg: *CodeGen, name: []const u8, is_pub: bool) anyerror!void {
-    const vis = if (is_pub) "pub " else "";
-    try cg.emitLineFmt("{s}const {s} = @import(\"{s}_bridge\").{s};", .{ vis, name, cg.module_name, name });
-}
-
 /// Emit a re-export for a zig-backed module declaration from the named zig module.
 /// Zig source files are registered as named Zig modules with a `_zig` suffix in the build graph.
 pub fn generateZigReExport(cg: *CodeGen, name: []const u8, is_pub: bool) anyerror!void {
@@ -47,14 +39,11 @@ pub fn generateFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     // zig-backed module — re-export from zig source module
     if (cg.is_zig_module) return cg.generateZigReExport(func_name, m.is_pub);
 
-    // bridge func — re-export from paired sidecar file
-    if (m.is_bridge) return cg.generateBridgeReExport(func_name, m.is_pub);
-
     // Body-less declaration — skip codegen.
     // Never skip main (it can legitimately have an empty body).
     const body_m = m.body();
     if (body_m.kind == .block and body_m.children.len == 0 and
-        !m.is_bridge and !std.mem.eql(u8, func_name, "main")) return;
+        !std.mem.eql(u8, func_name, "main")) return;
 
     // Track current function for MIR return type queries
     const prev_func_mir = cg.current_func_mir;
@@ -297,7 +286,6 @@ pub fn getRootIdentMir(m: *const mir.MirNode) ?[]const u8 {
 pub fn generateStructMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const struct_name = m.name orelse return;
     if (cg.is_zig_module) return cg.generateZigReExport(struct_name, m.is_pub);
-    if (m.is_bridge) return cg.generateBridgeReExport(struct_name, m.is_pub);
 
     const tp = m.type_params;
     const is_generic = tp != null and tp.?.len > 0;
@@ -483,7 +471,6 @@ pub fn isTypeAlias(type_annotation: ?*parser.Node) bool {
 pub fn generateTopLevelDeclMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const name = m.name orelse return;
     if (cg.is_zig_module) return cg.generateZigReExport(name, m.is_pub);
-    if (m.is_bridge) return cg.generateBridgeReExport(name, m.is_pub);
 
     // Type alias: const Name: type = T → const Name = ZigType;
     // Must precede is_compt check — type aliases are also is_const.

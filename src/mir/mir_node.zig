@@ -56,8 +56,6 @@ pub const MirNode = struct {
     bool_val: bool = false,
     /// Public visibility flag.
     is_pub: bool = false,
-    /// Bridge declaration flag.
-    is_bridge: bool = false,
     /// Thread function flag.
     is_thread: bool = false,
     /// Compile-time declaration flag.

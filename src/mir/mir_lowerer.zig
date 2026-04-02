@@ -542,7 +542,6 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
         .func_decl => |f| {
             m.name = f.name;
             m.is_pub = f.is_pub;
-            m.is_bridge = (f.context == .bridge);
             m.is_thread = (f.context == .thread);
             m.is_compt = (f.context == .compt);
             m.return_type = f.return_type;
@@ -550,7 +549,6 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
         .struct_decl => |s| {
             m.name = s.name;
             m.is_pub = s.is_pub;
-            m.is_bridge = s.is_bridge;
             m.type_params = if (s.type_params.len > 0) s.type_params else null;
         },
         .enum_decl => |e| {
@@ -567,7 +565,6 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
         .var_decl => |v| {
             m.name = v.name;
             m.is_pub = v.is_pub;
-            m.is_bridge = v.is_bridge;
             m.is_const = v.mutability == .constant;
             m.type_annotation = v.type_annotation;
         },

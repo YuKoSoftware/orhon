@@ -20,40 +20,6 @@ const cache = @import("cache.zig");
 const builtins = @import("builtins.zig");
 const peg = @import("peg.zig");
 
-/// Collect the names of all bridge declarations in an AST.
-/// Returns an allocated slice of duped name strings, or an error.
-/// Caller must free each name and the slice itself.
-pub fn collectBridgeNames(ast: *parser.Node, allocator: std.mem.Allocator) ![][]const u8 {
-    var names: std.ArrayListUnmanaged([]const u8) = .{};
-    errdefer {
-        for (names.items) |n| allocator.free(n);
-        names.deinit(allocator);
-    }
-    if (ast.* != .program) return names.toOwnedSlice(allocator);
-    for (ast.program.top_level) |node| {
-        switch (node.*) {
-            .func_decl => |f| {
-                if (f.context == .bridge) try names.append(allocator, try allocator.dupe(u8, f.name));
-            },
-            .var_decl => |v| {
-                if (v.is_bridge) try names.append(allocator, try allocator.dupe(u8, v.name));
-            },
-            .struct_decl => |s| {
-                if (s.is_bridge) {
-                    try names.append(allocator, try allocator.dupe(u8, s.name));
-                } else {
-                    for (s.members) |m| {
-                        if (m.* == .func_decl and m.func_decl.context == .bridge)
-                            try names.append(allocator, try allocator.dupe(u8, m.func_decl.name));
-                    }
-                }
-            },
-            else => {},
-        }
-    }
-    return names.toOwnedSlice(allocator);
-}
-
 /// Split a #cimport `name` field value on commas, trim whitespace from each segment,
 /// and append non-empty segments to `out`. Supports both single and multi-library names.
 /// Segments are slices into `name` — no allocation is performed.

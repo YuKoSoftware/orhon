@@ -435,8 +435,7 @@ fn buildBlueprintMethod(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     else
         try ctx.newNode(.{ .type_named = "void" });
 
-    // Create a func_decl with an empty body (signature-only)
-    // Mark as bridge so codegen knows there's no real body
+    // Create a func_decl with an empty body (signature only for blueprint contracts)
     const empty_body = try ctx.newNode(.{ .block = .{ .statements = &.{} } });
 
     return ctx.newNode(.{ .func_decl = .{
@@ -444,7 +443,7 @@ fn buildBlueprintMethod(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         .params = try params_list.toOwnedSlice(ctx.alloc()),
         .return_type = return_type,
         .body = empty_body,
-        .context = .bridge,
+        .context = .normal,
         .is_pub = true,
     } });
 }
@@ -597,6 +596,54 @@ pub fn buildBitfieldDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         .name = name,
         .backing_type = backing,
         .members = try members.toOwnedSlice(ctx.alloc()),
+        .is_pub = false,
+    } });
+}
+
+// ============================================================
+// CONTEXT FLAG BUILDERS
+// ============================================================
+
+pub fn buildPubDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    // pub_decl <- 'pub' (func_decl / struct_decl / ...)
+    // Build the child, then set is_pub = true
+    for (cap.children) |*child| {
+        if (child.rule) |_| {
+            const node = try builder.buildNode(ctx, child);
+            builder.setPub(node, true);
+            return node;
+        }
+    }
+    return error.NoPubChild;
+}
+
+pub fn buildComptDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    // compt_decl <- 'compt' func_decl
+    if (cap.findChild("func_decl")) |child| {
+        const node = try builder.buildNode(ctx, child);
+        if (node.* == .func_decl) node.func_decl.context = .compt;
+        return node;
+    }
+    return error.NoComptChild;
+}
+
+pub fn buildThreadDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    // thread_decl <- 'thread' func_name '(' _ param_list _ ')' type block
+    var name: []const u8 = "";
+    if (cap.findChild("func_name")) |fn_cap| {
+        name = builder.tokenText(ctx, fn_cap.start_pos);
+    }
+    var params_list = std.ArrayListUnmanaged(*Node){};
+    try builder.collectParamsRecursive(ctx, cap, &params_list);
+    const ret_type = if (cap.findChild("type")) |t| try builder.buildNode(ctx, t) else try ctx.newNode(.{ .type_named = "void" });
+    const body = if (cap.findChild("block")) |b| try builder.buildNode(ctx, b) else try ctx.newNode(.{ .block = .{ .statements = &.{} } });
+
+    return ctx.newNode(.{ .func_decl = .{
+        .name = name,
+        .params = try params_list.toOwnedSlice(ctx.alloc()),
+        .return_type = ret_type,
+        .body = body,
+        .context = .thread,
         .is_pub = false,
     } });
 }

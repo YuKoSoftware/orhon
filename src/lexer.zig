@@ -48,7 +48,6 @@ pub const TokenKind = enum {
     kw_continue,
     kw_true,
     kw_false,
-    kw_bridge,
     kw_is,
     kw_throw,
     kw_type,
@@ -149,7 +148,6 @@ const KEYWORDS = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "continue", .kw_continue },
     .{ "true",     .kw_true },
     .{ "false",    .kw_false },
-    .{ "bridge",   .kw_bridge },
     .{ "is",       .kw_is },
     .{ "throw",    .kw_throw },
     .{ "type",     .kw_type },
@@ -681,24 +679,6 @@ test "lexer - scope operator ::" {
     try std.testing.expectEqual(TokenKind.identifier, kinds.items[0]);
     try std.testing.expectEqual(TokenKind.scope,      kinds.items[1]);
     try std.testing.expectEqual(TokenKind.identifier, kinds.items[2]);
-}
-
-test "lexer - bridge keyword" {
-    const alloc = std.testing.allocator;
-    var lex = Lexer.init("bridge func");
-    var tokens = try lex.tokenize(alloc);
-    defer tokens.deinit(alloc);
-
-    var kinds = std.ArrayListUnmanaged(TokenKind){};
-    defer kinds.deinit(alloc);
-    for (tokens.items) |t| {
-        if (t.kind != .newline and t.kind != .eof) {
-            try kinds.append(alloc, t.kind);
-        }
-    }
-    try std.testing.expectEqual(@as(usize, 2), kinds.items.len);
-    try std.testing.expectEqual(TokenKind.kw_bridge, kinds.items[0]);
-    try std.testing.expectEqual(TokenKind.kw_func,   kinds.items[1]);
 }
 
 test "lexer - block comment line tracking" {

@@ -433,11 +433,6 @@ pub const CodeGen = struct {
     // FUNCTIONS
     // ============================================================
 
-    /// Emit a re-export for a bridge declaration from the named bridge module.
-    /// Bridge .zig files are registered as named Zig modules in the build graph,
-    /// so we import by module name (no .zig extension).
-    pub fn generateBridgeReExport(self: *CodeGen, name: []const u8, is_pub: bool) anyerror!void { return decls_impl.generateBridgeReExport(self, name, is_pub); }
-
     /// Emit a re-export for a zig-backed module declaration from the named zig module.
     pub fn generateZigReExport(self: *CodeGen, name: []const u8, is_pub: bool) anyerror!void { return decls_impl.generateZigReExport(self, name, is_pub); }
 

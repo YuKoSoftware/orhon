@@ -58,26 +58,6 @@ else
     fail "rejects missing anchor file" "$NEG_OUT"
 fi
 
-# missing bridge sidecar
-cd "$TESTDIR"
-mkdir -p neg_bridge/src
-cat > neg_bridge/src/neg_bridge.orh <<'ORHON'
-module neg_bridge
-#name    = "neg_bridge"
-#version = Version(1, 0, 0)
-#build   = exe
-bridge func do_thing() void
-func main() void {
-}
-ORHON
-cd neg_bridge
-NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "sidecar\|bridge"; then
-    pass "rejects missing bridge sidecar"
-else
-    fail "rejects missing bridge sidecar" "$NEG_OUT"
-fi
-
 # missing import error
 cd "$TESTDIR"
 "$ORHON" init badimport >/dev/null 2>&1
@@ -367,25 +347,6 @@ NEG_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$NEG_OUT" | grep -qi "anchor"; then pass "rejects duplicate anchor files"
 else fail "rejects duplicate anchor files" "$NEG_OUT"; fi
 
-# mutable ref across bridge
-cd "$TESTDIR"
-mkdir -p neg_bridge_ref/src
-cat > neg_bridge_ref/src/neg_bridge_ref.orh <<'ORHON'
-module neg_bridge_ref
-#name    = "neg_bridge_ref"
-#version = Version(1, 0, 0)
-#build   = exe
-bridge func modify(data: mut& i32) void
-func main() void { }
-ORHON
-cat > neg_bridge_ref/src/neg_bridge_ref.zig <<'ZIG'
-pub fn modify(data: *i32) void { data.* = 0; }
-ZIG
-cd neg_bridge_ref
-NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "mutable reference.*not allowed.*bridge"; then pass "rejects mutable ref across bridge"
-else fail "rejects mutable ref across bridge" "$NEG_OUT"; fi
-
 # Version() outside metadata
 cd "$TESTDIR"
 mkdir -p neg_version/src
@@ -646,19 +607,5 @@ NEG_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$NEG_OUT" | grep -qi "func main.*only allowed in executable"; then pass "rejects func main() in library"
 else fail "rejects func main() in library" "$NEG_OUT"; fi
 
-# multi-file sidecar: reject imports escaping source directory
-cd "$TESTDIR"
-mkdir -p neg_sidecar_escape/src
-cp "$FIXTURES/multizig_escape_main.orh" neg_sidecar_escape/src/multizig_escape.orh
-cp "$FIXTURES/multizig_escape.zig" neg_sidecar_escape/src/multizig_escape.zig
-# Create the target file outside src/ so the path resolves but escapes
-echo "pub fn dummy() void {}" > neg_sidecar_escape/escape.zig
-cd neg_sidecar_escape
-NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -q "escapes project source directory"; then
-    pass "rejects sidecar import escaping source dir"
-else
-    fail "rejects sidecar import escaping source dir" "$NEG_OUT"
-fi
 
 report_results

@@ -123,7 +123,7 @@ fn buildGeneralCompletionResponse(allocator: std.mem.Allocator, id: std.json.Val
         "import", "pub", "match", "struct", "enum", "bitfield", "defer",
         "thread", "null", "void", "compt", "any", "module", "test",
         "and", "or", "not", "as", "break", "continue", "true", "false",
-        "bridge", "is",
+        "is",
     };
     for (keywords) |kw| {
         if (!first) try buf.append(allocator, ',');

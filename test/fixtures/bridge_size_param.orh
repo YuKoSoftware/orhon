@@ -1,3 +1,0 @@
-module test_size_param
-
-bridge func doSomething(size: u64) u64

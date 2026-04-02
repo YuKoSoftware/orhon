@@ -380,7 +380,6 @@ pub fn builtinDetail(allocator: std.mem.Allocator, name: []const u8) ?[]const u8
         .{ "thread", "(keyword) spawn a thread" },
         .{ "compt", "(keyword) compile-time evaluation" },
         .{ "test", "(keyword) test block" },
-        .{ "bridge", "(keyword) Zig bridge declaration" },
         .{ "any", "(keyword) any type" },
         .{ "void", "(keyword) no return value" },
         .{ "assert", "(builtin) runtime assertion" },

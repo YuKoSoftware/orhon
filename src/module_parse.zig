@@ -60,7 +60,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
             defer file.close();
             const content = try file.readToEndAlloc(arena_alloc, 10 * 1024 * 1024);
 
-            // Non-anchor files must not contain metadata or bridge declarations
+            // Non-anchor files must not contain metadata
             if (file_idx > 0) {
                 var lines_iter = std.mem.splitSequence(u8, content, "\n");
                 while (lines_iter.next()) |line| {
@@ -70,15 +70,6 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
                     {
                         try self.reporter.reportFmt(null, "metadata (#{s}...) only allowed in anchor file '{s}.orh', found in '{s}'",
                             .{ trimmed_line[1..@min(trimmed_line.len, 10)], mod_name, file_path });
-                        break;
-                    }
-                    // bridge declarations only allowed in anchor file
-                    if ((std.mem.startsWith(u8, trimmed_line, "bridge ") or
-                        std.mem.startsWith(u8, trimmed_line, "pub bridge ")) and
-                        !std.mem.startsWith(u8, trimmed_line, "//"))
-                    {
-                        try self.reporter.reportFmt(null, "bridge declarations only allowed in anchor file '{s}.orh', found in '{s}'",
-                            .{ mod_name, file_path });
                         break;
                     }
                 }
@@ -335,43 +326,6 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
             }
         }
 
-        // Detect bridge declarations — scan AST top-level for bridge func/const/struct
-        for (build_result.node.program.top_level) |node| {
-            const is_bridge = switch (node.*) {
-                .func_decl => |f| f.context == .bridge,
-                .var_decl => |v| v.is_bridge,
-                .struct_decl => |s| s.is_bridge,
-                else => false,
-            };
-            if (is_bridge) {
-                mod.has_bridges = true;
-                // Find anchor directory and validate sidecar exists
-                var anchor_dir: []const u8 = ".";
-                for (mod.files) |file| {
-                    const stem = std.fs.path.stem(file);
-                    if (std.mem.eql(u8, stem, mod_name)) {
-                        anchor_dir = std.fs.path.dirname(file) orelse ".";
-                        break;
-                    }
-                }
-                const sidecar = try std.fmt.allocPrint(self.allocator,
-                    "{s}/{s}.zig", .{ anchor_dir, mod_name });
-                std.fs.cwd().access(sidecar, .{}) catch {
-                    const bridge_name = switch (node.*) {
-                        .func_decl => |f| f.name,
-                        .var_decl => |v| v.name,
-                        .struct_decl => |s| s.name,
-                        else => "unknown",
-                    };
-                    try self.reporter.reportFmt(null, "bridge '{s}': missing sidecar file '{s}'",
-                        .{ bridge_name, sidecar });
-                    self.allocator.free(sidecar);
-                    break;
-                };
-                mod.sidecar_path = sidecar;
-                break;
-            }
-        }
     }
 
     // Validate exe layout — exe modules with anchor file directly in src/ must

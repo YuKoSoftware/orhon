@@ -171,7 +171,6 @@ pub const Metadata = struct {
 pub const FuncContext = enum {
     normal,
     compt,
-    bridge, // no body — implementation in paired .zig file
     thread, // thread declaration — generates spawn wrapper + body
 };
 
@@ -191,7 +190,6 @@ pub const StructDecl = struct {
     members: []*Node,
     blueprints: []const []const u8 = &.{}, // blueprint names from `: Eq, Hash`
     is_pub: bool,
-    is_bridge: bool = false,
     doc: ?[]const u8 = null,
 };
 
@@ -226,7 +224,6 @@ pub const VarDecl = struct {
     value: *Node,
     is_pub: bool,
     mutability: Mutability = .mutable,
-    is_bridge: bool = false,
     doc: ?[]const u8 = null,
 };
 

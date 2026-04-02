@@ -303,13 +303,7 @@ pub fn annotateCallCoercions(self: *MirAnnotator, c: parser.CallExpr) !void {
         } else {
             // Const auto-borrow: annotate const non-primitive args with value_to_const_ref.
             // Only applies to same-module direct calls (Pitfall 5: cross-module skipped).
-            // Bridge functions are excluded — the sidecar .zig defines param types, so the
-            // Orhon compiler must not promote their parameters; the const & case is handled
-            // by detectCoercion above when the declared param type is already `const &`.
-            // This guard covers all bridge call forms: direct calls (processTexture(tex)),
-            // struct method calls (ren.createMaterial(tex)), and error-union-returning bridge
-            // functions — all excluded via sig.context != .bridge regardless of return type.
-            if (is_direct_call and arg.* == .identifier and sig.context != .bridge) {
+            if (is_direct_call and arg.* == .identifier) {
                 const name = arg.identifier;
                 // Skip promoted params (already *const T — prevents double-borrow)
                 if (!self.promoted_params.contains(name) and self.const_vars.contains(name)) {

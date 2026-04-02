@@ -115,11 +115,20 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     if (reporter.hasErrors()) return null;
 
     // Mark discovered zig modules with is_zig_module flag and store original .zig path.
-    // Done after parseModules so has_bridges is set — skip bridge modules whose .zig
-    // sidecar was picked up by discovery but should not be treated as zig-backed.
+    // Done after parseModules. Skip modules that have user-authored .orh files — those
+    // are Orhon modules, and any co-located .zig file is just additional source, not a
+    // zig-as-module replacement. Only pure .zig modules (no user .orh files) get marked.
     for (zig_mod_names) |name| {
         if (mod_resolver.modules.getPtr(name)) |mod_ptr| {
-            if (!mod_ptr.has_bridges) {
+            // Check if the module has user-authored .orh files outside the zig_modules cache.
+            // The auto-generated .orh from zig discovery lives in .orh-cache/zig_modules/.
+            // If all .orh files are from the cache, this is a pure zig module.
+            const has_user_orh = for (mod_ptr.files) |file| {
+                if (std.mem.endsWith(u8, file, ".orh") and
+                    !std.mem.startsWith(u8, file, cache.ZIG_MODULES_DIR))
+                    break true;
+            } else false;
+            if (!has_user_orh) {
                 mod_ptr.is_zig_module = true;
                 mod_ptr.zig_source_path = try std.fmt.allocPrint(allocator, "{s}/{s}.zig", .{ cli.source_dir, name });
             }

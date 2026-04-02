@@ -16,7 +16,6 @@ const TokenKind = lexer.TokenKind;
 const LocMap = parser.LocMap;
 
 const decls_impl = @import("builder_decls.zig");
-const bridge_impl = @import("builder_bridge.zig");
 const stmts_impl = @import("builder_stmts.zig");
 const exprs_impl = @import("builder_exprs.zig");
 const types_impl = @import("builder_types.zig");
@@ -214,16 +213,10 @@ pub fn buildNode(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
     if (std.mem.eql(u8, rule, "array_type")) return types_impl.buildArrayType(ctx, cap);
     if (std.mem.eql(u8, rule, "func_type")) return types_impl.buildFuncType(ctx, cap);
 
-    // Bridge declarations
-    if (std.mem.eql(u8, rule, "bridge_decl")) return bridge_impl.buildBridgeDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "bridge_func")) return bridge_impl.buildBridgeFunc(ctx, cap);
-    if (std.mem.eql(u8, rule, "bridge_const")) return bridge_impl.buildBridgeConst(ctx, cap);
-    if (std.mem.eql(u8, rule, "bridge_struct")) return bridge_impl.buildBridgeStruct(ctx, cap);
-    if (std.mem.eql(u8, rule, "thread_decl")) return bridge_impl.buildThreadDecl(ctx, cap);
-
     // Context-setting rules (set flags on child node)
-    if (std.mem.eql(u8, rule, "pub_decl")) return bridge_impl.buildPubDecl(ctx, cap);
-    if (std.mem.eql(u8, rule, "compt_decl")) return bridge_impl.buildComptDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "thread_decl")) return decls_impl.buildThreadDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "pub_decl")) return decls_impl.buildPubDecl(ctx, cap);
+    if (std.mem.eql(u8, rule, "compt_decl")) return decls_impl.buildComptDecl(ctx, cap);
 
     // Transparent rules — recurse into first child
     if (cap.children.len > 0) return buildNode(ctx, &cap.children[0]);
@@ -353,8 +346,8 @@ pub fn buildAllChildren(ctx: *BuildContext, cap: *const CaptureNode) ![]*Node {
 // SHARED STRUCT/ENUM HELPERS (used by decls and bridge satellites)
 // ============================================================
 
-/// Walk a capture tree to collect struct/bridge struct type params and member nodes.
-/// Called by builder_decls.buildStructDecl and builder_bridge.buildBridgeStruct.
+/// Walk a capture tree to collect struct type params and member nodes.
+/// Called by builder_decls.buildStructDecl.
 pub fn collectStructParts(ctx: *BuildContext, cap: *const CaptureNode, type_params: *std.ArrayListUnmanaged(*Node), members: *std.ArrayListUnmanaged(*Node)) anyerror!void {
     var pending_doc: ?[]const u8 = null;
     for (cap.children) |*child| {
@@ -365,10 +358,7 @@ pub fn collectStructParts(ctx: *BuildContext, cap: *const CaptureNode, type_para
                 std.mem.eql(u8, r, "func_decl") or
                 std.mem.eql(u8, r, "compt_decl") or
                 std.mem.eql(u8, r, "const_decl") or
-                std.mem.eql(u8, r, "var_decl") or
-                std.mem.eql(u8, r, "bridge_decl") or
-                std.mem.eql(u8, r, "bridge_func") or
-                std.mem.eql(u8, r, "bridge_const"))
+                std.mem.eql(u8, r, "var_decl"))
             {
                 // Terminal declaration nodes — build and add as members
                 const node = try buildNode(ctx, child);
@@ -391,7 +381,7 @@ pub fn collectStructParts(ctx: *BuildContext, cap: *const CaptureNode, type_para
             } else if (std.mem.eql(u8, r, "_") or std.mem.eql(u8, r, "TERM") or std.mem.eql(u8, r, "type")) {
                 // skip
             } else {
-                // Recurse into wrapper rules (struct_body, struct_member, bridge_struct_body, etc.)
+                // Recurse into wrapper rules (struct_body, struct_member, etc.)
                 // but NOT into declarations (which have their own params)
                 try collectStructParts(ctx, child, type_params, members);
             }
@@ -458,7 +448,7 @@ pub fn setDoc(node: *Node, doc: ?[]const u8) void {
 // been extracted to their respective satellite files:
 //   builder_decls.zig  — program, module, import, metadata, func, param, const, var,
 //                        struct, enum, field, enum_variant, destruct, bitfield, test
-//   builder_bridge.zig — pub_decl, compt_decl, bridge_decl/func/const/struct, thread_decl
+//   (pub_decl, compt_decl, thread_decl are in builder_decls.zig)
 //   builder_stmts.zig  — block, return, throw, if, elif, while, for, defer, match, match_arm,
 //                        expr_or_assignment
 //   builder_exprs.zig  — int/float/string/bool literals, identifier, error, compiler_func,

@@ -128,22 +128,20 @@ else fail "static-link: .a exists"; fi
 if ! echo "$OUTPUT" | grep -q "^error(gpa)"; then pass "static-link: no memory leaks"
 else fail "static-link: no memory leaks" "$(echo "$OUTPUT" | grep 'error(gpa)')"; fi
 
-section "Multi-file module with Zig sidecar"
+section "Multi-file module with Zig source"
 
-# BLD-01: A module with multiple .orh files AND a Zig sidecar must build
+# BLD-01: A module with multiple .orh files AND a Zig source file must build
 # without 'file exists in two modules' error in the generated build.zig.
 
 cd "$TESTDIR"
 mkdir -p sidecarmod/src
 cd "$TESTDIR/sidecarmod"
 
-# Anchor file — declares the static lib with a bridge function
+# Anchor file — declares the static lib
 cat > src/mylib.orh <<'ORHON'
 module mylib
 #name  = "mylib"
 #build = static
-
-pub bridge func addC(a: i32, b: i32) i32
 
 pub func triple(n: i32) i32 {
     return n * 3
@@ -159,14 +157,14 @@ pub func double(n: i32) i32 {
 }
 ORHON
 
-# Zig sidecar implementing the bridge function
+# Zig source file — auto-discovered as zig-backed module
 cat > src/mylib.zig <<'ZIG'
 pub export fn addC(a: i32, b: i32) i32 {
     return a + b;
 }
 ZIG
 
-# Exe that imports the multi-file+sidecar lib
+# Exe that imports the multi-file module
 cat > src/sidecarmod.orh <<'ORHON'
 module sidecarmod
 #name  = "sidecarmod"
@@ -181,11 +179,11 @@ ORHON
 
 OUTPUT=$(timeout 90 "$ORHON" build 2>&1 || true)
 # Check for BLD-01: no "file exists in two modules" error
-if echo "$OUTPUT" | grep -q "file exists in"; then fail "multi-file sidecar: no file-exists conflict" "$OUTPUT"
-elif echo "$OUTPUT" | grep -q "Built:.*sidecarmod\|Built:.*libmylib"; then pass "multi-file sidecar: builds without conflict"
-else fail "multi-file sidecar: builds without conflict" "$OUTPUT"; fi
+if echo "$OUTPUT" | grep -q "file exists in"; then fail "multi-file zig: no file-exists conflict" "$OUTPUT"
+elif echo "$OUTPUT" | grep -q "Built:.*sidecarmod\|Built:.*libmylib"; then pass "multi-file zig: builds without conflict"
+else fail "multi-file zig: builds without conflict" "$OUTPUT"; fi
 
-if ! echo "$OUTPUT" | grep -q "^error(gpa)"; then pass "multi-file sidecar: no memory leaks"
-else fail "multi-file sidecar: no memory leaks" "$(echo "$OUTPUT" | grep 'error(gpa)')"; fi
+if ! echo "$OUTPUT" | grep -q "^error(gpa)"; then pass "multi-file zig: no memory leaks"
+else fail "multi-file zig: no memory leaks" "$(echo "$OUTPUT" | grep 'error(gpa)')"; fi
 
 report_results

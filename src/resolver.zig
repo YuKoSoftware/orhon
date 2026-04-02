@@ -162,31 +162,6 @@ pub const TypeResolver = struct {
                 var func_scope = Scope.init(self.ctx.allocator, scope);
                 defer func_scope.deinit();
 
-                // Bridge safety: bridge funcs cannot accept mutable refs (&T)
-                // Exception: self param on bridge struct methods (Zig mutates its own data)
-                if (f.context == .bridge) {
-                    for (f.params) |param| {
-                        if (param.* == .param) {
-                            const ta = param.param.type_annotation;
-                            if (ta.* == .type_ptr and ta.type_ptr.kind == .mut_ref) {
-                                // Allow self: &StructName on bridge struct methods
-                                if (std.mem.eql(u8, param.param.name, "self")) continue;
-                                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "mutable reference 'mut& {s}' not allowed across bridge — use 'const& {s}' or pass by value",
-                                    .{ param.param.name, param.param.name });
-                            }
-                        }
-                    }
-                    // Bridge safety: bridge funcs cannot return mutable refs
-                    if (f.return_type.* == .type_ptr and
-                        f.return_type.type_ptr.kind == .mut_ref)
-                    {
-                        try self.ctx.reporter.report(.{
-                            .message = "mutable reference return not allowed across bridge — return by value or const&",
-                            .loc = self.ctx.nodeLoc(node),
-                        });
-                    }
-                }
-
                 var has_type_param = false;
                 for (f.params) |param| {
                     if (param.* == .param) {
@@ -272,14 +247,7 @@ pub const TypeResolver = struct {
                 if (scope.parent != null and scope.vars.contains(v.name)) {
                     try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "variable '{s}' already declared in this scope", .{v.name});
                 }
-                // bridge consts have no value — skip value type checking
-                if (v.is_bridge) {
-                    const resolved = if (v.type_annotation) |t|
-                        try self.resolveTypeAnnotationInScope(t, scope)
-                    else
-                        RT.inferred;
-                    try scope.define(v.name, resolved);
-                } else {
+                {
                     const val_type = try self.resolveExpr(v.value, scope);
                     const resolved = if (v.type_annotation) |t|
                         try self.resolveTypeAnnotationInScope(t, scope)

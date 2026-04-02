@@ -91,6 +91,8 @@ pub const Module = struct {
     file_offsets: []FileOffset, // maps combined-buffer lines → original files
     has_bridges: bool = false, // true if module has bridge declarations (detected during parsing)
     sidecar_path: ?[]const u8 = null, // validated .zig sidecar path (set during parsing if has_bridges)
+    is_zig_module: bool = false, // true if auto-generated from .zig file
+    zig_source_path: ?[]const u8 = null, // path to original .zig file
 };
 /// The module resolver
 pub const Resolver = struct {
@@ -126,6 +128,8 @@ pub const Resolver = struct {
             }
             // Free sidecar path (allocated with allocPrint in bridge detection)
             if (mod.sidecar_path) |sp| self.allocator.free(sp);
+            // Free zig source path (allocated with allocPrint in pipeline zig module wiring)
+            if (mod.zig_source_path) |zp| self.allocator.free(zp);
         }
         self.modules.deinit();
     }
@@ -148,6 +152,14 @@ pub const Resolver = struct {
         var it = file_map.iterator();
         while (it.next()) |entry| {
             const mod_name = entry.key_ptr.*;
+
+            // Skip if this module is already registered (user .orh files take precedence)
+            if (self.modules.contains(mod_name)) {
+                for (entry.value_ptr.items) |f| self.allocator.free(f);
+                self.allocator.free(mod_name);
+                continue;
+            }
+
             const files = try entry.value_ptr.toOwnedSlice(self.allocator);
 
             // Put anchor file (module_name.orh) first in the list

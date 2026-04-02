@@ -13,6 +13,7 @@ const _interface = @import("interface.zig");
 const _commands = @import("commands.zig");
 const build_helpers = @import("pipeline_build.zig");
 const passes = @import("pipeline_passes.zig");
+const zig_module = @import("zig_module.zig");
 
 pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *errors.Reporter) !?[]const u8 {
 
@@ -30,6 +31,14 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_collections.zig", .{});
         defer file.close();
         try file.writeAll(_std_bundle.COLLECTIONS_ZIG);
+    }
+
+    // ── Zig Module Discovery ─────────────────────────────────
+    // Discover .zig files in src/, parse them, generate .orh into .orh-cache/zig_modules/
+    const zig_mod_names = try zig_module.discoverAndConvert(allocator, cli.source_dir);
+    defer {
+        for (zig_mod_names) |name| allocator.free(name);
+        allocator.free(zig_mod_names);
     }
 
     // ── Pass 3: Module Resolution ──────────────────────────────
@@ -51,7 +60,22 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
     try mod_resolver.scanDirectory(cli.source_dir);
 
+    // Scan generated zig module .orh files (user .orh files take precedence — already registered)
+    if (std.fs.cwd().openDir(cache.ZIG_MODULES_DIR, .{})) |dir| {
+        var d = dir;
+        d.close();
+        try mod_resolver.scanDirectory(cache.ZIG_MODULES_DIR);
+    } else |_| {}
+
     if (reporter.hasErrors()) return null;
+
+    // Mark discovered zig modules with is_zig_module flag and store original .zig path
+    for (zig_mod_names) |name| {
+        if (mod_resolver.modules.getPtr(name)) |mod_ptr| {
+            mod_ptr.is_zig_module = true;
+            mod_ptr.zig_source_path = try std.fmt.allocPrint(allocator, "{s}/{s}.zig", .{ cli.source_dir, name });
+        }
+    }
 
     // Check circular imports
     try mod_resolver.checkCircularImports();

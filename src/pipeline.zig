@@ -578,9 +578,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             const mod_slice = try allocator.dupe([]const u8, mod_imports.items);
             try mod_import_lists.append(allocator, mod_slice);
 
-            // Collect #cimport metadata from this module and its imported modules.
-            // One loop replaces the old separate #linkc / #cinclude / #csource / #linkcpp loops.
-            // Per D-08: duplicate #cimport for the same library is a compile error.
+            // Collect C dependency info from .zon configs
             var mt_link_libs: std.ArrayListUnmanaged([]const u8) = .{};
             defer mt_link_libs.deinit(allocator);
             var mt_c_includes: std.ArrayListUnmanaged([]const u8) = .{};
@@ -599,86 +597,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 mt_include_dirs.deinit(allocator);
             }
             var mt_needs_cpp = false;
-
-            // Registry maps lib name → module name for duplicate detection
-            var cimport_registry = std.StringHashMapUnmanaged([]const u8){};
-            defer cimport_registry.deinit(allocator);
-
-            // Helper: collect from one AST
-            const collectCimport = struct {
-                fn run(
-                    ast: *parser.Node,
-                    mod_name_inner: []const u8,
-                    alloc: std.mem.Allocator,
-                    rep: *errors.Reporter,
-                    registry: *std.StringHashMapUnmanaged([]const u8),
-                    link_libs: *std.ArrayListUnmanaged([]const u8),
-                    c_includes: *std.ArrayListUnmanaged([]const u8),
-                    c_sources: *std.ArrayListUnmanaged([]const u8),
-                    needs_cpp: *bool,
-                ) !void {
-                    for (ast.program.metadata) |meta| {
-                        if (!std.mem.eql(u8, meta.metadata.field, "cimport")) continue;
-                        if (meta.metadata.value.* != .string_literal) continue;
-                        const raw = meta.metadata.value.string_literal;
-                        const lib_name = if (raw.len >= 2 and raw[0] == '"')
-                            raw[1 .. raw.len - 1]
-                        else
-                            raw;
-
-                        // Split comma-separated library names and emit linkSystemLibrary for each (BLD-03)
-                        // Only link as system library if NOT compiled from source (CIMP-SRC)
-                        const has_source = meta.metadata.cimport_source != null;
-                        var lib_segments = std.ArrayListUnmanaged([]const u8){};
-                        defer lib_segments.deinit(alloc);
-                        try build_helpers.splitCimportLibNames(alloc, lib_name, &lib_segments);
-                        for (lib_segments.items) |seg| {
-                            // Duplicate detection per individual library name (D-08 / CIMP-03)
-                            if (registry.get(seg)) |existing_mod| {
-                                try rep.reportFmt(null, "duplicate #cimport \"{s}\" — already declared in module '{s}'",
-                                    .{ seg, existing_mod });
-                                continue;
-                            }
-                            try registry.put(alloc, seg, mod_name_inner);
-                            if (!has_source) try link_libs.append(alloc, seg);
-                        }
-
-                        // include: always required (D-06, validated earlier in declarations pass)
-                        if (meta.metadata.cimport_include) |inc| {
-                            var already = false;
-                            for (c_includes.items) |h| {
-                                if (std.mem.eql(u8, h, inc)) { already = true; break; }
-                            }
-                            if (!already) try c_includes.append(alloc, inc);
-                        }
-
-                        // source: optional
-                        if (meta.metadata.cimport_source) |src| {
-                            try c_sources.append(alloc, src);
-                            if (std.mem.endsWith(u8, src, ".cpp") or
-                                std.mem.endsWith(u8, src, ".cc") or
-                                std.mem.endsWith(u8, src, ".cxx"))
-                            {
-                                needs_cpp.* = true;
-                            }
-                        }
-                    }
-                }
-            }.run;
-
-            if (mod.ast) |ast| {
-                try collectCimport(ast, mod.name, allocator, reporter, &cimport_registry,
-                    &mt_link_libs, &mt_c_includes, &mt_c_sources, &mt_needs_cpp);
-            }
-            // Also collect from non-root modules imported by this root module
-            for (mod.imports) |imp_name| {
-                const dep_mod = mod_resolver.modules.get(imp_name) orelse continue;
-                if (dep_mod.is_root) continue;
-                if (dep_mod.ast) |ast| {
-                    try collectCimport(ast, dep_mod.name, allocator, reporter, &cimport_registry,
-                        &mt_link_libs, &mt_c_includes, &mt_c_sources, &mt_needs_cpp);
-                }
-            }
 
             // Merge .zon configs from zig-backed modules (this module and its imports)
             try mergeZonConfigs(allocator, mod.name, mod.imports, &zon_configs,
@@ -777,7 +695,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             }
             var needs_cpp_st = false;
 
-            // Collect build/name/version from root module only; collect #cimport from all modules.
+            // Collect build/name/version from root module metadata.
             if (mod.ast) |ast| {
                 for (ast.program.metadata) |meta| {
                     if (std.mem.eql(u8, meta.metadata.field, "build")) {
@@ -797,86 +715,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                     }
                     if (std.mem.eql(u8, meta.metadata.field, "version")) {
                         project_version = module.extractVersion(meta.metadata.value);
-                    }
-                    if (std.mem.eql(u8, meta.metadata.field, "cimport")) {
-                        if (meta.metadata.value.* == .string_literal) {
-                            const raw = meta.metadata.value.string_literal;
-                            const lib_name = if (raw.len >= 2 and raw[0] == '"')
-                                raw[1 .. raw.len - 1]
-                            else
-                                raw;
-                            // Split comma-separated library names and emit linkSystemLibrary for each (BLD-03)
-                            // Only link as system library if NOT compiled from source (CIMP-SRC)
-                            const has_source_st = meta.metadata.cimport_source != null;
-                            var lib_segments = std.ArrayListUnmanaged([]const u8){};
-                            defer lib_segments.deinit(allocator);
-                            try build_helpers.splitCimportLibNames(allocator, lib_name, &lib_segments);
-                            for (lib_segments.items) |seg| {
-                                if (!has_source_st) try link_libs.append(allocator, seg);
-                            }
-                            if (meta.metadata.cimport_include) |inc| {
-                                try c_includes_st.append(allocator, inc);
-                            }
-                            if (meta.metadata.cimport_source) |src| {
-                                try c_sources_st.append(allocator, src);
-                                if (std.mem.endsWith(u8, src, ".cpp") or
-                                    std.mem.endsWith(u8, src, ".cc") or
-                                    std.mem.endsWith(u8, src, ".cxx"))
-                                {
-                                    needs_cpp_st = true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Collect #cimport from all non-root modules.
-            var all_mod_it = mod_resolver.modules.iterator();
-            while (all_mod_it.next()) |all_entry| {
-                const dep_mod = all_entry.value_ptr;
-                if (dep_mod.is_root) continue;
-                if (dep_mod.ast) |ast| {
-                    for (ast.program.metadata) |meta| {
-                        if (std.mem.eql(u8, meta.metadata.field, "cimport")) {
-                            if (meta.metadata.value.* == .string_literal) {
-                                const raw = meta.metadata.value.string_literal;
-                                const lib_name = if (raw.len >= 2 and raw[0] == '"')
-                                    raw[1 .. raw.len - 1]
-                                else
-                                    raw;
-                                // Split comma-separated library names and emit linkSystemLibrary for each (BLD-03)
-                                // Only link as system library if NOT compiled from source (CIMP-SRC)
-                                const has_source_dep = meta.metadata.cimport_source != null;
-                                var lib_segments = std.ArrayListUnmanaged([]const u8){};
-                                defer lib_segments.deinit(allocator);
-                                try build_helpers.splitCimportLibNames(allocator, lib_name, &lib_segments);
-                                for (lib_segments.items) |seg| {
-                                    if (has_source_dep) continue;
-                                    var lib_already = false;
-                                    for (link_libs.items) |existing| {
-                                        if (std.mem.eql(u8, existing, seg)) { lib_already = true; break; }
-                                    }
-                                    if (!lib_already) try link_libs.append(allocator, seg);
-                                }
-                                if (meta.metadata.cimport_include) |inc| {
-                                    var inc_already = false;
-                                    for (c_includes_st.items) |existing| {
-                                        if (std.mem.eql(u8, existing, inc)) { inc_already = true; break; }
-                                    }
-                                    if (!inc_already) try c_includes_st.append(allocator, inc);
-                                }
-                                if (meta.metadata.cimport_source) |src| {
-                                    try c_sources_st.append(allocator, src);
-                                    if (std.mem.endsWith(u8, src, ".cpp") or
-                                        std.mem.endsWith(u8, src, ".cc") or
-                                        std.mem.endsWith(u8, src, ".cxx"))
-                                    {
-                                        needs_cpp_st = true;
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }

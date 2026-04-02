@@ -146,85 +146,9 @@ pub fn buildImport(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 
 pub fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // metadata <- '#' metadata_body NL
-    // metadata_body <- 'dep' expr expr? / 'cimport' '=' cimport_block / IDENTIFIER '=' expr
+    // metadata_body <- 'dep' expr expr? / IDENTIFIER '=' expr
     const field_pos = cap.start_pos + 1; // after #
     const field = builder.tokenText(ctx, field_pos);
-
-    // Handle #cimport = { name: "lib", include: "...", source?: "..." }
-    if (std.mem.eql(u8, field, "cimport")) {
-        // Capture tree structure:
-        //   metadata_cap.children[0]            = metadata_body_cap
-        //   metadata_body_cap.children[0]        = cimport_block_cap
-        //   cimport_block_cap.children           = [_, cimport_entry, _, cimport_entry, ...]
-        //   cimport_entry.children               = [whitespace_cap, expr_cap]
-        //   (IDENTIFIER and ':' are terminals; key is at cimport_entry.start_pos)
-        //   expr_cap                             = the string literal value
-
-        // Navigate: metadata_cap -> metadata_body_cap -> cimport_block_cap
-        const metadata_body_cap = if (cap.children.len >= 1) &cap.children[0] else {
-            const dummy = try ctx.newNode(.{ .identifier = field });
-            return ctx.newNode(.{ .metadata = .{ .field = field, .value = dummy } });
-        };
-        const block_cap = if (metadata_body_cap.children.len >= 1) &metadata_body_cap.children[0] else {
-            const dummy = try ctx.newNode(.{ .identifier = field });
-            return ctx.newNode(.{ .metadata = .{ .field = field, .value = dummy } });
-        };
-
-        var lib_name_val: ?[]const u8 = null;
-        var include_val: ?[]const u8 = null;
-        var source_val: ?[]const u8 = null;
-
-        // Iterate cimport_block children and process cimport_entry nodes
-        for (block_cap.children) |*child| {
-            const child_rule = child.rule orelse continue;
-            if (!std.mem.eql(u8, child_rule, "cimport_entry")) continue;
-            // cimport_entry children: [whitespace_cap, expr_cap]
-            // (IDENTIFIER and ':' are terminals — no child capture nodes)
-            // Key token is at child.start_pos; expr is the last child
-            if (child.children.len < 2) continue;
-            const key = builder.tokenText(ctx, child.start_pos);
-            const val_node = try builder.buildNode(ctx, &child.children[child.children.len - 1]);
-            if (val_node.* == .string_literal) {
-                const raw = val_node.string_literal;
-                const unquoted = if (raw.len >= 2 and raw[0] == '"')
-                    raw[1 .. raw.len - 1]
-                else
-                    raw;
-                if (std.mem.eql(u8, key, "name")) {
-                    lib_name_val = raw;
-                } else if (std.mem.eql(u8, key, "include")) {
-                    include_val = unquoted;
-                } else if (std.mem.eql(u8, key, "source")) {
-                    source_val = unquoted;
-                } else {
-                    // D-05: Unknown key — compile error
-                    const msg = try std.fmt.allocPrint(ctx.alloc(),
-                        "unknown #cimport key '{s}' — only 'name', 'include', and 'source' are allowed", .{key});
-                    ctx.reportError(msg, child.children[0].start_pos);
-                }
-            }
-        }
-
-        // name: is always required
-        if (lib_name_val == null) {
-            ctx.reportError("#cimport requires 'name:' key", cap.start_pos);
-        }
-
-        // include: is always required (D-06)
-        if (include_val == null) {
-            ctx.reportError("#cimport requires 'include:' key", cap.start_pos);
-        }
-
-        // Build a string_literal node for the lib name value
-        const lib_name_node = try ctx.newNode(.{ .string_literal = if (lib_name_val) |n| n else "" });
-
-        return ctx.newNode(.{ .metadata = .{
-            .field = "cimport",
-            .value = lib_name_node,
-            .cimport_include = include_val,
-            .cimport_source = source_val,
-        } });
-    }
 
     // Build value from first expr child
     if (cap.children.len > 0) {

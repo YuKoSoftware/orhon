@@ -117,7 +117,7 @@ pub fn resolve(name: []const u8) ?TokenKind {
     return null;
 }
 
-/// Check if a name is a known contextual identifier (like 'dep', 'cimport', 'Error',
+/// Check if a name is a known contextual identifier (like 'dep', 'Error',
 /// 'Ptr', 'List', etc.). These are parsed as IDENTIFIER tokens but matched by text.
 /// The PEG engine matches these by checking both token kind (.identifier) and text.
 pub fn isContextualIdentifier(name: []const u8) bool {

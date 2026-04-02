@@ -75,7 +75,7 @@ pub fn emitIncludePath(
     , .{ artifact_name, source_dir });
 }
 
-/// Generate shared @cImport wrapper .zig files for all unique #cimport include headers.
+/// Generate shared @cImport wrapper .zig files for all unique C include headers.
 /// Each file is written to the generated cache dir as _{stem}_c.zig and exposes:
 ///   pub const c = @cImport({ @cInclude("header.h"); });
 /// Sidecars use: const c = @import("{stem}_c").c;

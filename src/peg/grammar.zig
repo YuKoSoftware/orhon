@@ -294,7 +294,7 @@ const GrammarParser = struct {
                 return Expr{ .token = kind };
             }
             // Not a known token literal — treat as contextual identifier match
-            // (e.g., 'Error', 'Ptr', 'dep', 'cimport')
+            // (e.g., 'Error', 'Ptr', 'dep')
             return Expr{ .token_text = .{ .kind = .identifier, .text = text } };
         }
 
@@ -320,7 +320,7 @@ const GrammarParser = struct {
             }
 
             // Character-class terminals defined in the grammar file's TERMINAL section
-            // (IDENT_dep, IDENT_cimport, etc.) — skip, not real rules
+            // (IDENT_dep, etc.) — skip, not real rules
             if (std.mem.startsWith(u8, ident, "IDENT_")) {
                 return null;
             }

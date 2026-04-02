@@ -15,11 +15,11 @@ pub const MultiTarget = struct {
     lib_imports: []const []const u8, // names of imported lib modules (for linking)
     mod_imports: []const []const u8 = &.{}, // names of non-lib imported modules (for named module refs)
     version: ?[3]u64 = null,
-    link_libs: []const []const u8 = &.{}, // C libraries from #cimport or .zon .link
+    link_libs: []const []const u8 = &.{}, // C libraries from .zon .link
     c_includes: []const []const u8 = &.{}, // C headers for shared @cImport module
-    c_source_files: []const []const u8 = &.{}, // C/C++ source files from #cimport or .zon .source
+    c_source_files: []const []const u8 = &.{}, // C/C++ source files from .zon .source
     needs_cpp: bool = false, // true when C++ source files are present (.cpp/.cc)
-    source_dir: ?[]const u8 = null, // source directory for addIncludePath (cimport module-relative headers)
+    source_dir: ?[]const u8 = null, // source directory for addIncludePath (module-relative headers)
     include_dirs: []const []const u8 = &.{}, // include search paths from .zon .include (for addIncludePath)
 };
 
@@ -146,7 +146,7 @@ pub fn buildZigContentMulti(
         }
     }
 
-    // #cimport link libs are applied to lib/exe artifacts below, not to module declarations.
+    // C link libs are applied to lib/exe artifacts below, not to module declarations.
     // Build.Module doesn't have linkSystemLibrary/linkLibC — only Step.Compile does.
 
     // Shared @cImport module generation (Bug 8 fix):
@@ -295,7 +295,7 @@ pub fn buildZigContentMulti(
             }
         }
 
-        // Apply #cimport link libs to this lib artifact
+        // Apply C link libs to this lib artifact
         if (t.link_libs.len > 0) {
             const lib_art_name = try std.fmt.allocPrint(allocator, "lib_{s}", .{t.module_name});
             defer allocator.free(lib_art_name);
@@ -319,7 +319,7 @@ pub fn buildZigContentMulti(
             , .{ t.module_name, dir });
         }
 
-        // Apply #cimport source files to this lib artifact
+        // Apply C source files to this lib artifact
         if (t.c_source_files.len > 0 or t.needs_cpp) {
             const lib_art_name = try std.fmt.allocPrint(allocator, "lib_{s}", .{t.module_name});
             defer allocator.free(lib_art_name);
@@ -387,7 +387,7 @@ pub fn buildZigContentMulti(
             }
         }
 
-        // Apply #cimport link libs to this exe artifact
+        // Apply C link libs to this exe artifact
         if (t.link_libs.len > 0) {
             const exe_art_name = try std.fmt.allocPrint(allocator, "exe_{s}", .{t.module_name});
             defer allocator.free(exe_art_name);
@@ -411,7 +411,7 @@ pub fn buildZigContentMulti(
             , .{ t.module_name, dir });
         }
 
-        // Apply #cimport source files to this exe artifact
+        // Apply C source files to this exe artifact
         if (t.c_source_files.len > 0 or t.needs_cpp) {
             const exe_art_name = try std.fmt.allocPrint(allocator, "exe_{s}", .{t.module_name});
             defer allocator.free(exe_art_name);
@@ -665,7 +665,7 @@ test "buildZigContentMulti - project name in exe artifact" {
     try std.testing.expect(std.mem.indexOf(u8, content, "\"calculator\"") != null);
 }
 
-test "buildZigContentMulti - single target cimport link libs" {
+test "buildZigContentMulti - single target C link libs" {
     const alloc = std.testing.allocator;
     const libs = [_][]const u8{"SDL3"};
     const targets = [_]MultiTarget{
@@ -678,7 +678,7 @@ test "buildZigContentMulti - single target cimport link libs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "linkLibC()") != null);
 }
 
-test "buildZigContentMulti - single target no cimport means no linkLibC" {
+test "buildZigContentMulti - single target no C libs means no linkLibC" {
     const alloc = std.testing.allocator;
     const targets = [_]MultiTarget{
         .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },

@@ -20,22 +20,6 @@ const cache = @import("cache.zig");
 const builtins = @import("builtins.zig");
 const peg = @import("peg.zig");
 
-/// Split a #cimport `name` field value on commas, trim whitespace from each segment,
-/// and append non-empty segments to `out`. Supports both single and multi-library names.
-/// Segments are slices into `name` — no allocation is performed.
-/// Example: "vulkan, SDL3" → ["vulkan", "SDL3"]
-pub fn splitCimportLibNames(
-    allocator: std.mem.Allocator,
-    name: []const u8,
-    out: *std.ArrayListUnmanaged([]const u8),
-) !void {
-    var it = std.mem.splitScalar(u8, name, ',');
-    while (it.next()) |segment| {
-        const trimmed = std.mem.trim(u8, segment, " \t");
-        if (trimmed.len > 0) try out.append(allocator, trimmed);
-    }
-}
-
 /// Full pipeline test helper: source → lex → parse → declarations → resolve → MIR → codegen → Zig.
 /// Returns owned output slice — caller must free.
 pub fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *errors.Reporter) ![]const u8 {
@@ -295,51 +279,3 @@ test "codegen - bitfield declaration" {
     try std.testing.expect(std.mem.indexOf(u8, out, "Execute") != null);
 }
 
-test "splitCimportLibNames - single name" {
-    const alloc = std.testing.allocator;
-    var result = std.ArrayListUnmanaged([]const u8){};
-    defer result.deinit(alloc);
-    try splitCimportLibNames(alloc, "SDL3", &result);
-    try std.testing.expectEqual(@as(usize, 1), result.items.len);
-    try std.testing.expectEqualStrings("SDL3", result.items[0]);
-}
-
-test "splitCimportLibNames - two names with space" {
-    const alloc = std.testing.allocator;
-    var result = std.ArrayListUnmanaged([]const u8){};
-    defer result.deinit(alloc);
-    try splitCimportLibNames(alloc, "vulkan, SDL3", &result);
-    try std.testing.expectEqual(@as(usize, 2), result.items.len);
-    try std.testing.expectEqualStrings("vulkan", result.items[0]);
-    try std.testing.expectEqualStrings("SDL3", result.items[1]);
-}
-
-test "splitCimportLibNames - two names no spaces" {
-    const alloc = std.testing.allocator;
-    var result = std.ArrayListUnmanaged([]const u8){};
-    defer result.deinit(alloc);
-    try splitCimportLibNames(alloc, "vulkan,SDL3", &result);
-    try std.testing.expectEqual(@as(usize, 2), result.items.len);
-    try std.testing.expectEqualStrings("vulkan", result.items[0]);
-    try std.testing.expectEqualStrings("SDL3", result.items[1]);
-}
-
-test "splitCimportLibNames - extra whitespace" {
-    const alloc = std.testing.allocator;
-    var result = std.ArrayListUnmanaged([]const u8){};
-    defer result.deinit(alloc);
-    try splitCimportLibNames(alloc, " vulkan , SDL3 ", &result);
-    try std.testing.expectEqual(@as(usize, 2), result.items.len);
-    try std.testing.expectEqualStrings("vulkan", result.items[0]);
-    try std.testing.expectEqualStrings("SDL3", result.items[1]);
-}
-
-test "splitCimportLibNames - empty segments skipped" {
-    const alloc = std.testing.allocator;
-    var result = std.ArrayListUnmanaged([]const u8){};
-    defer result.deinit(alloc);
-    try splitCimportLibNames(alloc, "a,,b", &result);
-    try std.testing.expectEqual(@as(usize, 2), result.items.len);
-    try std.testing.expectEqualStrings("a", result.items[0]);
-    try std.testing.expectEqualStrings("b", result.items[1]);
-}

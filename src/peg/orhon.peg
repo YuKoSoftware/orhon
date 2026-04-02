@@ -49,14 +49,7 @@ metadata
 
 metadata_body
     <- 'dep' expr expr?                         # #dep "path" Version?
-     / 'cimport' '=' cimport_block               # #cimport = { name: "lib", include: "...", source?: "..." }
      / IDENTIFIER '=' expr                      # #field = value
-
-cimport_block
-    <- '{' _ cimport_entry (',' _ cimport_entry)* _ '}'
-
-cimport_entry
-    <- IDENTIFIER ':' _ expr
 
 import_decl
     <- 'import' import_path ('as' IDENTIFIER)? NL

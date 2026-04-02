@@ -47,16 +47,16 @@ compt func double(n: i32) i32 {
 // auto-generates an .orh interface and re-exports the Zig implementation.
 // Other Orhon modules import it like any other module.
 
-// --- C Library Import (#cimport) -------------------------------------------
+// --- C Library Dependencies (.zon config) ----------------------------------
 
-// Modules that call C code use #cimport to declare the C library dependency.
-// The block must include name: and include: keys. source: is optional.
+// Modules that call C code declare dependencies via a paired .zon file.
+// Place a .zon file next to the .zig sidecar with the same name.
+// The .zon file specifies link libraries, include paths, and source files.
 //
-//   #cimport = { name: "SDL3", include: "SDL3/SDL.h" }
-//   #cimport = { name: "vma", include: "vk_mem_alloc.h", source: "vma_impl.cpp" }
+// Example my_module.zon:
+//   .{ .link = "SDL3", .include = "SDL3/SDL.h" }
+//   .{ .link = "vma", .include = "vk_mem_alloc.h", .source = "vma_impl.cpp" }
 //
-// Each C library can only be declared once across the entire project.
-// When source: is present, the library is compiled from source (no system link).
 // C++ linking is auto-detected from .cpp/.cc/.cxx file extensions.
 
 // ─── Defer ───────────────────────────────────────────────────────────────────

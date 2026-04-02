@@ -586,6 +586,93 @@ pub fn discoverAndConvert(allocator: Allocator, source_dir: []const u8, output_d
 }
 
 // ---------------------------------------------------------------------------
+// .zon build config parsing
+// ---------------------------------------------------------------------------
+
+/// Per-module build configuration parsed from a `.zon` file.
+/// All fields are optional — an empty `.zon` file produces all-empty slices.
+pub const ZonConfig = struct {
+    link: []const []const u8 = &.{},
+    include: []const []const u8 = &.{},
+    source: []const []const u8 = &.{},
+    define: []const []const u8 = &.{},
+
+    pub fn deinit(self: *const ZonConfig, allocator: Allocator) void {
+        inline for (.{ self.link, self.include, self.source, self.define }) |slice| {
+            for (slice) |s| allocator.free(s);
+            allocator.free(slice);
+        }
+    }
+};
+
+/// Parse a `.zon` source string and extract build configuration fields.
+/// Unknown fields are silently ignored. On parse error, returns an empty default config.
+pub fn parseZonConfig(allocator: Allocator, zon_source: [:0]const u8) !ZonConfig {
+    var tree = Ast.parse(allocator, zon_source, .zon) catch return .{};
+    defer tree.deinit(allocator);
+
+    if (tree.errors.len > 0) return .{};
+
+    const root_nodes = tree.rootDecls();
+    if (root_nodes.len == 0) return .{};
+
+    const root_node = root_nodes[0];
+    var buf: [2]Ast.Node.Index = undefined;
+    const si = tree.fullStructInit(&buf, root_node) orelse return .{};
+
+    var config: ZonConfig = .{};
+    errdefer config.deinit(allocator);
+
+    for (si.ast.fields) |field| {
+        // Field name is the identifier token 3 positions before the value's main token.
+        // Token layout: . identifier = . { (main_tok)
+        //               -4   -3      -2 -1  0
+        const fmain = tree.nodeMainToken(field);
+        if (fmain < 3) continue;
+        const name_tok = fmain - 3;
+        if (tree.tokenTag(name_tok) != .identifier) continue;
+        const name = tree.tokenSlice(name_tok);
+
+        if (std.mem.eql(u8, name, "link")) {
+            config.link = extractStringTuple(allocator, &tree, field) catch continue;
+        } else if (std.mem.eql(u8, name, "include")) {
+            config.include = extractStringTuple(allocator, &tree, field) catch continue;
+        } else if (std.mem.eql(u8, name, "source")) {
+            config.source = extractStringTuple(allocator, &tree, field) catch continue;
+        } else if (std.mem.eql(u8, name, "define")) {
+            config.define = extractStringTuple(allocator, &tree, field) catch continue;
+        }
+        // Unknown fields: silently ignored
+    }
+
+    return config;
+}
+
+/// Extract string literals from a `.zon` tuple expression: `.{ "a", "b" }` → `["a", "b"]`.
+/// String literals in the AST include quotes; this function strips them.
+fn extractStringTuple(allocator: Allocator, tree: *const Ast, node: Ast.Node.Index) ![]const []const u8 {
+    var buf: [2]Ast.Node.Index = undefined;
+    const ai = tree.fullArrayInit(&buf, node) orelse return &.{};
+
+    var strings: std.ArrayListUnmanaged([]const u8) = .{};
+    errdefer {
+        for (strings.items) |s| allocator.free(s);
+        strings.deinit(allocator);
+    }
+
+    for (ai.ast.elements) |elem| {
+        if (tree.nodeTag(elem) != .string_literal) continue;
+        const raw = tree.tokenSlice(tree.nodeMainToken(elem));
+        // Strip surrounding quotes
+        if (raw.len >= 2 and raw[0] == '"' and raw[raw.len - 1] == '"') {
+            try strings.append(allocator, try allocator.dupe(u8, raw[1 .. raw.len - 1]));
+        }
+    }
+
+    return try strings.toOwnedSlice(allocator);
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -958,4 +1045,101 @@ test "discoverAndConvert — end-to-end" {
     const content = try std.fs.cwd().readFileAlloc(allocator, orh_path, 1024 * 1024);
     defer allocator.free(content);
     try std.testing.expect(std.mem.startsWith(u8, content, "module testmod\n"));
+}
+
+// ---------------------------------------------------------------------------
+// .zon config tests
+// ---------------------------------------------------------------------------
+
+test "parseZonConfig — full config with all fields" {
+    const allocator = std.testing.allocator;
+    const source: [:0]const u8 =
+        \\.{
+        \\    .link = .{ "SDL2", "openssl" },
+        \\    .include = .{ "vendor/", "/usr/include" },
+        \\    .source = .{ "vendor/stb.c" },
+        \\    .define = .{ "SDL_MAIN_HANDLED", "USE_OPENSSL" },
+        \\}
+    ;
+    const config = try parseZonConfig(allocator, source);
+    defer config.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 2), config.link.len);
+    try std.testing.expectEqualStrings("SDL2", config.link[0]);
+    try std.testing.expectEqualStrings("openssl", config.link[1]);
+
+    try std.testing.expectEqual(@as(usize, 2), config.include.len);
+    try std.testing.expectEqualStrings("vendor/", config.include[0]);
+    try std.testing.expectEqualStrings("/usr/include", config.include[1]);
+
+    try std.testing.expectEqual(@as(usize, 1), config.source.len);
+    try std.testing.expectEqualStrings("vendor/stb.c", config.source[0]);
+
+    try std.testing.expectEqual(@as(usize, 2), config.define.len);
+    try std.testing.expectEqualStrings("SDL_MAIN_HANDLED", config.define[0]);
+    try std.testing.expectEqualStrings("USE_OPENSSL", config.define[1]);
+}
+
+test "parseZonConfig — empty config" {
+    const allocator = std.testing.allocator;
+    const source: [:0]const u8 = ".{}";
+    const config = try parseZonConfig(allocator, source);
+    defer config.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 0), config.link.len);
+    try std.testing.expectEqual(@as(usize, 0), config.include.len);
+    try std.testing.expectEqual(@as(usize, 0), config.source.len);
+    try std.testing.expectEqual(@as(usize, 0), config.define.len);
+}
+
+test "parseZonConfig — partial config (only link)" {
+    const allocator = std.testing.allocator;
+    const source: [:0]const u8 =
+        \\.{
+        \\    .link = .{ "z", "pthread" },
+        \\}
+    ;
+    const config = try parseZonConfig(allocator, source);
+    defer config.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 2), config.link.len);
+    try std.testing.expectEqualStrings("z", config.link[0]);
+    try std.testing.expectEqualStrings("pthread", config.link[1]);
+    try std.testing.expectEqual(@as(usize, 0), config.include.len);
+    try std.testing.expectEqual(@as(usize, 0), config.source.len);
+    try std.testing.expectEqual(@as(usize, 0), config.define.len);
+}
+
+test "parseZonConfig — unknown fields ignored" {
+    const allocator = std.testing.allocator;
+    const source: [:0]const u8 =
+        \\.{
+        \\    .link = .{ "SDL2" },
+        \\    .unknown = .{ "ignored" },
+        \\    .define = .{ "FOO" },
+        \\}
+    ;
+    const config = try parseZonConfig(allocator, source);
+    defer config.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), config.link.len);
+    try std.testing.expectEqualStrings("SDL2", config.link[0]);
+    try std.testing.expectEqual(@as(usize, 1), config.define.len);
+    try std.testing.expectEqualStrings("FOO", config.define[0]);
+    try std.testing.expectEqual(@as(usize, 0), config.include.len);
+    try std.testing.expectEqual(@as(usize, 0), config.source.len);
+}
+
+test "parseZonConfig — single-element tuple" {
+    const allocator = std.testing.allocator;
+    const source: [:0]const u8 =
+        \\.{
+        \\    .link = .{ "one" },
+        \\}
+    ;
+    const config = try parseZonConfig(allocator, source);
+    defer config.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), config.link.len);
+    try std.testing.expectEqualStrings("one", config.link[0]);
 }

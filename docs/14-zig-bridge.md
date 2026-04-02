@@ -140,8 +140,8 @@ Constants with complex initializers (function calls, struct literals) are skippe
 
 ## C Interop
 
-Use `#cimport` in your Orhon module to link C libraries. The Zig module handles the
-actual C FFI:
+C dependencies are configured through a paired `.zon` file next to the `.zig` module.
+The Zig module handles the actual C FFI:
 
 ```zig
 // src/mylib.zig
@@ -152,11 +152,17 @@ pub fn init() bool {
 }
 ```
 
+```zig
+// src/mylib.zon — build config for C dependencies
+.{
+    .link = .{ "vulkan" },
+}
 ```
-// src/app.orh
+
+```
+// src/app.orh — just import and use
 module app
 #build = exe
-#cimport "vulkan"
 
 import mylib
 
@@ -164,6 +170,29 @@ func main() {
     mylib.init()
 }
 ```
+
+### `.zon` Config Reference
+
+All fields are optional. No `.zon` file needed if there are no C dependencies.
+
+```zig
+.{
+    .link = .{ "SDL2", "openssl" },           // system libraries
+    .include = .{ "vendor/" },                 // header search paths
+    .source = .{ "vendor/stb_image.c" },       // C/C++ source files
+    .define = .{ "SDL_MAIN_HANDLED" },         // preprocessor defines
+}
+```
+
+| Field | Purpose | build.zig call |
+|-------|---------|---------------|
+| `.link` | System libraries | `linkSystemLibrary()` |
+| `.include` | Header search paths | `addIncludePath()` |
+| `.source` | C/C++ source files | `addCSourceFiles()` |
+| `.define` | Preprocessor macros | `addMacro()` |
+
+Local `.c`/`.cpp` files in the same directory as the `.zig` file are auto-detected —
+`.source` is only needed for files in other directories.
 
 ---
 

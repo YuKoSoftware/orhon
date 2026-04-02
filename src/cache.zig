@@ -914,3 +914,41 @@ test "interface hashes load save roundtrip" {
     try std.testing.expectEqual(@as(?u64, 12345678901234), cache2.interface_hashes.get("collections"));
     try std.testing.expectEqual(@as(?u64, 98765432109876), cache2.interface_hashes.get("str"));
 }
+
+/// Scan Zig source content for @import("...zig") patterns.
+/// Returns a list of relative .zig file paths (caller owns the strings).
+/// Skips non-file imports like @import("std") or @import("module_name").
+pub fn scanZigImports(
+    content: []const u8,
+    out: *std.ArrayListUnmanaged([]const u8),
+    allocator: std.mem.Allocator,
+) !void {
+    const needle = "@import(\"";
+    var pos: usize = 0;
+    while (pos < content.len) {
+        const idx = std.mem.indexOfPos(u8, content, pos, needle) orelse break;
+        const path_start = idx + needle.len;
+        const path_end = std.mem.indexOfPos(u8, content, path_start, "\"") orelse break;
+        const path = content[path_start..path_end];
+        pos = path_end + 1;
+        // Only collect .zig file imports
+        if (!std.mem.endsWith(u8, path, ".zig")) continue;
+        try out.append(allocator, try allocator.dupe(u8, path));
+    }
+}
+
+test "scanZigImports — finds direct @import" {
+    const content =
+        \\const pipeline = @import("pipeline.zig");
+        \\const std = @import("std");
+        \\const helpers = @import("utils/helpers.zig");
+    ;
+    var results = std.ArrayListUnmanaged([]const u8){};
+    defer results.deinit(std.testing.allocator);
+    try scanZigImports(content, &results, std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 2), results.items.len);
+    // Should skip @import("std") — only .zig file imports
+    try std.testing.expect(std.mem.eql(u8, results.items[0], "pipeline.zig"));
+    try std.testing.expect(std.mem.eql(u8, results.items[1], "utils/helpers.zig"));
+    for (results.items) |item| std.testing.allocator.free(item);
+}

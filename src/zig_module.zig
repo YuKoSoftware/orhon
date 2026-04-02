@@ -323,21 +323,24 @@ pub fn extractConst(tree: *const Ast, node: Node.Index, allocator: Allocator) an
         return try extractStruct(tree, init_node, name, allocator);
     }
 
-    // String literal → String type
+    // String literal → String type with value
     if (init_tag == .string_literal or init_tag == .multiline_string_literal) {
-        return try std.fmt.allocPrint(allocator, "pub const {s}: String", .{name});
+        const value = tree.tokenSlice(tree.nodeMainToken(init_node));
+        return try std.fmt.allocPrint(allocator, "pub const {s}: String = {s}", .{ name, value });
     }
 
-    // Number literal → i64 type
+    // Number literal → i64 type with value
     if (init_tag == .number_literal) {
-        return try std.fmt.allocPrint(allocator, "pub const {s}: i64", .{name});
+        const value = tree.tokenSlice(tree.nodeMainToken(init_node));
+        return try std.fmt.allocPrint(allocator, "pub const {s}: i64 = {s}", .{ name, value });
     }
 
-    // Negation of number literal → i64 type
+    // Negation of number literal → i64 type with value
     if (init_tag == .negation) {
         const operand = tree.nodeData(init_node).node;
         if (tree.nodeTag(operand) == .number_literal) {
-            return try std.fmt.allocPrint(allocator, "pub const {s}: i64", .{name});
+            const value = tree.tokenSlice(tree.nodeMainToken(operand));
+            return try std.fmt.allocPrint(allocator, "pub const {s}: i64 = -{s}", .{ name, value });
         }
     }
 
@@ -770,7 +773,7 @@ test "extractConst — string literal" {
     const result = try testExtractConst("pub const NAME = \"hello\";");
     if (result) |actual| {
         defer std.testing.allocator.free(actual);
-        try std.testing.expectEqualStrings("pub const NAME: String", actual);
+        try std.testing.expectEqualStrings("pub const NAME: String = \"hello\"", actual);
     } else return error.TestUnexpectedResult;
 }
 
@@ -778,7 +781,7 @@ test "extractConst — number literal" {
     const result = try testExtractConst("pub const MAGIC = 42;");
     if (result) |actual| {
         defer std.testing.allocator.free(actual);
-        try std.testing.expectEqualStrings("pub const MAGIC: i64", actual);
+        try std.testing.expectEqualStrings("pub const MAGIC: i64 = 42", actual);
     } else return error.TestUnexpectedResult;
 }
 
@@ -841,7 +844,7 @@ test "generateModule — end-to-end" {
     if (result) |actual| {
         defer std.testing.allocator.free(actual);
         try std.testing.expectEqualStrings(
-            "module mylib\n\npub func add(a: i32, b: i32) i32\n\npub const MAGIC: i64\n\n",
+            "module mylib\n\npub func add(a: i32, b: i32) i32\n\npub const MAGIC: i64 = 42\n\n",
             actual,
         );
     } else return error.TestUnexpectedResult;

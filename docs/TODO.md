@@ -76,13 +76,47 @@ Build a VS Code DAP adapter that reads these maps.
 
 ## Features — Language
 
+### Zig-as-module — replace bridge system
+
+Eliminate the `bridge` keyword and the paired `.orh`/`.zig` sidecar system. Instead,
+the compiler auto-discovers `.zig` files in `src/` and converts them into regular
+Orhon modules.
+
+**Mechanism:**
+- New `src/zig_module.zig` — self-contained converter, uses `std.zig.Ast` to parse
+- Runs early in pipeline, before module resolution
+- Discovers `.zig` files in `src/` (and subfolders), generates `.orh` into `.orh-cache/zig_modules/`
+- Generated modules are regular Orhon modules — no `bridge` keyword, no special syntax
+- Module name = filename stem (`mylib.zig` → `module mylib`)
+- Module-level flag (`is_zig_module`) tells codegen to emit re-exports
+- Build.zig wires the original `.zig` as a named module
+
+**Type mapping (Zig → Orhon):**
+- Primitives: `u8`, `i32`, `f64`, `bool`, `void`, `usize` → same
+- `[]const u8` → `String`
+- `?T` → `NullUnion(T)`
+- `anyerror!T` → `ErrorUnion(T)`
+- `*T` → `mut& T`, `*const T` → `const& T`
+- `pub const X = struct { ... }` → `struct X { ... }` with `pub fn` methods
+- Incompatible signatures (`anytype`, `comptime`, complex generics) → silently skipped
+
+**What gets removed:**
+- `bridge` keyword from grammar, parser, declarations, codegen
+- All 27 `.orh` bridge files from `src/std/` (keep only `.zig` implementations)
+- Sidecar detection/copy logic in module_parse.zig and pipeline_passes.zig
+- Bridge-specific codegen in codegen_decls.zig
+
+**What stays the same:**
+- Module resolution, type resolution, semantic passes — see regular modules
+- Codegen re-export mechanism — triggered by module flag instead of per-decl `bridge`
+- Build.zig named module wiring — same pattern, different naming
+
 ### Compiler simplifications
 
 **Hub+satellite splits (files over 1000 lines):**
 
 - ~~`resolver.zig`~~ — DONE (v0.14.5): split into hub + resolver_exprs.zig + resolver_validation.zig
-- `pipeline.zig` (1015 lines) — `runPipeline()` is the bulk. Extract phase
-  helpers (module resolution, semantic passes, codegen, zig runner).
+- ~~`pipeline.zig`~~ — DONE (v0.14.6): split into hub + pipeline_passes.zig
 - ~~`mir_annotator.zig`~~ — DONE (v0.17): split into hub + satellites
 - ~~`module.zig`~~ — DONE (v0.17): split into hub + module_parse.zig
 - ~~`borrow.zig`~~ — DONE: split into hub + borrow_checks.zig

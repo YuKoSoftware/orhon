@@ -23,6 +23,13 @@ pub fn jsonObj(value: std.json.Value, key: []const u8) ?std.json.Value {
     return switch (val) { .object => val, else => null };
 }
 
+/// Extract the textDocument URI from a params object.
+/// Returns null if textDocument or uri is missing.
+pub fn extractTextDocumentUri(params: std.json.Value) ?[]const u8 {
+    const td = jsonObj(params, "textDocument") orelse return null;
+    return jsonStr(td, "uri");
+}
+
 pub fn jsonInt(value: std.json.Value, key: []const u8) ?i64 {
     const obj = switch (value) { .object => |o| o, else => return null };
     const val = obj.get(key) orelse return null;

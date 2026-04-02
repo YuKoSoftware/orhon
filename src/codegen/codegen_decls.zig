@@ -22,64 +22,6 @@ const CodeGen = codegen.CodeGen;
 /// Walk a node tree and collect all variable names that appear as the
 /// LHS of an assignment (simple, compound, field, or index). Stops at
 /// nested func_decl boundaries so inner functions don't pollute the outer set.
-pub fn collectAssigned(node: *parser.Node, set: *std.StringHashMapUnmanaged(void), alloc: std.mem.Allocator) anyerror!void {
-    switch (node.*) {
-        .assignment => |a| {
-            if (getRootIdent(a.left)) |name| try set.put(alloc, name, {});
-            try collectAssigned(a.right, set, alloc);
-        },
-        .call_expr => |c| {
-            // Method call on a receiver: foo.method(args) — treat the receiver as
-            // potentially mutated so we don't promote it to const incorrectly.
-            if (c.callee.* == .field_expr) {
-                if (getRootIdent(c.callee.field_expr.object)) |name| {
-                    try set.put(alloc, name, {});
-                }
-            }
-            for (c.args) |arg| try collectAssigned(arg, set, alloc);
-        },
-        .block => |b| {
-            for (b.statements) |s| try collectAssigned(s, set, alloc);
-        },
-        .func_decl => {}, // nested function — own scope, don't descend
-        .if_stmt => |i| {
-            try collectAssigned(i.condition, set, alloc);
-            try collectAssigned(i.then_block, set, alloc);
-            if (i.else_block) |e| try collectAssigned(e, set, alloc);
-        },
-        .while_stmt => |w| {
-            try collectAssigned(w.condition, set, alloc);
-            if (w.continue_expr) |c| try collectAssigned(c, set, alloc);
-            try collectAssigned(w.body, set, alloc);
-        },
-        .for_stmt => |f| try collectAssigned(f.body, set, alloc),
-        .slice_expr => |s| {
-            // Slice base must stay `var` so the slice type is []T not *const [N]T
-            if (s.object.* == .identifier)
-                try set.put(alloc, s.object.identifier, {});
-            try collectAssigned(s.low, set, alloc);
-            try collectAssigned(s.high, set, alloc);
-        },
-        .var_decl => |v| try collectAssigned(v.value, set, alloc),
-        .match_stmt => |m| {
-            for (m.arms) |arm| {
-                if (arm.* == .match_arm) try collectAssigned(arm.match_arm.body, set, alloc);
-            }
-        },
-        .defer_stmt => |d| try collectAssigned(d.body, set, alloc),
-        else => {},
-    }
-}
-
-pub fn getRootIdent(node: *parser.Node) ?[]const u8 {
-    return switch (node.*) {
-        .identifier => |name| name,
-        .field_expr => |f| getRootIdent(f.object),
-        .index_expr => |i| getRootIdent(i.object),
-        else => null,
-    };
-}
-
 /// Emit a re-export for a bridge declaration from the named bridge module.
 /// Bridge .zig files are registered as named Zig modules in the build graph,
 /// so we import by module name (no .zig extension).

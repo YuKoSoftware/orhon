@@ -431,13 +431,6 @@ pub const CodeGen = struct {
     // FUNCTIONS
     // ============================================================
 
-    /// Walk a node tree and collect all variable names that appear as the
-    /// LHS of an assignment (simple, compound, field, or index). Stops at
-    /// nested func_decl boundaries so inner functions don't pollute the outer set.
-    pub fn collectAssigned(node: *parser.Node, set: *std.StringHashMapUnmanaged(void), alloc: std.mem.Allocator) anyerror!void { return decls_impl.collectAssigned(node, set, alloc); }
-
-    pub fn getRootIdent(node: *parser.Node) ?[]const u8 { return decls_impl.getRootIdent(node); }
-
     /// Emit a re-export for a bridge declaration from the named bridge module.
     /// Bridge .zig files are registered as named Zig modules in the build graph,
     /// so we import by module name (no .zig extension).

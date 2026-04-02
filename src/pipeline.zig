@@ -17,6 +17,7 @@ const zig_runner = @import("zig_runner/zig_runner.zig");
 const errors = @import("errors.zig");
 const cache = @import("cache.zig");
 const builtins = @import("builtins.zig");
+const constants = @import("constants.zig");
 const peg = @import("peg.zig");
 const _cli = @import("cli.zig");
 const _std_bundle = @import("std_bundle.zig");
@@ -197,27 +198,27 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 switch (node.*) {
                     .var_decl => |v| {
                         if (std.mem.eql(u8, v.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), "'main' is reserved for the executable entry point", .{});
+                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
                         }
                     },
                     .struct_decl => |s| {
                         if (std.mem.eql(u8, s.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), "'main' is reserved for the executable entry point", .{});
+                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
                         }
                     },
                     .enum_decl => |e| {
                         if (std.mem.eql(u8, e.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), "'main' is reserved for the executable entry point", .{});
+                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
                         }
                     },
                     .blueprint_decl => |b| {
                         if (std.mem.eql(u8, b.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), "'main' is reserved for the executable entry point", .{});
+                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
                         }
                     },
                     .bitfield_decl => |bf| {
                         if (std.mem.eql(u8, bf.name, "main")) {
-                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), "'main' is reserved for the executable entry point", .{});
+                            try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
                         }
                     },
                     .func_decl => |f| {

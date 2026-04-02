@@ -8,6 +8,7 @@ const lexer = @import("lexer.zig");
 const errors = @import("errors.zig");
 const cache = @import("cache.zig");
 const builtins = @import("builtins.zig");
+const constants = @import("constants.zig");
 
 const MODULE_KEYWORD = "module ";
 
@@ -221,7 +222,7 @@ pub const Resolver = struct {
 
                 // Reject 'module main' — reserved for the executable entry point
                 if (std.mem.eql(u8, mod_name, "main")) {
-                    try self.reporter.reportFmt(.{ .file = full_path, .line = 1, .col = 1 }, "'main' is reserved for the executable entry point — use your project name as the module name", .{});
+                    try self.reporter.reportFmt(.{ .file = full_path, .line = 1, .col = 1 }, constants.Err.MAIN_RESERVED ++ " — use your project name as the module name", .{});
                     self.allocator.free(mod_name);
                     self.allocator.free(full_path);
                     continue;

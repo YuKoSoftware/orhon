@@ -16,14 +16,14 @@ const jsonObj = lsp_json.jsonObj;
 const writeJsonValue = lsp_json.writeJsonValue;
 const appendInt = lsp_json.appendInt;
 const buildEmptyResponse = lsp_json.buildEmptyResponse;
+const extractTextDocumentUri = lsp_json.extractTextDocumentUri;
 
 const lspLog = lsp_utils.lspLog;
 const uriToPath = lsp_utils.uriToPath;
 
 pub fn handleSemanticTokens(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
 
     const path = uriToPath(uri) orelse return buildEmptyResponse(allocator, id);
     const source = std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024) catch

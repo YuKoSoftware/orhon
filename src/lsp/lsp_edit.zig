@@ -22,6 +22,7 @@ const appendJsonString = lsp_json.appendJsonString;
 const appendInt = lsp_json.appendInt;
 const buildEmptyResponse = lsp_json.buildEmptyResponse;
 const buildEmptyArrayResponse = lsp_json.buildEmptyArrayResponse;
+const extractTextDocumentUri = lsp_json.extractTextDocumentUri;
 
 const lspLog = lsp_utils.lspLog;
 const getDocSource = lsp_utils.getDocSource;
@@ -42,8 +43,7 @@ const findVisibleSymbolByName = lsp_utils.findVisibleSymbolByName;
 
 pub fn handleCompletion(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo, use_snippets: bool, doc_store: *const std.StringHashMap([]u8)) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
     const pos = jsonObj(params, "position") orelse return buildEmptyResponse(allocator, id);
     const line_0: usize = @intCast(jsonInt(pos, "line") orelse return buildEmptyResponse(allocator, id));
     const col_0: usize = @intCast(jsonInt(pos, "character") orelse return buildEmptyResponse(allocator, id));
@@ -239,8 +239,7 @@ fn appendSymbolCompletionItem(buf: *std.ArrayListUnmanaged(u8), allocator: std.m
 
 pub fn handleRename(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo, project_root: ?[]const u8) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
     const pos = jsonObj(params, "position") orelse return buildEmptyResponse(allocator, id);
     const line_0: usize = @intCast(jsonInt(pos, "line") orelse return buildEmptyResponse(allocator, id));
     const col_0: usize = @intCast(jsonInt(pos, "character") orelse return buildEmptyResponse(allocator, id));
@@ -376,8 +375,7 @@ fn collectOrhFiles(allocator: std.mem.Allocator, dir_path: []const u8, project_r
 
 pub fn handleFormatting(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
 
     const path = uriToPath(uri) orelse return buildEmptyResponse(allocator, id);
     lspLog("formatting: {s}", .{path});
@@ -437,8 +435,7 @@ pub fn handleFormatting(allocator: std.mem.Allocator, root: std.json.Value, id: 
 
 pub fn handleCodeAction(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, diags: []const Diagnostic) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyArrayResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyArrayResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyArrayResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyArrayResponse(allocator, id);
     const range = jsonObj(params, "range") orelse return buildEmptyArrayResponse(allocator, id);
     const start = jsonObj(range, "start") orelse return buildEmptyArrayResponse(allocator, id);
     const start_line: usize = @intCast(jsonInt(start, "line") orelse return buildEmptyArrayResponse(allocator, id));

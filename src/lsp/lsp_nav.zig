@@ -14,6 +14,7 @@ const writeJsonValue = lsp_json.writeJsonValue;
 const appendJsonString = lsp_json.appendJsonString;
 const appendInt = lsp_json.appendInt;
 const buildEmptyResponse = lsp_json.buildEmptyResponse;
+const extractTextDocumentUri = lsp_json.extractTextDocumentUri;
 const buildHoverResponse = lsp_json.buildHoverResponse;
 const buildDefinitionResponse = lsp_json.buildDefinitionResponse;
 
@@ -34,8 +35,7 @@ const builtinDetail = lsp_utils.builtinDetail;
 
 pub fn handleHover(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo, doc_store: *const std.StringHashMap([]u8)) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
     const pos = jsonObj(params, "position") orelse return buildEmptyResponse(allocator, id);
     const line_0: usize = @intCast(jsonInt(pos, "line") orelse return buildEmptyResponse(allocator, id));
     const col_0: usize = @intCast(jsonInt(pos, "character") orelse return buildEmptyResponse(allocator, id));
@@ -103,8 +103,7 @@ pub fn handleHover(allocator: std.mem.Allocator, root: std.json.Value, id: std.j
 
 pub fn handleDefinition(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo, doc_store: *const std.StringHashMap([]u8)) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
     const pos = jsonObj(params, "position") orelse return buildEmptyResponse(allocator, id);
     const line_0: usize = @intCast(jsonInt(pos, "line") orelse return buildEmptyResponse(allocator, id));
     const col_0: usize = @intCast(jsonInt(pos, "character") orelse return buildEmptyResponse(allocator, id));
@@ -146,8 +145,7 @@ pub fn handleDefinition(allocator: std.mem.Allocator, root: std.json.Value, id: 
 
 pub fn handleReferences(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
     const pos = jsonObj(params, "position") orelse return buildEmptyResponse(allocator, id);
     const line_0: usize = @intCast(jsonInt(pos, "line") orelse return buildEmptyResponse(allocator, id));
     const col_0: usize = @intCast(jsonInt(pos, "character") orelse return buildEmptyResponse(allocator, id));
@@ -228,8 +226,7 @@ pub fn handleReferences(allocator: std.mem.Allocator, root: std.json.Value, id: 
 
 pub fn handleDocumentHighlight(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, doc_store: *const std.StringHashMap([]u8)) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
     const pos = jsonObj(params, "position") orelse return buildEmptyResponse(allocator, id);
     const line_0: usize = @intCast(jsonInt(pos, "line") orelse return buildEmptyResponse(allocator, id));
     const col_0: usize = @intCast(jsonInt(pos, "character") orelse return buildEmptyResponse(allocator, id));

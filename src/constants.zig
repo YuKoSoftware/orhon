@@ -11,6 +11,11 @@ pub const Type = struct {
     pub const TYPE = "type";
 };
 
+/// Error messages used across multiple passes
+pub const Err = struct {
+    pub const MAIN_RESERVED = "'main' is reserved for the executable entry point";
+};
+
 /// Operator strings used in cross-file comparisons.
 /// The AST stores operators as strings; these constants centralize the literals.
 pub const Op = struct {

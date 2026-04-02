@@ -17,6 +17,7 @@ const writeJsonValue = lsp_json.writeJsonValue;
 const appendJsonString = lsp_json.appendJsonString;
 const appendInt = lsp_json.appendInt;
 const buildEmptyResponse = lsp_json.buildEmptyResponse;
+const extractTextDocumentUri = lsp_json.extractTextDocumentUri;
 const buildDocumentSymbolsResponse = lsp_json.buildDocumentSymbolsResponse;
 
 const lspLog = lsp_utils.lspLog;
@@ -32,8 +33,7 @@ const findSymbolInContext = lsp_utils.findSymbolInContext;
 
 pub fn handleDocumentSymbols(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
     lspLog("documentSymbol: {s}", .{uri});
 
     return buildDocumentSymbolsResponse(allocator, id, symbols, uri);
@@ -118,8 +118,7 @@ fn toLowerAscii(c: u8) u8 {
 
 pub fn handleSignatureHelp(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo, doc_store: *const std.StringHashMap([]u8)) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
     const pos = jsonObj(params, "position") orelse return buildEmptyResponse(allocator, id);
     const line_0: usize = @intCast(jsonInt(pos, "line") orelse return buildEmptyResponse(allocator, id));
     const col_0: usize = @intCast(jsonInt(pos, "character") orelse return buildEmptyResponse(allocator, id));
@@ -233,8 +232,7 @@ pub fn extractParamLabels(sig: []const u8) ParamLabels {
 
 pub fn handleInlayHint(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo, doc_store: *const std.StringHashMap([]u8)) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
 
     const source = getDocSource(allocator, uri, doc_store) catch
         return buildEmptyResponse(allocator, id);
@@ -327,8 +325,7 @@ fn findSymbolInFile(symbols: []const SymbolInfo, name: []const u8, uri: []const 
 
 pub fn handleFoldingRange(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, doc_store: *const std.StringHashMap([]u8)) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
-    const td = jsonObj(params, "textDocument") orelse return buildEmptyResponse(allocator, id);
-    const uri = jsonStr(td, "uri") orelse return buildEmptyResponse(allocator, id);
+    const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
 
     const source = getDocSource(allocator, uri, doc_store) catch
         return buildEmptyResponse(allocator, id);

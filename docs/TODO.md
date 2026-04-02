@@ -83,6 +83,32 @@ Replaced the `bridge` keyword with automatic Zig module conversion. `.zig` files
 Bridge keyword, grammar, and all infrastructure removed. 27 stdlib `.orh` bridge files
 deleted. See `docs/14-zig-bridge.md` for the new system.
 
+### Per-module `.zon` build config — replace `#cimport`
+
+Eliminate `#cimport` from Orhon. C build configuration moves to a paired `.zon` file
+next to the `.zig` module. The converter reads it and wires everything into `build.zig`.
+
+**Convention:** `mylib.zig` + `mylib.zon` (optional, only if C deps exist).
+
+**Format:**
+```zig
+.{
+    .link = .{ "SDL2", "openssl" },           // linkSystemLibrary()
+    .include = .{ "vendor/" },                 // addIncludePath()
+    .source = .{ "vendor/stb_image.c" },       // addCSourceFiles()
+    .define = .{ "SDL_MAIN_HANDLED" },         // addMacro()
+}
+```
+
+All fields optional. No `.zon` = no C dependencies. Local `.c`/`.cpp` files next to
+the `.zig` are auto-detected (`.source` only needed for non-adjacent files).
+
+**What gets removed:** `#cimport` directive from grammar, parser, declarations, pipeline.
+
+**What changes in `zig_module.zig`:** After parsing the `.zig` file, check for a paired
+`.zon` with the same stem. Parse it with `std.zig.Ast`, extract fields, pass to build.zig
+generator.
+
 ### Compiler simplifications
 
 **Hub+satellite splits (files over 1000 lines):**

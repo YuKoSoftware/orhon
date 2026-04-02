@@ -7,14 +7,14 @@
 
 const std = @import("std");
 
-var _default_smp: std.heap.GeneralPurposeAllocator(.{}) = .{};
+const _default_alloc = std.heap.smp_allocator;
 
 // ── List(T) — dynamic array ──
 
 pub fn List(comptime T: type) type {
     return struct {
         inner: std.ArrayListUnmanaged(T) = .{},
-        alloc: std.mem.Allocator = _default_smp.allocator(),
+        alloc: std.mem.Allocator = _default_alloc,
 
         const Self = @This();
 
@@ -64,7 +64,7 @@ pub fn Map(comptime K: type, comptime V: type) type {
 
     return struct {
         inner: std.HashMapUnmanaged(K, V, Context, 80) = .{},
-        alloc: std.mem.Allocator = _default_smp.allocator(),
+        alloc: std.mem.Allocator = _default_alloc,
 
         const Self = @This();
 
@@ -119,7 +119,7 @@ pub fn Set(comptime T: type) type {
 
     return struct {
         inner: std.HashMapUnmanaged(T, void, Context, 80) = .{},
-        alloc: std.mem.Allocator = _default_smp.allocator(),
+        alloc: std.mem.Allocator = _default_alloc,
 
         const Self = @This();
 

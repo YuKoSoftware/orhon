@@ -6,7 +6,7 @@
 
 const std = @import("std");
 
-const alloc = std.heap.page_allocator;
+const alloc = std.heap.smp_allocator;
 
 // ── Value Types ──
 

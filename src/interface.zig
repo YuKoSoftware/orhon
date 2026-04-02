@@ -257,7 +257,7 @@ pub fn generateInterface(
 
     // Version from metadata
     for (ast.program.metadata) |meta| {
-        if (std.mem.eql(u8, meta.metadata.field, "version")) {
+        if (meta.metadata.field == .version) {
             try buf.appendSlice(alloc, "#version = ");
             try formatExprSimple(meta.metadata.value, &buf, alloc);
             try buf.appendSlice(alloc, "\n\n");

@@ -14,6 +14,7 @@ const _commands = @import("commands.zig");
 const build_helpers = @import("pipeline_build.zig");
 const passes = @import("pipeline_passes.zig");
 const zig_module = @import("zig_module.zig");
+const constants = @import("constants.zig");
 
 pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *errors.Reporter) !?[]const u8 {
 
@@ -402,14 +403,9 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             var project_name: []const u8 = "";
             if (mod.ast) |ast| {
                 for (ast.program.metadata) |meta| {
-                    if (std.mem.eql(u8, meta.metadata.field, "name")) {
+                    if (meta.metadata.field == .name) {
                         if (meta.metadata.value.* == .string_literal) {
-                            const raw = meta.metadata.value.string_literal;
-                            if (raw.len >= 2 and raw[0] == '"') {
-                                project_name = raw[1 .. raw.len - 1];
-                            } else {
-                                project_name = raw;
-                            }
+                            project_name = constants.stripQuotes(meta.metadata.value.string_literal);
                         }
                     }
                 }
@@ -503,27 +499,22 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             const mod = entry.value_ptr;
             if (!mod.is_root) continue;
 
-            var build_type: []const u8 = "exe";
+            var build_type: module.BuildType = .exe;
             var project_name: []const u8 = "";
             var mt_version: ?[3]u64 = null;
             if (mod.ast) |ast| {
                 for (ast.program.metadata) |meta| {
-                    if (std.mem.eql(u8, meta.metadata.field, "build")) {
+                    if (meta.metadata.field == .build) {
                         if (meta.metadata.value.* == .identifier) {
-                            build_type = meta.metadata.value.identifier;
+                            build_type = module.parseBuildType(meta.metadata.value.identifier);
                         }
                     }
-                    if (std.mem.eql(u8, meta.metadata.field, "name")) {
+                    if (meta.metadata.field == .name) {
                         if (meta.metadata.value.* == .string_literal) {
-                            const raw = meta.metadata.value.string_literal;
-                            if (raw.len >= 2 and raw[0] == '"') {
-                                project_name = raw[1 .. raw.len - 1];
-                            } else {
-                                project_name = raw;
-                            }
+                            project_name = constants.stripQuotes(meta.metadata.value.string_literal);
                         }
                     }
-                    if (std.mem.eql(u8, meta.metadata.field, "version")) {
+                    if (meta.metadata.field == .version) {
                         mt_version = module.extractVersion(meta.metadata.value);
                     }
                 }
@@ -531,7 +522,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
             const binary_name = if (project_name.len > 0) project_name else mod.name;
 
-            if (std.mem.eql(u8, build_type, "exe")) {
+            if (build_type == .exe) {
                 // Primary module (name matches folder) gets priority for orhon run
                 if (std.mem.eql(u8, mod.name, project_folder_name)) {
                     if (exe_binary_name) |old| allocator.free(old);
@@ -660,7 +651,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
         // Generate interface files for lib targets
         for (multi_targets.items) |t| {
-            if (!std.mem.eql(u8, t.build_type, "exe")) {
+            if (t.build_type != .exe) {
                 const mod = mod_resolver.modules.get(t.module_name) orelse continue;
                 if (mod.ast) |ast| {
                     try _interface.generateInterface(allocator, t.module_name, t.project_name, ast);
@@ -674,7 +665,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             const mod = entry.value_ptr;
             if (!mod.is_root) continue;
 
-            var build_type: []const u8 = "exe";
+            var build_type: module.BuildType = .exe;
             var project_name: []const u8 = "";
             var project_version: ?[3]u64 = null;
             var link_libs: std.ArrayListUnmanaged([]const u8) = .{};
@@ -698,22 +689,17 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             // Collect build/name/version from root module metadata.
             if (mod.ast) |ast| {
                 for (ast.program.metadata) |meta| {
-                    if (std.mem.eql(u8, meta.metadata.field, "build")) {
+                    if (meta.metadata.field == .build) {
                         if (meta.metadata.value.* == .identifier) {
-                            build_type = meta.metadata.value.identifier;
+                            build_type = module.parseBuildType(meta.metadata.value.identifier);
                         }
                     }
-                    if (std.mem.eql(u8, meta.metadata.field, "name")) {
+                    if (meta.metadata.field == .name) {
                         if (meta.metadata.value.* == .string_literal) {
-                            const raw = meta.metadata.value.string_literal;
-                            if (raw.len >= 2 and raw[0] == '"') {
-                                project_name = raw[1 .. raw.len - 1];
-                            } else {
-                                project_name = raw;
-                            }
+                            project_name = constants.stripQuotes(meta.metadata.value.string_literal);
                         }
                     }
-                    if (std.mem.eql(u8, meta.metadata.field, "version")) {
+                    if (meta.metadata.field == .version) {
                         project_version = module.extractVersion(meta.metadata.value);
                     }
                 }
@@ -779,7 +765,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 }
 
                 const use_subfolder = cli.targets.items.len > 1;
-                const built = if (std.mem.eql(u8, build_type, "exe"))
+                const built = if (build_type == .exe)
                     try runner.build(target_str, opt_str, mod.name, binary_name)
                 else
                     try runner.buildLib(target_str, opt_str, mod.name, binary_name, build_type);
@@ -790,7 +776,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 }
             }
 
-            if (std.mem.eql(u8, build_type, "exe")) {
+            if (build_type == .exe) {
                 // Primary module (name matches folder) gets priority for orhon run
                 if (std.mem.eql(u8, mod.name, project_folder_name)) {
                     if (exe_binary_name) |old| allocator.free(old);

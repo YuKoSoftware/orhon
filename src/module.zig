@@ -16,6 +16,17 @@ pub const MODULE_KEYWORD = "module ";
 
 pub const BuildType = enum { none, exe, static, dynamic };
 
+/// Parse a build type string from metadata (e.g. "exe", "static", "dynamic").
+/// Returns `.exe` for unrecognized values.
+pub fn parseBuildType(raw: []const u8) BuildType {
+    const map = std.StaticStringMap(BuildType).initComptime(.{
+        .{ "exe", .exe },
+        .{ "static", .static },
+        .{ "dynamic", .dynamic },
+    });
+    return map.get(raw) orelse .exe;
+}
+
 /// Maps combined-buffer line numbers back to the original source file + local line.
 /// Each entry marks where a file begins in the combined buffer.
 pub const FileOffset = struct {

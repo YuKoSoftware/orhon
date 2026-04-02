@@ -3,7 +3,7 @@
 
 const std = @import("std");
 
-const alloc = std.heap.page_allocator;
+const alloc = std.heap.smp_allocator;
 
 // ── Dot-Path Resolver ──
 // Walks a parsed JSON value by splitting path on '.'

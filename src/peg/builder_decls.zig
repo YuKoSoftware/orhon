@@ -15,6 +15,8 @@ const Node = parser.Node;
 const Token = lexer.Token;
 const TokenKind = lexer.TokenKind;
 
+const constants = @import("../constants.zig");
+
 const BuildContext = builder.BuildContext;
 
 // ============================================================
@@ -76,11 +78,9 @@ pub fn buildProgram(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // Wire #description metadata to module_decl.doc (takes precedence over /// on module)
     for (metadata_list.items) |meta| {
         if (meta.* == .metadata) {
-            if (std.mem.eql(u8, meta.metadata.field, "description")) {
+            if (meta.metadata.field == .description) {
                 if (meta.metadata.value.* == .string_literal) {
-                    const raw = meta.metadata.value.string_literal;
-                    // Strip surrounding quotes
-                    const text = if (raw.len >= 2 and raw[0] == '"') raw[1 .. raw.len - 1] else raw;
+                    const text = constants.stripQuotes(meta.metadata.value.string_literal);
                     builder.setDoc(mod, text);
                 }
                 break;
@@ -157,12 +157,12 @@ pub fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         if (cap.children.len > 1) {
             extra = try builder.buildNode(ctx, &cap.children[1]);
         }
-        return ctx.newNode(.{ .metadata = .{ .field = field, .value = value, .extra = extra } });
+        return ctx.newNode(.{ .metadata = .{ .field = parser.MetadataField.parse(field), .value = value, .extra = extra } });
     }
 
     // Fallback — create a dummy value
     const dummy = try ctx.newNode(.{ .identifier = field });
-    return ctx.newNode(.{ .metadata = .{ .field = field, .value = dummy } });
+    return ctx.newNode(.{ .metadata = .{ .field = parser.MetadataField.parse(field), .value = dummy } });
 }
 
 // ============================================================

@@ -7,6 +7,7 @@ const Ast = std.zig.Ast;
 const Node = Ast.Node;
 const Allocator = std.mem.Allocator;
 const cache = @import("cache.zig");
+const constants = @import("constants.zig");
 
 /// Primitives that pass through unchanged from Zig to Orhon.
 const PASSTHROUGH_PRIMITIVES = [_][]const u8{
@@ -763,9 +764,9 @@ fn extractStringTuple(allocator: Allocator, tree: *const Ast, node: Ast.Node.Ind
     for (ai.ast.elements) |elem| {
         if (tree.nodeTag(elem) != .string_literal) continue;
         const raw = tree.tokenSlice(tree.nodeMainToken(elem));
-        // Strip surrounding quotes
-        if (raw.len >= 2 and raw[0] == '"' and raw[raw.len - 1] == '"') {
-            try strings.append(allocator, try allocator.dupe(u8, raw[1 .. raw.len - 1]));
+        const stripped = constants.stripQuotes(raw);
+        if (stripped.len != raw.len) {
+            try strings.append(allocator, try allocator.dupe(u8, stripped));
         }
     }
 

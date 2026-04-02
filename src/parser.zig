@@ -160,8 +160,29 @@ pub const ImportDecl = struct {
     is_include: bool,       // `include` dumps symbols into namespace
 };
 
+pub const MetadataField = enum {
+    build,
+    name,
+    version,
+    dep,
+    description,
+    unknown,
+
+    const map = std.StaticStringMap(MetadataField).initComptime(.{
+        .{ "build", .build },
+        .{ "name", .name },
+        .{ "version", .version },
+        .{ "dep", .dep },
+        .{ "description", .description },
+    });
+
+    pub fn parse(raw: []const u8) MetadataField {
+        return map.get(raw) orelse .unknown;
+    }
+};
+
 pub const Metadata = struct {
-    field: []const u8,
+    field: MetadataField,
     value: *Node,
     extra: ?*Node = null,              // version node for #dep, null otherwise
 };

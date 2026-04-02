@@ -4,7 +4,7 @@
 const std = @import("std");
 
 const posix = std.posix;
-const alloc = std.heap.page_allocator;
+const alloc = std.heap.smp_allocator;
 
 const stdout = std.fs.File{ .handle = posix.STDOUT_FILENO };
 const stdin = std.fs.File{ .handle = posix.STDIN_FILENO };

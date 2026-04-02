@@ -11,7 +11,7 @@ const _build = @import("zig_runner_build.zig");
 pub const MultiTarget = struct {
     module_name: []const u8,
     project_name: []const u8,
-    build_type: []const u8, // "exe", "static", "dynamic"
+    build_type: @import("../module.zig").BuildType, // exe, static, dynamic
     lib_imports: []const []const u8, // names of imported lib modules (for linking)
     mod_imports: []const []const u8 = &.{}, // names of non-lib imported modules (for named module refs)
     version: ?[3]u64 = null,
@@ -63,7 +63,7 @@ pub fn buildZigContentMulti(
     var all_lib_targets = std.ArrayListUnmanaged(*const MultiTarget){};
     defer all_lib_targets.deinit(allocator);
     for (targets) |*t| {
-        if (!std.mem.eql(u8, t.build_type, "exe")) {
+        if (t.build_type != .exe) {
             try all_lib_targets.append(allocator, t);
             try lib_targets.put(allocator, t.module_name, t.project_name);
         }
@@ -247,7 +247,7 @@ pub fn buildZigContentMulti(
 
     // Pass 1: emit all lib targets in dependency order
     for (sorted_libs.items) |t| {
-        const linkage: []const u8 = if (std.mem.eql(u8, t.build_type, "dynamic")) ".dynamic" else ".static";
+        const linkage: []const u8 = if (t.build_type == .dynamic) ".dynamic" else ".static";
 
         try _build.appendFmt(&buf, allocator,
             \\    const lib_{s} = b.addLibrary(.{{
@@ -334,7 +334,7 @@ pub fn buildZigContentMulti(
 
     // Pass 2: emit all exe targets, linking against libs
     for (targets) |t| {
-        if (!std.mem.eql(u8, t.build_type, "exe")) continue;
+        if (t.build_type != .exe) continue;
 
         var ver_buf: [128]u8 = undefined;
         const ver_line: []const u8 = if (t.version) |v|
@@ -432,7 +432,7 @@ pub fn buildZigContentMulti(
     // Test step — prefer first exe target, fall back to first target for lib-only builds
     var test_target: ?MultiTarget = null;
     for (targets) |t| {
-        if (std.mem.eql(u8, t.build_type, "exe")) {
+        if (t.build_type == .exe) {
             test_target = t;
             break;
         }
@@ -493,8 +493,8 @@ test "buildZigContentMulti - exe with dynamic lib" {
     const alloc = std.testing.allocator;
     const lib_name: []const u8 = "mathlib";
     const targets = [_]MultiTarget{
-        .{ .module_name = "mathlib", .project_name = "mathlib", .build_type = "dynamic", .lib_imports = &.{} },
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = @constCast(&[_][]const u8{lib_name}) },
+        .{ .module_name = "mathlib", .project_name = "mathlib", .build_type = .dynamic, .lib_imports = &.{} },
+        .{ .module_name = "myapp", .project_name = "myapp", .build_type = .exe, .lib_imports = @constCast(&[_][]const u8{lib_name}) },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -515,8 +515,8 @@ test "buildZigContentMulti - exe with static lib" {
     const alloc = std.testing.allocator;
     const lib_name: []const u8 = "utils";
     const targets = [_]MultiTarget{
-        .{ .module_name = "utils", .project_name = "utils", .build_type = "static", .lib_imports = &.{} },
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = @constCast(&[_][]const u8{lib_name}) },
+        .{ .module_name = "utils", .project_name = "utils", .build_type = .static, .lib_imports = &.{} },
+        .{ .module_name = "myapp", .project_name = "myapp", .build_type = .exe, .lib_imports = @constCast(&[_][]const u8{lib_name}) },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -529,7 +529,7 @@ test "buildZigContentMulti - exe with static lib" {
 test "buildZigContentMulti - single exe (no libs)" {
     const alloc = std.testing.allocator;
     const targets = [_]MultiTarget{
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
+        .{ .module_name = "myapp", .project_name = "myapp", .build_type = .exe, .lib_imports = &.{} },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -547,9 +547,9 @@ test "buildZigContentMulti - lib-to-lib imports added to prevent file-module con
     const sdl3_name: []const u8 = "tamga_sdl3";
     const vk3d_imports = [_][]const u8{sdl3_name};
     const targets = [_]MultiTarget{
-        .{ .module_name = "tamga_sdl3", .project_name = "tamga_sdl3", .build_type = "static", .lib_imports = &.{} },
-        .{ .module_name = "tamga_vk3d", .project_name = "tamga_vk3d", .build_type = "static", .lib_imports = @constCast(&vk3d_imports) },
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
+        .{ .module_name = "tamga_sdl3", .project_name = "tamga_sdl3", .build_type = .static, .lib_imports = &.{} },
+        .{ .module_name = "tamga_vk3d", .project_name = "tamga_vk3d", .build_type = .static, .lib_imports = @constCast(&vk3d_imports) },
+        .{ .module_name = "myapp", .project_name = "myapp", .build_type = .exe, .lib_imports = &.{} },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -571,9 +571,9 @@ test "buildZigContentMulti - shared cImport module for cross-module C type ident
     const vma_imports = [_][]const u8{};
     const vk3d_imports = [_][]const u8{"tamga_vma"};
     const targets = [_]MultiTarget{
-        .{ .module_name = "tamga_vma", .project_name = "tamga_vma", .build_type = "static", .lib_imports = @constCast(&vma_imports), .link_libs = @constCast(&vk_libs), .c_includes = @constCast(&vk_includes) },
-        .{ .module_name = "tamga_vk3d", .project_name = "tamga_vk3d", .build_type = "static", .lib_imports = @constCast(&vk3d_imports), .link_libs = @constCast(&vk_libs), .c_includes = @constCast(&vk_includes) },
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
+        .{ .module_name = "tamga_vma", .project_name = "tamga_vma", .build_type = .static, .lib_imports = @constCast(&vma_imports), .link_libs = @constCast(&vk_libs), .c_includes = @constCast(&vk_includes) },
+        .{ .module_name = "tamga_vk3d", .project_name = "tamga_vk3d", .build_type = .static, .lib_imports = @constCast(&vk3d_imports), .link_libs = @constCast(&vk_libs), .c_includes = @constCast(&vk_includes) },
+        .{ .module_name = "myapp", .project_name = "myapp", .build_type = .exe, .lib_imports = &.{} },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -593,8 +593,8 @@ test "buildZigContentMulti - csource directive emits addCSourceFiles and linkLib
     const alloc = std.testing.allocator;
     const csources = [_][]const u8{"../../src/TamgaVMA/vma_impl.cpp"};
     const targets = [_]MultiTarget{
-        .{ .module_name = "tamga_vma", .project_name = "tamga_vma", .build_type = "static", .lib_imports = &.{}, .c_source_files = @constCast(&csources), .needs_cpp = true },
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
+        .{ .module_name = "tamga_vma", .project_name = "tamga_vma", .build_type = .static, .lib_imports = &.{}, .c_source_files = @constCast(&csources), .needs_cpp = true },
+        .{ .module_name = "myapp", .project_name = "myapp", .build_type = .exe, .lib_imports = &.{} },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -612,7 +612,7 @@ test "buildZigContentMulti - csource directive emits addCSourceFiles and linkLib
 test "buildZigContentMulti - single exe basic" {
     const alloc = std.testing.allocator;
     const targets = [_]MultiTarget{
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
+        .{ .module_name = "myapp", .project_name = "myapp", .build_type = .exe, .lib_imports = &.{} },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -628,7 +628,7 @@ test "buildZigContentMulti - single exe basic" {
 test "buildZigContentMulti - single static lib" {
     const alloc = std.testing.allocator;
     const targets = [_]MultiTarget{
-        .{ .module_name = "mylib", .project_name = "mylib", .build_type = "static", .lib_imports = &.{} },
+        .{ .module_name = "mylib", .project_name = "mylib", .build_type = .static, .lib_imports = &.{} },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -643,7 +643,7 @@ test "buildZigContentMulti - single static lib" {
 test "buildZigContentMulti - single dynamic lib" {
     const alloc = std.testing.allocator;
     const targets = [_]MultiTarget{
-        .{ .module_name = "mylib", .project_name = "mylib", .build_type = "dynamic", .lib_imports = &.{} },
+        .{ .module_name = "mylib", .project_name = "mylib", .build_type = .dynamic, .lib_imports = &.{} },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -658,7 +658,7 @@ test "buildZigContentMulti - single dynamic lib" {
 test "buildZigContentMulti - project name in exe artifact" {
     const alloc = std.testing.allocator;
     const targets = [_]MultiTarget{
-        .{ .module_name = "myapp", .project_name = "calculator", .build_type = "exe", .lib_imports = &.{} },
+        .{ .module_name = "myapp", .project_name = "calculator", .build_type = .exe, .lib_imports = &.{} },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -669,7 +669,7 @@ test "buildZigContentMulti - single target C link libs" {
     const alloc = std.testing.allocator;
     const libs = [_][]const u8{"SDL3"};
     const targets = [_]MultiTarget{
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{}, .link_libs = @constCast(&libs) },
+        .{ .module_name = "myapp", .project_name = "myapp", .build_type = .exe, .lib_imports = &.{}, .link_libs = @constCast(&libs) },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);
@@ -681,7 +681,7 @@ test "buildZigContentMulti - single target C link libs" {
 test "buildZigContentMulti - single target no C libs means no linkLibC" {
     const alloc = std.testing.allocator;
     const targets = [_]MultiTarget{
-        .{ .module_name = "myapp", .project_name = "myapp", .build_type = "exe", .lib_imports = &.{} },
+        .{ .module_name = "myapp", .project_name = "myapp", .build_type = .exe, .lib_imports = &.{} },
     };
     const content = try buildZigContentMulti(alloc, &targets, &.{});
     defer alloc.free(content);

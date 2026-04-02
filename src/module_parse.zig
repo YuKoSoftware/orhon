@@ -287,7 +287,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
 
         // Check if root module (has build declaration in metadata)
         for (build_result.node.program.metadata) |meta| {
-            if (std.mem.eql(u8, meta.metadata.field, "build")) {
+            if (meta.metadata.field == .build) {
                 mod.is_root = true;
                 if (meta.metadata.value.* == .identifier) {
                     const val = meta.metadata.value.identifier;
@@ -351,16 +351,13 @@ pub fn scanAndParseDeps(self: *Resolver, alloc: std.mem.Allocator, project_dir: 
     const ast = root_ast orelse return; // no root yet — nothing to do
 
     for (ast.program.metadata) |meta| {
-        if (!std.mem.eql(u8, meta.metadata.field, "dep")) continue;
+        if (meta.metadata.field != .dep) continue;
 
         // Extract the dep path string
         const path_node = meta.metadata.value;
         if (path_node.* != .string_literal) continue;
         const raw = path_node.string_literal;
-        const dep_path_rel = if (raw.len >= 2 and raw[0] == '"')
-            raw[1 .. raw.len - 1]
-        else
-            raw;
+        const dep_path_rel = constants.stripQuotes(raw);
 
         // Resolve relative to project dir
         const dep_path = if (std.fs.path.isAbsolute(dep_path_rel))
@@ -408,7 +405,7 @@ pub fn scanAndParseDeps(self: *Resolver, alloc: std.mem.Allocator, project_dir: 
         // Extract dep's declared version from #version = Version(x,y,z)
         var dep_ver: ?*parser.Node = null;
         for (dep_ast.program.metadata) |dmeta| {
-            if (std.mem.eql(u8, dmeta.metadata.field, "version")) {
+            if (dmeta.metadata.field == .version) {
                 dep_ver = dmeta.metadata.value;
                 break;
             }

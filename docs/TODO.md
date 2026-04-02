@@ -14,7 +14,7 @@ Items ordered by importance and how much they unblock future work.
 
 ## Core — Compiler Architecture
 
-### MIR — SSA construction (Phase 4a)
+### MIR — SSA construction (Phase 4a) `hard`
 
 Flatten MirNode tree to basic blocks, build SSA form using Braun's algorithm.
 Each value gets a single definition, phi nodes at join points.
@@ -22,12 +22,12 @@ Each value gets a single definition, phi nodes at join points.
 Unblocks: inlining (4b), dead code elimination (4c), constant folding (4d), MIR
 caching (4e). Nothing in the optimization pipeline works without SSA.
 
-### MIR — caching (Phase 4e)
+### MIR — caching (Phase 4e) `hard`
 
 Binary serialization/deserialization of SSA IR per module. Cache invalidation via
 file content hashing. Skip annotation + lowering for unchanged modules.
 
-### Dependency-parallel module compilation
+### Dependency-parallel module compilation `hard`
 
 Modules are processed sequentially in topological order. Independent modules could
 be processed in parallel via a thread pool.
@@ -42,18 +42,18 @@ be processed in parallel via a thread pool.
 
 ## Core — Developer Experience
 
-### Error message quality
+### Error message quality `medium`
 
 - Cross-module errors should show module context
 - Generic instantiation failures should show the constraint that failed
 - Common mistake detection — token insertions/deletions at failure point
 
-### Formatter — line-length awareness
+### Formatter — line-length awareness `medium`
 
 Missing: wrapping for long lines, function signature breaking rules, alignment
 for multi-line assignments, comment-aware formatting, configurable style.
 
-### LSP — feature-gated passes
+### LSP — feature-gated passes `medium`
 
 Gate passes by request type instead of running 1–9 on every change:
 - **Completion:** passes 1–4 (parse + declarations)
@@ -62,12 +62,12 @@ Gate passes by request type instead of running 1–9 on every change:
 
 Add cancellation tokens for in-flight analysis.
 
-### LSP — incremental document sync
+### LSP — incremental document sync `hard`
 
 Full reparse on every keystroke. No incremental updates, no background compilation,
 limited completion context.
 
-### Source mapping for debugger
+### Source mapping for debugger `hard`
 
 Emit `.orh.map` files mapping generated `.zig` lines back to `.orh` source.
 Build a VS Code DAP adapter that reads these maps.
@@ -94,45 +94,38 @@ See `docs/14-zig-bridge.md` for `.zon` config reference.
 Replace string-based dispatch with enums throughout the compiler. Gives exhaustiveness
 checking, typo safety, and better performance.
 
-**Metadata field enum:**
-- 11 locations use `std.mem.eql(u8, meta.metadata.field, "build")` etc.
-- Create `MetadataField` enum with `.build`, `.name`, `.version`, `.dep`
-- Use `StaticStringMap` for string→enum lookup
-- Store enum in parser Metadata struct instead of string
-- Files: parser.zig, pipeline.zig, module_parse.zig, interface.zig, builder_decls.zig
+**~~Metadata field enum~~** — DONE
+- Added `parser.MetadataField` enum (`.build`, `.name`, `.version`, `.dep`, `.description`, `.unknown`)
+- `StaticStringMap` lookup in `parse()`. All 12 string comparisons replaced across 5 files.
 
-**Operator enum:**
+**Operator enum:** `medium`
 - Operators flow through the entire compiler as strings (`"+"`, `"=="`, `K.Op.EQ`)
 - Create `Operator` enum with all operators
 - Add `toZigOp()`, `precedence()`, `isComparison()` methods
 - Replace string comparisons in codegen_exprs.zig, codegen_match.zig, resolver
 - Files: constants.zig, codegen_exprs.zig, codegen_match.zig, resolver_exprs.zig
 
-**Build type enum in pipeline:**
-- `"exe"`, `"static"`, `"dynamic"` compared as strings in pipeline.zig (6 locations)
-- `MultiTarget.build_type` is `[]const u8` — should be an enum
-- Module already has `BuildType` enum — reuse it in MultiTarget
-- Files: pipeline.zig, zig_runner_multi.zig
+**~~Build type enum in pipeline~~** — DONE
+- `MultiTarget.build_type` changed from `[]const u8` to `module.BuildType` enum
+- Added `module.parseBuildType()` with `StaticStringMap`. All string comparisons replaced.
 
-**PEG rule dispatch:**
+**PEG rule dispatch:** `medium`
 - 60+ sequential `if std.mem.eql(u8, rule, "...")` in peg/builder.zig
 - Replace with `Rule` enum + `StaticStringMap` + function pointer table
 - Files: peg/builder.zig
 
 ### Compiler cleanup — deduplication and extraction
 
-**Pipeline multi/single-target unification:**
+**Pipeline multi/single-target unification:** `medium`
 - Multi-target and single-target build paths are ~200 lines of near-identical code
 - Extract shared metadata extraction, module collection, and build dispatch
 - The single-target path should just be the multi-target path with one target
 - Files: pipeline.zig
 
-**`stripQuotes()` utility:**
-- `if (raw.len >= 2 and raw[0] == '"') raw[1..raw.len-1]` repeated 5 times
-- Create a single utility function, replace all occurrences
-- Files: pipeline.zig, module_parse.zig, zig_module.zig, builder_decls.zig
+**~~`stripQuotes()` utility~~** — DONE
+- Extracted to `constants.stripQuotes()`, replaced 6 call sites across 4 files
 
-**Break up oversized functions:**
+**Break up oversized functions:** `medium`
 - `generateExprMir()` in codegen_exprs.zig — 537 lines, one giant switch
 - Split into per-expression-kind functions (binary, call, field, index, etc.)
 - Files: codegen/codegen_exprs.zig
@@ -146,28 +139,28 @@ ownership all split into hub + satellite files.
 
 ## Features — Tooling & Ecosystem
 
-### Binding generator
+### Binding generator `hard`
 
 Auto-generate Zig module wrappers from C headers:
 ```bash
 orhon bindgen vulkan.h --module vulkan
 ```
 
-### Tree-sitter grammar
+### Tree-sitter grammar `medium`
 
 Enables syntax highlighting in Neovim, Helix, Zed, and other editors beyond VS Code.
 
-### PEG syntax documentation generator
+### PEG syntax documentation generator `easy`
 
 Auto-generate a formatted syntax reference from `src/orhon.peg`. Keeps syntax
 docs always in sync with the grammar.
 
-### Web playground
+### Web playground `hard`
 
 Online sandbox to try Orhon without installing. Already targets `wasm32-freestanding`.
 Single biggest adoption accelerator for new languages.
 
-### Debugger integration
+### Debugger integration `hard`
 
 Debug symbol generation, GDB/LLDB line mapping from generated Zig back to `.orh`
 source. See also: source mapping in Developer Experience section.
@@ -176,15 +169,15 @@ source. See also: source mapping in Developer Experience section.
 
 ## Optimization Passes (require SSA — Phase 4a)
 
-### Inlining (Phase 4b)
+### Inlining (Phase 4b) `hard`
 
 Inline Zig module wrappers, single-expression functions, coercion wrappers at call sites.
 
-### Dead code elimination (Phase 4c)
+### Dead code elimination (Phase 4c) `hard`
 
 If an SSA value has no uses, delete it. Reachability analysis from entry points.
 
-### Type-aware constant folding (Phase 4d)
+### Type-aware constant folding (Phase 4d) `hard`
 
 Fold `@type(x) == T` when statically known, eliminate redundant wrap/unwrap chains,
 simplify coercion sequences.
@@ -193,7 +186,7 @@ simplify coercion sequences.
 
 ## Testing Improvements
 
-### Property-based pipeline testing
+### Property-based pipeline testing `medium`
 
 - Parse then pretty-print should round-trip
 - Type-checking the same input twice should give identical results

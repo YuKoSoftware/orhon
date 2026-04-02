@@ -34,3 +34,12 @@ pub const Op = struct {
     pub const MOD = "%";
     pub const DIV_ASSIGN = "/=";
 };
+
+/// Strip surrounding double quotes from a string literal.
+/// Returns the inner content, or the original string if not quoted.
+pub fn stripQuotes(raw: []const u8) []const u8 {
+    if (raw.len >= 2 and raw[0] == '"' and raw[raw.len - 1] == '"') {
+        return raw[1 .. raw.len - 1];
+    }
+    return raw;
+}

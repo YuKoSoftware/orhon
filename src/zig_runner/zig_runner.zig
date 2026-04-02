@@ -115,8 +115,8 @@ pub const ZigRunner = struct {
         try std.fs.cwd().makePath("bin");
 
         for (targets) |t| {
-            const is_lib = !std.mem.eql(u8, t.build_type, "exe");
-            const ext: []const u8 = if (std.mem.eql(u8, t.build_type, "dynamic")) ".so" else ".a";
+            const is_lib = t.build_type != .exe;
+            const ext: []const u8 = if (t.build_type == .dynamic) ".so" else ".a";
 
             const src_bin = if (is_lib)
                 try std.fmt.allocPrint(self.allocator, "{s}/zig-out/lib/lib{s}{s}", .{ cache.GENERATED_DIR, t.project_name, ext })
@@ -154,14 +154,14 @@ pub const ZigRunner = struct {
 
     /// Build the generated Zig project
     pub fn build(self: *ZigRunner, target: []const u8, optimize: []const u8, module_name: []const u8, project_name: []const u8) !bool {
-        return self.buildWithType(target, optimize, module_name, project_name, "exe");
+        return self.buildWithType(target, optimize, module_name, project_name, .exe);
     }
 
-    pub fn buildLib(self: *ZigRunner, target: []const u8, optimize: []const u8, module_name: []const u8, project_name: []const u8, build_type: []const u8) !bool {
+    pub fn buildLib(self: *ZigRunner, target: []const u8, optimize: []const u8, module_name: []const u8, project_name: []const u8, build_type: module.BuildType) !bool {
         return self.buildWithType(target, optimize, module_name, project_name, build_type);
     }
 
-    fn buildWithType(self: *ZigRunner, target: []const u8, optimize: []const u8, module_name: []const u8, project_name: []const u8, build_type: []const u8) !bool {
+    fn buildWithType(self: *ZigRunner, target: []const u8, optimize: []const u8, module_name: []const u8, project_name: []const u8, build_type: module.BuildType) !bool {
         var args: std.ArrayListUnmanaged([]const u8) = .{};
         defer args.deinit(self.allocator);
 
@@ -200,8 +200,8 @@ pub const ZigRunner = struct {
         // Determine source and destination paths based on build type.
         // exe  → zig-out/bin/<name>     → bin/<name>
         // static/dynamic → zig-out/lib/lib<name>.a → bin/lib<name>.a
-        const is_lib = !std.mem.eql(u8, build_type, "exe");
-        const ext: []const u8 = if (std.mem.eql(u8, build_type, "dynamic")) ".so" else ".a";
+        const is_lib = build_type != .exe;
+        const ext: []const u8 = if (build_type == .dynamic) ".so" else ".a";
 
         const src_bin = if (is_lib)
             try std.fmt.allocPrint(self.allocator, "{s}/zig-out/lib/lib{s}{s}", .{ cache.GENERATED_DIR, project_name, ext })
@@ -331,7 +331,7 @@ pub const ZigRunner = struct {
     /// Run all test blocks in the generated Zig project
     pub fn runTests(self: *ZigRunner, module_name: []const u8, project_name: []const u8, zig_modules: []const []const u8) !bool {
         // Generate build.zig with test step included
-        try self.generateBuildZig(module_name, "exe", project_name, null, &.{}, &.{}, &.{}, &.{}, false, zig_modules, &.{});
+        try self.generateBuildZig(module_name, .exe, project_name, null, &.{}, &.{}, &.{}, &.{}, false, zig_modules, &.{});
 
         var args: std.ArrayListUnmanaged([]const u8) = .{};
         defer args.deinit(self.allocator);
@@ -357,7 +357,7 @@ pub const ZigRunner = struct {
     pub fn generateBuildZig(
         self: *ZigRunner,
         module_name: []const u8,
-        build_type: []const u8,
+        build_type: module.BuildType,
         project_name: []const u8,
         project_version: ?[3]u64,
         link_libs: []const []const u8,

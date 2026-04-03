@@ -54,6 +54,12 @@ We will break things along the way — that's expected. Fix forward, don't look 
 - `.value` renamed to `.value()` method — no field rewriting needed
 - `.done()` was already a method — no change
 - `Handle(value)` no-op kept (language-level: return type wrapper for threads)
+- **Still needed:** redesign the `thread` function codegen. Currently the compiler
+  generates a complex spawn wrapper in `codegen_decls.zig` (SharedState allocation,
+  thread spawn, closure capture). This should be much simpler — ideally a thin mapping
+  to Zig's `std.Thread.spawn` that lives mostly in `std::async`, not in the codegen.
+  The `thread` keyword can stay as syntax, but the heavy lifting should move to a
+  library function like `async.spawn()` that the codegen just calls.
 - `h.value` → `h.value()` syntax change in all fixtures/templates
 
 **B3. `.value` field rewriting on Ptr/RawPtr — move to std** `medium`

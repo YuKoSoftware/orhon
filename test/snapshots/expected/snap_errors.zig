@@ -1,7 +1,6 @@
 // generated from module snap_errors — do not edit
 const std = @import("std");
 
-const _orhon_async = @import("_orhon_async");
 const ErrNotFound: anyerror = error.not_found;
 
 const ErrInvalid: anyerror = error.invalid;

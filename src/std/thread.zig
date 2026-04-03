@@ -3,16 +3,8 @@
 // Thread(T) — spawn a thread, join for result
 // Atomic(T) — lock-free atomic operations
 // Mutex      — mutual exclusion lock
-// spawn()    — convenience function, infers return type
 
 const std = @import("std");
-
-/// Spawn a thread running func with the given args. Returns Thread(T)
-/// where T is the return type of func. Convenience shorthand for
-/// Thread(T).spawn(func, args).
-pub fn spawn(comptime func: anytype, args: anytype) Thread(@typeInfo(@TypeOf(func)).@"fn".return_type.?) {
-    return Thread(@typeInfo(@TypeOf(func)).@"fn".return_type.?).spawn(func, args);
-}
 
 /// A thread handle that joins and returns a result of type T.
 pub fn Thread(comptime T: type) type {
@@ -27,29 +19,51 @@ pub fn Thread(comptime T: type) type {
 
         const Self = @This();
 
-        /// Spawn a new thread running func with args.
-        pub fn spawn(comptime func: anytype, args: anytype) Self {
+        /// Spawn a new thread running func with one argument.
+        pub fn spawn(comptime func: anytype, arg: anytype) Self {
             const state = std.heap.page_allocator.create(SharedState) catch
                 @panic("Out of memory: thread state allocation");
             state.* = .{};
 
-            const Args = @TypeOf(args);
+            const Arg = @TypeOf(arg);
             const Wrapper = struct {
-                fn run(s: *SharedState, a: Args) void {
-                    const result = @call(.auto, func, a);
+                fn run(s: *SharedState, a: Arg) void {
+                    const result = @call(.auto, func, .{a});
                     if (T != void) s.result = result;
                     s.completed.store(true, .release);
                 }
             };
 
-            const thread = std.Thread.spawn(.{}, Wrapper.run, .{ state, args }) catch
+            const thread = std.Thread.spawn(.{}, Wrapper.run, .{ state, arg }) catch
+                |e| @panic(@errorName(e));
+
+            return .{ .handle = thread, .state = state };
+        }
+
+        /// Spawn a new thread running func with two arguments.
+        pub fn spawn2(comptime func: anytype, arg1: anytype, arg2: anytype) Self {
+            const state = std.heap.page_allocator.create(SharedState) catch
+                @panic("Out of memory: thread state allocation");
+            state.* = .{};
+
+            const Arg1 = @TypeOf(arg1);
+            const Arg2 = @TypeOf(arg2);
+            const Wrapper = struct {
+                fn run(s: *SharedState, a1: Arg1, a2: Arg2) void {
+                    const result = @call(.auto, func, .{ a1, a2 });
+                    if (T != void) s.result = result;
+                    s.completed.store(true, .release);
+                }
+            };
+
+            const thread = std.Thread.spawn(.{}, Wrapper.run, .{ state, arg1, arg2 }) catch
                 |e| @panic(@errorName(e));
 
             return .{ .handle = thread, .state = state };
         }
 
         /// Block until the thread completes and return its result.
-        pub fn join(self: *Self) T {
+        pub fn join(self: *const Self) T {
             self.handle.join();
             const result = if (T != void) self.state.result else {};
             std.heap.page_allocator.destroy(self.state);

@@ -1,7 +1,6 @@
 // generated from module snap_control — do not edit
 const std = @import("std");
 
-const _orhon_async = @import("_orhon_async");
 pub fn classify(n: i32) i32 {
     if ((n < 0)) {
         return (0 - 1);

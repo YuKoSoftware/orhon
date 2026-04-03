@@ -213,7 +213,7 @@ pub fn buildZigContentMulti(
                     \\    mod_{s}.addImport("_orhon_string", string_mod);
                     \\    mod_{s}.addImport("_orhon_collections", coll_mod);
                     \\
-                , .{ mod_name, mod_name, mod_name, mod_name, mod_name });
+                , .{ mod_name, mod_name, mod_name, mod_name });
 
                 // If this shared module is zig-backed, add self _zig import
                 // so its generated re-export code can @import("name_zig")
@@ -262,7 +262,7 @@ pub fn buildZigContentMulti(
             \\    lib_{s}.root_module.addImport("_orhon_string", string_mod);
             \\    lib_{s}.root_module.addImport("_orhon_collections", coll_mod);
             \\
-        , .{ t.module_name, t.project_name, linkage, t.module_name, t.module_name, t.module_name, t.module_name });
+        , .{ t.module_name, t.project_name, linkage, t.module_name, t.module_name, t.module_name });
 
         // Emit addImport for lib-to-lib dependencies so Zig resolves them via the
         // build system module graph rather than falling back to file-path lookup.
@@ -354,7 +354,7 @@ pub fn buildZigContentMulti(
             \\    exe_{s}.root_module.addImport("_orhon_string", string_mod);
             \\    exe_{s}.root_module.addImport("_orhon_collections", coll_mod);
             \\
-        , .{ t.module_name, t.project_name, ver_line, t.module_name, t.module_name, t.module_name, t.module_name });
+        , .{ t.module_name, t.project_name, ver_line, t.module_name, t.module_name, t.module_name });
 
         // Link imported lib modules
         for (t.lib_imports) |lib_name| {

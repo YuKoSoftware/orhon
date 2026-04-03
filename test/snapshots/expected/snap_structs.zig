@@ -1,7 +1,6 @@
 // generated from module snap_structs — do not edit
 const std = @import("std");
 
-const _orhon_async = @import("_orhon_async");
 pub const Point = struct {
     x: f32,
     y: f32,

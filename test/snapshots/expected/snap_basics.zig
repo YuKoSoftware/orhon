@@ -1,7 +1,6 @@
 // generated from module snap_basics — do not edit
 const std = @import("std");
 
-const _orhon_async = @import("_orhon_async");
 const MAX_COUNT: i32 = 100;
 
 const APP_NAME: []const u8 = "orhon";

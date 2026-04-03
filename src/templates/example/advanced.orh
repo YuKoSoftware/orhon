@@ -3,7 +3,6 @@ module example
 import std::console
 import std::thread
 use std::collections
-use std::async
 
 // ─── Collections ────────────────────────────────────────────────────────────
 
@@ -56,14 +55,14 @@ func set_demo() i32 {
 
 // ─── Threads ────────────────────────────────────────────────────────────────
 
-// thread.spawn() — run a function in a new thread, join for the result
+// Thread(T).spawn() — run a function in a new thread, join for the result
 
 func double_it(x: i32) i32 {
     return x * 2
 }
 
 func thread_demo() i32 {
-    var t: thread.Thread(i32) = thread.spawn(double_it, 21)
+    var t: thread.Thread(i32) = thread.Thread(i32).spawn(double_it, 21)
     return t.join()
 }
 

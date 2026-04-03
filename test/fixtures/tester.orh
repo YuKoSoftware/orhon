@@ -917,13 +917,13 @@ pub func test_set_iter() i32 {
     return 0
 }
 
-// ─── splitAt ────────────────────────────────────────────────
+// ─── @splitAt ───────────────────────────────────────────────
 
-// splitAt splits array into two non-overlapping slices
+// @splitAt splits array into two non-overlapping slices
 
 pub func test_split_at() i32 {
     const arr: [6]i32 = [1, 2, 3, 4, 5, 6]
-    const left, right = arr.splitAt(3)
+    const left, right = @splitAt(arr, 3)
     var total: i32 = 0
     for(left) |v| { total += v }
     for(right) |v| { total += v }

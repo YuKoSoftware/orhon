@@ -130,11 +130,11 @@ The exact mechanism for checking the flag inside the body is TBD (may be automat
 
 ## Sharing Data Between Threads
 
-No shared mutable state. Data must be explicitly split using [[06-collections#`splitAt` — Atomic Slice Split|splitAt]] — a single atomic operation that consumes the original and produces two non-overlapping pieces. Passing the same owned value to two threads is a compile time error.
+No shared mutable state. Data must be explicitly split using [[06-collections#`@splitAt` — Atomic Slice Split|@splitAt]] — a single atomic operation that consumes the original and produces two non-overlapping pieces. Passing the same owned value to two threads is a compile time error.
 
 ```
 // atomic split — data consumed, no overlap possible
-var left, right = data.splitAt(3)
+var left, right = @splitAt(data, 3)
 
 thread process_left(d: []i32) Handle([]i32) { return Handle(d) }
 thread process_right(d: []i32) Handle([]i32) { return Handle(d) }
@@ -143,7 +143,7 @@ const a: Handle([]i32) = process_left(left)
 const b: Handle([]i32) = process_right(right)
 ```
 
-`splitAt` works on slices, Lists, and any collection type where splitting is meaningful.
+`@splitAt` works on slices, Lists, and any collection type where splitting is meaningful.
 
 ---
 
@@ -203,4 +203,4 @@ None. Any function can be called inside a thread body. Safety comes from ownersh
 | Error handling | Must handle before scope exit |
 | Nested threads | Allowed — same rules apply |
 | Body restrictions | None — ownership provides safety |
-| Sharing data | `splitAt` — atomic split, original consumed |
+| Sharing data | `@splitAt` — atomic split, original consumed |

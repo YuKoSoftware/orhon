@@ -719,6 +719,11 @@ pub fn generateCompilerFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             if (args.len > 0) try cg.generateExprMir(args[0]);
             try cg.emit(")");
         },
+        .splitAt => {
+            // @splitAt is handled in generateDestructMir for destructuring context.
+            // Standalone usage is not meaningful — splitAt always produces two values.
+            try cg.emit("/* @splitAt must be used with destructuring: const a, b = @splitAt(arr, n) */");
+        },
     }
 }
 

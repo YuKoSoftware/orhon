@@ -124,7 +124,7 @@ NEG_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$NEG_OUT" | grep -qi "must be joined"; then pass "rejects unjoined thread"
 else fail "rejects unjoined thread" "$NEG_OUT"; fi
 
-# use after splitAt error
+# use after @splitAt error
 cd "$TESTDIR"
 mkdir -p neg_split/src
 cat > neg_split/src/neg_split.orh <<'ORHON'
@@ -134,14 +134,14 @@ module neg_split
 #build   = exe
 func main() void {
     const arr: [4]i32 = [1, 2, 3, 4]
-    const left, right = arr.splitAt(2)
+    const left, right = @splitAt(arr, 2)
     const x: i32 = arr[0]
 }
 ORHON
 cd neg_split
 NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "moved\|use of"; then pass "rejects use after splitAt"
-else fail "rejects use after splitAt" "$NEG_OUT"; fi
+if echo "$NEG_OUT" | grep -qi "moved\|use of"; then pass "rejects use after @splitAt"
+else fail "rejects use after @splitAt" "$NEG_OUT"; fi
 
 # return type mismatch
 cd "$TESTDIR"

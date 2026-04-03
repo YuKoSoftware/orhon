@@ -54,6 +54,7 @@ pub const COMPILER_FUNCS = [_][]const u8{
     "hasDecl",
     "fieldType",
     "fieldNames",
+    "splitAt",
 };
 
 /// Typed enum for compiler functions — use `fromName()` to convert AST string names.
@@ -73,6 +74,7 @@ pub const CompilerFunc = enum {
     hasDecl,
     fieldType,
     fieldNames,
+    splitAt,
 
     pub fn fromName(name: []const u8) ?CompilerFunc {
         const map = std.StaticStringMap(CompilerFunc).initComptime(.{
@@ -90,6 +92,7 @@ pub const CompilerFunc = enum {
             .{ "hasDecl", .hasDecl },
             .{ "fieldType", .fieldType },
             .{ "fieldNames", .fieldNames },
+            .{ "splitAt", .splitAt },
         });
         return map.get(name);
     }

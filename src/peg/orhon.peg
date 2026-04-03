@@ -409,6 +409,7 @@ compiler_func_name
      / '@' 'assert' / '@' 'size' / '@' 'align'
      / '@' 'typename' / '@' 'typeid' / '@' 'typeOf'
      / '@' 'hasField' / '@' 'hasDecl' / '@' 'fieldType' / '@' 'fieldNames'
+     / '@' 'splitAt'
 
 # Note: wrap(), sat(), overflow() are parsed as regular function calls
 # (identifier + call_access) and handled specially in codegen, not the parser.

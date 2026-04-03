@@ -29,13 +29,13 @@ var arr: []i32 = [1, 2, 3, 4, 5]
 
 ---
 
-## `splitAt` — Atomic Slice Split
+## `@splitAt` — Atomic Slice Split
 
 Splits a slice into two non-overlapping owned halves in a single atomic operation. The original slice is consumed — invalid after split. Used for safely sharing data between [[12-concurrency|threads]].
 
 ```
 var data: []i32 = [1, 2, 3, 4, 5, 6]
-var left, right = data.splitAt(3)    // left=[1,2,3], right=[4,5,6]
+var left, right = @splitAt(data, 3)    // left=[1,2,3], right=[4,5,6]
 // data is now invalid
 ```
 

@@ -18,11 +18,11 @@ func use_after_move() void {
     console.println(a.name)
 }
 
-// use after splitAt
+// use after @splitAt
 
 func use_after_split() void {
     const arr: [4]i32 = [1, 2, 3, 4]
-    const left, right = arr.splitAt(2)
+    const left, right = @splitAt(arr, 2)
     const x: i32 = arr[0]
 }
 

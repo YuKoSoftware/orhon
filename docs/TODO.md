@@ -6,18 +6,6 @@ Items ordered by importance and how much they unblock future work.
 
 ## Bugs
 
-### `splitAt` codegen emits invalid Zig `medium`
-
-`arr.splitAt(3)` in Orhon gets codegen'd as `arr.splitAt(3)` in Zig — but Zig arrays
-have no `splitAt` method. Should generate:
-```zig
-const left = arr[0..3];
-const right = arr[3..];
-```
-Blocked: `tester.orh:test_split_at` fails to compile → all `10_runtime` tests fail.
-Fix in `src/codegen/codegen_stmts.zig` — detect `splitAt` method call on array in
-destructuring assignments and emit the correct slice expressions.
-
 ---
 
 ## Core — Language Ergonomics

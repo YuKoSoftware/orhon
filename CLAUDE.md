@@ -163,7 +163,7 @@ Each file in the example module starts with `module example` and is embedded via
 The compiler must not give special treatment to stdlib types or functions. Only
 **core language types** (`Ptr`, `RawPtr`, `VolatilePtr`, `Handle`, `Error`, `Vector`)
 and **compiler functions** (`@cast`, `@copy`, `@move`, `@swap`, `@typename`, `@typeid`,
-`@typeOf`, `@size`, `@align`, `@assert`) get hardcoded compiler awareness.
+`@typeOf`, `@size`, `@align`, `@assert`, `@splitAt`) get hardcoded compiler awareness.
 
 Everything in `std::*` (collections, str, json, fs, etc.) must go through the normal
 import/use system — no hardcoded names, no shortcut recognition, no fallback lists.

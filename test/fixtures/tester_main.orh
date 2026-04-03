@@ -783,5 +783,12 @@ func main() void {
         console.println("FAIL compt_struct")
     }
 
+    // Test: compt struct default field values
+    if(tester.test_compt_struct_defaults() == 0) {
+        console.println("PASS compt_struct_defaults")
+    } else {
+        console.println("FAIL compt_struct_defaults")
+    }
+
     console.println("TESTER:DONE")
 }

@@ -326,6 +326,11 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                         try cg.fillDefaultArgsMir(callee_mir, 0);
                         try cg.emit(")");
                     }
+                } else if (call_args.len == 0 and callee_mir.kind == .call) {
+                    // Zero-arg call on a generic type expression: Counter2(i32)() → Counter2(i32){}
+                    // The callee is itself a call (a compt func returning type), so construct with {}
+                    try cg.generateExprMir(callee_mir);
+                    try cg.emit("{}");
                 } else {
                     try cg.generateExprMir(callee_mir);
                     try cg.emit("(");

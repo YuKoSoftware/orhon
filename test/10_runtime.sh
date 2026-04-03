@@ -57,7 +57,8 @@ for TEST_NAME in \
     has_field has_field_missing has_field_value \
     has_decl has_decl_missing \
     field_type field_names \
-    compt_struct; do
+    compt_struct \
+    compt_struct_defaults; do
     if echo "$BINOUT" | grep -q "PASS $TEST_NAME"; then pass "runtime: $TEST_NAME"
     else fail "runtime: $TEST_NAME"; fi
 done

@@ -1689,3 +1689,22 @@ pub func test_field_names() i32 {
 test "compt struct with method" {
     @assert(test_compt_struct() == 42)
 }
+
+compt func Counter2(T: type) type {
+    return struct {
+        count: T = 0
+
+        pub func value(self: const& Self) T {
+            return self.count
+        }
+    }
+}
+
+pub func test_compt_struct_defaults() i32 {
+    const c: Counter2(i32) = Counter2(i32)()
+    return c.value()
+}
+
+test "compt struct defaults" {
+    @assert(test_compt_struct_defaults() == 0)
+}

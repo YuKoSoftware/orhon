@@ -1,9 +1,16 @@
-// str.zig — string utilities sidecar for std::str
-// Operates on []const u8 (Orhon String). All functions are pure — no side effects.
+// string.zig — string utilities for std::string
+// Operates on []const u8 (Orhon str type). All functions are pure — no side effects.
 
 const std = @import("std");
 
 const alloc = std.heap.smp_allocator;
+
+// ── Comparison ──
+
+/// Compare two strings for content equality.
+pub fn equals(a: []const u8, b: []const u8) bool {
+    return std.mem.eql(u8, a, b);
+}
 
 // ── Search ──
 
@@ -368,4 +375,11 @@ test "splitBy" {
 test "countOccurrences" {
     try std.testing.expectEqual(@as(i32, 3), countOccurrences("abababab", "ab"));
     try std.testing.expectEqual(@as(i32, 0), countOccurrences("hello", "xyz"));
+}
+
+test "equals" {
+    try std.testing.expect(equals("hello", "hello"));
+    try std.testing.expect(!equals("hello", "world"));
+    try std.testing.expect(!equals("hello", "hell"));
+    try std.testing.expect(equals("", ""));
 }

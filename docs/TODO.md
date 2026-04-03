@@ -77,7 +77,10 @@ We will break things along the way — that's expected. Fix forward, don't look 
   whatever the new pointer syntax uses for dereference)
 - Removes: `Ptr`/`RawPtr`/`VolatilePtr` from builtins, `typeToZig` special cases,
   pointer coercion codegen in `codegen_match.zig`
-- **Blocked on:** pointer syntax design decision from user
+- **Syntax direction:** `->` for dereference. `p->` gets the pointed-to value,
+  `p.method()` is for the pointer itself. Chains: `p->.field`. Clean separation
+  between "follow the pointer" and "access the pointer's own API". Replaces `@deref`.
+- **Blocked on:** full pointer syntax design (borrow syntax, mutability, etc.)
 
 **B4. Bitfield auto-methods → std** `medium`
 - Location: `codegen_decls.zig:416-423, 447-454`

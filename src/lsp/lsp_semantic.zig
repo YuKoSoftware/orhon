@@ -90,7 +90,7 @@ pub fn classifyToken(kind: lexer.TokenKind) TokenClassification {
         .kw_func, .kw_var, .kw_const, .kw_struct, .kw_enum,
         .kw_module, .kw_import, .kw_use, .kw_pub, .kw_compt, .kw_test,
         .kw_if, .kw_elif, .kw_else, .kw_for, .kw_while, .kw_return, .kw_match,
-        .kw_break, .kw_continue, .kw_defer, .kw_thread, .kw_any,
+        .kw_break, .kw_continue, .kw_defer, .kw_any,
         .kw_and, .kw_or, .kw_not, .kw_as, .kw_is,
         .kw_true, .kw_false, .kw_null,
         .kw_void, .kw_type,

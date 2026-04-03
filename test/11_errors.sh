@@ -102,28 +102,6 @@ ANCHOR_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$ANCHOR_OUT" | grep -qi "no anchor file"; then pass "missing anchor file error"
 else fail "missing anchor file error" "$ANCHOR_OUT"; fi
 
-# unjoined thread error
-cd "$TESTDIR"
-mkdir -p neg_thread/src
-cat > neg_thread/src/neg_thread.orh <<'ORHON'
-module neg_thread
-#name    = "neg_thread"
-#version = (1, 0, 0)
-#build   = exe
-
-thread worker(x: i32) Handle(i32) {
-    return Handle(x * 2)
-}
-
-func main() void {
-    const h: Handle(i32) = worker(42)
-}
-ORHON
-cd neg_thread
-NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "must be joined"; then pass "rejects unjoined thread"
-else fail "rejects unjoined thread" "$NEG_OUT"; fi
-
 # use after @splitAt error
 cd "$TESTDIR"
 mkdir -p neg_split/src
@@ -393,12 +371,6 @@ run_fixture neg_types6 fail_types.orh "break.*outside\|continue.*outside" "fixtu
 
 # ownership errors
 run_fixture neg_own fail_ownership.orh "use of moved value\|moved" "fixture: catches use after move"
-
-# thread safety errors
-run_fixture neg_thread2 fail_threads.orh "must be joined" "fixture: catches unjoined thread"
-run_fixture neg_thread_move fail_threads.orh "moved into thread" "fixture: catches use after move into thread"
-run_fixture neg_thread_freeze fail_threads.orh "cannot mutate.*borrowed by thread" "fixture: catches frozen var mutation"
-run_fixture neg_thread_mutborrow fail_threads.orh "cannot pass mutable borrow to thread" "fixture: catches mutable borrow to thread"
 
 # borrow errors
 run_fixture neg_borrow fail_borrow.orh "reference type not allowed in variable declaration" "fixture: catches borrow conflict"

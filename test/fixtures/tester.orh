@@ -9,6 +9,7 @@ module tester
 import std::console
 import std::allocator
 import std::string
+import std::thread
 use std::collections
 use std::async
 
@@ -1280,12 +1281,63 @@ pub func test_map_get() i32 {
     return 0
 }
 
+// ─── Threads ────────────────────────────────────────────────
+
+// std::thread — spawn a thread and join for result
+
+func doubler(x: i32) i32 {
+    return x * 2
+}
+
+func adder(a: i32, b: i32) i32 {
+    return a + b
+}
+
+func noop_work() void {
+}
+
+pub func test_thread() i32 {
+    var t: thread.Thread(i32) = thread.spawn(doubler, 21)
+    return t.join()
+}
+
+pub func test_thread_multi() i32 {
+    var a: thread.Thread(i32) = thread.spawn(doubler, 10)
+    var b: thread.Thread(i32) = thread.spawn(doubler, 15)
+    const r1: i32 = a.join()
+    const r2: i32 = b.join()
+    return r1 + r2
+}
+
+pub func test_thread_params() i32 {
+    var t: thread.Thread(i32) = thread.spawn(adder, 17, 25)
+    return t.join()
+}
+
+pub func test_thread_void() i32 {
+    var t: thread.Thread(void) = thread.spawn(noop_work)
+    t.join()
+    return 1
+}
+
+pub func test_thread_done() i32 {
+    var t: thread.Thread(i32) = thread.spawn(doubler, 5)
+    const result: i32 = t.join()
+    return result
+}
+
+pub func test_thread_join() i32 {
+    var t: thread.Thread(i32) = thread.spawn(doubler, 99)
+    t.join()
+    return 1
+}
+
 // ─── Atomics ────────────────────────────────────────────────
 
-// Atomic(T) — lock-free shared state
+// thread.Atomic(T) — lock-free shared state
 
 pub func test_atomic() i32 {
-    var a: Atomic(i32) = Atomic(i32).new(0)
+    var a: thread.Atomic(i32) = thread.Atomic(i32).new(0)
     a.store(42)
     return a.load()
 }
@@ -1293,7 +1345,7 @@ pub func test_atomic() i32 {
 // atomic fetch operations
 
 pub func test_atomic_fetch() i32 {
-    var a: Atomic(i32) = Atomic(i32).new(10)
+    var a: thread.Atomic(i32) = thread.Atomic(i32).new(10)
     a.fetchAdd(5)
     a.fetchSub(3)
     return a.load()
@@ -1302,7 +1354,7 @@ pub func test_atomic_fetch() i32 {
 // atomic swap
 
 pub func test_atomic_swap() i32 {
-    var a: Atomic(i32) = Atomic(i32).new(100)
+    var a: thread.Atomic(i32) = thread.Atomic(i32).new(100)
     const old: i32 = a.exchange(200)
     return old
 }
@@ -1310,7 +1362,7 @@ pub func test_atomic_swap() i32 {
 // atomic bool — the pattern used for thread cancellation flags
 
 pub func test_atomic_bool() i32 {
-    var flag: Atomic(bool) = Atomic(bool).new(false)
+    var flag: thread.Atomic(bool) = thread.Atomic(bool).new(false)
     flag.store(true)
     if (flag.load()) {
         return 1

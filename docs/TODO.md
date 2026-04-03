@@ -30,14 +30,8 @@ Ptr/RawPtr/VolatilePtr moved from compiler builtins to `std::ptr`. @deref remove
 - Remove `const _default_alloc = std.heap.smp_allocator` from collections.zig
 - Import allocator from `allocator.zig` for the default — one source of truth
 
-### Thread codegen simplification `medium`
-
-- Currently the compiler generates a complex spawn wrapper in `codegen_decls.zig`
-  (SharedState allocation, thread spawn, closure capture)
-- Should be much simpler — a thin mapping to Zig's `std.Thread.spawn` that lives
-  mostly in `std::async`, not in the codegen
-- The `thread` keyword can stay as syntax, but the heavy lifting should move to a
-  library function like `async.spawn()` that the codegen just calls
+### ~~Thread codegen simplification~~ — done (v0.18.0)
+`thread` keyword removed. Threading moved to `std::thread`. thread_safety.zig deleted.
 
 ### Bitfield as pure Orhon std module `hard` — DEFERRED
 
@@ -61,7 +55,7 @@ Ptr/RawPtr/VolatilePtr moved from compiler builtins to `std::ptr`. @deref remove
 
 ### Remove stale type_class values from MIR `medium`
 
-- `.thread_handle` may be unused after Handle moves to std::async — evaluate then.
+- `.thread_handle` is unused after `thread` keyword removal — evaluate and remove.
 
 ---
 
@@ -216,5 +210,5 @@ simplify coercion sequences.
 | Arena allocator pairing syntax | `.new(alloc)` already covers composed allocators via Zig module |
 | `#derive` auto-generation | Blueprints require explicit implementation. No implicit anything |
 | `#extern` / `#packed` struct layout | `.zig` modules already support these natively |
-| `async` keyword | Wait for Zig's new async design, then map cleanly. `thread` + `Atomic` covers parallelism |
+| `async` keyword | Wait for Zig's new async design, then map cleanly. `std::thread` + `thread.Atomic` covers parallelism |
 | `capture()` / closures | No anonymous functions. State passed as arguments — explicit, obvious |

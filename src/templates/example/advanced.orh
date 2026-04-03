@@ -1,6 +1,7 @@
 module example
 
 import std::console
+import std::thread
 use std::collections
 use std::async
 
@@ -53,12 +54,25 @@ func set_demo() i32 {
     return 0
 }
 
+// ─── Threads ────────────────────────────────────────────────────────────────
+
+// thread.spawn() — run a function in a new thread, join for the result
+
+func double_it(x: i32) i32 {
+    return x * 2
+}
+
+func thread_demo() i32 {
+    var t: thread.Thread(i32) = thread.spawn(double_it, 21)
+    return t.join()
+}
+
 // ─── Atomics ────────────────────────────────────────────────────────────────
 
-// Atomic(T) — lock-free atomic value for thread-safe shared state
+// thread.Atomic(T) — lock-free atomic value for thread-safe shared state
 
 func atomic_demo() i32 {
-    var counter: Atomic(i32) = Atomic(i32).new(0)
+    var counter: thread.Atomic(i32) = thread.Atomic(i32).new(0)
     counter.store(42)
     return counter.load()
 }

@@ -13,7 +13,7 @@ const ALLOCATOR_ZIG = @embedFile("std/allocator.zig");
 const CONSOLE_ZIG = @embedFile("std/console.zig");
 const FS_ZIG      = @embedFile("std/fs.zig");
 const MATH_ZIG    = @embedFile("std/math.zig");
-pub const STR_ZIG = @embedFile("std/str.zig");
+pub const STRING_ZIG = @embedFile("std/string.zig");
 const SYSTEM_ZIG  = @embedFile("std/system.zig");
 const TIME_ZIG    = @embedFile("std/time.zig");
 const JSON_ZIG    = @embedFile("std/json.zig");
@@ -63,7 +63,7 @@ pub fn ensureStdFiles(allocator: std.mem.Allocator) !void {
         .{ .name = "console.zig",     .content = CONSOLE_ZIG },
         .{ .name = "fs.zig",          .content = FS_ZIG },
         .{ .name = "math.zig",        .content = MATH_ZIG },
-        .{ .name = "str.zig",         .content = STR_ZIG },
+        .{ .name = "string.zig",      .content = STRING_ZIG },
         .{ .name = "system.zig",      .content = SYSTEM_ZIG },
         .{ .name = "time.zig",        .content = TIME_ZIG },
         .{ .name = "json.zig",        .content = JSON_ZIG },

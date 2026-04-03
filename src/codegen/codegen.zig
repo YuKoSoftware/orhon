@@ -298,7 +298,7 @@ pub const CodeGen = struct {
         // Auto-import str if not explicitly imported — needed for string method dispatch
         if (self.str_import_alias == null and !self.str_is_included) {
             self.str_import_alias = "str";
-            try self.emit("const str = @import(\"_orhon_str\");\n");
+            try self.emit("const str = @import(\"_orhon_string\");\n");
         }
 
         try self.emit("\n");

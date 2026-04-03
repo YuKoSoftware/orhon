@@ -42,8 +42,8 @@ pub fn buildZigContentMulti(
         \\    const optimize = b.standardOptimizeOption(.{});
         \\
         \\    // Orhon internal modules — shared across all targets
-        \\    const str_mod = b.createModule(.{
-        \\        .root_source_file = b.path("_orhon_str.zig"),
+        \\    const string_mod = b.createModule(.{
+        \\        .root_source_file = b.path("_orhon_string.zig"),
         \\        .target = target,
         \\        .optimize = optimize,
         \\    });
@@ -210,7 +210,7 @@ pub fn buildZigContentMulti(
                     \\        .target = target,
                     \\        .optimize = optimize,
                     \\    }});
-                    \\    mod_{s}.addImport("_orhon_str", str_mod);
+                    \\    mod_{s}.addImport("_orhon_string", string_mod);
                     \\    mod_{s}.addImport("_orhon_collections", coll_mod);
                     \\
                 , .{ mod_name, mod_name, mod_name, mod_name });
@@ -259,7 +259,7 @@ pub fn buildZigContentMulti(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
-            \\    lib_{s}.root_module.addImport("_orhon_str", str_mod);
+            \\    lib_{s}.root_module.addImport("_orhon_string", string_mod);
             \\    lib_{s}.root_module.addImport("_orhon_collections", coll_mod);
             \\
         , .{ t.module_name, t.project_name, linkage, t.module_name, t.module_name, t.module_name });
@@ -351,7 +351,7 @@ pub fn buildZigContentMulti(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
-            \\    exe_{s}.root_module.addImport("_orhon_str", str_mod);
+            \\    exe_{s}.root_module.addImport("_orhon_string", string_mod);
             \\    exe_{s}.root_module.addImport("_orhon_collections", coll_mod);
             \\
         , .{ t.module_name, t.project_name, ver_line, t.module_name, t.module_name, t.module_name });
@@ -448,7 +448,7 @@ pub fn buildZigContentMulti(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
-            \\    unit_tests.root_module.addImport("_orhon_str", str_mod);
+            \\    unit_tests.root_module.addImport("_orhon_string", string_mod);
             \\    unit_tests.root_module.addImport("_orhon_collections", coll_mod);
             \\
         , .{t.module_name});

@@ -24,9 +24,9 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     // Copy internal support files to generated dir — always available for all modules
     try cache.ensureGeneratedDir();
     {
-        const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_str.zig", .{});
+        const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_string.zig", .{});
         defer file.close();
-        try file.writeAll(_std_bundle.STR_ZIG);
+        try file.writeAll(_std_bundle.STRING_ZIG);
     }
     {
         const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_collections.zig", .{});

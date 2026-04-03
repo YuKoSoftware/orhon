@@ -561,7 +561,7 @@ pub const CodeGen = struct {
                 break :blk try self.allocTypeStr("[{s}]{s}", .{ size_text, inner });
             },
             .type_union => |u| blk: {
-                // Arbitrary union: (i32 | f32 | String) → union(enum) { _i32: i32, _f32: f32, _String: []const u8 }
+                // Arbitrary union: (i32 | f32 | str) → union(enum) { _i32: i32, _f32: f32, _str: []const u8 }
                 // Note: Error and null are banned from unions — use ErrorUnion(T) and NullUnion(T) instead.
                 var buf = std.ArrayListUnmanaged(u8){};
                 defer buf.deinit(self.allocator);

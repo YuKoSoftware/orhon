@@ -95,7 +95,7 @@ pub const MirAnnotator = struct {
     }
 
     /// Returns true if the type requires a reference rather than a value copy.
-    /// Primitives (i32, f32, bool, String, etc.) and value types (Vector) are excluded.
+    /// Primitives (i32, f32, bool, str, etc.) and value types (Vector) are excluded.
     pub fn isNonPrimitiveType(t: RT) bool {
         return switch (t) {
             .primitive => false,

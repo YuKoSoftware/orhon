@@ -69,7 +69,7 @@ const SYNTAX_DOC =
     \\    return a + b
     \\}
     \\
-    \\pub func greet(name: String) void {
+    \\pub func greet(name: str) void {
     \\    console.println(name)
     \\}
     \\```
@@ -77,7 +77,7 @@ const SYNTAX_DOC =
     \\### Default parameters
     \\
     \\```orhon
-    \\func connect(host: String, port: i32 = 8080) void {
+    \\func connect(host: str, port: i32 = 8080) void {
     \\    // ...
     \\}
     \\```
@@ -110,7 +110,7 @@ const SYNTAX_DOC =
     \\
     \\### Primitive types
     \\
-    \\`i8` `i16` `i32` `i64` `i128` `u8` `u16` `u32` `u64` `f32` `f64` `bool` `void` `usize` `String`
+    \\`i8` `i16` `i32` `i64` `i128` `u8` `u16` `u32` `u64` `f32` `f64` `bool` `void` `usize` `str`
     \\
     \\### Type aliases
     \\
@@ -135,7 +135,7 @@ const SYNTAX_DOC =
     \\### Union types
     \\
     \\```orhon
-    \\(i32 | f64 | String)       // tagged union
+    \\(i32 | f64 | str)          // tagged union
     \\ErrorUnion(T)              // error or value
     \\NullUnion(T)               // null or value
     \\```
@@ -163,10 +163,10 @@ const SYNTAX_DOC =
     \\}
     \\
     \\struct Player {
-    \\    name: String
+    \\    name: str
     \\    health: i32 = 100        // default value
     \\
-    \\    pub func create(name: String) Player {
+    \\    pub func create(name: str) Player {
     \\        return Player(name: name)
     \\    }
     \\
@@ -202,14 +202,14 @@ const SYNTAX_DOC =
     \\
     \\```orhon
     \\blueprint Printable {
-    \\    func toString() String
+    \\    func toString() str
     \\}
     \\
     \\struct Point: Printable {
     \\    x: i32
     \\    y: i32
     \\
-    \\    pub func toString(self: const& Point) String {
+    \\    pub func toString(self: const& Point) str {
     \\        return "Point"
     \\    }
     \\}
@@ -472,7 +472,7 @@ const SYNTAX_DOC =
     \\list.add(2)
     \\const val = list.get(0)
     \\
-    \\var map = Map(String, i32){}
+    \\var map = Map(str, i32){}
     \\map.put("a", 1)
     \\const v = map.get("a")
     \\

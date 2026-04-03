@@ -25,7 +25,7 @@ pub fn inferArbitraryUnionTag(value: *parser.Node, members_rt: ?[]const RT) ?[]c
     return switch (value.*) {
         .int_literal => findMemberByKind(members_rt, .int) orelse "i32",
         .float_literal => findMemberByKind(members_rt, .float) orelse "f32",
-        .string_literal => findMemberByKind(members_rt, .string) orelse "String",
+        .string_literal => findMemberByKind(members_rt, .string) orelse "str",
         .bool_literal => findMemberByKind(members_rt, .bool_) orelse "bool",
         else => null,
     };
@@ -41,7 +41,7 @@ pub fn matchesKind(n: []const u8, kind: TypeKind) bool {
             std.mem.eql(u8, n, "u32") or std.mem.eql(u8, n, "u64") or
             std.mem.eql(u8, n, "usize"),
         .float => std.mem.eql(u8, n, "f32") or std.mem.eql(u8, n, "f64"),
-        .string => std.mem.eql(u8, n, "String"),
+        .string => std.mem.eql(u8, n, "str"),
         .bool_ => std.mem.eql(u8, n, "bool"),
     };
 }
@@ -78,7 +78,7 @@ pub fn inferArbitraryUnionTagMir(m: *const mir.MirNode, members_rt: ?[]const RT)
     return switch (lk) {
         .int => findMemberByKind(members_rt, .int) orelse "i32",
         .float => findMemberByKind(members_rt, .float) orelse "f32",
-        .string => findMemberByKind(members_rt, .string) orelse "String",
+        .string => findMemberByKind(members_rt, .string) orelse "str",
         .bool_lit => findMemberByKind(members_rt, .bool_) orelse "bool",
         else => null,
     };

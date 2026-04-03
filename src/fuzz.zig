@@ -39,7 +39,7 @@ pub fn main() !void {
                     "while", "for", "match", "struct", "enum", "import", "pub",
                     "compt", "thread", "defer", "break", "continue", "test",
                     "true", "false", "null", "and", "or", "not", "is", "in",
-                    "void", "i32", "f64", "String", "Error", "bool",
+                    "void", "i32", "f64", "str", "Error", "bool",
                     "(", ")", "{", "}", "[", "]", ":", "::", ",", ".",
                     "+", "-", "*", "/", "%", "++", "=", "==", "!=",
                     "<", ">", "<=", ">=", "&", "|", "^", "!", ">>", "<<",

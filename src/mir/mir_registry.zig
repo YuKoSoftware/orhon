@@ -61,7 +61,7 @@ pub const UnionRegistry = struct {
             }
         }
 
-        // Build name: "OrhonUnion_i32_String"
+        // Build name: "OrhonUnion_i32_str"
         var buf = std.ArrayListUnmanaged(u8){};
         try buf.appendSlice(self.allocator, "OrhonUnion");
         for (sorted) |m| {
@@ -86,8 +86,8 @@ test "union registry - canonicalize" {
     var reg = UnionRegistry.init(alloc);
     defer reg.deinit();
 
-    const name1 = try reg.canonicalize(&.{ "i32", "String" });
-    const name2 = try reg.canonicalize(&.{ "String", "i32" });
+    const name1 = try reg.canonicalize(&.{ "i32", "str" });
+    const name2 = try reg.canonicalize(&.{ "str", "i32" });
 
     // Same structural union → same name
     try std.testing.expectEqualStrings(name1, name2);
@@ -100,7 +100,7 @@ test "union registry - different unions" {
     var reg = UnionRegistry.init(alloc);
     defer reg.deinit();
 
-    const name1 = try reg.canonicalize(&.{ "i32", "String" });
+    const name1 = try reg.canonicalize(&.{ "i32", "str" });
     const name2 = try reg.canonicalize(&.{ "i32", "f32" });
 
     try std.testing.expect(!std.mem.eql(u8, name1, name2));

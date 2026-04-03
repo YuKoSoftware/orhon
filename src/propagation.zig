@@ -277,7 +277,7 @@ pub const PropagationChecker = struct {
     fn checkExprForUnsafeUnwrap(self: *PropagationChecker, node: *parser.Node, scope: *PropagationScope) anyerror!void {
         switch (node.*) {
             .field_expr => |f| {
-                // result.i32 / result.String — unwrap of union field
+                // result.i32 / result.str — unwrap of union field
                 if (f.object.* == .identifier) {
                     const name = f.object.identifier;
                     if (scope.isTracked(name)) |uvar| {

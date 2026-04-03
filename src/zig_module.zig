@@ -97,12 +97,12 @@ pub fn mapType(tree: *const Ast, node: Node.Index, allocator: Allocator, out: *T
                 // []T or []const T — slice types
                 .slice => {
                     const is_const = ptr_info.const_token != null;
-                    // Check for []const u8 → String
+                    // Check for []const u8 → str
                     if (is_const) {
                         if (tree.nodeTag(ptr_info.ast.child_type) == .identifier) {
                             const child_name = tree.tokenSlice(tree.nodeMainToken(ptr_info.ast.child_type));
                             if (std.mem.eql(u8, child_name, "u8")) {
-                                try out.append(allocator, "String");
+                                try out.append(allocator, "str");
                                 return true;
                             }
                         }
@@ -323,10 +323,10 @@ pub fn extractConst(tree: *const Ast, node: Node.Index, allocator: Allocator) an
         return try extractStruct(tree, init_node, name, allocator);
     }
 
-    // String literal → String type with value
+    // String literal → str type with value
     if (init_tag == .string_literal or init_tag == .multiline_string_literal) {
         const value = tree.tokenSlice(tree.nodeMainToken(init_node));
-        return try std.fmt.allocPrint(allocator, "pub const {s}: String = {s}", .{ name, value });
+        return try std.fmt.allocPrint(allocator, "pub const {s}: str = {s}", .{ name, value });
     }
 
     // Number literal → i64 type with value
@@ -837,8 +837,8 @@ test "primitive passthrough" {
     try expectMapping("const _: usize = undefined;", "usize");
 }
 
-test "[]const u8 maps to String" {
-    try expectMapping("const _: []const u8 = undefined;", "String");
+test "[]const u8 maps to str" {
+    try expectMapping("const _: []const u8 = undefined;", "str");
 }
 
 test "?T maps to NullUnion(T)" {
@@ -874,9 +874,9 @@ test "non-u8 slices are unmappable" {
 }
 
 test "nested types" {
-    try expectMapping("const _: ?[]const u8 = undefined;", "NullUnion(String)");
-    try expectMapping("const _: anyerror![]const u8 = undefined;", "ErrorUnion(String)");
-    try expectMapping("const _: *const []const u8 = undefined;", "const& String");
+    try expectMapping("const _: ?[]const u8 = undefined;", "NullUnion(str)");
+    try expectMapping("const _: anyerror![]const u8 = undefined;", "ErrorUnion(str)");
+    try expectMapping("const _: *const []const u8 = undefined;", "const& str");
 }
 
 // ---------------------------------------------------------------------------
@@ -973,7 +973,7 @@ test "extractConst — string literal" {
     const result = try testExtractConst("pub const NAME = \"hello\";");
     if (result) |actual| {
         defer std.testing.allocator.free(actual);
-        try std.testing.expectEqualStrings("pub const NAME: String = \"hello\"", actual);
+        try std.testing.expectEqualStrings("pub const NAME: str = \"hello\"", actual);
     } else return error.TestUnexpectedResult;
 }
 

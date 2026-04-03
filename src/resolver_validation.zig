@@ -213,17 +213,17 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
 }
 
 /// Check if a value type is compatible with an annotation type.
-/// Only flags clear primitive-vs-primitive mismatches (e.g. i32 vs String).
+/// Only flags clear primitive-vs-primitive mismatches (e.g. i32 vs str).
 /// Non-primitive types (arrays, structs, etc.) are left to Zig.
 pub fn checkAssignCompat(self: *TypeResolver, expected: RT, actual: RT, node: *parser.Node) !void {
     if (actual == .unknown or actual == .inferred) return;
     if (expected == .unknown or expected == .inferred) return;
-    // Block []u8 → String coercion
+    // Block []u8 → str coercion
     if (expected == .primitive and expected.primitive == .string and
         actual == .slice and actual.slice.* == .primitive and actual.slice.primitive == .u8)
     {
         try self.ctx.reporter.report(.{
-            .message = "cannot assign '[]u8' to 'String' — use str.fromBytes() for explicit conversion",
+            .message = "cannot assign '[]u8' to 'str' — use string.fromBytes() for explicit conversion",
             .loc = self.ctx.nodeLoc(node),
         });
         return;
@@ -235,8 +235,8 @@ pub fn checkAssignCompat(self: *TypeResolver, expected: RT, actual: RT, node: *p
         .{ expected.name(), actual.name() });
 }
 
-/// Check function call args for illegal []u8 → String coercion.
-/// String is not []u8 — use str.fromBytes() for explicit conversion.
+/// Check function call args for illegal []u8 → str coercion.
+/// str is not []u8 — use string.fromBytes() for explicit conversion.
 pub fn checkByteSliceStringCoercion(self: *TypeResolver, c: parser.CallExpr, arg_types: []const RT, node: *parser.Node) !void {
     // Look up the function signature
     const func_name: []const u8 = if (c.callee.* == .identifier)
@@ -251,20 +251,20 @@ pub fn checkByteSliceStringCoercion(self: *TypeResolver, c: parser.CallExpr, arg
     for (0..param_count) |i| {
         const param_type = sig.params[i].type_;
         const arg_type = arg_types[i];
-        // Reject []u8 passed as String
+        // Reject []u8 passed as str
         if (param_type == .primitive and param_type.primitive == .string) {
             if (arg_type == .slice) {
                 if (arg_type.slice.* == .primitive and arg_type.slice.primitive == .u8) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass '[]u8' as 'String' — use str.fromBytes() for explicit conversion",
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass '[]u8' as 'str' — use string.fromBytes() for explicit conversion",
                         .{});
                 }
             }
         }
-        // Reject String passed as []u8
+        // Reject str passed as []u8
         if (param_type == .slice) {
             if (param_type.slice.* == .primitive and param_type.slice.primitive == .u8) {
                 if (arg_type == .primitive and arg_type.primitive == .string) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass 'String' as '[]u8' — use str.toBytes() for explicit conversion",
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass 'str' as '[]u8' — use string.toBytes() for explicit conversion",
                         .{});
                 }
             }

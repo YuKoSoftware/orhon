@@ -326,7 +326,7 @@ pub fn isModuleName(symbols: []const SymbolInfo, name: []const u8) bool {
 pub fn builtinDetail(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
     // Primitive types
     const primitives = [_][]const u8{
-        "String", "bool",
+        "str", "bool",
         "i8", "i16", "i32", "i64", "i128",
         "u8", "u16", "u32", "u64", "u128",
         "isize", "usize",
@@ -385,7 +385,7 @@ pub fn builtinDetail(allocator: std.mem.Allocator, name: []const u8) ?[]const u8
         .{ "assert", "(builtin) runtime assertion" },
         .{ "size", "(builtin) size of a type in bytes" },
         .{ "align", "(builtin) alignment of a type" },
-        .{ "typename", "(builtin) name of a type as String" },
+        .{ "typename", "(builtin) name of a type as str" },
         .{ "typeid", "(builtin) unique type identifier" },
         .{ "typeOf", "(builtin) returns the type of a value as a first-class type" },
         .{ "type", "(keyword) first-class type — use as parameter type or return type" },

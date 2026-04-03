@@ -133,7 +133,7 @@ fn buildGeneralCompletionResponse(allocator: std.mem.Allocator, id: std.json.Val
 
     // Primitive types
     const primitives = [_][]const u8{
-        "String", "bool", "i8", "i16", "i32", "i64", "i128",
+        "str", "bool", "i8", "i16", "i32", "i64", "i128",
         "u8", "u16", "u32", "u64", "u128", "isize", "usize",
         "f16", "f32", "f64", "f128", "bf16",
     };
@@ -507,7 +507,7 @@ fn appendQuickFix(buf: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator
     try buf.appendSlice(allocator, "\"}]}}}");
 }
 
-/// Parse parameter byte ranges from a signature like "func name(a: i32, b: String) void".
+/// Parse parameter byte ranges from a signature like "func name(a: i32, b: str) void".
 /// Returns offsets into the original string for each parameter.
 pub fn extractParamLabels(sig: []const u8) ParamLabels {
     var result = ParamLabels{
@@ -576,9 +576,9 @@ fn trimRange(s: []const u8, start: usize, end: usize) TrimResult {
 // ============================================================
 
 test "extractParamLabels single param" {
-    const labels = extractParamLabels("func println(msg: String) void");
+    const labels = extractParamLabels("func println(msg: str) void");
     try std.testing.expectEqual(@as(usize, 1), labels.count);
-    try std.testing.expectEqualStrings("msg: String", "func println(msg: String) void"[labels.starts[0]..labels.ends[0]]);
+    try std.testing.expectEqualStrings("msg: str", "func println(msg: str) void"[labels.starts[0]..labels.ends[0]]);
 }
 
 test "extractParamLabels multiple params" {

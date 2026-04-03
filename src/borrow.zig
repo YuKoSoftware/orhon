@@ -684,8 +684,8 @@ test "borrow checker - field borrow from mut_borrow_expr field_expr" {
     var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
-    // Simulate: var ref: var &String = &p.name
-    var inner_type = parser.Node{ .type_named = "String" };
+    // Simulate: var ref: var &str = &p.name
+    var inner_type = parser.Node{ .type_named = "str" };
     var type_ann = parser.Node{ .type_ptr = .{ .kind = .mut_ref, .elem = &inner_type } };
     var p_ident = parser.Node{ .identifier = "p" };
     var field_access = parser.Node{ .field_expr = .{ .object = &p_ident, .field = "name" } };

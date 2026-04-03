@@ -507,7 +507,7 @@ pub fn typesMatchWithSubstitution(struct_type: RT, bp_type: RT, bp_name: []const
 pub fn inferCaptureType(iterable: *parser.Node, iter_type: RT) RT {
     // Range expressions produce integers
     if (iterable.* == .range_expr) return RT{ .primitive = .usize };
-    // String iteration produces u8 characters
+    // str iteration produces u8 characters
     if (iter_type == .primitive and iter_type.primitive == .string)
         return RT{ .primitive = .u8 };
     // Slice/array of known type — element type is the inner type

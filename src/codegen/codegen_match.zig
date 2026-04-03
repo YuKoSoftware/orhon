@@ -883,7 +883,7 @@ pub fn isResultValueField(name: []const u8, decls: ?*declarations.DeclTable) boo
         "u8", "u16", "u32", "u64", "u128",
         "isize", "usize",
         "f16", "bf16", "f32", "f64", "f128",
-        "bool", "String", "void",
+        "bool", "str", "void",
     };
     for (primitives) |p| {
         if (std.mem.eql(u8, name, p)) return true;

@@ -1,5 +1,5 @@
 // fs.zig — filesystem operations sidecar for std::fs
-// All functions operate on paths as []const u8 (Orhon String).
+// All functions operate on paths as []const u8 (Orhon str).
 
 const std = @import("std");
 

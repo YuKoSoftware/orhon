@@ -698,7 +698,7 @@ test "declaration collector - pub func is registered" {
 }
 
 /// Check if a name conflicts with a primitive or builtin type name.
-/// Used to prevent field names like `String`, `i32`, `File` etc.
+/// Used to prevent field names like `str`, `i32`, `File` etc.
 fn isReservedTypeName(name: []const u8) bool {
     if (types.isPrimitiveName(name)) return true;
     if (std.mem.eql(u8, name, builtins.BT.ERROR)) return true;

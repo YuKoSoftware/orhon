@@ -151,7 +151,7 @@ pub fn handleSignatureHelp(allocator: std.mem.Allocator, root: std.json.Value, i
     try appendJsonString(&buf, allocator, func_sym.detail);
     try buf.append(allocator, '"');
 
-    // Extract parameter labels from signature like "func name(a: i32, b: String) void"
+    // Extract parameter labels from signature like "func name(a: i32, b: str) void"
     const param_labels = extractParamLabels(func_sym.detail);
     if (param_labels.count > 0) {
         try buf.appendSlice(allocator, ",\"parameters\":[");
@@ -467,9 +467,9 @@ test "containsIgnoreCase matches" {
 }
 
 test "extractParamLabels single param" {
-    const labels = extractParamLabels("func println(msg: String) void");
+    const labels = extractParamLabels("func println(msg: str) void");
     try std.testing.expectEqual(@as(usize, 1), labels.count);
-    try std.testing.expectEqualStrings("msg: String", "func println(msg: String) void"[labels.starts[0]..labels.ends[0]]);
+    try std.testing.expectEqualStrings("msg: str", "func println(msg: str) void"[labels.starts[0]..labels.ends[0]]);
 }
 
 test "extractParamLabels multiple params" {

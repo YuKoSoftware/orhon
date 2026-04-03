@@ -10,55 +10,55 @@ Items ordered by importance and how much they unblock future work.
 
 ## Core — Language Ergonomics
 
-### Remove magic codegen — move to stdlib structs or compiler functions
+### Zero magic — remove all special-case codegen `hard`
 
-The compiler has hardcoded special cases that detect specific method/field names and
-rewrite them. These violate the "no special treatment" rule. Each should either become
-a proper `@` compiler function or move to a stdlib `.zig` struct with real fields/methods.
+**Principle:** The compiler has zero special cases for stdlib types. If something needs
+complex behavior (fields, methods, constructors), it gets implemented purely in std as
+Orhon or Zig code. The compiler handles it through normal code paths — same as any user
+code. If the compiler can't handle it, we fix the compiler, not add workarounds.
 
-**1. `.new()` constructor rewriting + `collection_expr` grammar** `hard`
-- Location: `codegen_exprs.zig:286-301`, `orhon.peg:440-445`
-- Magic: `Type.new()` → `.{}`, `Type.new(alloc)` → `.{ .alloc = alloc }`
-- Root cause: `List`, `Map`, `Set` are parsed as grammar-level `collection_expr` nodes
-  (PEG rules at `orhon.peg:443-445`), not as normal identifiers from an imported module.
-  The codegen for `.collection` nodes emits `.{}` — it was designed to work only with
-  the `.new()` magic. Cannot remove `.new()` magic without first removing `collection_expr`
-  from the grammar and making `List(i32)` parse as `collections.List(i32)` — a normal
-  field access + generic call.
-- Fix requires: remove `collection_expr` grammar rules, make collections normal imports,
-  update all codegen/MIR/resolver paths that handle `.collection` kind. Large refactor.
-- `new()` and `withAlloc()` methods added to collections.zig (ready for when grammar is fixed).
+Only `@` compiler functions (intrinsics that map to Zig builtins) and language-level
+constructs (match, interpolation, operators) get codegen awareness.
 
-**2. `wrap()`, `sat()`, `overflow()` should be `@wrap`, `@sat`, `@overflow`** `easy`
+**1. Remove `collection_expr` grammar — collections become normal imports** `hard`
+- `List`, `Map`, `Set` are PEG grammar keywords (`orhon.peg:440-445`), parsed as
+  special `collection_expr` AST nodes instead of normal identifiers
+- Codegen for `.collection` emits `.{}` — only works with `.new()` magic
+- `.new()` rewriting (`codegen_exprs.zig:286-301`) exists because of this
+- Fix: remove `collection_expr` from grammar. `List(i32)` becomes `collections.List(i32)`
+  — a normal field access + generic call. Remove `.collection` kind from AST, MIR, codegen.
+  Collections import allocator std lib for defaults. `new()` and `withAlloc()` already
+  added to `collections.zig` — ready for real method calls once grammar is fixed.
+- Touches: `orhon.peg`, `parser.zig`, `peg/builder_exprs.zig`, `mir_lowerer.zig`,
+  `mir_node.zig`, `codegen_exprs.zig`, `codegen_match.zig`, `resolver*.zig`,
+  all fixtures and templates
+
+**2. `wrap()`, `sat()`, `overflow()` → `@wrap`, `@sat`, `@overflow`** `easy`
 - Location: `codegen_exprs.zig:304-316`
-- Magic: Parsed as regular function calls, detected by name string comparison
-- Fix: Add to PEG grammar `compiler_func_name`, `builtins.CompilerFunc` enum,
-  and `generateCompilerFuncMir`. Same pattern as `@splitAt` migration.
+- Parsed as regular function calls, detected by name string comparison
+- Fix: add to PEG `compiler_func_name`, `builtins.CompilerFunc` enum,
+  `generateCompilerFuncMir`. Same pattern as `@splitAt`.
 
-**3. `.value` field rewriting on core types** `medium`
+**3. `.value` field rewriting — move to std structs** `hard`
 - Location: `codegen_exprs.zig:376-449`
-- Magic: `.value` is rewritten differently per type class:
-  - `thread_handle.value` → `.getValue()`
-  - `thread_handle.done` → `.done()`
-  - `safe_ptr.value` → `.*` (dereference)
-  - `raw_ptr.value` → `[0]` (index)
-  - `error_union.value` → `catch unreachable`
-  - `null_union.value` → `.?`
-  - `arbitrary_union.value` → `._{tag_name}`
+- Magic rewrites per type class:
+  - `Handle(T)` — `.value` → `.getValue()`, `.done` → `.done()`
+  - `Ptr(T)` — `.value` → `.*`
+  - `RawPtr(T)` — `.value` → `[0]`
+  - `ErrorUnion(T)` — `.value` → `catch unreachable`
+  - `NullUnion(T)` — `.value` → `.?`
   - `result.Error` → `@errorName(captured_err)`
-- Fix: For Ptr/Handle — consider making these real Zig structs with a `.value` field
-  or method so codegen doesn't need special cases. For ErrorUnion/NullUnion — these
-  map to Zig's `anyerror!T` and `?T` which have no `.value` field, so some codegen
-  desugaring is unavoidable. This needs design work to decide what's language-level
-  vs what can be a struct.
+- Fix: Handle and Ptr types become real Zig structs in std with proper fields/methods.
+  ErrorUnion/NullUnion map to Zig `anyerror!T` and `?T` — these need `@unwrap` or
+  similar compiler function instead of magic `.value`. Design the unwrap API, implement
+  as std struct or `@` function, remove all field rewriting.
 
-**4. Bitfield auto-generated methods** `easy`
+**4. Bitfield auto-generated methods — move to std** `medium`
 - Location: `codegen_decls.zig:416-423, 447-454`
-- Magic: Codegen injects `has()`, `set()`, `clear()`, `toggle()` into every bitfield
-- These are legitimate — bitfield is a language construct, not a stdlib type. The
-  methods are part of what "bitfield" means. But they're hardcoded strings, not
-  defined anywhere the user can see. Consider: is this the right design, or should
-  bitfield methods be visible in a stdlib file?
+- Codegen injects `has()`, `set()`, `clear()`, `toggle()` into every bitfield
+- Fix: bitfield becomes a Zig struct in std with these as real methods. The `bitfield`
+  keyword in Orhon generates a struct that uses the std implementation. Methods are
+  visible, testable, documented — not hidden in codegen strings.
 
 ---
 

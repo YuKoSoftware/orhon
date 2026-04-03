@@ -159,17 +159,25 @@ Each file in the example module starts with `module example` and is embedded via
 
 ## Workflow Rules
 
-### No special treatment rule
-The compiler must not give special treatment to stdlib types or functions. Only
-**core language types** (`Ptr`, `RawPtr`, `VolatilePtr`, `Handle`, `Error`, `Vector`)
-and **compiler functions** (`@cast`, `@copy`, `@move`, `@swap`, `@typename`, `@typeid`,
-`@typeOf`, `@size`, `@align`, `@assert`, `@splitAt`) get hardcoded compiler awareness.
+### Zero magic rule
+The compiler has zero special cases for stdlib types or functions. If something needs
+complex behavior (fields, methods, constructors), it gets implemented purely in std
+as Orhon or Zig code. The compiler handles it through normal code paths — same as
+any user code. If the compiler can't handle it, we fix the compiler, not add workarounds.
 
-Everything in `std::*` (collections, str, json, fs, etc.) must go through the normal
-import/use system — no hardcoded names, no shortcut recognition, no fallback lists.
-If a type requires `import std::collections` to use, the compiler must enforce that
-import. A user-defined `List` type in their own module must work identically to
-`std::collections.List`. The stdlib is just another set of Zig modules.
+Only **compiler functions** (`@cast`, `@copy`, `@move`, `@swap`, `@typename`, `@typeid`,
+`@typeOf`, `@size`, `@align`, `@assert`, `@splitAt`) and **language-level constructs**
+(match desugaring, string interpolation, operators) get codegen awareness.
+
+Everything in `std::*` (collections, string, json, fs, etc.) must go through the normal
+import/use system — no hardcoded names, no shortcut recognition, no fallback lists,
+no codegen rewriting for specific method names. A user-defined `List` type in their
+own module must work identically to `std::collections.List`. The stdlib is just another
+set of Zig modules.
+
+**Known violations (tracked in `docs/TODO.md`):** `collection_expr` grammar rules,
+`.new()` constructor rewriting, `.value` field rewriting, bitfield auto-methods,
+`wrap()`/`sat()`/`overflow()` not using `@` prefix. All scheduled for removal.
 
 ### Documentation rule
 Each doc file has one specific purpose — no overlap between files. If information

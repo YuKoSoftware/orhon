@@ -409,7 +409,7 @@ pub func test_error_ok() i32 {
     if(result is Error) {
         return 0 - 1
     }
-    return result.value
+    return result.i32
 }
 
 pub func test_error_fail() i32 {
@@ -417,7 +417,7 @@ pub func test_error_fail() i32 {
     if(result is Error) {
         return 0 - 1
     }
-    return result.value
+    return result.i32
 }
 
 // ─── Null handling ──────────────────────────────────────
@@ -434,7 +434,7 @@ pub func test_null_some() i32 {
     if(result is null) {
         return 0 - 1
     }
-    return result.value
+    return result.i32
 }
 
 pub func test_null_none() i32 {
@@ -442,16 +442,16 @@ pub func test_null_none() i32 {
     if(result is null) {
         return 0 - 1
     }
-    return result.value
+    return result.i32
 }
 
-// Inferred null union — no type annotation, .value unwrap
+// Inferred null union — no type annotation, type-name unwrap
 pub func test_null_inferred() i32 {
     const result: (null | i32) = find_player(5)
     if(result is null) {
         return 0 - 1
     }
-    return result.value
+    return result.i32
 }
 
 // Truly inferred error union — no annotation, MIR resolves type
@@ -460,7 +460,7 @@ pub func test_error_inferred() i32 {
     if(result is Error) {
         return 0 - 1
     }
-    return result.value
+    return result.i32
 }
 
 // Truly inferred null union — no annotation, MIR resolves type
@@ -469,7 +469,7 @@ pub func test_null_inferred_real() i32 {
     if(result is null) {
         return 0 - 1
     }
-    return result.value
+    return result.i32
 }
 
 pub func test_null_reassign() i32 {
@@ -478,7 +478,7 @@ pub func test_null_reassign() i32 {
     if(x is null) {
         return 0 - 1
     }
-    return x.value
+    return x.i32
 }
 
 // ─── Enum usage ─────────────────────────────────────────────
@@ -1038,42 +1038,42 @@ pub func test_arb_union_assign() i32 {
     return 0
 }
 
-// .value unwrap with narrowing — positive is check with early exit
+// type-name unwrap — positive is check with early exit
 
 pub func test_arb_value_positive() i32 {
     const val: (i32 | str) = 42
     if(val is str) {
         return 0
     }
-    return val.value
+    return val.i32
 }
 
-// .value unwrap with narrowing — negative is check with early exit
+// type-name unwrap — negative is check with early exit
 
 pub func test_arb_value_negative() i32 {
     const val: (i32 | str) = 42
     if(val is not i32) {
         return 0
     }
-    return val.value
+    return val.i32
 }
 
-// .value unwrap inside is check then-block
+// type-name unwrap inside is check then-block
 
 pub func test_arb_value_inside() i32 {
     const val: (i32 | str) = 42
     if(val is i32) {
-        return val.value
+        return val.i32
     }
     return 0
 }
 
-// .value unwrap inside match arm
+// type-name unwrap inside match arm
 
 pub func test_arb_value_match() i32 {
     const val: (i32 | str) = 42
     match(val) {
-        i32    => { return val.value }
+        i32    => { return val.i32 }
         str => { return 0 }
     }
     return 0
@@ -1105,7 +1105,7 @@ func make_union_val() (i32 | str) {
 pub func test_arb_union_cross() i32 {
     const result: (i32 | str) = make_union_val()
     if(result is i32) {
-        return result.value
+        return result.i32
     }
     return 0
 }
@@ -1311,7 +1311,7 @@ pub func test_map_get() i32 {
     m.put("x", 77)
     const result: (null | i32) = m.get("x")
     if(result is not null) {
-        return result.value
+        return result.i32
     }
     return 0
 }
@@ -1331,7 +1331,7 @@ thread adder(a: i32, b: i32) Handle(i32) {
 thread noop() Handle(void) {
 }
 
-// single thread spawn + .value
+// single thread spawn + .value()
 
 pub func test_thread() i32 {
     var h: Handle(i32) = doubler(21)

@@ -82,14 +82,14 @@ pub func allocator_demo() i32 {
     // Mode 2: inline arena allocator
     var arena: allocator.Arena = allocator.Arena.create()
     defer { arena.deinit() }
-    var arena_list: List(i32) = List(i32).new(arena.allocator())
+    var arena_list: List(i32) = List(i32).withAlloc(arena.allocator())
     arena_list.add(2)
 
     // Mode 3: external allocator variable
     var smp: allocator.SMP = allocator.SMP.create()
     defer { smp.deinit() }
     const a = smp.allocator()
-    var ext_list: List(i32) = List(i32).new(a)
+    var ext_list: List(i32) = List(i32).withAlloc(a)
     ext_list.add(3)
     defer { ext_list.free() }
 

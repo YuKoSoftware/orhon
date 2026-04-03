@@ -294,8 +294,8 @@ pub const CodeGen = struct {
 
         try self.emit("\n");
 
-        // Emit _OrhonHandle helper for thread handle types (comptime, zero cost if unused)
-        try self.emit("fn _OrhonHandle(comptime T: type) type { return struct { thread: std.Thread, state: *SharedState, pub const SharedState = struct { result: T = undefined, completed: std.atomic.Value(bool) = std.atomic.Value(bool).init(false) }; const Self = @This(); pub fn getValue(self_h: *Self) T { self_h.thread.join(); const result = self_h.state.result; std.heap.page_allocator.destroy(self_h.state); return result; } pub fn wait(self_h: *Self) void { self_h.thread.join(); } pub fn done(self_h: *const Self) bool { return self_h.state.completed.load(.acquire); } pub fn join(self_h: *Self) void { self_h.thread.join(); std.heap.page_allocator.destroy(self_h.state); } }; }\n\n");
+        // Handle(T) is now in std::async — no injected helper needed
+        try self.emit("const _orhon_async = @import(\"_orhon_async\");\n");
 
         // Generate top-level declarations from MIR tree
         const root = self.mir_root orelse return error.CompileError;
@@ -608,10 +608,10 @@ pub const CodeGen = struct {
                 } else if (std.mem.eql(u8, g.name, "Thread")) {
                     break :blk "std.Thread"; // Thread handle type
                 } else if (std.mem.eql(u8, g.name, builtins.BT.HANDLE)) {
-                    // Handle(T) → _OrhonHandle(zigT) (emitted as file-level helper)
+                    // Handle(T) → _orhon_async.Handle(zigT) (from std::async)
                     if (g.args.len > 0) {
                         const inner = try self.typeToZig(g.args[0]);
-                        break :blk try self.allocTypeStr("_OrhonHandle({s})", .{inner});
+                        break :blk try self.allocTypeStr("_orhon_async.Handle({s})", .{inner});
                     }
                 } else if (std.mem.eql(u8, g.name, builtins.BT.PTR)) {
                     // Ptr(T) → *const T

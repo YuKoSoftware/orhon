@@ -1335,7 +1335,7 @@ thread noop() Handle(void) {
 
 pub func test_thread() i32 {
     var h: Handle(i32) = doubler(21)
-    return h.value
+    return h.value()
 }
 
 // two concurrent threads
@@ -1343,8 +1343,8 @@ pub func test_thread() i32 {
 pub func test_thread_multi() i32 {
     var a: Handle(i32) = doubler(10)
     var b: Handle(i32) = doubler(15)
-    const r1: i32 = a.value
-    const r2: i32 = b.value
+    const r1: i32 = a.value()
+    const r2: i32 = b.value()
     return r1 + r2
 }
 
@@ -1352,7 +1352,7 @@ pub func test_thread_multi() i32 {
 
 pub func test_thread_params() i32 {
     var h: Handle(i32) = adder(17, 25)
-    return h.value
+    return h.value()
 }
 
 // void thread + .wait()
@@ -1367,7 +1367,7 @@ pub func test_thread_void() i32 {
 
 pub func test_thread_done() i32 {
     var h: Handle(i32) = doubler(5)
-    const result: i32 = h.value
+    const result: i32 = h.value()
     return result
 }
 

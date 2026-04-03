@@ -43,6 +43,46 @@ pub fn Atomic(comptime T: type) type {
     };
 }
 
+/// Thread handle — wraps a spawned thread and its shared result state.
+/// Used as the return type of `thread` functions: `thread foo() Handle(T) { ... }`
+pub fn Handle(comptime T: type) type {
+    return struct {
+        thread: std.Thread,
+        state: *SharedState,
+
+        pub const SharedState = struct {
+            result: T = undefined,
+            completed: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+        };
+
+        const Self = @This();
+
+        /// Block until thread completes and return its result.
+        pub fn value(self: *Self) T {
+            self.thread.join();
+            const result = self.state.result;
+            std.heap.page_allocator.destroy(self.state);
+            return result;
+        }
+
+        /// Block until thread completes (discard result).
+        pub fn wait(self: *Self) void {
+            self.thread.join();
+        }
+
+        /// Check if thread has completed without blocking.
+        pub fn done(self: *const Self) bool {
+            return self.state.completed.load(.acquire);
+        }
+
+        /// Block until thread completes and free state (discard result).
+        pub fn join(self: *Self) void {
+            self.thread.join();
+            std.heap.page_allocator.destroy(self.state);
+        }
+    };
+}
+
 // ── Tests ──
 
 test "Atomic basic" {

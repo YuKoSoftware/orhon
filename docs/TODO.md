@@ -48,28 +48,13 @@ We will break things along the way — that's expected. Fix forward, don't look 
 - Added to PEG grammar, CompilerFunc enum, generateCompilerFuncMir
 - Removed string detection from codegen_exprs.zig
 
-**A2. `Handle(T)` call is a no-op — remove special case** `easy`
-- Location: `codegen_exprs.zig:233-235`
-- `Handle(value)` emits just the value — codegen detects "Handle" by name
-- Fix: if Handle becomes a real std struct, this disappears naturally. Otherwise
-  evaluate if this special case is even needed.
-
-**Phase B — Move injected code to std libs**
-
-**B1. `_OrhonHandle` → std handle lib** `medium`
-- Location: `codegen.zig:297-298`
-- 1-line string literal injected into EVERY module: full struct with `getValue()`,
-  `wait()`, `done()`, `join()` methods
-- Fix: move to `src/std/handle.zig` as a real Zig struct. `Handle(T)` type in
-  `typeToZig` references the std module instead of the injected helper.
-- Unblocks: B2 (`.value`/`.done` field rewriting removal)
-
-**B2. `.value`/`.done` field rewriting on Handle — use real methods** `medium`
-- Location: `codegen_exprs.zig:376-381`
-- `handle.value` → `.getValue()`, `handle.done` → `.done()`
-- Fix: once Handle is a std struct (B1), `.value` and `.done` are real fields/methods.
-  Remove the field name detection. Users call the real API.
-- Depends on: B1
+**~~A2 + B1 + B2: Handle moved to std::async, field rewriting removed~~** — DONE
+- `_OrhonHandle` struct moved to `src/std/async.zig` as `Handle(T)`
+- Removed 1-line injection from codegen.zig — now imports `_orhon_async`
+- `.value` renamed to `.value()` method — no field rewriting needed
+- `.done()` was already a method — no change
+- `Handle(value)` no-op kept (language-level: return type wrapper for threads)
+- `h.value` → `h.value()` syntax change in all fixtures/templates
 
 **B3. `.value` field rewriting on Ptr/RawPtr — move to std** `medium`
 - Location: `codegen_exprs.zig:382-387`

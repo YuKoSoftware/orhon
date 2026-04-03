@@ -33,6 +33,11 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         defer file.close();
         try file.writeAll(_std_bundle.COLLECTIONS_ZIG);
     }
+    {
+        const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_async.zig", .{});
+        defer file.close();
+        try file.writeAll(_std_bundle.ASYNC_ZIG);
+    }
 
     // ── Stdlib Zig Conversion ────────────────────────────────
     // Convert stdlib .zig files (in .orh-cache/std/) to .orh declarations,

@@ -94,11 +94,11 @@ thread doubler(x: i32) Handle(i32) {
 thread noop() Handle(void) {
 }
 
-// .value blocks until done, moves the value out
+// .value() blocks until done, returns the result
 
 func thread_demo() i32 {
     var h: Handle(i32) = doubler(21)
-    return h.value
+    return h.value()
 }
 
 // multiple concurrent threads
@@ -106,8 +106,8 @@ func thread_demo() i32 {
 func thread_multi() i32 {
     var a: Handle(i32) = doubler(10)
     var b: Handle(i32) = doubler(15)
-    const r1: i32 = a.value
-    const r2: i32 = b.value
+    const r1: i32 = a.value()
+    const r2: i32 = b.value()
     return r1 + r2
 }
 

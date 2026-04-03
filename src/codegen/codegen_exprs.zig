@@ -221,7 +221,7 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             const callee_is_field = callee_mir.kind == .field_access;
             const callee_name = callee_mir.name orelse "";
             const call_args = m.callArgs();
-            // Handle(value) → just emit the value
+            // Handle(value) in thread return — just emit the value (Handle is a type wrapper, not a runtime call)
             if (callee_is_ident and std.mem.eql(u8, callee_name, builtins.BT.HANDLE) and call_args.len == 1) {
                 try cg.generateExprMir(call_args[0]);
                 return;
@@ -350,14 +350,8 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             const field = m.name orelse "";
             const obj_mir = m.children[0];
             const obj_tc = obj_mir.type_class;
-            // handle.value → handle.getValue()
-            if (std.mem.eql(u8, field, "value") and obj_tc == .thread_handle) {
-                try cg.generateExprMir(obj_mir);
-                try cg.emit(".getValue()");
-            } else if (std.mem.eql(u8, field, "done") and obj_tc == .thread_handle) {
-                try cg.generateExprMir(obj_mir);
-                try cg.emit(".done()");
-            } else if (std.mem.eql(u8, field, "value") and obj_tc == .safe_ptr) {
+            // handle.value() and handle.done() are real methods on _orhon_async.Handle(T) — no rewriting needed
+            if (std.mem.eql(u8, field, "value") and obj_tc == .safe_ptr) {
                 try cg.generateExprMir(obj_mir);
                 try cg.emit(".*");
             } else if (std.mem.eql(u8, field, "value") and obj_tc == .raw_ptr) {

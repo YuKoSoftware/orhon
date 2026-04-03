@@ -7,7 +7,7 @@ const cache = @import("cache.zig");
 // EMBEDDED STDLIB CONSTANTS
 // ============================================================
 
-const ASYNC_ZIG      = @embedFile("std/async.zig");
+pub const ASYNC_ZIG  = @embedFile("std/async.zig");
 pub const COLLECTIONS_ZIG = @embedFile("std/collections.zig");
 const ALLOCATOR_ZIG = @embedFile("std/allocator.zig");
 const CONSOLE_ZIG = @embedFile("std/console.zig");

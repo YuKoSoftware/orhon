@@ -94,11 +94,16 @@ We will break things along the way — that's expected. Fix forward, don't look 
   all `typeToZig` special cases, pointer coercion codegen, `@deref` (replaced by `->`)
 - **Blocked on:** implementation planning
 
-**B4. Bitfield auto-methods → std** `medium`
-- Location: `codegen_decls.zig:416-423, 447-454`
-- `has()`, `set()`, `clear()`, `toggle()` injected into every bitfield by codegen
-- Fix: bitfield backing logic moves to `src/std/bitfield.zig`. Generated bitfield struct
-  uses the std implementation. Methods are real, visible, testable.
+**B4. Bitfield → pure Orhon std module** `hard` — DEFERRED
+- Design: enum-based API — `Bitfield(Perm)` wraps a user enum, maps variants to bit positions
+- Must be implemented as a pure Orhon module in std, not Zig
+- **Blockers:**
+  1. Compt iteration over enum variants — `inline for` equivalent in Orhon
+  2. Compt arithmetic — `1 << @intFromEnum(flag)` at compile time
+  3. Compt `@intFromEnum` equivalent — convert enum variant to integer index
+- These are fundamental comptime capabilities not yet in the language
+- Once compt is powerful enough, bitfield becomes a pure std lib with zero compiler magic
+- Current compiler-generated bitfield stays until then
 
 **~~Phase C — Unify unions: remove ErrorUnion/NullUnion~~** — DONE
 

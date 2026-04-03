@@ -35,6 +35,7 @@ const SIMD_ZIG     = @embedFile("std/simd.zig");
 const TUI_ZIG      = @embedFile("std/tui.zig");
 const YAML_ZIG     = @embedFile("std/yaml.zig");
 const LINEAR_ORH   = @embedFile("std/linear.orh");
+const PTR_ZIG      = @embedFile("std/ptr.zig");
 
 // ============================================================
 // STDLIB FILE EXTRACTION
@@ -85,6 +86,7 @@ pub fn ensureStdFiles(allocator: std.mem.Allocator) !void {
         .{ .name = "tui.zig",         .content = TUI_ZIG },
         .{ .name = "yaml.zig",        .content = YAML_ZIG },
         .{ .name = "linear.orh",      .content = LINEAR_ORH },
+        .{ .name = "ptr.zig",         .content = PTR_ZIG },
     };
 
     for (files) |f| {

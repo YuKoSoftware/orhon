@@ -91,7 +91,17 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
 
         .binary_expr => |b| {
             const left = try resolveExpr(self, b.left, scope);
-            _ = try resolveExpr(self, b.right, scope);
+            const right = try resolveExpr(self, b.right, scope);
+            // Reject == and != on str — use string.equals() instead
+            if (b.op == .eq or b.op == .ne) {
+                const l_is_str = left == .primitive and left.primitive == .string;
+                const r_is_str = right == .primitive and right.primitive == .string;
+                if (l_is_str or r_is_str) {
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                        "cannot use '{s}' on str — use string.equals() for content comparison",
+                        .{if (b.op == .eq) "==" else "!="});
+                }
+            }
             if (b.op.isLogical() or b.op.isComparison()) return RT{ .primitive = .bool };
             if (b.op == .concat) return left;
             return left;

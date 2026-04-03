@@ -33,6 +33,21 @@ Ptr/RawPtr/VolatilePtr moved from compiler builtins to `std::ptr`. @deref remove
 ### ~~Thread codegen simplification~~ — done (v0.18.0)
 `thread` keyword removed. Threading moved to `std::thread`. thread_safety.zig deleted.
 
+### std::thread limitations `medium`
+
+Known issues from Zig comptime friction with Orhon codegen:
+- **No top-level `spawn()` convenience** — Zig-to-Orhon converter can't handle `anytype` params.
+  Users must write `thread.Thread(i32).spawn(func, arg)` instead of `thread.spawn(func, arg)`.
+- **spawn/spawn2 arity split** — `spawn(func, arg)` for 1-arg, `spawn2(func, a, b)` for 2-arg.
+  Zig's `@call` needs a tuple but Orhon passes individual values. Needs spawn3+ for more args.
+- **`void` not valid as generic argument** — `Thread(void)` doesn't parse. PEG grammar doesn't
+  treat `void` as an expression in argument position.
+- **var-not-reassigned false positive** — `var t = Thread.spawn(...)` triggers "use const" warning
+  because the compiler doesn't see reassignment, but `join()` needs mutable access. Workaround:
+  `join()` takes `*const Self` and copies the handle.
+- **Empty-body void functions not generated** — codegen drops functions with empty blocks,
+  so `func noop() void {}` doesn't appear in output. Needs a body like `return`.
+
 ### Bitfield as pure Orhon std module `hard` — DEFERRED
 
 - Design: enum-based API — `Bitfield(Perm)` wraps a user enum, maps variants to bit positions

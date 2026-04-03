@@ -36,10 +36,6 @@ pub const CodeGen = struct {
     all_decls: ?*std.StringHashMap(*declarations.DeclTable), // all module decl tables for cross-module default args
     file_offsets: []const module.FileOffset, // combined-line → original file+line
     module_builds: ?*const std.StringHashMapUnmanaged(module.BuildType), // imported module → build type
-    // Track variables narrowed by `is Error` or `is null` checks — used to resolve
-    // `.value` unwrap when MIR type classification is unavailable (cross-module calls).
-    error_narrowed: std.StringHashMapUnmanaged(void) = .{},
-    null_narrowed: std.StringHashMapUnmanaged(void) = .{},
     // Track the captured error variable name per scope for `.Error` → `@errorName()`
     error_capture_var: std.StringHashMapUnmanaged([]const u8) = .{},
     // MIR annotation table — Phase 1+2 typed annotation pass
@@ -211,8 +207,6 @@ pub const CodeGen = struct {
         self.type_strings.deinit(self.allocator);
         self.output.deinit(self.allocator);
         self.reassigned_vars.deinit(self.allocator);
-        self.error_narrowed.deinit(self.allocator);
-        self.null_narrowed.deinit(self.allocator);
         self.pre_stmts.deinit(self.allocator);
     }
 

@@ -51,18 +51,10 @@ pub fn generateFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const prev_reassigned_vars = cg.reassigned_vars;
     cg.reassigned_vars = .{};
     try collectAssignedMir(m.body(), &cg.reassigned_vars, cg.allocator);
-    const prev_error_narrowed = cg.error_narrowed;
-    cg.error_narrowed = .{};
-    const prev_null_narrowed = cg.null_narrowed;
-    cg.null_narrowed = .{};
     defer {
         cg.current_func_mir = prev_func_mir;
         cg.reassigned_vars.deinit(cg.allocator);
         cg.reassigned_vars = prev_reassigned_vars;
-        cg.error_narrowed.deinit(cg.allocator);
-        cg.error_narrowed = prev_error_narrowed;
-        cg.null_narrowed.deinit(cg.allocator);
-        cg.null_narrowed = prev_null_narrowed;
     }
 
     const ret_type = m.return_type orelse return;

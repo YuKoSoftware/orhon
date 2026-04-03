@@ -108,9 +108,6 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                 const cmp = if (is_eq) "==" else "!=";
                 const rhs_mir = m.rhs();
                 if (rhs_mir.literal_kind == .null_lit) {
-                    // Record narrowing for `.value` resolution
-                    if (val_mir.kind == .identifier)
-                        try cg.null_narrowed.put(cg.allocator, val_mir.name orelse "", {});
                     // (null | T) → ?T: x is null → x == null
                     try cg.emit("(");
                     try cg.generateExprMir(val_mir);
@@ -120,9 +117,6 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                 if (rhs_mir.kind == .identifier) {
                     const rhs = rhs_mir.name orelse "";
                     if (std.mem.eql(u8, rhs, K.Type.ERROR)) {
-                        // Record narrowing for `.value` resolution
-                        if (val_mir.kind == .identifier)
-                            try cg.error_narrowed.put(cg.allocator, val_mir.name orelse "", {});
                         // (Error | T) → anyerror!T: x is Error → if/else pattern
                         const t_val = if (is_eq) "false" else "true";
                         const f_val = if (is_eq) "true" else "false";

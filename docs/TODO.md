@@ -150,23 +150,14 @@ We will break things along the way — that's expected. Fix forward, don't look 
 
 **Phase E — Language features**
 
-**E0. Anonymous structs for compt type generation** `medium`
-- `compt` functions need to return full struct definitions (fields + methods)
-- Named tuples can't do this — they don't have methods
-- Anonymous structs = full struct without a pre-assigned name, caller names via type alias
-- Maps 1:1 to Zig's pattern: `fn List(comptime T: type) type { return struct { ... }; }`
-- AST node `struct_type` already exists in parser but not fully implemented
-- Example:
-  ```
-  compt func makeCounter(start: i32) type {
-      return struct {
-          value: i32 = start
-          pub func increment(self: mut& Self) void { self.value += 1 }
-      }
-  }
-  const MyCounter: type = makeCounter(0)
-  ```
-- Needed for: compt type generators, generic data structures, metaprogramming
+**~~E0. Anonymous structs for compt type generation~~** — DONE
+- `compt` functions return full struct definitions with fields, defaults, and methods
+- Grammar extended: `struct_expr` uses `struct_member` (same as named structs)
+- MIR lowering: `struct_type` children lowered into MIR nodes
+- Shared `emitStructBody` helper for both named and anonymous structs
+- `Self` → `@This()` works inside anonymous struct methods
+- Bug fixes: builder param collection, Self validation, zero-arg construction
+- 308 tests pass
 
 **Phase F — Verify and clean up**
 

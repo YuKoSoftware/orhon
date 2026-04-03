@@ -27,45 +27,129 @@ constructs (match, interpolation, operators) get codegen awareness.
 - Plain Zig files that compose our std — clean dependency graph
 - Build system must support cross-imports between std modules
 
-**1. Remove `collection_expr` grammar — collections become normal imports** `hard`
-- `List`, `Map`, `Set` are PEG grammar keywords (`orhon.peg:440-445`), parsed as
-  special `collection_expr` AST nodes instead of normal identifiers
-- Codegen for `.collection` emits `.{}` — only works with `.new()` magic
-- `.new()` rewriting (`codegen_exprs.zig:286-301`) exists because of this
-- Fix: remove `collection_expr` from grammar. `List(i32)` becomes `collections.List(i32)`
-  — a normal field access + generic call. Remove `.collection` kind from AST, MIR, codegen.
-  Collections import allocator std lib for defaults. `new()` and `withAlloc()` already
-  added to `collections.zig` — ready for real method calls once grammar is fixed.
-- Touches: `orhon.peg`, `parser.zig`, `peg/builder_exprs.zig`, `mir_lowerer.zig`,
-  `mir_node.zig`, `codegen_exprs.zig`, `codegen_match.zig`, `resolver*.zig`,
-  all fixtures and templates
+Work items ordered by: easiest first, dependencies respected. Each item is self-contained.
+We will break things along the way — that's expected. Fix forward, don't look back.
 
-**2. `wrap()`, `sat()`, `overflow()` → `@wrap`, `@sat`, `@overflow`** `easy`
+**Phase A — Quick wins (no dependency chain, isolated changes)**
+
+**A1. `wrap()`, `sat()`, `overflow()` → `@wrap`, `@sat`, `@overflow`** `easy`
 - Location: `codegen_exprs.zig:304-316`
 - Parsed as regular function calls, detected by name string comparison
 - Fix: add to PEG `compiler_func_name`, `builtins.CompilerFunc` enum,
   `generateCompilerFuncMir`. Same pattern as `@splitAt`.
 
-**3. `.value` field rewriting — move to std structs** `hard`
-- Location: `codegen_exprs.zig:376-449`
-- Magic rewrites per type class:
-  - `Handle(T)` — `.value` → `.getValue()`, `.done` → `.done()`
-  - `Ptr(T)` — `.value` → `.*`
-  - `RawPtr(T)` — `.value` → `[0]`
-  - `ErrorUnion(T)` — `.value` → `catch unreachable`
-  - `NullUnion(T)` — `.value` → `.?`
-  - `result.Error` → `@errorName(captured_err)`
-- Fix: Handle and Ptr types become real Zig structs in std with proper fields/methods.
-  ErrorUnion/NullUnion map to Zig `anyerror!T` and `?T` — these need `@unwrap` or
-  similar compiler function instead of magic `.value`. Design the unwrap API, implement
-  as std struct or `@` function, remove all field rewriting.
+**A2. `Handle(T)` call is a no-op — remove special case** `easy`
+- Location: `codegen_exprs.zig:233-235`
+- `Handle(value)` emits just the value — codegen detects "Handle" by name
+- Fix: if Handle becomes a real std struct, this disappears naturally. Otherwise
+  evaluate if this special case is even needed.
 
-**4. Bitfield auto-generated methods — move to std** `medium`
+**A3. `Version()` error — make it a normal compile error** `easy`
+- Location: `codegen_exprs.zig:225-230`
+- `Version()` outside metadata emits a codegen error by name detection
+- Fix: catch this in the resolver (pass 5) where it belongs, not in codegen.
+
+**Phase B — Move injected code to std libs**
+
+**B1. `_OrhonHandle` → std handle lib** `medium`
+- Location: `codegen.zig:297-298`
+- 1-line string literal injected into EVERY module: full struct with `getValue()`,
+  `wait()`, `done()`, `join()` methods
+- Fix: move to `src/std/handle.zig` as a real Zig struct. `Handle(T)` type in
+  `typeToZig` references the std module instead of the injected helper.
+- Unblocks: B2 (`.value`/`.done` field rewriting removal)
+
+**B2. `.value`/`.done` field rewriting on Handle — use real methods** `medium`
+- Location: `codegen_exprs.zig:376-381`
+- `handle.value` → `.getValue()`, `handle.done` → `.done()`
+- Fix: once Handle is a std struct (B1), `.value` and `.done` are real fields/methods.
+  Remove the field name detection. Users call the real API.
+- Depends on: B1
+
+**B3. `.value` field rewriting on Ptr/RawPtr — move to std** `medium`
+- Location: `codegen_exprs.zig:382-387`
+- `Ptr(T).value` → `.*`, `RawPtr(T).value` → `[0]`
+- Fix: make Ptr/RawPtr real Zig structs in std with a `value` field or `get()` method.
+  Or use `@deref` compiler function. Design decision needed.
+
+**B4. Bitfield auto-methods → std** `medium`
 - Location: `codegen_decls.zig:416-423, 447-454`
-- Codegen injects `has()`, `set()`, `clear()`, `toggle()` into every bitfield
-- Fix: bitfield becomes a Zig struct in std with these as real methods. The `bitfield`
-  keyword in Orhon generates a struct that uses the std implementation. Methods are
-  visible, testable, documented — not hidden in codegen strings.
+- `has()`, `set()`, `clear()`, `toggle()` injected into every bitfield by codegen
+- Fix: bitfield backing logic moves to `src/std/bitfield.zig`. Generated bitfield struct
+  uses the std implementation. Methods are real, visible, testable.
+
+**Phase C — ErrorUnion/NullUnion `.value` unwrapping**
+
+**C1. Design unwrap API for ErrorUnion/NullUnion** `hard`
+- Location: `codegen_exprs.zig:388-449`
+- `.value` rewrites to `catch unreachable` (error), `.?` (null), `._{tag}` (union)
+- `.Error` rewrites to `@errorName()`
+- These map to Zig's `anyerror!T` and `?T` which have no fields
+- Fix: needs design — either `@unwrap` compiler function, or wrapper structs in std
+  that expose `.value` as a real method. The wrapper approach adds overhead; the
+  `@unwrap` approach keeps it lean. Decision needed before implementation.
+- Depends on: clear on which approach
+
+**C2. Remove `.Error` field magic** `medium`
+- Location: `codegen_exprs.zig:388-404`
+- `result.Error` → `@errorName(captured_err)`
+- Fix: depends on C1 design. If ErrorUnion becomes a std struct, `.Error` is a real
+  field. If it stays as `anyerror!T`, need `@errorName` as explicit compiler function.
+
+**Phase D — Collection grammar removal (biggest change)**
+
+**D1. Remove `collection_expr` from PEG grammar** `hard`
+- Location: `orhon.peg:440-447`
+- `List`, `Map`, `Set`, `Ring`, `ORing` are grammar keywords
+- Fix: remove all 5 rules. `List(i32)` becomes `collections.List(i32)` — parsed as
+  field access + generic call. User must `import std::collections`.
+- Touches: `orhon.peg`, `parser.zig` (remove `CollectionExpr`, `collection_expr` variant),
+  `peg/builder_exprs.zig` (remove `buildCollectionExpr`), `mir_lowerer.zig` (remove
+  `.collection_expr` case), `mir_node.zig` (remove `.collection` kind)
+- Unblocks: D2
+
+**D2. Remove `.new()` constructor magic** `medium`
+- Location: `codegen_exprs.zig:286-301`
+- `Type.new()` → `.{}`, `Type.new(alloc)` → `.{ .alloc = alloc }`
+- Fix: once collections are normal imports (D1), `.new()` is a real Zig method
+  (already added to `collections.zig`). Remove the codegen string detection.
+- Also remove: `generateCollectionExprMir` in `codegen_match.zig` (emits `.{}`)
+- Depends on: D1
+
+**D3. Clean up collections.zig — import allocator from std** `easy`
+- Remove `const _default_alloc = std.heap.smp_allocator` from collections.zig
+- Import allocator from `allocator.zig` for the default — one source of truth
+- Depends on: D1 (build system must support cross-imports between std modules)
+
+**Phase E — Verify and clean up**
+
+**E1. Audit: grep for remaining string comparisons in codegen** `easy`
+- After all phases, grep `eql(u8,` in `src/codegen/` — nothing should match specific
+  type/method/field names except language keywords (`"else"`, `"self"`, `"main"`).
+
+**E2. Remove stale type_class values from MIR** `medium`
+- After B1-B3 and C1-C2, several `type_class` enum values may be unused:
+  `.thread_handle`, `.safe_ptr`, `.raw_ptr` — evaluate if they're still needed.
+
+**E3. Update all docs, CLAUDE.md, examples** `easy`
+- Reflect the new APIs: `collections.List(i32).new()`, `handle.getValue()`, etc.
+- Remove mentions of magic behavior from docs.
+
+**Not magic — legitimate language features (keep as-is):**
+- `@` compiler functions — intrinsics that map to Zig builtins
+- `main` visibility — entry point must be `pub`, language requirement
+- `else` in match — language keyword for exhaustiveness
+- `self` dereference in match — `self.*` is how Zig accesses struct instances
+- `@This()` for generic self-reference — required by Zig
+- `ErrorUnion(T)` → `anyerror!T`, `NullUnion(T)` → `?T` type mapping — language-level
+- `Ptr(T)` → `*const T` type mapping — language-level pointer syntax
+- Division `/` → `@divTrunc()`, `%` → `@mod()` — language operator semantics
+- Vector `@splat()` for scalar broadcast — language operator semantics
+- String interpolation hoisting — language feature desugaring
+- Match desugaring to if/else chains — Zig has no string switch
+- Type narrowing after `is Error`/`is null` — compiler flow analysis
+- `use` keyword unqualified imports — language import semantics
+- `const std = @import("std")` — Zig stdlib, always needed
 
 ---
 

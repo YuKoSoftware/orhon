@@ -8,12 +8,12 @@ const cache = @import("cache.zig");
 // ============================================================
 
 const THREAD_ZIG     = @embedFile("std/thread.zig");
-pub const COLLECTIONS_ZIG = @embedFile("std/collections.zig");
+const COLLECTIONS_ZIG = @embedFile("std/collections.zig");
 const ALLOCATOR_ZIG = @embedFile("std/allocator.zig");
 const CONSOLE_ZIG = @embedFile("std/console.zig");
 const FS_ZIG      = @embedFile("std/fs.zig");
 const MATH_ZIG    = @embedFile("std/math.zig");
-pub const STRING_ZIG = @embedFile("std/string.zig");
+const STRING_ZIG = @embedFile("std/string.zig");
 const SYSTEM_ZIG  = @embedFile("std/system.zig");
 const TIME_ZIG    = @embedFile("std/time.zig");
 const JSON_ZIG    = @embedFile("std/json.zig");

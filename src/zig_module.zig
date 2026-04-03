@@ -463,6 +463,46 @@ pub fn generateModule(
     return try result.toOwnedSlice(allocator);
 }
 
+/// Scans Zig source text for @import("sibling.zig") patterns where sibling
+/// is another .zig file in the same directory. Returns owned slice of module names.
+fn scanZigImports(source: []const u8, source_dir: []const u8, allocator: Allocator) ![][]const u8 {
+    var imports: std.ArrayList([]const u8) = .{};
+    errdefer {
+        for (imports.items) |item| allocator.free(item);
+        imports.deinit(allocator);
+    }
+
+    var seen = std.StringHashMapUnmanaged(void){};
+    defer seen.deinit(allocator);
+
+    var pos: usize = 0;
+    while (pos < source.len) {
+        const needle = "@import(\"";
+        const idx = std.mem.indexOfPos(u8, source, pos, needle) orelse break;
+        const start = idx + needle.len;
+        const end = std.mem.indexOfPos(u8, source, start, "\"") orelse break;
+        const import_path = source[start..end];
+        pos = end + 1;
+
+        if (!std.mem.endsWith(u8, import_path, ".zig")) continue;
+        if (std.mem.indexOf(u8, import_path, "/") != null) continue;
+
+        const mod_name = import_path[0 .. import_path.len - 4];
+
+        if (std.mem.eql(u8, mod_name, "std")) continue;
+        if (seen.contains(mod_name)) continue;
+
+        const sibling_path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ source_dir, import_path }) catch continue;
+        defer allocator.free(sibling_path);
+        std.fs.cwd().access(sibling_path, .{}) catch continue;
+
+        try seen.put(allocator, mod_name, {});
+        try imports.append(allocator, try allocator.dupe(u8, mod_name));
+    }
+
+    return imports.toOwnedSlice(allocator);
+}
+
 // ---------------------------------------------------------------------------
 // File discovery and cache writing
 // ---------------------------------------------------------------------------
@@ -585,13 +625,39 @@ pub fn discoverAndConvert(allocator: Allocator, source_dir: []const u8, output_d
         const orh_text = generateModule(entry.module_name, &tree, allocator) catch continue orelse continue;
         defer allocator.free(orh_text);
 
+        // Scan for sibling @import("x.zig") references
+        const zig_imports = scanZigImports(source_bytes, source_dir, allocator) catch &.{};
+        defer {
+            for (zig_imports) |imp| allocator.free(imp);
+            if (zig_imports.len > 0) allocator.free(zig_imports);
+        }
+
+        // If there are sibling imports, inject import declarations after module header
+        const final_orh = if (zig_imports.len > 0) blk: {
+            var combined: std.ArrayList(u8) = .{};
+            errdefer combined.deinit(allocator);
+
+            const newline = std.mem.indexOf(u8, orh_text, "\n") orelse orh_text.len;
+            try combined.appendSlice(allocator, orh_text[0 .. newline + 1]);
+
+            for (zig_imports) |imp| {
+                try combined.appendSlice(allocator, "import ");
+                try combined.appendSlice(allocator, imp);
+                try combined.appendSlice(allocator, "\n");
+            }
+
+            try combined.appendSlice(allocator, orh_text[newline + 1 ..]);
+            break :blk try combined.toOwnedSlice(allocator);
+        } else orh_text;
+        defer if (zig_imports.len > 0) allocator.free(final_orh);
+
         // Write to output directory
         const out_filename = std.fmt.allocPrint(allocator, "{s}/{s}.orh", .{ out_dir, entry.module_name }) catch continue;
         defer allocator.free(out_filename);
 
         const out_file = std.fs.cwd().createFile(out_filename, .{}) catch continue;
         defer out_file.close();
-        out_file.writeAll(orh_text) catch continue;
+        out_file.writeAll(final_orh) catch continue;
 
         // Read paired .zon config (replace .zig extension with .zon)
         var config = readZonForZigFile(allocator, entry.file_path) catch ZonConfig{};

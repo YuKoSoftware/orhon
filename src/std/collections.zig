@@ -6,8 +6,9 @@
 // Use allocator-aware Zig collections directly for hard guarantees.
 
 const std = @import("std");
+const allocator = @import("allocator.zig");
 
-const _default_alloc = std.heap.smp_allocator;
+const _default_alloc = allocator.default;
 
 // ── List(T) — dynamic array ──
 

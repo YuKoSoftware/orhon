@@ -41,17 +41,6 @@ Not blocking zero-magic work — metadata doesn't touch codegen. But needs a des
 
 ## Core — Language Ergonomics
 
-### ~~Pointer redesign~~ — done (v0.17.0)
-Ptr/RawPtr/VolatilePtr moved from compiler builtins to `std::ptr`. @deref removed.
-
-### Clean up collections.zig — import allocator from std `easy`
-
-- Remove `const _default_alloc = std.heap.smp_allocator` from collections.zig
-- Import allocator from `allocator.zig` for the default — one source of truth
-
-### ~~Thread codegen simplification~~ — done (v0.18.0)
-`thread` keyword removed. Threading moved to `std::thread`. thread_safety.zig deleted.
-
 ### std::thread limitations `medium`
 
 Known Zig comptime friction with Orhon codegen:
@@ -75,15 +64,6 @@ Known Zig comptime friction with Orhon codegen:
 
 - `generateExprMir()` in codegen_exprs.zig — 537 lines, one giant switch
 - Split into per-expression-kind functions (binary, call, field, index, etc.)
-
-### Audit codegen string comparisons `easy`
-
-- Grep `eql(u8,` in `src/codegen/` — nothing should match specific type/method/field
-  names except language keywords (`"else"`, `"self"`, `"main"`).
-
-### Remove stale type_class values from MIR `medium`
-
-- `.thread_handle` is unused after `thread` keyword removal — evaluate and remove.
 
 ---
 

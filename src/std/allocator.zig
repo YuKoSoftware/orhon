@@ -3,6 +3,9 @@
 
 const std = @import("std");
 
+/// Default allocator for std types — SMP (fastest general-purpose).
+pub const default = std.heap.smp_allocator;
+
 // ── SMP — general-purpose production allocator (lock-free, pooled) ──
 
 /// General-purpose production allocator using lock-free pooled allocation.

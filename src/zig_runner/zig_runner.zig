@@ -14,6 +14,7 @@ const _zig_runner_discovery = @import("zig_runner_discovery.zig");
 
 // Re-exports for backward compatibility with pipeline.zig and other callers
 pub const MultiTarget = _zig_runner_multi.MultiTarget;
+pub const ZigDep = _zig_runner_multi.ZigDep;
 pub const buildZigContentMulti = _zig_runner_multi.buildZigContentMulti;
 pub const findZig = _zig_runner_discovery.findZig;
 pub const generateSharedCImportFiles = _zig_runner_build.generateSharedCImportFiles;
@@ -339,9 +340,9 @@ pub const ZigRunner = struct {
     }
 
     /// Run all test blocks in the generated Zig project
-    pub fn runTests(self: *ZigRunner, module_name: []const u8, project_name: []const u8, zig_modules: []const []const u8) !bool {
+    pub fn runTests(self: *ZigRunner, module_name: []const u8, project_name: []const u8, shared_modules: []const []const u8, zig_modules: []const []const u8, zig_deps: []const ZigDep) !bool {
         // Generate build.zig with test step included
-        try self.generateBuildZig(module_name, .exe, project_name, null, &.{}, &.{}, &.{}, &.{}, false, zig_modules, &.{});
+        try self.generateBuildZig(module_name, .exe, project_name, null, &.{}, shared_modules, &.{}, &.{}, false, zig_modules, &.{}, zig_deps);
 
         var args: std.ArrayListUnmanaged([]const u8) = .{};
         defer args.deinit(self.allocator);
@@ -377,6 +378,7 @@ pub const ZigRunner = struct {
         needs_cpp: bool,
         zig_modules: []const []const u8,
         include_dirs: []const []const u8,
+        zig_deps: []const ZigDep,
     ) !void {
         const target = MultiTarget{
             .module_name = module_name,
@@ -390,6 +392,7 @@ pub const ZigRunner = struct {
             .c_source_files = c_source_files,
             .needs_cpp = needs_cpp,
             .include_dirs = include_dirs,
+            .zig_deps = zig_deps,
         };
         const targets = [1]MultiTarget{target};
         const content = try _zig_runner_multi.buildZigContentMulti(self.allocator, &targets, zig_modules);

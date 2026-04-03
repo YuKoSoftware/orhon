@@ -7,6 +7,12 @@ const cache = @import("../cache.zig");
 const module = @import("../module.zig");
 const _build = @import("zig_runner_build.zig");
 
+/// A dependency between two zig-backed modules: mod_name's sidecar @imports dep_name's sidecar.
+pub const ZigDep = struct {
+    mod_name: []const u8,
+    dep_name: []const u8,
+};
+
 /// Descriptor for a build target in a multi-target project
 pub const MultiTarget = struct {
     module_name: []const u8,
@@ -21,6 +27,7 @@ pub const MultiTarget = struct {
     needs_cpp: bool = false, // true when C++ source files are present (.cpp/.cc)
     source_dir: ?[]const u8 = null, // source directory for addIncludePath (module-relative headers)
     include_dirs: []const []const u8 = &.{}, // include search paths from .zon .include (for addIncludePath)
+    zig_deps: []const ZigDep = &.{}, // inter-zig-module dependencies
 };
 
 /// Build a unified build.zig for multiple targets.
@@ -40,18 +47,6 @@ pub fn buildZigContentMulti(
         \\pub fn build(b: *std.Build) void {
         \\    const target = b.standardTargetOptions(.{});
         \\    const optimize = b.standardOptimizeOption(.{});
-        \\
-        \\    // Orhon internal modules — shared across all targets
-        \\    const string_mod = b.createModule(.{
-        \\        .root_source_file = b.path("_orhon_string.zig"),
-        \\        .target = target,
-        \\        .optimize = optimize,
-        \\    });
-        \\    const coll_mod = b.createModule(.{
-        \\        .root_source_file = b.path("_orhon_collections.zig"),
-        \\        .target = target,
-        \\        .optimize = optimize,
-        \\    });
         \\
     );
 
@@ -146,6 +141,30 @@ pub fn buildZigContentMulti(
         }
     }
 
+    // Wire inter-zig-module dependencies: when a zig sidecar @imports another
+    // zig sidecar, the build system needs addImport to resolve the module name.
+    {
+        var emitted_zig_deps = std.StringHashMapUnmanaged(void){};
+        defer {
+            var kit = emitted_zig_deps.keyIterator();
+            while (kit.next()) |k| allocator.free(@constCast(k.*));
+            emitted_zig_deps.deinit(allocator);
+        }
+        for (targets) |t| {
+            for (t.zig_deps) |dep| {
+                // Deduplicate: same dep may appear via multiple targets
+                const key = try std.fmt.allocPrint(allocator, "{s}->{s}", .{ dep.mod_name, dep.dep_name });
+                defer allocator.free(key);
+                if (emitted_zig_deps.contains(key)) continue;
+                try emitted_zig_deps.put(allocator, try allocator.dupe(u8, key), {});
+                try _build.appendFmt(&buf, allocator,
+                    \\    zig_{s}.addImport("{s}_zig", zig_{s});
+                    \\
+                , .{ dep.mod_name, dep.dep_name, dep.dep_name });
+            }
+        }
+    }
+
     // C link libs are applied to lib/exe artifacts below, not to module declarations.
     // Build.Module doesn't have linkSystemLibrary/linkLibC — only Step.Compile does.
 
@@ -210,10 +229,8 @@ pub fn buildZigContentMulti(
                     \\        .target = target,
                     \\        .optimize = optimize,
                     \\    }});
-                    \\    mod_{s}.addImport("_orhon_string", string_mod);
-                    \\    mod_{s}.addImport("_orhon_collections", coll_mod);
                     \\
-                , .{ mod_name, mod_name, mod_name, mod_name });
+                , .{ mod_name, mod_name });
 
                 // If this shared module is zig-backed, add self _zig import
                 // so its generated re-export code can @import("name_zig")
@@ -259,10 +276,8 @@ pub fn buildZigContentMulti(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
-            \\    lib_{s}.root_module.addImport("_orhon_string", string_mod);
-            \\    lib_{s}.root_module.addImport("_orhon_collections", coll_mod);
             \\
-        , .{ t.module_name, t.project_name, linkage, t.module_name, t.module_name, t.module_name });
+        , .{ t.module_name, t.project_name, linkage, t.module_name });
 
         // Emit addImport for lib-to-lib dependencies so Zig resolves them via the
         // build system module graph rather than falling back to file-path lookup.
@@ -351,10 +366,8 @@ pub fn buildZigContentMulti(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
-            \\    exe_{s}.root_module.addImport("_orhon_string", string_mod);
-            \\    exe_{s}.root_module.addImport("_orhon_collections", coll_mod);
             \\
-        , .{ t.module_name, t.project_name, ver_line, t.module_name, t.module_name, t.module_name });
+        , .{ t.module_name, t.project_name, ver_line, t.module_name });
 
         // Link imported lib modules
         for (t.lib_imports) |lib_name| {
@@ -448,8 +461,6 @@ pub fn buildZigContentMulti(
             \\            .optimize = optimize,
             \\        }}),
             \\    }});
-            \\    unit_tests.root_module.addImport("_orhon_string", string_mod);
-            \\    unit_tests.root_module.addImport("_orhon_collections", coll_mod);
             \\
         , .{t.module_name});
 

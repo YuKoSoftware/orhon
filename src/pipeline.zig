@@ -21,18 +21,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     // Ensure embedded std files exist in .orh-cache/std/
     try _std_bundle.ensureStdFiles(allocator);
 
-    // Copy internal support files to generated dir — always available for all modules
-    try cache.ensureGeneratedDir();
-    {
-        const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_string.zig", .{});
-        defer file.close();
-        try file.writeAll(_std_bundle.STRING_ZIG);
-    }
-    {
-        const file = try std.fs.cwd().createFile(cache.GENERATED_DIR ++ "/_orhon_collections.zig", .{});
-        defer file.close();
-        try file.writeAll(_std_bundle.COLLECTIONS_ZIG);
-    }
     // ── Stdlib Zig Conversion ────────────────────────────────
     // Convert stdlib .zig files (in .orh-cache/std/) to .orh declarations,
     // writing generated .orh back to .orh-cache/std/ so preScanImports finds them.
@@ -43,7 +31,16 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         allocator.free(std_zig_converted);
     }
 
-    // Copy stdlib .zig files to .orh-cache/generated/{name}_zig.zig for the build system
+    // Build set of converted std module names for import rewriting
+    var std_mod_names = std.StringHashMapUnmanaged(void){};
+    defer std_mod_names.deinit(allocator);
+    for (std_zig_converted) |cm| {
+        try std_mod_names.put(allocator, cm.name, {});
+    }
+
+    // Copy stdlib .zig files to .orh-cache/generated/{name}_zig.zig for the build system.
+    // Rewrite @import("sibling.zig") → @import("sibling_zig") for sibling std modules,
+    // since the files are renamed to {name}_zig.zig in the generated dir.
     try cache.ensureGeneratedDir();
     for (std_zig_converted) |cm| {
         const name = cm.name;
@@ -55,9 +52,45 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         const content = std.fs.cwd().readFileAlloc(allocator, src_path, 1024 * 1024) catch continue;
         defer allocator.free(content);
 
+        // Rewrite sibling @import("x.zig") → @import("x_zig") for known std modules
+        var rewritten: std.ArrayListUnmanaged(u8) = .{};
+        defer rewritten.deinit(allocator);
+        var pos: usize = 0;
+        while (pos < content.len) {
+            const needle = "@import(\"";
+            const idx = std.mem.indexOfPos(u8, content, pos, needle) orelse {
+                try rewritten.appendSlice(allocator, content[pos..]);
+                break;
+            };
+            // Copy everything up to and including @import("
+            try rewritten.appendSlice(allocator, content[pos .. idx + needle.len]);
+            const start = idx + needle.len;
+            const end = std.mem.indexOfPos(u8, content, start, "\"") orelse {
+                try rewritten.appendSlice(allocator, content[start..]);
+                break;
+            };
+            const import_path = content[start..end];
+
+            if (std.mem.endsWith(u8, import_path, ".zig") and
+                std.mem.indexOf(u8, import_path, "/") == null)
+            {
+                const stem = import_path[0 .. import_path.len - 4];
+                if (!std.mem.eql(u8, stem, "std") and std_mod_names.contains(stem)) {
+                    // Rewrite: "allocator.zig" → "allocator_zig"
+                    try rewritten.appendSlice(allocator, stem);
+                    try rewritten.appendSlice(allocator, "_zig");
+                    pos = end; // skip the old import path, keep the closing "
+                    continue;
+                }
+            }
+            // No rewrite — copy the import path as-is
+            try rewritten.appendSlice(allocator, import_path);
+            pos = end;
+        }
+
         const dst_file = std.fs.cwd().createFile(dst_path, .{}) catch continue;
         defer dst_file.close();
-        dst_file.writeAll(content) catch {};
+        dst_file.writeAll(rewritten.items) catch {};
     }
 
     // ── Zig Module Discovery ─────────────────────────────────
@@ -333,18 +366,21 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         // ── Zig Module Source Copy ──────────────────────────────
         // Copy the original .zig file to .orh-cache/generated/{name}_zig.zig
         // so the build system can register it as a named module.
+        // Skip std modules — already copied with import rewriting in the early pipeline.
         if (mod_ptr.is_zig_module) {
             if (mod_ptr.zig_source_path) |zig_src| {
-                try cache.ensureGeneratedDir();
-                const zig_dst = try std.fmt.allocPrint(allocator, "{s}/{s}_zig.zig", .{ cache.GENERATED_DIR, mod_name });
-                defer allocator.free(zig_dst);
+                if (!std.mem.startsWith(u8, zig_src, cache.CACHE_DIR)) {
+                    try cache.ensureGeneratedDir();
+                    const zig_dst = try std.fmt.allocPrint(allocator, "{s}/{s}_zig.zig", .{ cache.GENERATED_DIR, mod_name });
+                    defer allocator.free(zig_dst);
 
-                const content = try std.fs.cwd().readFileAlloc(allocator, zig_src, 1024 * 1024);
-                defer allocator.free(content);
+                    const content = try std.fs.cwd().readFileAlloc(allocator, zig_src, 1024 * 1024);
+                    defer allocator.free(content);
 
-                const dst_file = try std.fs.cwd().createFile(zig_dst, .{});
-                defer dst_file.close();
-                try dst_file.writeAll(content);
+                    const dst_file = try std.fs.cwd().createFile(zig_dst, .{});
+                    defer dst_file.close();
+                    try dst_file.writeAll(content);
+                }
             }
         }
 
@@ -411,19 +447,34 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             }
             const binary_name2 = if (project_name.len > 0) project_name else mod.name;
             last_binary_name = binary_name2;
-            // Collect zig-backed module names for test build.zig
+            // Collect module imports, zig module names, and cross-zig deps for test build.zig
             var test_zig_mods = std.ArrayListUnmanaged([]const u8){};
             defer test_zig_mods.deinit(allocator);
+            var test_mod_imports = std.ArrayListUnmanaged([]const u8){};
+            defer test_mod_imports.deinit(allocator);
+            var test_zig_deps = std.ArrayListUnmanaged(zig_runner.ZigDep){};
+            defer test_zig_deps.deinit(allocator);
             {
                 var bmod_it = mod_resolver.modules.iterator();
                 while (bmod_it.next()) |bmod_entry| {
                     const bmod = bmod_entry.value_ptr;
+                    if (bmod.is_root) continue;
+                    try test_mod_imports.append(allocator, bmod.name);
                     if (bmod.is_zig_module) {
                         try test_zig_mods.append(allocator, bmod.name);
+                        for (bmod.imports) |sub_imp| {
+                            const sub_mod = mod_resolver.modules.get(sub_imp) orelse continue;
+                            if (sub_mod.is_zig_module) {
+                                try test_zig_deps.append(allocator, .{
+                                    .mod_name = bmod.name,
+                                    .dep_name = sub_imp,
+                                });
+                            }
+                        }
                     }
                 }
             }
-            const passed = try runner.runTests(mod.name, binary_name2, test_zig_mods.items);
+            const passed = try runner.runTests(mod.name, binary_name2, test_mod_imports.items, test_zig_mods.items, test_zig_deps.items);
             if (!passed) any_failed = true;
         }
         return if (!any_failed) try allocator.dupe(u8, last_binary_name) else null;
@@ -488,6 +539,11 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     defer {
         for (mod_import_lists.items) |li| allocator.free(li);
         mod_import_lists.deinit(allocator);
+    }
+    var zig_dep_lists = std.ArrayListUnmanaged([]const zig_runner.ZigDep){};
+    defer {
+        for (zig_dep_lists.items) |s| allocator.free(s);
+        zig_dep_lists.deinit(allocator);
     }
 
     var exe_binary_name: ?[]const u8 = null; // tracked for `orhon run`
@@ -589,6 +645,25 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             const include_dir_slice = try allocator.dupe([]const u8, mt_include_dirs.items);
             try include_dir_lists.append(allocator, include_dir_slice);
 
+            // Build zig cross-dependency list: for each zig-backed module in this
+            // target's imports, check if it imports other zig-backed modules.
+            var zig_deps_list = std.ArrayListUnmanaged(zig_runner.ZigDep){};
+            defer zig_deps_list.deinit(allocator);
+            for (mod_imports.items) |imp_name| {
+                const imp_mod = mod_resolver.modules.get(imp_name) orelse continue;
+                if (!imp_mod.is_zig_module) continue;
+                for (imp_mod.imports) |sub_imp| {
+                    const sub_mod = mod_resolver.modules.get(sub_imp) orelse continue;
+                    if (!sub_mod.is_zig_module) continue;
+                    try zig_deps_list.append(allocator, .{
+                        .mod_name = imp_name,
+                        .dep_name = sub_imp,
+                    });
+                }
+            }
+            const zig_deps_slice = try allocator.dupe(zig_runner.ZigDep, zig_deps_list.items);
+            try zig_dep_lists.append(allocator, zig_deps_slice);
+
             try multi_targets.append(allocator, .{
                 .module_name = mod.name,
                 .project_name = binary_name,
@@ -601,6 +676,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 .c_source_files = c_source_slice,
                 .needs_cpp = mt_needs_cpp,
                 .include_dirs = include_dir_slice,
+                .zig_deps = zig_deps_slice,
             });
         }
     }

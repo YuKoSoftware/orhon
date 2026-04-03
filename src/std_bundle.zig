@@ -7,7 +7,7 @@ const cache = @import("cache.zig");
 // EMBEDDED STDLIB CONSTANTS
 // ============================================================
 
-pub const ASYNC_ZIG  = @embedFile("std/async.zig");
+const THREAD_ZIG     = @embedFile("std/thread.zig");
 pub const COLLECTIONS_ZIG = @embedFile("std/collections.zig");
 const ALLOCATOR_ZIG = @embedFile("std/allocator.zig");
 const CONSOLE_ZIG = @embedFile("std/console.zig");
@@ -58,7 +58,7 @@ pub fn ensureStdFiles(allocator: std.mem.Allocator) !void {
     try std.fs.cwd().makePath(std_dir);
 
     const files = [_]struct { name: []const u8, content: []const u8 }{
-        .{ .name = "async.zig",       .content = ASYNC_ZIG },
+        .{ .name = "thread.zig",      .content = THREAD_ZIG },
         .{ .name = "collections.zig", .content = COLLECTIONS_ZIG },
         .{ .name = "allocator.zig",   .content = ALLOCATOR_ZIG },
         .{ .name = "console.zig",     .content = CONSOLE_ZIG },

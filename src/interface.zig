@@ -85,8 +85,15 @@ fn formatExprSimple(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc:
         .int_literal   => |s| try buf.appendSlice(alloc, s),
         .float_literal => |s| try buf.appendSlice(alloc, s),
         .identifier    => |s| try buf.appendSlice(alloc, s),
+        .tuple_literal  => |t| {
+            try buf.append(alloc, '(');
+            for (t.fields, 0..) |f, i| {
+                if (i > 0) try buf.appendSlice(alloc, ", ");
+                try formatExprSimple(f, buf, alloc);
+            }
+            try buf.append(alloc, ')');
+        },
         .call_expr     => |c| {
-            // tuple (1, 2, 3) etc.
             if (c.callee.* == .identifier) try buf.appendSlice(alloc, c.callee.identifier);
             try buf.append(alloc, '(');
             for (c.args, 0..) |a, i| {

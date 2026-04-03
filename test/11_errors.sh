@@ -44,7 +44,7 @@ mkdir -p neg_anchor/src
 cat > neg_anchor/src/neg_anchor.orh <<'ORHON'
 module neg_anchor
 #name    = "neg_anchor"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void {
 }
@@ -64,7 +64,7 @@ cd "$TESTDIR"
 cat > "$TESTDIR/badimport/src/badimport.orh" <<'ORHON'
 module badimport
 #name    = "badimport"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 import nonexistent
 func main() void {
@@ -108,7 +108,7 @@ mkdir -p neg_thread/src
 cat > neg_thread/src/neg_thread.orh <<'ORHON'
 module neg_thread
 #name    = "neg_thread"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 
 thread worker(x: i32) Handle(i32) {
@@ -130,7 +130,7 @@ mkdir -p neg_split/src
 cat > neg_split/src/neg_split.orh <<'ORHON'
 module neg_split
 #name    = "neg_split"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void {
     const arr: [4]i32 = [1, 2, 3, 4]
@@ -149,7 +149,7 @@ mkdir -p neg_rettype/src
 cat > neg_rettype/src/neg_rettype.orh <<'ORHON'
 module neg_rettype
 #name    = "neg_rettype"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func foo() i32 {
     return "hello"
@@ -168,7 +168,7 @@ mkdir -p neg_ifcond/src
 cat > neg_ifcond/src/neg_ifcond.orh <<'ORHON'
 module neg_ifcond
 #name    = "neg_ifcond"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void {
     if(42) { }
@@ -185,7 +185,7 @@ mkdir -p neg_whilecond/src
 cat > neg_whilecond/src/neg_whilecond.orh <<'ORHON'
 module neg_whilecond
 #name    = "neg_whilecond"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void {
     while(42) { }
@@ -202,7 +202,7 @@ mkdir -p neg_break/src
 cat > neg_break/src/neg_break.orh <<'ORHON'
 module neg_break
 #name    = "neg_break"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void {
     break
@@ -219,7 +219,7 @@ mkdir -p neg_continue/src
 cat > neg_continue/src/neg_continue.orh <<'ORHON'
 module neg_continue
 #name    = "neg_continue"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void {
     continue
@@ -236,7 +236,7 @@ mkdir -p neg_varref/src
 cat > neg_varref/src/neg_varref.orh <<'ORHON'
 module neg_varref
 #name    = "neg_varref"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 struct Foo {
     x: i32
@@ -257,7 +257,7 @@ mkdir -p neg_typemismatch/src
 cat > neg_typemismatch/src/neg_typemismatch.orh <<'ORHON'
 module neg_typemismatch
 #name    = "neg_typemismatch"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void {
     var x: i32 = "hello"
@@ -274,7 +274,7 @@ mkdir -p neg_dupvar/src
 cat > neg_dupvar/src/neg_dupvar.orh <<'ORHON'
 module neg_dupvar
 #name    = "neg_dupvar"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void {
     const x: i32 = 1
@@ -292,7 +292,7 @@ mkdir -p neg_default_order/src
 cat > neg_default_order/src/neg_default_order.orh <<'ORHON'
 module neg_default_order
 #name    = "neg_default_order"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func foo(a: i32 = 5, b: i32) i32 {
     return a + b
@@ -310,7 +310,7 @@ mkdir -p neg_u8str/src
 cat > neg_u8str/src/neg_u8str.orh <<'ORHON'
 module neg_u8str
 #name    = "neg_u8str"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func greet(s: str) void { }
 func main() void {
@@ -330,7 +330,7 @@ mkdir -p neg_str_eq/src
 cat > neg_str_eq/src/neg_str_eq.orh <<'ORHON'
 module neg_str_eq
 #name    = "neg_str_eq"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void {
     const a: str = "hello"
@@ -584,7 +584,7 @@ mkdir -p neg_modmain/src
 cat > neg_modmain/src/neg_modmain.orh <<'ORHON'
 module main
 #name    = "neg_modmain"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = exe
 func main() void { }
 ORHON
@@ -599,7 +599,7 @@ mkdir -p neg_libmain/src
 cat > neg_libmain/src/neg_libmain.orh <<'ORHON'
 module neg_libmain
 #name    = "neg_libmain"
-#version = (\1)
+#version = (1, 0, 0)
 #build   = static
 func main() void { }
 ORHON

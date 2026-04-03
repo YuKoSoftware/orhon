@@ -475,19 +475,17 @@ pub const Resolver = struct {
     }
 };
 
-/// Extract (major, minor, patch) from a Version(x, y, z) call node.
-/// Returns null if the node is not a well-formed Version call.
+/// Extract (major, minor, patch) from a (x, y, z) tuple node.
+/// Returns null if the node is not a well-formed version tuple.
 pub fn extractVersion(node: *parser.Node) ?[3]u64 {
-    if (node.* != .call_expr) return null;
-    const call = node.call_expr;
-    if (call.callee.* != .identifier) return null;
-    if (!std.mem.eql(u8, call.callee.identifier, builtins.BT.VERSION)) return null;
-    if (call.args.len != 3) return null;
+    if (node.* != .tuple_literal) return null;
+    const tup = node.tuple_literal;
+    if (tup.fields.len != 3) return null;
 
     var parts: [3]u64 = undefined;
-    for (call.args, 0..) |arg, i| {
-        if (arg.* != .int_literal) return null;
-        parts[i] = std.fmt.parseInt(u64, arg.int_literal, 10) catch return null;
+    for (tup.fields, 0..) |field, i| {
+        if (field.* != .int_literal) return null;
+        parts[i] = std.fmt.parseInt(u64, field.int_literal, 10) catch return null;
     }
     return parts;
 }
@@ -550,7 +548,7 @@ test "module resolver init" {
 }
 
 test "extractVersion - valid" {
-    // Build a synthetic Version(1, 2, 3) call_expr node inline
+    // Build a synthetic (1, 2, 3) tuple_literal node
     const alloc = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -563,21 +561,18 @@ test "extractVersion - valid" {
     const patch = try a.create(parser.Node);
     patch.* = .{ .int_literal = "3" };
 
-    const callee = try a.create(parser.Node);
-    callee.* = .{ .identifier = "Version" };
+    const fields = try a.alloc(*parser.Node, 3);
+    fields[0] = major;
+    fields[1] = minor;
+    fields[2] = patch;
 
-    const args = try a.alloc(*parser.Node, 3);
-    args[0] = major;
-    args[1] = minor;
-    args[2] = patch;
-
-    var call_node = parser.Node{ .call_expr = .{
-        .callee = callee,
-        .args = args,
-        .arg_names = &.{},
+    var tuple_node = parser.Node{ .tuple_literal = .{
+        .is_named = false,
+        .fields = fields,
+        .field_names = &.{},
     } };
 
-    const ver = extractVersion(&call_node);
+    const ver = extractVersion(&tuple_node);
     try std.testing.expect(ver != null);
     try std.testing.expectEqual(@as(u64, 1), ver.?[0]);
     try std.testing.expectEqual(@as(u64, 2), ver.?[1]);

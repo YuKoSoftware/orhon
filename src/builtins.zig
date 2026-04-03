@@ -11,7 +11,6 @@ pub const BUILTIN_TYPES = [_][]const u8{
     "VolatilePtr",
     "Handle",
     "Error",
-    "Version",
     "Vector",
     "ErrorUnion",
     "NullUnion",
@@ -27,7 +26,7 @@ pub const BT = struct {
     pub const ERROR_UNION = "ErrorUnion";
     pub const NULL_UNION = "NullUnion";
     pub const VECTOR = "Vector";
-    pub const VERSION = "Version";
+
 };
 
 /// Returns true if name is a pointer wrapper type (Ptr, RawPtr, or VolatilePtr).
@@ -189,8 +188,7 @@ test "builtin type detection" {
     try std.testing.expect(!isBuiltinType("List"));
     try std.testing.expect(!isBuiltinType("Map"));
     try std.testing.expect(!isBuiltinType("Set"));
-    try std.testing.expect(isBuiltinType("Version"));
-    try std.testing.expect(!isBuiltinType("VersionRule"));
+    try std.testing.expect(!isBuiltinType("Version"));
     try std.testing.expect(!isBuiltinType("Dependency"));
     try std.testing.expect(isBuiltinType("Vector"));
 }

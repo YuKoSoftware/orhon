@@ -221,14 +221,6 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             const callee_is_field = callee_mir.kind == .field_access;
             const callee_name = callee_mir.name orelse "";
             const call_args = m.callArgs();
-            // Version() rejection
-            if (callee_is_ident and std.mem.eql(u8, callee_name, builtins.BT.VERSION)) {
-                try cg.reporter.report(.{
-                    .message = "Version() can only be used in #version metadata",
-                    .loc = cg.nodeLocMir(m),
-                });
-                return;
-            }
             // Handle(value) → just emit the value
             if (callee_is_ident and std.mem.eql(u8, callee_name, builtins.BT.HANDLE) and call_args.len == 1) {
                 try cg.generateExprMir(call_args[0]);

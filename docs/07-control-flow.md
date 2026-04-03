@@ -102,7 +102,7 @@ match s {
 match value {
     0       => { }    // exact integer
     (4..8)  => { }    // inclusive range — parentheses required
-    "hello" => { }    // String
+    "hello" => { }    // str
     North   => { }    // enum variant, no type prefix
     else    => { }    // catch-all
 }
@@ -185,10 +185,10 @@ The two arm kinds never mix in the same `match` block — value matching and typ
 Use `is` / `is not` to branch on type inside a [[05-functions#`compt` Functions|compt func]]:
 
 ```
-compt func describe(val: any) String {
+compt func describe(val: any) str {
     if(val is i32) { return "integer" }
     if(val is f32) { return "float" }
-    if(val is String) { return "String" }
+    if(val is str) { return "str" }
     return "unknown"
 }
 ```

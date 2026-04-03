@@ -60,7 +60,7 @@ The compiler maps Zig types to Orhon types automatically:
 | Zig | Orhon |
 |-----|-------|
 | `u8`, `i32`, `f64`, `bool`, `void`, `usize` | same |
-| `[]const u8` | `String` |
+| `[]const u8` | `str` |
 | `?T` | `NullUnion(T)` |
 | `anyerror!T` | `ErrorUnion(T)` |
 | `*T` | `mut& T` |
@@ -130,7 +130,7 @@ still appears with its other methods.
 Simple constants with literal values are mapped:
 
 ```zig
-pub const RED = "\x1b[31m";    // → pub const RED: String = "\x1b[31m"
+pub const RED = "\x1b[31m";    // → pub const RED: str = "\x1b[31m"
 pub const MAGIC = 42;          // → pub const MAGIC: i64 = 42
 ```
 

@@ -4,7 +4,7 @@ module snap_structs
 pub struct Point {
     pub x: f32
     pub y: f32
-    pub label: String
+    pub label: str
 }
 
 // struct with a method (const& Self parameter)
@@ -18,7 +18,7 @@ pub struct Circle {
 
 // struct with default field values
 pub struct Config {
-    pub name: String
+    pub name: str
     pub count: i32 = 0
     pub enabled: bool = true
 }

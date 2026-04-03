@@ -11,12 +11,12 @@ f16, bf16, f32, f64, f128         // floating point
                                   // bf16 — bfloat16, AI training
                                   // f128 — maps to C long double
 bool                              // true or false
-String                            // immutable text — shorthand for []const u8
+str                               // immutable text — shorthand for []const u8
                                   // always copies (cheap — just a pointer + length, 16 bytes)
                                   // for mutable byte manipulation, use []u8
 ```
 
-`String` is a higher-level type. Under the hood it is `[]const u8` — an immutable slice. Copying a `String` copies the pointer, not the data, so it is always cheap. For mutable byte buffers, use `[]u8` which follows normal move semantics.
+`str` is a primitive type. Under the hood it is `[]const u8` — an immutable slice. Copying a `str` copies the pointer, not the data, so it is always cheap. For mutable byte buffers, use `[]u8` which follows normal move semantics.
 
 `u8` doubles as a byte and character type — interpreted based on usage context.
 
@@ -24,7 +24,7 @@ String                            // immutable text — shorthand for []const u8
 
 ## String Literals & Escape Sequences
 
-`String` literals are enclosed in double quotes. Escape sequences follow universal convention:
+`str` literals are enclosed in double quotes. Escape sequences follow universal convention:
 
 ```
 "hello world"       // basic string
@@ -36,7 +36,7 @@ String                            // immutable text — shorthand for []const u8
 "carriage\rreturn" // carriage return
 ```
 
-Multiline strings use `\n` — no special multiline syntax needed. `String` is immutable `[]const u8` under the hood.
+Multiline strings use `\n` — no special multiline syntax needed. `str` is immutable `[]const u8` under the hood.
 
 ### String Interpolation
 
@@ -44,15 +44,15 @@ Embed expressions inside strings with `@{expr}`. Any expression that can be form
 is valid inside the braces:
 
 ```
-const name: String = "world"
-const greeting: String = "hello @{name}!"     // "hello world!"
+const name: str = "world"
+const greeting: str = "hello @{name}!"     // "hello world!"
 
 const x: i32 = 42
-const msg: String = "value is @{x}"           // "value is 42"
+const msg: str = "value is @{x}"           // "value is 42"
 
 const a: i32 = 3
 const b: i32 = 7
-const calc: String = "@{a} + @{b} = @{a + b}" // "3 + 7 = 10"
+const calc: str = "@{a} + @{b} = @{a + b}" // "3 + 7 = 10"
 ```
 
 **How it works:**
@@ -64,7 +64,7 @@ const calc: String = "@{a} + @{b} = @{a + b}" // "3 + 7 = 10"
 - Multiple `@{...}` segments in one string are combined into a single `allocPrint` call
 
 **Supported expression types:**
-- `String` / `[]const u8` — inserted as-is
+- `str` / `[]const u8` — inserted as-is
 - Integer types (`i32`, `u64`, etc.) — formatted as decimal
 - Float types (`f32`, `f64`, etc.) — formatted as decimal
 - Any expression that evaluates to one of the above

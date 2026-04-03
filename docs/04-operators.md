@@ -72,7 +72,7 @@ Compiler error if any tuple field is non-numeric, or if tuple shapes don't match
 ## String and Array Concatenation
 `++` is the concatenation operator — distinct from `+` (arithmetic). Never user-defined. Compiler error if types don't match. Using `+` on strings or `++` on numbers is a compile error.
 ```
-var s: String = "hello " ++ "world"    // String concatenation
+var s: str = "hello " ++ "world"    // str concatenation
 var a: []i32 = [1, 2] ++ [3, 4]       // array concatenation, types must match
 ```
 

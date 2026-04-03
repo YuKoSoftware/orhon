@@ -304,7 +304,7 @@ NEG_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$NEG_OUT" | grep -qi "defaults.*must.*after\|required.*param"; then pass "rejects default before required param"
 else fail "rejects default before required param" "$NEG_OUT"; fi
 
-# []u8 → String coercion rejected
+# []u8 → str coercion rejected
 cd "$TESTDIR"
 mkdir -p neg_u8str/src
 cat > neg_u8str/src/neg_u8str.orh <<'ORHON'
@@ -312,7 +312,7 @@ module neg_u8str
 #name    = "neg_u8str"
 #version = Version(1, 0, 0)
 #build   = exe
-func greet(s: String) void { }
+func greet(s: str) void { }
 func main() void {
     var buf: [5]u8 = [104, 101, 108, 108, 111]
     const slice: []u8 = buf[0..5]
@@ -321,8 +321,26 @@ func main() void {
 ORHON
 cd neg_u8str
 NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "cannot pass.*u8.*String\|fromBytes"; then pass "rejects []u8 as String"
-else fail "rejects []u8 as String" "$NEG_OUT"; fi
+if echo "$NEG_OUT" | grep -qi "cannot pass.*u8.*str\|fromBytes\|string\.fromBytes"; then pass "rejects []u8 as str"
+else fail "rejects []u8 as str" "$NEG_OUT"; fi
+
+# str == error (no magic equality)
+cd "$TESTDIR"
+mkdir -p neg_str_eq/src
+cat > neg_str_eq/src/neg_str_eq.orh <<'ORHON'
+module neg_str_eq
+#name    = "neg_str_eq"
+#version = Version(1, 0, 0)
+#build   = exe
+func main() void {
+    const a: str = "hello"
+    if(a == "hello") { }
+}
+ORHON
+cd neg_str_eq
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "cannot use.*==.*str\|str.*=="; then pass "rejects == on str"
+else fail "rejects == on str" "$NEG_OUT"; fi
 
 # duplicate anchor file
 cd "$TESTDIR"

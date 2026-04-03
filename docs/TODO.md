@@ -6,6 +6,18 @@ Items ordered by importance and how much they unblock future work.
 
 ## Bugs
 
+### `splitAt` codegen emits invalid Zig `medium`
+
+`arr.splitAt(3)` in Orhon gets codegen'd as `arr.splitAt(3)` in Zig — but Zig arrays
+have no `splitAt` method. Should generate:
+```zig
+const left = arr[0..3];
+const right = arr[3..];
+```
+Blocked: `tester.orh:test_split_at` fails to compile → all `10_runtime` tests fail.
+Fix in `src/codegen/codegen_stmts.zig` — detect `splitAt` method call on array in
+destructuring assignments and emit the correct slice expressions.
+
 ---
 
 ## Core — Language Ergonomics
@@ -82,6 +94,13 @@ Replaced the `bridge` keyword with automatic Zig module conversion. `.zig` files
 `src/` are auto-discovered, parsed with `std.zig.Ast`, and converted to Orhon modules.
 Bridge keyword, grammar, and all infrastructure removed. 27 stdlib `.orh` bridge files
 deleted. See `docs/14-zig-bridge.md` for the new system.
+
+### ~~String → str rename, std::str → std::string~~ — DONE
+
+Renamed the `String` type to `str` (lowercase, consistent with other primitives). Renamed the
+`str` stdlib module to `string`. Removed all string magic: auto-import, method dispatch rewriting,
+`==`/`!=` rewriting, split/splitAt destructuring. Added `equals()` to string library. `==` on `str`
+is now a compile error with helpful message.
 
 ### ~~Per-module `.zon` build config — replace `#cimport`~~ — DONE (v0.15.1)
 

@@ -29,22 +29,20 @@ pub fn endsWith(s: []const u8, suffix: []const u8) bool {
     return std.mem.endsWith(u8, s, suffix);
 }
 
-const NullableI32 = union(enum) { some: i32, none: void };
-
-/// Return the first index of a substring, or none if not found.
-pub fn indexOf(haystack: []const u8, needle: []const u8) NullableI32 {
+/// Return the first index of a substring, or null if not found.
+pub fn indexOf(haystack: []const u8, needle: []const u8) ?i32 {
     if (std.mem.indexOf(u8, haystack, needle)) |pos| {
-        return .{ .some = @intCast(pos) };
+        return @intCast(pos);
     }
-    return .{ .none = {} };
+    return null;
 }
 
-/// Return the last index of a substring, or none if not found.
-pub fn lastIndexOf(haystack: []const u8, needle: []const u8) NullableI32 {
+/// Return the last index of a substring, or null if not found.
+pub fn lastIndexOf(haystack: []const u8, needle: []const u8) ?i32 {
     if (std.mem.lastIndexOf(u8, haystack, needle)) |pos| {
-        return .{ .some = @intCast(pos) };
+        return @intCast(pos);
     }
-    return .{ .none = {} };
+    return null;
 }
 
 // ── Case ──
@@ -281,9 +279,9 @@ test "startsWith and endsWith" {
 
 test "indexOf" {
     const result = indexOf("hello", "ll");
-    try std.testing.expectEqual(@as(i32, 2), result.some);
+    try std.testing.expectEqual(@as(i32, 2), result.?);
     const none = indexOf("hello", "xyz");
-    try std.testing.expect(none == .none);
+    try std.testing.expect(none == null);
 }
 
 test "toUpper and toLower" {

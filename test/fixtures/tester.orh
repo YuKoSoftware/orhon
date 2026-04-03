@@ -1261,7 +1261,7 @@ pub func test_string_eq() i32 {
 pub func test_string_ne() i32 {
     const a: str = "hello"
     const b: str = "world"
-    if(a != b) { return 1 }
+    if(!string.equals(a, b)) { return 1 }
     return 0
 }
 

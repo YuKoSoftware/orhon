@@ -6,7 +6,7 @@ func add(a: i32, b: i32) i32 {
     return a + b
 }
 
-func log(msg: String) void {
+func log(msg: str) void {
     // returns nothing
 }
 ```
@@ -54,7 +54,7 @@ compt func Pair(A: type, B: type) type {
 }
 
 var pos: Vec2(f32) = Vec2(f32)(x: 1.0, y: 2.0)
-var p: Pair(i32, String) = Pair(i32, String)(first: 42, second: "hello")
+var p: Pair(i32, str) = Pair(i32, str)(first: 42, second: "hello")
 ```
 
 Type-generating `compt` functions map to Zig's `comptime` functions. Each unique set
@@ -79,7 +79,7 @@ const result: i32 = doubled(21)    // 42 — computed at compile time
 The compiler generates a specialized version for each concrete type used:
 
 ```
-compt func describe(val: any) String {
+compt func describe(val: any) str {
     if(val is i32) { return "integer" }
     if(val is f32) { return "float" }
     return "unknown"
@@ -126,7 +126,7 @@ For callback patterns, pass context as extra arguments or wrap state in a [[10-s
 Compiler functions are reserved keywords that look like function calls. Zero runtime cost — they disappear entirely in the output binary. Cannot be shadowed or redefined by user code.
 
 ```
-@typename(x)             // returns the type name as a String — usable for display
+@typename(x)             // returns the type name as a str — usable for display
 @typeid(x)               // returns unique compiler assigned integer ID — fast identity check
 @cast(T, x)              // converts x to target type T — always explicit
 @copy(x)                 // explicitly copies a non-primitive, original stays valid
@@ -142,8 +142,8 @@ Compiler functions are reserved keywords that look like function calls. Zero run
 @fieldNames(T)           // returns comptime slice of all field names on struct T
 ```
 
-### `@typename` — type name as `String`
-Returns the name of the type as a `String`. Useful for debugging, logging, and serialization. Cannot be used in type positions.
+### `@typename` — type name as `str`
+Returns the name of the type as a `str`. Useful for debugging, logging, and serialization. Cannot be used in type positions.
 ```
 @typename(x)              // "Player"
 @typename(42)             // "i32"
@@ -231,7 +231,7 @@ compt for(@fieldNames(Point)) |name| {
 Always available without any import. Have a real runtime presence — produce actual code in the output binary.
 
 ### Error
-`Error` is a distinct `String` type (see [[08-error-handling]]). An error is just a message — the `String` carries all the information needed to trace and fix the problem. Can be created inline or stored as a named constant for reuse.
+`Error` is a distinct `str` type (see [[08-error-handling]]). An error is just a message — the `str` carries all the information needed to trace and fix the problem. Can be created inline or stored as a named constant for reuse.
 
 ```
 // inline

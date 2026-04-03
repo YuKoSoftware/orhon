@@ -24,7 +24,7 @@ var value: i32 = result.value      // safe — Error case eliminated
 
 Inline errors are fine for one-off cases:
 ```
-func readFile(path: String) ErrorUnion(String) {
+func readFile(path: str) ErrorUnion(str) {
     return Error("could not open file")
 }
 ```

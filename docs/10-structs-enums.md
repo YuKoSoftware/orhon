@@ -4,7 +4,7 @@
 
 ```
 struct Player {
-    pub name: String        // pub = accessible outside module
+    pub name: str        // pub = accessible outside module
     health: f32             // private by default
     score: i32
 
@@ -12,7 +12,7 @@ struct Player {
     var defaultHealth: f32 = 100.0
 
     // static method — no self, called on type name
-    func create(name: String) Player {
+    func create(name: str) Player {
         return Player(name: name, score: 0, health: Player.defaultHealth)
     }
 
@@ -37,7 +37,7 @@ struct Player {
 Fields can have default values using `=`. Any field with a default can be omitted during instantiation:
 ```
 struct Player {
-    pub name: String
+    pub name: str
     health: f32 = 100.0      // default value
     score: i32 = 0           // default value
     position: Vec2f = Vec2f(x: 0.0, y: 0.0)
@@ -53,7 +53,7 @@ var p: Player = Player(name: "hero", health: 50.0)
 Default values also work for enum variants, tuple fields, and function parameters:
 ```
 // function parameter defaults
-func greet(name: String, greeting: String = "hello") void { }
+func greet(name: str, greeting: str = "hello") void { }
 greet("world")              // uses default greeting
 greet("world", "hi")        // overrides default
 
@@ -92,7 +92,7 @@ pub struct Stack(T: type) {
 }
 
 // usage
-const p = Pair(i32, String)(first: 42, second: "hello")
+const p = Pair(i32, str)(first: 42, second: "hello")
 var s = Stack(i32)(items: [...], top: 0)
 s.push(10)
 ```
@@ -114,13 +114,13 @@ const max = Player.maxPlayers         // access via type name
 Explicit only — no automatic method forwarding:
 ```
 struct Animal {
-    name: String
+    name: str
     func speak(self: const& Animal) void { }
 }
 
 struct Dog {
     animal: Animal
-    breed: String
+    breed: str
 }
 
 var d: Dog = Dog(animal: Animal(name: "rex"), breed: "labrador")

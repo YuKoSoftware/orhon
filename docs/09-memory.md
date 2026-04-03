@@ -10,7 +10,7 @@
 5. All safety checks are compile time only — zero runtime overhead
 
 ### Copy vs Move
-- **Primitives** (`i32`, `i64`, `u8`, `f64`, `bool`, `usize`, `isize`, `String` etc.) — silently copy on assignment, compiler does not track them. `String` is `[]const u8` under the hood (a pointer + length), so copying is always cheap (16 bytes).
+- **Primitives** (`i32`, `i64`, `u8`, `f64`, `bool`, `usize`, `isize`, `str` etc.) — silently copy on assignment, compiler does not track them. `str` is `[]const u8` under the hood (a pointer + length), so copying is always cheap (16 bytes).
 - **`var` non-primitives** (structs, slices, user types) — move by default, compiler tracks ownership
 - **`const` non-primitives** — auto-borrowed as `const&` when passed by value. The compiler passes a read-only reference instead of copying. No silent deep copies. Use `@copy()` when you actually need a copy.
 - `@move` for explicit move intent (see [[05-functions#Compiler Functions]])
@@ -21,8 +21,8 @@
 var a: i32 = 5
 var b: i32 = a            // copy, a still valid, compiler does not track
 
-var s: String = "hello"
-var s2: String = s        // copy, s still valid (String is a slice — cheap)
+var s: str = "hello"
+var s2: str = s        // copy, s still valid (str is a slice — cheap)
 
 var data: MyStruct = getData()
 var d2: MyStruct = data          // move, data is now invalid
@@ -43,7 +43,7 @@ Use-after-move is a compile time error. Zero runtime overhead — moved variable
 ### Borrowing
 `mut&` borrows a value mutably, `const&` borrows immutably. Caller retains ownership.
 ```
-var s: String = "hello"
+var s: str = "hello"
 print(mut& s)     // borrow, s still valid
 print(mut& s)     // still valid
 print(s)          // move, s is gone after this
@@ -51,8 +51,8 @@ print(s)          // move, s is gone after this
 
 In function signatures:
 ```
-func read(x: const& String) void { }    // immutable borrow, read only
-func mutate(x: mut& String) void { }    // mutable borrow, can modify
+func read(x: const& str) void { }    // immutable borrow, read only
+func mutate(x: mut& str) void { }    // mutable borrow, can modify
 ```
 
 ### Borrow Rules
@@ -67,7 +67,7 @@ struct Game {
     player: Player
 
     // Don't return references — provide methods instead:
-    func getPlayerName(self: const& Game) String { return self.player.name }
+    func getPlayerName(self: const& Game) str { return self.player.name }
     func damagePlayer(self: mut& Game, amount: f32) void {
         self.player.health = self.player.health - amount
     }
@@ -91,7 +91,7 @@ Structs are atomic ownership units — all fields move together or none do.
 var p: Player = Player(name: "john", score: 0, health: 100.0)
 var p2: Player = p      // entire struct moves, p is invalid
 
-var name: mut& String = mut& p2.name    // borrow a field, p2 still owns everything
+var name: mut& str = mut& p2.name    // borrow a field, p2 still owns everything
 ```
 Moving individual fields out of a struct is a compile time error.
 
@@ -245,7 +245,7 @@ var smp: allocator.SMP = allocator.SMP.create()
 defer { smp.deinit() }
 var a = smp.allocator()
 var items: List(i32) = List(i32).new(a)
-var counts: Map(String, i32) = Map(String, i32).new(a)
+var counts: Map(str, i32) = Map(str, i32).new(a)
 defer { items.free() }
 defer { counts.free() }
 ```

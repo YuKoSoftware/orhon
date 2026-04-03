@@ -101,7 +101,7 @@ func match_range(n: i32) i32 {
 
 // match works on strings — each arm is a string literal
 
-func match_string(s: String) i32 {
+func match_string(s: str) i32 {
     match(s) {
         "hello" => { return 1 }
         "world" => { return 2 }

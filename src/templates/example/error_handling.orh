@@ -38,7 +38,7 @@ func value_or_default(id: i32) i32 {
 
 // ─── Arbitrary Unions ────────────────────────────────────────────────────────
 
-func get_value(flag: bool) (i32 | String) {
+func get_value(flag: bool) (i32 | str) {
     if(flag) {
         return 42
     }

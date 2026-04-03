@@ -20,7 +20,7 @@ func list_demo() i32 {
 // Map(K, V) — key-value store
 
 func map_demo() i32 {
-    var scores: Map(String, i32) = Map(String, i32).new()
+    var scores: Map(str, i32) = Map(str, i32).new()
     defer { scores.free() }
     scores.put("alice", 42)
     scores.put("bob", 99)
@@ -31,7 +31,7 @@ func map_demo() i32 {
 // Map.get returns NullUnion(V)
 
 func map_get_demo() i32 {
-    var m: Map(String, i32) = Map(String, i32).new()
+    var m: Map(str, i32) = Map(str, i32).new()
     defer { m.free() }
     m.put("x", 77)
     const result: NullUnion(i32) = m.get("x")

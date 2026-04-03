@@ -117,10 +117,10 @@ func identity(val: any) any {
     return val
 }
 
-compt func describe(val: any) String {
+compt func describe(val: any) str {
     if(val is i32) { return "integer" }
     if(val is f32) { return "float" }
-    if(val is String) { return "string" }
+    if(val is str) { return "string" }
     return "unknown"
 }
 

@@ -20,6 +20,13 @@ code. If the compiler can't handle it, we fix the compiler, not add workarounds.
 Only `@` compiler functions (intrinsics that map to Zig builtins) and language-level
 constructs (match, interpolation, operators) get codegen awareness.
 
+**Stdlib rules:**
+- Each std lib owns its domain — one source of truth per concern
+- Std libs import what they need from other std libs (e.g. collections imports allocator)
+- No duplication, no secret defaults, no hardcoded values that belong in another module
+- Plain Zig files that compose our std — clean dependency graph
+- Build system must support cross-imports between std modules
+
 **1. Remove `collection_expr` grammar — collections become normal imports** `hard`
 - `List`, `Map`, `Set` are PEG grammar keywords (`orhon.peg:440-445`), parsed as
   special `collection_expr` AST nodes instead of normal identifiers

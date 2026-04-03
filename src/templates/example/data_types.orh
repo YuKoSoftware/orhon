@@ -56,15 +56,15 @@ func tuple_demo() i32 {
 // ─── Integer Overflow ───────────────────────────────────────────────────────
 
 func wrap_add(a: i32, b: i32) i32 {
-    return wrap(a + b)
+    return @wrap(a + b)
 }
 
 func sat_add(a: i32, b: i32) i32 {
-    return sat(a + b)
+    return @sat(a + b)
 }
 
 func checked_add(a: i32, b: i32) ErrorUnion(i32) {
-    return overflow(a + b)
+    return @overflow(a + b)
 }
 
 // ─── Compound Assignment ────────────────────────────────────────────────────

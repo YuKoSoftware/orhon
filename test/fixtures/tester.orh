@@ -946,17 +946,17 @@ pub func test_split_list() i32 {
 // ─── Overflow helpers ───────────────────────────────────────
 
 pub func test_wrap() i32 {
-    return wrap(2 + 3)
+    return @wrap(2 + 3)
 }
 
 pub func test_sat() i32 {
-    return sat(10 + 5)
+    return @sat(10 + 5)
 }
 
 pub func test_overflow_ok() i32 {
     const a: i32 = 5
     const b: i32 = 3
-    const result = overflow(a + b)
+    const result = @overflow(a + b)
     if(result is Error) { return 0 }
     return result.i32
 }

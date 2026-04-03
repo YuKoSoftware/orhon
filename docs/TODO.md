@@ -44,11 +44,9 @@ We will break things along the way — that's expected. Fix forward, don't look 
 
 **Phase A — Quick wins (no dependency chain, isolated changes)**
 
-**A1. `wrap()`, `sat()`, `overflow()` → `@wrap`, `@sat`, `@overflow`** `easy`
-- Location: `codegen_exprs.zig:304-316`
-- Parsed as regular function calls, detected by name string comparison
-- Fix: add to PEG `compiler_func_name`, `builtins.CompilerFunc` enum,
-  `generateCompilerFuncMir`. Same pattern as `@splitAt`.
+**~~A1. `wrap()`, `sat()`, `overflow()` → `@wrap`, `@sat`, `@overflow`~~** — DONE
+- Added to PEG grammar, CompilerFunc enum, generateCompilerFuncMir
+- Removed string detection from codegen_exprs.zig
 
 **A2. `Handle(T)` call is a no-op — remove special case** `easy`
 - Location: `codegen_exprs.zig:233-235`

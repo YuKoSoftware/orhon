@@ -292,20 +292,6 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                     }
                 }
             }
-            // overflow/wrap/sat builtins
-            if (callee_is_ident and call_args.len == 1) {
-                const arg_m = call_args[0];
-                if (std.mem.eql(u8, callee_name, "wrap")) {
-                    try cg.generateWrappingExprMir(arg_m);
-                    return;
-                } else if (std.mem.eql(u8, callee_name, "sat")) {
-                    try cg.generateSaturatingExprMir(arg_m);
-                    return;
-                } else if (std.mem.eql(u8, callee_name, "overflow")) {
-                    try cg.generateOverflowExprMir(arg_m);
-                    return;
-                }
-            }
             // Clean call generation
             const call_arg_names = m.arg_names;
             if (call_arg_names != null and call_arg_names.?.len > 0) {

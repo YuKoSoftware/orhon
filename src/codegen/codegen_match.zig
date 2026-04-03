@@ -724,6 +724,15 @@ pub fn generateCompilerFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             // Standalone usage is not meaningful — splitAt always produces two values.
             try cg.emit("/* @splitAt must be used with destructuring: const a, b = @splitAt(arr, n) */");
         },
+        .wrap => {
+            if (args.len > 0) try cg.generateWrappingExprMir(args[0]);
+        },
+        .sat => {
+            if (args.len > 0) try cg.generateSaturatingExprMir(args[0]);
+        },
+        .overflow => {
+            if (args.len > 0) try cg.generateOverflowExprMir(args[0]);
+        },
     }
 }
 

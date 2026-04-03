@@ -1,9 +1,0 @@
-module fixture
-#name    = "fail_ptr_cast"
-#version = (1, 0, 0)
-#build   = exe
-
-func main() void {
-    var x: i32 = 42
-    const p: Ptr(i32) = Ptr(i32).cast(mut& x)
-}

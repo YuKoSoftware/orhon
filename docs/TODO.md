@@ -16,13 +16,18 @@ The compiler has hardcoded special cases that detect specific method/field names
 rewrite them. These violate the "no special treatment" rule. Each should either become
 a proper `@` compiler function or move to a stdlib `.zig` struct with real fields/methods.
 
-**1. `.new()` constructor rewriting** `medium`
-- Location: `codegen_exprs.zig:286-301`
+**1. `.new()` constructor rewriting + `collection_expr` grammar** `hard`
+- Location: `codegen_exprs.zig:286-301`, `orhon.peg:440-445`
 - Magic: `Type.new()` → `.{}`, `Type.new(alloc)` → `.{ .alloc = alloc }`
-- Detects `.new` by name on type expressions and collections
-- Fix: Collections already have `.new()` in their `.zig` files — investigate whether
-  codegen still needs this rewrite or if the real Zig method handles it. If needed,
-  make `.new()` a language-level constructor pattern (not stdlib-specific).
+- Root cause: `List`, `Map`, `Set` are parsed as grammar-level `collection_expr` nodes
+  (PEG rules at `orhon.peg:443-445`), not as normal identifiers from an imported module.
+  The codegen for `.collection` nodes emits `.{}` — it was designed to work only with
+  the `.new()` magic. Cannot remove `.new()` magic without first removing `collection_expr`
+  from the grammar and making `List(i32)` parse as `collections.List(i32)` — a normal
+  field access + generic call.
+- Fix requires: remove `collection_expr` grammar rules, make collections normal imports,
+  update all codegen/MIR/resolver paths that handle `.collection` kind. Large refactor.
+- `new()` and `withAlloc()` methods added to collections.zig (ready for when grammar is fixed).
 
 **2. `wrap()`, `sat()`, `overflow()` should be `@wrap`, `@sat`, `@overflow`** `easy`
 - Location: `codegen_exprs.zig:304-316`

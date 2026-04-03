@@ -19,6 +19,16 @@ pub fn List(comptime T: type) type {
 
         const Self = @This();
 
+        /// Create a new list with the default allocator.
+        pub fn new() Self {
+            return .{};
+        }
+
+        /// Create a new list with a custom allocator.
+        pub fn withAlloc(alloc_arg: std.mem.Allocator) Self {
+            return .{ .alloc = alloc_arg };
+        }
+
         /// Appends an item to the end of the list.
         pub fn add(self: *Self, item: T) void {
             self.inner.append(self.alloc, item) catch return; // OOM: cannot add item
@@ -77,6 +87,16 @@ pub fn Map(comptime K: type, comptime V: type) type {
         alloc: std.mem.Allocator = _default_alloc,
 
         const Self = @This();
+
+        /// Create a new map with the default allocator.
+        pub fn new() Self {
+            return .{};
+        }
+
+        /// Create a new map with a custom allocator.
+        pub fn withAlloc(alloc_arg: std.mem.Allocator) Self {
+            return .{ .alloc = alloc_arg };
+        }
 
         /// Inserts or updates a key-value pair in the map.
         pub fn put(self: *Self, key: K, value: V) void {
@@ -141,6 +161,16 @@ pub fn Set(comptime T: type) type {
         alloc: std.mem.Allocator = _default_alloc,
 
         const Self = @This();
+
+        /// Create a new set with the default allocator.
+        pub fn new() Self {
+            return .{};
+        }
+
+        /// Create a new set with a custom allocator.
+        pub fn withAlloc(alloc_arg: std.mem.Allocator) Self {
+            return .{ .alloc = alloc_arg };
+        }
 
         /// Adds an item to the set; duplicates are ignored.
         pub fn add(self: *Self, item: T) void {

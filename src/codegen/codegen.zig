@@ -436,6 +436,7 @@ pub const CodeGen = struct {
 
     /// MIR-path struct codegen — iterates MirNode children instead of AST members.
     pub fn generateStructMir(self: *CodeGen, m: *mir.MirNode) anyerror!void { return decls_impl.generateStructMir(self, m); }
+    pub fn emitStructBody(self: *CodeGen, children: []*mir.MirNode) anyerror!void { return decls_impl.emitStructBody(self, children); }
 
     // ============================================================
     // ENUMS

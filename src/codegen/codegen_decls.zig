@@ -311,7 +311,25 @@ pub fn generateStructMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         cg.indent += 1;
     }
 
-    for (m.children) |child| {
+    try emitStructBody(cg, m.children);
+
+    if (is_generic) {
+        cg.generic_struct_name = null;
+        cg.indent -= 1;
+        try cg.emitIndent();
+        try cg.emit("};\n");
+        cg.indent -= 1;
+        try cg.emit("}\n");
+    } else {
+        cg.indent -= 1;
+        try cg.emit("};\n");
+    }
+}
+
+/// Emit the body of a struct (fields, methods, constants) from MIR children.
+/// Used by both named structs and anonymous struct expressions.
+pub fn emitStructBody(cg: *CodeGen, children: []*mir.MirNode) anyerror!void {
+    for (children) |child| {
         switch (child.kind) {
             .field_def => {
                 const fname = child.name orelse continue;
@@ -341,18 +359,6 @@ pub fn generateStructMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             },
             else => {},
         }
-    }
-
-    if (is_generic) {
-        cg.generic_struct_name = null;
-        cg.indent -= 1;
-        try cg.emitIndent();
-        try cg.emit("};\n");
-        cg.indent -= 1;
-        try cg.emit("}\n");
-    } else {
-        cg.indent -= 1;
-        try cg.emit("};\n");
     }
 }
 

@@ -761,6 +761,31 @@ pub fn generateDestructMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const d_names = m.names orelse &.{};
     const decl_keyword: []const u8 = if (m.is_const) "const" else "var";
     const val_m = m.value();
+    // splitAt destructuring: const left, right = arr.splitAt(n)
+    if (d_names.len == 2 and val_m.kind == .call) {
+        const callee_m = val_m.getCallee();
+        if (callee_m.kind == .field_access) {
+            const method = callee_m.name orelse "";
+            if (std.mem.eql(u8, method, "splitAt") and val_m.callArgs().len == 1) {
+                const destruct_idx = cg.destruct_counter;
+                cg.destruct_counter += 1;
+                try cg.emitFmt("var _orhon_s{d}: usize = @intCast(", .{destruct_idx});
+                try cg.generateExprMir(val_m.callArgs()[0]);
+                try cg.emit(");\n");
+                try cg.emitIndent();
+                try cg.emitFmt("_ = &_orhon_s{d};\n", .{destruct_idx});
+                try cg.emitIndent();
+                try cg.emitFmt("{s} {s} = ", .{ decl_keyword, d_names[0] });
+                try cg.generateExprMir(callee_m.children[0]);
+                try cg.emitFmt("[0.._orhon_s{d}];\n", .{destruct_idx});
+                try cg.emitIndent();
+                try cg.emitFmt("{s} {s} = ", .{ decl_keyword, d_names[1] });
+                try cg.generateExprMir(callee_m.children[0]);
+                try cg.emitFmt("[_orhon_s{d}..];", .{destruct_idx});
+                return;
+            }
+        }
+    }
     // Normal tuple destructuring
     const idx = cg.destruct_counter;
     cg.destruct_counter += 1;

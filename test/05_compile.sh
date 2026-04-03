@@ -37,7 +37,7 @@ mkdir -p failtest/src
 cat > failtest/src/failtest.orh <<'ORHON'
 module failtest
 #name    = "failtest"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 func add(a: i32, b: i32) i32 {
     return a + b

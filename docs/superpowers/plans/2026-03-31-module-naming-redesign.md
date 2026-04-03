@@ -422,7 +422,7 @@ Rename `src/templates/main.orh` to `src/templates/project.orh` and update conten
 module {s}
 
 #name    = "{s}"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 
 import std::console

@@ -262,17 +262,11 @@ true     // boolean true
 false    // boolean false
 ```
 
-### Version
-A named tuple of three `u32` values following semantic versioning — major, minor, patch.
+### Version tuple
+A plain tuple of three `u32` values following semantic versioning — major, minor, patch.
 String versions are never allowed — hard compiler error. Used in `#version` and `#dep` metadata:
 ```
-Version(major: u32, minor: u32, patch: u32)
+#version = (1, 0, 0)
+#dep "./libs/mylib" (2, 0, 0)   // minimum version — warn if newer, error if older
+#dep "./libs/utils"              // no version constraint
 ```
-
-```
-#version = Version(1, 0, 0)
-#dep "./libs/mylib" Version(2, 0, 0)   // minimum version — warn if newer, error if older
-#dep "./libs/utils"                     // no version constraint
-```
-
-`Version` is a compiler-known builtin — no import needed.

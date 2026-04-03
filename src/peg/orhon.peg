@@ -48,7 +48,7 @@ metadata
     <- '#' metadata_body NL  {label: "metadata directive"}
 
 metadata_body
-    <- 'dep' expr expr?                         # #dep "path" Version?
+    <- 'dep' expr expr?                         # #dep "path" (x,y,z)?
      / IDENTIFIER '=' expr                      # #field = value
 
 import_decl
@@ -394,6 +394,7 @@ primary_expr
      / null_literal
      / array_literal
      / tuple_literal
+     / anon_tuple_literal
      / grouped_expr
      / error_literal
      / collection_expr
@@ -428,6 +429,10 @@ array_literal
 
 tuple_literal
     <- '(' _ IDENTIFIER ':' expr (_ ',' _ IDENTIFIER ':' expr)* (_ ',')? _ ')'  {label: "tuple literal"}
+
+# Anonymous tuple: (expr, expr, ...) — used for version metadata e.g. (1, 0, 0)
+anon_tuple_literal
+    <- '(' _ expr (_ ',' _ expr)+ (_ ',')? _ ')'  {label: "anonymous tuple literal"}
 
 grouped_expr
     <- '(' _ expr _ ')'

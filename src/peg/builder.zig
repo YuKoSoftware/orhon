@@ -180,6 +180,7 @@ const rule_dispatch = std.StaticStringMap(BuilderFn).initComptime(.{
     .{ "array_literal", exprs_impl.buildArrayLiteral },
     .{ "grouped_expr", exprs_impl.buildGroupedExpr },
     .{ "tuple_literal", exprs_impl.buildTupleLiteral },
+    .{ "anon_tuple_literal", exprs_impl.buildAnonTupleLiteral },
     .{ "struct_expr", exprs_impl.buildStructExpr },
     // Binary expression tower
     .{ "or_expr", exprs_impl.buildBinaryExpr },

@@ -957,7 +957,7 @@ Create `test/fixtures/blueprint_main.orh`:
 ```
 module main
 #name    = "bptest"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 
 func main() void {
@@ -1154,7 +1154,7 @@ cd /tmp && mkdir bpcheck && cd bpcheck && mkdir src
 cat > src/main.orh << 'EOF'
 module main
 #name    = "bpcheck"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 
 blueprint Eq {

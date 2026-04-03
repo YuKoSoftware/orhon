@@ -382,7 +382,7 @@ pub fn scanAndParseDeps(self: *Resolver, alloc: std.mem.Allocator, project_dir: 
 
         // Version validation: if #dep carried a version requirement,
         // find the dep's root module and compare versions.
-        const required = meta.metadata.extra; // ?*Node — Version(x,y,z) or null
+        const required = meta.metadata.extra; // ?*Node — (x,y,z) or null
         if (required == null) continue;
 
         // Find the dep's root module (the one with #build in the dep dir)
@@ -402,7 +402,7 @@ pub fn scanAndParseDeps(self: *Resolver, alloc: std.mem.Allocator, project_dir: 
 
         const dep_ast = dep_root orelse continue;
 
-        // Extract dep's declared version from #version = Version(x,y,z)
+        // Extract dep's declared version from #version = (x,y,z)
         var dep_ver: ?*parser.Node = null;
         for (dep_ast.program.metadata) |dmeta| {
             if (dmeta.metadata.field == .version) {

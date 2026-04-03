@@ -44,11 +44,6 @@ We will break things along the way — that's expected. Fix forward, don't look 
 - Fix: if Handle becomes a real std struct, this disappears naturally. Otherwise
   evaluate if this special case is even needed.
 
-**A3. `Version()` error — make it a normal compile error** `easy`
-- Location: `codegen_exprs.zig:225-230`
-- `Version()` outside metadata emits a codegen error by name detection
-- Fix: catch this in the resolver (pass 5) where it belongs, not in codegen.
-
 **Phase B — Move injected code to std libs**
 
 **B1. `_OrhonHandle` → std handle lib** `medium`

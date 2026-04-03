@@ -1,7 +1,7 @@
 module fixture
 
 #name    = "fail_type_mismatch_display"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 
 func bad_if() void {

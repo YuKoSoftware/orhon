@@ -1,7 +1,7 @@
 module fixture
 
 #name    = "fail_borrow"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 
 struct Point {

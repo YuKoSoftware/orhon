@@ -1,7 +1,7 @@
 module {s}
 
 #name    = "{s}"
-#version = Version(0, 1, 0)
+#version = (0, 1, 0)
 #build   = exe
 
 import std::console

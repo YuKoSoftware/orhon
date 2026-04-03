@@ -147,6 +147,23 @@ pub fn buildTupleLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     } });
 }
 
+pub fn buildAnonTupleLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    // anon_tuple_literal <- '(' _ expr (',' _ expr)+ _ ')'
+    var values = std.ArrayListUnmanaged(*Node){};
+    for (cap.children) |*child| {
+        if (child.rule) |r| {
+            if (std.mem.eql(u8, r, "expr")) {
+                try values.append(ctx.alloc(), try builder.buildNode(ctx, child));
+            }
+        }
+    }
+    return ctx.newNode(.{ .tuple_literal = .{
+        .is_named = false,
+        .fields = try values.toOwnedSlice(ctx.alloc()),
+        .field_names = &.{},
+    } });
+}
+
 pub fn buildStructExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     // struct_expr <- 'struct' '{' _ (('pub')? field_decl _)* _ '}'
     var fields = std.ArrayListUnmanaged(*Node){};

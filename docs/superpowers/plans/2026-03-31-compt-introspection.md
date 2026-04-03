@@ -432,7 +432,7 @@ Create `test/fixtures/fail_introspection.orh`:
 module main
 
 #name    = "fail_introspection"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 
 struct Point {
@@ -561,7 +561,7 @@ cd /tmp && mkdir -p introtest/src && cd introtest
 cat > src/main.orh << 'EOF'
 module main
 #name = "introtest"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build = exe
 
 import std::console

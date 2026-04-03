@@ -1,6 +1,6 @@
 module fixture
 #name    = "fail_union_dup"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 
 pub struct A { pub x: i32 }

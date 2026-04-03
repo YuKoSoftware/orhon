@@ -21,7 +21,7 @@ ORHON
 cat > src/multimod.orh <<'ORHON'
 module multimod
 #name    = "multimod"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 import std::console
 import utils

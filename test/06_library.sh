@@ -15,7 +15,7 @@ cd "$TESTDIR/testlib"
 cat > src/testlib.orh <<'ORHON'
 module testlib
 #name    = "testlib"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = static
 
 pub func add(a: i32, b: i32) i32 {
@@ -68,7 +68,7 @@ mkdir -p ifacelib/src
 cat > ifacelib/src/ifacelib.orh <<'ORHON'
 module ifacelib
 #name    = "ifacelib"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = static
 pub func add(a: i32, b: i32) i32 {
     return a + b
@@ -86,7 +86,7 @@ mkdir -p ifaceuser/src
 cat > ifaceuser/src/ifaceuser.orh <<'ORHON'
 module ifaceuser
 #name    = "ifaceuser"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 import ifacelib
 func main() void {

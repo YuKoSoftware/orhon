@@ -38,7 +38,7 @@ compt func double(n: i32) i32 {
 
 // These directives go in the module's anchor file (e.g. main.orh):
 //   #name    = "myproject"        — project name
-//   #version = Version(1, 0, 0)   — semantic version
+//   #version = (1, 0, 0)   — semantic version
 //   #build   = exe                — build target: exe, lib, staticlib, dynlib
 
 // ─── Zig Modules ─────────────────────────────────────────────────────────────

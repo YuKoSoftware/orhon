@@ -63,7 +63,7 @@ Regular modules are only compiled if something imports them (dead code eliminati
 module myproj
 
 #build   = exe
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #name    = "myproj"
 
 func main() void {
@@ -76,7 +76,7 @@ func main() void {
 module mylib
 
 #build   = static
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #name    = "mylib"
 ```
 
@@ -238,7 +238,7 @@ compiler is the build system.
 module myproj
 
 #name    = "myproj"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = exe
 
 func main() void { }
@@ -249,7 +249,7 @@ func main() void { }
 module mylib
 
 #name    = "mylib"
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 #build   = static
 ```
 
@@ -272,11 +272,11 @@ Declared with `#dep` in the anchor file. The compiler never fetches dependencies
 the developer places them at the declared paths.
 
 ```
-#dep "./libs/mylib" Version(1, 0, 0)   // path + minimum version
+#dep "./libs/mylib" (1, 0, 0)   // path + minimum version
 #dep "./libs/utils"                     // path only — no version check
 ```
 
-**Version semantics** — `Version(x, y, z)` is the minimum required version:
+**Version semantics** — `(x, y, z)` is the minimum required version:
 - Exact match → silent
 - Library is newer → warning: `mylib is version 1.2.0, expected 1.0.0`
 - Library is older → hard compiler error: `mylib version 0.9.0 below required 1.0.0`
@@ -284,7 +284,7 @@ the developer places them at the declared paths.
 
 The library declares its version in its anchor file:
 ```
-#version = Version(1, 0, 0)
+#version = (1, 0, 0)
 ```
 
 **Dependency types:**

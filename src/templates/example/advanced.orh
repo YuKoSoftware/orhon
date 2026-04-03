@@ -36,7 +36,7 @@ func map_get_demo() i32 {
     m.put("x", 77)
     const result: (null | i32) = m.get("x")
     if(result is not null) {
-        return result.value
+        return result.i32
     }
     return 0
 }

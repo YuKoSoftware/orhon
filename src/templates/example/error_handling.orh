@@ -16,7 +16,7 @@ func divide_or_default(a: i32, b: i32) i32 {
     if(result is Error) {
         return 0
     }
-    return result.value
+    return result.i32
 }
 
 // ─── Null Handling ───────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ func value_or_default(id: i32) i32 {
     if(result is null) {
         return 0
     }
-    return result.value
+    return result.i32
 }
 
 // ─── Arbitrary Unions ────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ func get_value(flag: bool) (i32 | str) {
 func arb_union_check(flag: bool) i32 {
     const val = get_value(flag)
     if(val is i32) {
-        return val.value
+        return val.i32
     }
     return 0
 }

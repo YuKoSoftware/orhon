@@ -27,7 +27,6 @@ pub const CodeGen = struct {
     decls: ?*declarations.DeclTable,
     in_test_block: bool, // inside a test { } block — assert uses std.testing.expect
     destruct_counter: usize, // unique index for destructuring temp vars
-    warned_rawptr: bool,     // RawPtr/VolatilePtr warning printed once per module
     module_name: []const u8, // current module name — used for zig module re-exports
     reassigned_vars: std.StringHashMapUnmanaged(void), // vars assigned after declaration in current func
     type_ctx: ?*parser.Node, // expected type from enclosing decl (for overflow codegen)
@@ -150,7 +149,6 @@ pub const CodeGen = struct {
             .decls = null,
             .in_test_block = false,
             .destruct_counter = 0,
-            .warned_rawptr = false,
             .module_name = "",
             .reassigned_vars = .{},
             .type_ctx = null,
@@ -491,8 +489,6 @@ pub const CodeGen = struct {
 
     pub fn generateInterpolatedStringMir(self: *CodeGen, parts: []const parser.InterpolatedPart, expr_children: []*mir.MirNode) anyerror!void { return match_impl.generateInterpolatedStringMir(self, parts, expr_children); }
 
-    pub fn generatePtrCoercionMir(self: *CodeGen, kind: []const u8, type_node: *parser.Node, val_m: *mir.MirNode) anyerror!void { return match_impl.generatePtrCoercionMir(self, kind, type_node, val_m); }
-
     pub fn generateCompilerFuncMir(self: *CodeGen, m: *mir.MirNode) anyerror!void { return match_impl.generateCompilerFuncMir(self, m); }
 
     pub fn generateWrappingExprMir(self: *CodeGen, m: *mir.MirNode) anyerror!void { return match_impl.generateWrappingExprMir(self, m); }
@@ -615,24 +611,6 @@ pub const CodeGen = struct {
                         const inner = try self.typeToZig(g.args[0]);
                         break :blk try self.allocTypeStr("_orhon_async.Handle({s})", .{inner});
                     }
-                } else if (std.mem.eql(u8, g.name, builtins.BT.PTR)) {
-                    // Ptr(T) → *const T
-                    if (g.args.len > 0) {
-                        const inner = try self.typeToZig(g.args[0]);
-                        break :blk try self.allocTypeStr("*const {s}", .{inner});
-                    }
-                } else if (std.mem.eql(u8, g.name, builtins.BT.RAW_PTR)) {
-                    // RawPtr(T) → [*]T
-                    if (g.args.len > 0) {
-                        const inner = try self.typeToZig(g.args[0]);
-                        break :blk try self.allocTypeStr("[*]{s}", .{inner});
-                    }
-                } else if (std.mem.eql(u8, g.name, builtins.BT.VOLATILE_PTR)) {
-                    // VolatilePtr(T) → [*]volatile T
-                    if (g.args.len > 0) {
-                        const inner = try self.typeToZig(g.args[0]);
-                        break :blk try self.allocTypeStr("[*]volatile {s}", .{inner});
-                    }
                 } else if (std.mem.eql(u8, g.name, builtins.BT.VECTOR)) {
                     // Vector(N, T) → @Vector(N, T)
                     if (g.args.len >= 2) {
@@ -686,7 +664,7 @@ pub const CodeGen = struct {
             },
             // cast(i64, x) — type arg parsed as identifier by parseExpr
             .identifier => |name| builtins.primitiveToZig(name),
-            // Generic type constructors in expression position: Ptr(T), List(T), Map(K,V), etc.
+            // Generic type constructors in expression position: List(T), Map(K,V), etc.
             // In type alias context (const Name: type = Ptr(u8)), the RHS is a call_expr.
             // Reuse the type_generic branch by extracting callee name and arg types.
             .call_expr => |c| blk: {
@@ -750,17 +728,6 @@ pub fn mirIsString(m: *const mir.MirNode) bool { return exprs_impl.mirIsString(m
 
 /// File-scope mirIsVector for helper modules.
 pub fn mirIsVector(m: *const mir.MirNode) bool { return exprs_impl.mirIsVector(m); }
-
-/// Check if a type annotation is a pointer wrapper type (Ptr/RawPtr/VolatilePtr) with an inner type.
-/// Returns the wrapper name and inner type arg, or null if not a pointer coercion target.
-pub const PtrCoercionInfo = struct { name: []const u8, inner_type: *parser.Node };
-pub fn getPtrCoercionTarget(type_annotation: ?*parser.Node) ?PtrCoercionInfo {
-    const t = type_annotation orelse return null;
-    if (t.* != .type_generic) return null;
-    if (t.type_generic.args.len == 0) return null;
-    if (!builtins.isPtrType(t.type_generic.name)) return null;
-    return .{ .name = t.type_generic.name, .inner_type = t.type_generic.args[0] };
-}
 
 /// File-scope mirContainsIdentifier for helper modules (codegen_match.zig calls this recursively).
 pub fn mirContainsIdentifier(m: *mir.MirNode, name: []const u8) bool { return match_impl.mirContainsIdentifier(m, name); }

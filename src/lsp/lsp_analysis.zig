@@ -58,9 +58,6 @@ pub fn formatType(allocator: std.mem.Allocator, t: types.ResolvedType) anyerror!
             defer allocator.free(inner_s);
             const wrapper = switch (ct.kind) {
                 .handle => "Handle",
-                .safe_ptr => "Ptr",
-                .raw_ptr => "RawPtr",
-                .volatile_ptr => "VolatilePtr",
             };
             break :blk std.fmt.allocPrint(allocator, "{s}({s})", .{ wrapper, inner_s });
         },

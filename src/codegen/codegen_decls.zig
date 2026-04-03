@@ -452,11 +452,7 @@ pub fn generateTopLevelDeclMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         try cg.emit(".{}");
     } else {
         // Native ?T and anyerror!T — Zig handles coercion, no wrapping needed
-        if (codegen.getPtrCoercionTarget(m.type_annotation)) |ptr| {
-            try cg.generatePtrCoercionMir(ptr.name, ptr.inner_type, m.value());
-        } else {
-            try cg.generateExprMir(m.value());
-        }
+        try cg.generateExprMir(m.value());
     }
     try cg.emit(";\n");
 }

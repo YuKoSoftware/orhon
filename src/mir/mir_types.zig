@@ -17,8 +17,6 @@ pub const TypeClass = enum {
     null_union,
     arbitrary_union,
     string,
-    raw_ptr,
-    safe_ptr,
     thread_handle,
 };
 
@@ -33,20 +31,14 @@ pub fn classifyType(t: RT) TypeClass {
         },
         .primitive => |p| if (p == .string) .string else .plain,
         .generic => |g| {
-            if (std.mem.eql(u8, g.name, builtins.BT.RAW_PTR) or std.mem.eql(u8, g.name, builtins.BT.VOLATILE_PTR))
-                return .raw_ptr;
-            if (std.mem.eql(u8, g.name, builtins.BT.PTR))
-                return .safe_ptr;
             if (std.mem.eql(u8, g.name, builtins.BT.HANDLE))
                 return .thread_handle;
             return .plain;
         },
         .core_type => |ct| switch (ct.kind) {
-            .raw_ptr, .volatile_ptr => .raw_ptr,
-            .safe_ptr => .safe_ptr,
             .handle => .thread_handle,
         },
-        // .ptr is a const &T reference — field access auto-derefs in Zig, not a Ptr(T) wrapper
+        // .ptr is a const &T or mut &T reference — field access auto-derefs in Zig
         .ptr => .plain,
         else => .plain,
     };
@@ -98,14 +90,6 @@ test "classifyType - unions" {
     try std.testing.expectEqual(TypeClass.arbitrary_union, classifyType(RT{ .union_type = arb_members }));
 }
 
-test "classifyType - pointers and named" {
-    try std.testing.expectEqual(TypeClass.raw_ptr, classifyType(RT{ .generic = .{
-        .name = "RawPtr",
-        .args = &.{},
-    } }));
-    try std.testing.expectEqual(TypeClass.safe_ptr, classifyType(RT{ .generic = .{
-        .name = "Ptr",
-        .args = &.{},
-    } }));
+test "classifyType - named types" {
     try std.testing.expectEqual(TypeClass.plain, classifyType(RT{ .named = "MyStruct" }));
 }

@@ -691,29 +691,6 @@ test "cast float" {
     @assert(cast_to_f32(7) == 7.0)
 }
 
-pub func raw_ptr_read() i32 {
-    var x: i32 = 99
-    const raw: RawPtr(i32) = mut& x
-    x = raw[0]
-    return x
-}
-
-pub func raw_ptr_index() i32 {
-    const arr: [3]i32 = [1, 2, 3]
-    const raw: RawPtr(i32) = mut& arr
-    return raw[1]
-}
-
-pub func safe_ptr_read() i32 {
-    const x: i32 = 77
-    const p: Ptr(i32) = mut& x
-    return @deref(p)
-}
-
-test "safe ptr" {
-    @assert(safe_ptr_read() == 77)
-}
-
 pub func typeid_same() i32 {
     const x: i32 = 1
     const y: i32 = 2
@@ -749,11 +726,6 @@ test "fixed array" {
 
 test "slice expr" {
     @assert(slice_expr_test() == 9)
-}
-
-test "raw ptr" {
-    @assert(raw_ptr_read() == 99)
-    @assert(raw_ptr_index() == 2)
 }
 
 // ─── Match — ranges ──────────────────────────────────────────

@@ -6,9 +6,6 @@ const std = @import("std");
 
 /// Builtin type names — language intrinsics the compiler knows about
 pub const BUILTIN_TYPES = [_][]const u8{
-    "Ptr",
-    "RawPtr",
-    "VolatilePtr",
     "Handle",
     "Error",
     "Vector",
@@ -16,21 +13,10 @@ pub const BUILTIN_TYPES = [_][]const u8{
 
 /// Named constants for builtin type names used in comparisons across the compiler.
 pub const BT = struct {
-    pub const PTR = "Ptr";
-    pub const RAW_PTR = "RawPtr";
-    pub const VOLATILE_PTR = "VolatilePtr";
     pub const HANDLE = "Handle";
     pub const ERROR = "Error";
     pub const VECTOR = "Vector";
-
 };
-
-/// Returns true if name is a pointer wrapper type (Ptr, RawPtr, or VolatilePtr).
-pub fn isPtrType(name: []const u8) bool {
-    return std.mem.eql(u8, name, BT.PTR) or
-        std.mem.eql(u8, name, BT.RAW_PTR) or
-        std.mem.eql(u8, name, BT.VOLATILE_PTR);
-}
 
 /// Compiler function names (called with @ prefix: @cast, @copy, etc.)
 /// The AST stores bare names (without @); this list is used for name-based lookups.
@@ -53,7 +39,6 @@ pub const COMPILER_FUNCS = [_][]const u8{
     "wrap",
     "sat",
     "overflow",
-    "deref",
 };
 
 /// Typed enum for compiler functions — use `fromName()` to convert AST string names.
@@ -77,7 +62,6 @@ pub const CompilerFunc = enum {
     wrap,
     sat,
     overflow,
-    deref,
 
     pub fn fromName(name: []const u8) ?CompilerFunc {
         const map = std.StaticStringMap(CompilerFunc).initComptime(.{
@@ -99,7 +83,6 @@ pub const CompilerFunc = enum {
             .{ "wrap", .wrap },
             .{ "sat", .sat },
             .{ "overflow", .overflow },
-            .{ "deref", .deref },
         });
         return map.get(name);
     }
@@ -189,7 +172,6 @@ pub fn primitiveToZig(orhon_type: []const u8) []const u8 {
 }
 
 test "builtin type detection" {
-    try std.testing.expect(isBuiltinType("Ptr"));
     try std.testing.expect(isBuiltinType("Error"));
     try std.testing.expect(!isBuiltinType("Player"));
     try std.testing.expect(!isBuiltinType("i32"));

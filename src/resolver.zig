@@ -573,9 +573,6 @@ pub fn typesCompatible(a: RT, b: RT) bool {
 pub fn coreTypeName(kind: types.ResolvedType.CoreType.Kind) []const u8 {
     return switch (kind) {
         .handle => "Handle",
-        .safe_ptr => "Ptr",
-        .raw_ptr => "RawPtr",
-        .volatile_ptr => "VolatilePtr",
     };
 }
 

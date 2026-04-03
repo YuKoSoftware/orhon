@@ -516,50 +516,6 @@ pub fn generateInterpolatedStringMir(cg: *CodeGen, parts: []const parser.Interpo
     try cg.emit(var_name);
 }
 
-/// Type-directed pointer coercion for the MIR path.
-/// Called from generateTopLevelDeclMir and generateStmtDeclMir when type annotation is Ptr/RawPtr/VolatilePtr.
-/// type_node is the first type argument (e.g. i32 from Ptr(i32)); val_m is the value MIR node.
-pub fn generatePtrCoercionMir(cg: *CodeGen, kind: []const u8, type_node: *parser.Node, val_m: *mir.MirNode) anyerror!void {
-    if (std.mem.eql(u8, kind, builtins.BT.PTR)) {
-        // Ptr(T) + &x → &x  (safe const pointer)
-        try cg.generateExprMir(val_m);
-    } else if (std.mem.eql(u8, kind, builtins.BT.RAW_PTR)) {
-        if (!cg.warned_rawptr) {
-            std.debug.print("WARNING: RawPtr used — unsafe, no bounds checking\n", .{});
-            cg.warned_rawptr = true;
-        }
-        const zig_type = try cg.typeToZig(type_node);
-        if (val_m.kind == .borrow) {
-            // RawPtr(T) + &x → @as([*]T, @ptrCast(&x))
-            try cg.emitFmt("@as([*]{s}, @ptrCast(", .{zig_type});
-            try cg.generateExprMir(val_m);
-            try cg.emit("))");
-        } else {
-            // RawPtr(T) + 0xB8000 → @as([*]T, @ptrFromInt(addr))
-            try cg.emitFmt("@as([*]{s}, @ptrFromInt(", .{zig_type});
-            try cg.generateExprMir(val_m);
-            try cg.emit("))");
-        }
-    } else if (std.mem.eql(u8, kind, builtins.BT.VOLATILE_PTR)) {
-        if (!cg.warned_rawptr) {
-            std.debug.print("WARNING: VolatilePtr used — unsafe, hardware access only\n", .{});
-            cg.warned_rawptr = true;
-        }
-        const zig_type = try cg.typeToZig(type_node);
-        if (val_m.kind == .borrow) {
-            // VolatilePtr(T) + &x → @as(*volatile T, @ptrCast(&x))
-            try cg.emitFmt("@as(*volatile {s}, @ptrCast(", .{zig_type});
-            try cg.generateExprMir(val_m);
-            try cg.emit("))");
-        } else {
-            // VolatilePtr(T) + 0xFF200000 → @as(*volatile T, @ptrFromInt(addr))
-            try cg.emitFmt("@as(*volatile {s}, @ptrFromInt(", .{zig_type});
-            try cg.generateExprMir(val_m);
-            try cg.emit("))");
-        }
-    }
-}
-
 /// Emit the first argument to a struct-introspection compiler function.
 /// If the arg is a type reference (type_expr, or an identifier whose name IS the
 /// resolved type name — i.e. a struct/enum name used directly), emit it as-is.
@@ -726,17 +682,6 @@ pub fn generateCompilerFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         },
         .overflow => {
             if (args.len > 0) try cg.generateOverflowExprMir(args[0]);
-        },
-        .deref => {
-            // @deref(ptr) → ptr.* (Ptr) or ptr[0] (RawPtr)
-            if (args.len > 0) {
-                try cg.generateExprMir(args[0]);
-                if (args[0].type_class == .raw_ptr) {
-                    try cg.emit("[0]");
-                } else {
-                    try cg.emit(".*");
-                }
-            }
         },
     }
 }

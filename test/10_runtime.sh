@@ -36,7 +36,7 @@ for TEST_NAME in \
     arithmetic comparisons logical bitwise defer greeting concat \
     tuple tuple_destruct slice_for for_index for_range while_continue \
     cast_int cast_float cast_float_to_int func_ptr func_ptr_var \
-    fixed_array array_index slice_expr raw_ptr safe_ptr typeid_same \
+    fixed_array array_index slice_expr typeid_same \
     typeid_diff match_range match_string match_guard match_guard_scope list list_len map set map_iter set_iter \
     split_at split_list \
     wrap sat overflow alloc_default alloc_arena alloc_external arb_union_return \

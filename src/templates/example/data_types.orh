@@ -78,29 +78,6 @@ func compound_demo() i32 {
     return x
 }
 
-// ─── Pointers ───────────────────────────────────────────────────────────────
-
-// Ptr(T) — safe pointer, bounds-checked access via .value
-
-func read_via_ptr(n: i32) i32 {
-    const x: i32 = n
-    const p: Ptr(i32) = mut& x
-    return @deref(p)
-}
-
-// RawPtr(T) — unsafe pointer, no bounds checking, emits compiler warning
-
-// RawPtr example (comment only — emits compiler warning if compiled):
-//   const x: i32 = 99
-//   const raw: RawPtr(i32) = mut& x
-//   raw[0]    // read value, no bounds check
-
-// VolatilePtr(T) — like RawPtr but every read/write is volatile
-// Used for memory-mapped hardware registers. Example (not runnable):
-//   const reg: VolatilePtr(u32) = 0xFF200000
-//   reg[0] = 0x1           // volatile write
-//   const val: u32 = reg[0]  // volatile read
-
 // ─── typeOf ─────────────────────────────────────────────────────────────────
 
 // @typeOf(value) — returns the compile-time type of a value

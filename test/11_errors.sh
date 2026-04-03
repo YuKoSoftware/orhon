@@ -426,19 +426,6 @@ run_fixture neg_scope fail_scope.orh "module-level.*var.*not allowed\|already de
 run_fixture neg_match fail_match.orh "not a member" "fixture: catches invalid match arm"
 run_fixture neg_match_guard fail_match_guard.orh "match with guards requires" "fixture: catches guarded match without else"
 
-# old ptr syntax rejected
-cd "$TESTDIR"
-mkdir -p neg_ptr_cast/src
-cp "$FIXTURES/fail_ptr_cast.orh" neg_ptr_cast/src/neg_ptr_cast.orh
-sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_ptr_cast/' neg_ptr_cast/src/neg_ptr_cast.orh
-cd neg_ptr_cast
-NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "error\|parse\|unexpected"; then
-    pass "rejects old Ptr(T).cast() syntax"
-else
-    fail "rejects old Ptr(T).cast() syntax" "$NEG_OUT"
-fi
-
 # throw in void function
 cd "$TESTDIR"
 mkdir -p neg_throw/src

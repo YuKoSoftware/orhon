@@ -162,9 +162,9 @@ pub const ResolvedType = union(enum) {
     func_ptr: FuncPtr,
     /// Generic type: List(i32), Map(K,V), Set(T)
     generic: Generic,
-    /// Pointer: Ptr(T), const &T, var &T
+    /// Borrow reference: const &T, mut &T
     ptr: Ptr,
-    /// Core language wrapper type: Handle(T), Ptr(T), etc.
+    /// Core language wrapper type: Handle(T)
     core_type: CoreType,
     /// Type not yet resolved (e.g. inferred from context)
     inferred,
@@ -201,10 +201,7 @@ pub const ResolvedType = union(enum) {
         inner: *const ResolvedType,
 
         pub const Kind = enum {
-            handle, // Handle(T) → _OrhonHandle(T)
-            safe_ptr, // Ptr(T) → *T
-            raw_ptr, // RawPtr(T) → [*]T
-            volatile_ptr, // VolatilePtr(T) → *volatile T
+            handle, // Handle(T) → _orhon_async.Handle(T)
         };
     };
 
@@ -286,9 +283,6 @@ pub const ResolvedType = union(enum) {
             .ptr => |p| if (p.kind == .mut_ref) "mut&" else "const&",
             .core_type => |ct| switch (ct.kind) {
                 .handle => "Handle(T)",
-                .safe_ptr => "Ptr(T)",
-                .raw_ptr => "RawPtr(T)",
-                .volatile_ptr => "VolatilePtr(T)",
             },
             .inferred => "inferred",
             .unknown => "unknown",
@@ -351,12 +345,6 @@ pub fn resolveTypeNode(alloc: std.mem.Allocator, node: *parser.Node) anyerror!Re
             // Core language wrapper types → CoreType
             const core_kind: ?ResolvedType.CoreType.Kind = if (std.mem.eql(u8, g.name, builtins.BT.HANDLE))
                 .handle
-            else if (std.mem.eql(u8, g.name, builtins.BT.PTR))
-                .safe_ptr
-            else if (std.mem.eql(u8, g.name, builtins.BT.RAW_PTR))
-                .raw_ptr
-            else if (std.mem.eql(u8, g.name, builtins.BT.VOLATILE_PTR))
-                .volatile_ptr
             else
                 null;
 
@@ -505,7 +493,6 @@ test "CoreType - isCoreType helper" {
 
     const handle = ResolvedType{ .core_type = .{ .kind = .handle, .inner = inner } };
     try std.testing.expect(handle.isCoreType(.handle));
-    try std.testing.expect(!handle.isCoreType(.safe_ptr));
 
     const plain = ResolvedType{ .primitive = .i32 };
     try std.testing.expect(!plain.isCoreType(.handle));

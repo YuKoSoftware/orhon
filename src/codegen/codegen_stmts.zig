@@ -233,11 +233,7 @@ pub fn generateStmtDeclMir(cg: *CodeGen, m: *mir.MirNode, decl_keyword: []const 
         // Native ?T and anyerror!T — Zig handles coercion, no wrapping needed
         const prev_ctx = cg.type_ctx;
         cg.type_ctx = m.type_annotation;
-        if (codegen.getPtrCoercionTarget(m.type_annotation)) |ptr| {
-            try cg.generatePtrCoercionMir(ptr.name, ptr.inner_type, val_m);
-        } else {
-            try cg.generateExprMir(val_m);
-        }
+        try cg.generateExprMir(val_m);
         cg.type_ctx = prev_ctx;
     }
     try cg.emitFmt("; _ = &{s};", .{var_name});

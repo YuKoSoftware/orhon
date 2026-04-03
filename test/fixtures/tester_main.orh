@@ -297,18 +297,6 @@ func main() void {
         console.println("FAIL cast_float_to_int")
     }
 
-    if(tester.raw_ptr_read() == 99) {
-        console.println("PASS raw_ptr")
-    } else {
-        console.println("FAIL raw_ptr")
-    }
-
-    if(tester.safe_ptr_read() == 77) {
-        console.println("PASS safe_ptr")
-    } else {
-        console.println("FAIL safe_ptr")
-    }
-
     if(tester.typeid_same() == 1) {
         console.println("PASS typeid_same")
     } else {

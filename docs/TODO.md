@@ -109,11 +109,12 @@ We will break things along the way — that's expected. Fix forward, don't look 
 - CoreType `.error_union`/`.null_union` kinds removed
 - 33 files changed, 306 tests pass
 
-**C2. Unified unwrap syntax — access by type name, not `.value`** `medium`
-- `.value` magic still present for error/null union unwrapping
-- Should access by type name: `result.i32` instead of `result.value`
-- `is` checks already work uniformly
-- `.Error` field magic should become `@errorName(result)` compiler function
+**~~C2. Unified unwrap syntax — access by type name, not `.value`~~** — DONE
+- `.value` magic removed — all union unwrap uses type-name syntax: `result.i32`
+- `isResultValueField` dispatches to correct Zig (`catch unreachable`, `.?`, `._T`)
+- Narrowing maps retained as fallback for MIR-unclassified variables (overflow, cross-module)
+- `.Error` → `@errorName()` already handled separately
+- 306 tests pass
 
 **Type system summary:**
 - **Tuples** — product type (all fields): named `(x: 10, y: 20)` or anonymous `(10, 20)`

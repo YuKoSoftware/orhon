@@ -165,18 +165,25 @@ pub fn buildAnonTupleLiteral(ctx: *BuildContext, cap: *const CaptureNode) !*Node
 }
 
 pub fn buildStructExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // struct_expr <- 'struct' '{' _ (('pub')? field_decl _)* _ '}'
-    var fields = std.ArrayListUnmanaged(*Node){};
+    // struct_expr <- 'struct' '{' _ (struct_member _)* _ '}'
+    var members = std.ArrayListUnmanaged(*Node){};
     for (cap.children) |*child| {
         if (child.rule) |r| {
-            if (std.mem.eql(u8, r, "field_decl")) {
-                const node = try builder.buildNode(ctx, child);
-                if (builder.hasPubBefore(ctx, cap, child.start_pos)) builder.setPub(node, true);
-                try fields.append(ctx.alloc(), node);
+            if (std.mem.eql(u8, r, "struct_member")) {
+                // struct_member wraps: doc_block? 'pub'? (func_decl / var_decl / const_decl / compt_decl / field_decl)
+                // Recurse into the struct_member to find and build the actual declaration
+                for (child.children) |*inner| {
+                    if (inner.rule != null) {
+                        const node = try builder.buildNode(ctx, inner);
+                        if (builder.hasPubBefore(ctx, child, inner.start_pos)) builder.setPub(node, true);
+                        try members.append(ctx.alloc(), node);
+                        break; // one declaration per struct_member
+                    }
+                }
             }
         }
     }
-    return ctx.newNode(.{ .struct_type = try fields.toOwnedSlice(ctx.alloc()) });
+    return ctx.newNode(.{ .struct_type = try members.toOwnedSlice(ctx.alloc()) });
 }
 
 /// Binary expression builder — handles the left-associative precedence tower.

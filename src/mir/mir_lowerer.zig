@@ -322,8 +322,11 @@ pub const MirLowerer = struct {
             .type_func,
             .type_generic,
             .type_named,
-            .struct_type,
             => {},
+            // Anonymous struct — lower children (fields, methods) into MIR nodes
+            .struct_type => |members| {
+                mir_node_ptr.children = try self.lowerSlice(members);
+            },
         }
 
         return mir_node_ptr;

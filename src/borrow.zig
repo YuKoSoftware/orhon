@@ -64,7 +64,7 @@ pub const BorrowChecker = struct {
             .block => |b| {
                 self.scope_depth += 1;
                 // NLL: pre-scan to find last-use index for each variable
-                var last_use = buildLastUseMap(b.statements, self.allocator);
+                var last_use = try buildLastUseMap(b.statements, self.allocator);
                 defer last_use.deinit(self.allocator);
                 for (b.statements, 0..) |stmt, idx| {
                     try self.checkStatement(stmt);
@@ -134,7 +134,7 @@ pub const BorrowChecker = struct {
 
             if (is_mutable or existing.is_mutable) {
                 const loc = if (self.current_node) |cn| self.ctx.nodeLoc(cn) else null;
-                const label = borrowLabel(variable, field);
+                const label = borrowLabel(variable);
                 const hint: []const u8 = if (!is_mutable)
                     " — consider borrowing with const&"
                 else
@@ -238,10 +238,10 @@ pub const BorrowChecker = struct {
 
 /// NLL: build a map of variable name → last statement index where it appears.
 /// Pre-scans all statements in a block to determine when each variable is last used.
-fn buildLastUseMap(statements: []*parser.Node, allocator: std.mem.Allocator) std.StringHashMapUnmanaged(usize) {
+fn buildLastUseMap(statements: []*parser.Node, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged(usize) {
     var map = std.StringHashMapUnmanaged(usize){};
     for (statements, 0..) |stmt, idx| {
-        collectIdentifiers(stmt, &map, allocator, idx);
+        try collectIdentifiers(stmt, &map, allocator, idx);
     }
     return map;
 }
@@ -249,94 +249,92 @@ fn buildLastUseMap(statements: []*parser.Node, allocator: std.mem.Allocator) std
 /// Recursively walk an AST node and record every identifier reference.
 /// Each identifier updates the map to the current statement index, so after a full
 /// scan the map holds the LAST statement index where each variable name appears.
-fn collectIdentifiers(node: *parser.Node, map: *std.StringHashMapUnmanaged(usize), allocator: std.mem.Allocator, stmt_idx: usize) void {
+fn collectIdentifiers(node: *parser.Node, map: *std.StringHashMapUnmanaged(usize), allocator: std.mem.Allocator, stmt_idx: usize) anyerror!void {
     switch (node.*) {
         .identifier => |name| {
-            map.put(allocator, name, stmt_idx) catch {};
+            try map.put(allocator, name, stmt_idx);
         },
         .var_decl => |v| {
-            // Scan value expression, not the declared name (that's a definition)
-            collectIdentifiers(v.value, map, allocator, stmt_idx);
+            try collectIdentifiers(v.value, map, allocator, stmt_idx);
         },
         .destruct_decl => |d| {
-            collectIdentifiers(d.value, map, allocator, stmt_idx);
+            try collectIdentifiers(d.value, map, allocator, stmt_idx);
         },
         .assignment => |a| {
-            collectIdentifiers(a.left, map, allocator, stmt_idx);
-            collectIdentifiers(a.right, map, allocator, stmt_idx);
+            try collectIdentifiers(a.left, map, allocator, stmt_idx);
+            try collectIdentifiers(a.right, map, allocator, stmt_idx);
         },
         .return_stmt => |r| {
-            if (r.value) |val| collectIdentifiers(val, map, allocator, stmt_idx);
+            if (r.value) |val| try collectIdentifiers(val, map, allocator, stmt_idx);
         },
         .throw_stmt => |t| {
-            // throw references its variable by name
-            map.put(allocator, t.variable, stmt_idx) catch {};
+            try map.put(allocator, t.variable, stmt_idx);
         },
         .if_stmt => |i| {
-            collectIdentifiers(i.condition, map, allocator, stmt_idx);
-            collectIdentifiers(i.then_block, map, allocator, stmt_idx);
-            if (i.else_block) |e| collectIdentifiers(e, map, allocator, stmt_idx);
+            try collectIdentifiers(i.condition, map, allocator, stmt_idx);
+            try collectIdentifiers(i.then_block, map, allocator, stmt_idx);
+            if (i.else_block) |e| try collectIdentifiers(e, map, allocator, stmt_idx);
         },
         .while_stmt => |w| {
-            collectIdentifiers(w.condition, map, allocator, stmt_idx);
-            if (w.continue_expr) |c| collectIdentifiers(c, map, allocator, stmt_idx);
-            collectIdentifiers(w.body, map, allocator, stmt_idx);
+            try collectIdentifiers(w.condition, map, allocator, stmt_idx);
+            if (w.continue_expr) |c| try collectIdentifiers(c, map, allocator, stmt_idx);
+            try collectIdentifiers(w.body, map, allocator, stmt_idx);
         },
         .for_stmt => |f| {
-            collectIdentifiers(f.iterable, map, allocator, stmt_idx);
-            collectIdentifiers(f.body, map, allocator, stmt_idx);
+            try collectIdentifiers(f.iterable, map, allocator, stmt_idx);
+            try collectIdentifiers(f.body, map, allocator, stmt_idx);
         },
         .match_stmt => |m| {
-            collectIdentifiers(m.value, map, allocator, stmt_idx);
+            try collectIdentifiers(m.value, map, allocator, stmt_idx);
             for (m.arms) |arm| {
                 if (arm.* == .match_arm) {
-                    if (arm.match_arm.guard) |g| collectIdentifiers(g, map, allocator, stmt_idx);
-                    collectIdentifiers(arm.match_arm.body, map, allocator, stmt_idx);
+                    if (arm.match_arm.guard) |g| try collectIdentifiers(g, map, allocator, stmt_idx);
+                    try collectIdentifiers(arm.match_arm.body, map, allocator, stmt_idx);
                 }
             }
         },
         .defer_stmt => |d| {
-            collectIdentifiers(d.body, map, allocator, stmt_idx);
+            try collectIdentifiers(d.body, map, allocator, stmt_idx);
         },
         .block => |b| {
-            for (b.statements) |s| collectIdentifiers(s, map, allocator, stmt_idx);
+            for (b.statements) |s| try collectIdentifiers(s, map, allocator, stmt_idx);
         },
         .binary_expr => |b| {
-            collectIdentifiers(b.left, map, allocator, stmt_idx);
-            collectIdentifiers(b.right, map, allocator, stmt_idx);
+            try collectIdentifiers(b.left, map, allocator, stmt_idx);
+            try collectIdentifiers(b.right, map, allocator, stmt_idx);
         },
         .unary_expr => |u| {
-            collectIdentifiers(u.operand, map, allocator, stmt_idx);
+            try collectIdentifiers(u.operand, map, allocator, stmt_idx);
         },
         .call_expr => |c| {
-            collectIdentifiers(c.callee, map, allocator, stmt_idx);
-            for (c.args) |arg| collectIdentifiers(arg, map, allocator, stmt_idx);
+            try collectIdentifiers(c.callee, map, allocator, stmt_idx);
+            for (c.args) |arg| try collectIdentifiers(arg, map, allocator, stmt_idx);
         },
         .field_expr => |f| {
-            collectIdentifiers(f.object, map, allocator, stmt_idx);
+            try collectIdentifiers(f.object, map, allocator, stmt_idx);
         },
         .index_expr => |i| {
-            collectIdentifiers(i.object, map, allocator, stmt_idx);
-            collectIdentifiers(i.index, map, allocator, stmt_idx);
+            try collectIdentifiers(i.object, map, allocator, stmt_idx);
+            try collectIdentifiers(i.index, map, allocator, stmt_idx);
         },
         .slice_expr => |s| {
-            collectIdentifiers(s.object, map, allocator, stmt_idx);
-            collectIdentifiers(s.low, map, allocator, stmt_idx);
-            collectIdentifiers(s.high, map, allocator, stmt_idx);
+            try collectIdentifiers(s.object, map, allocator, stmt_idx);
+            try collectIdentifiers(s.low, map, allocator, stmt_idx);
+            try collectIdentifiers(s.high, map, allocator, stmt_idx);
         },
         .compiler_func => |cf| {
-            for (cf.args) |arg| collectIdentifiers(arg, map, allocator, stmt_idx);
+            for (cf.args) |arg| try collectIdentifiers(arg, map, allocator, stmt_idx);
         },
         .mut_borrow_expr => |inner| {
-            collectIdentifiers(inner, map, allocator, stmt_idx);
+            try collectIdentifiers(inner, map, allocator, stmt_idx);
         },
         .const_borrow_expr => |inner| {
-            collectIdentifiers(inner, map, allocator, stmt_idx);
+            try collectIdentifiers(inner, map, allocator, stmt_idx);
         },
         .interpolated_string => |interp| {
             for (interp.parts) |part| {
                 switch (part) {
-                    .expr => |e| collectIdentifiers(e, map, allocator, stmt_idx),
+                    .expr => |e| try collectIdentifiers(e, map, allocator, stmt_idx),
                     .literal => {},
                 }
             }
@@ -353,11 +351,8 @@ fn pathsOverlap(field_a: ?[]const u8, field_b: ?[]const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
-/// Format a borrow target for error messages: "var" or "var.field"
-fn borrowLabel(variable: []const u8, field: ?[]const u8) []const u8 {
-    // For error messages we just return the variable name — field info is
-    // included by the caller when needed. This avoids allocation.
-    _ = field;
+/// Format a borrow target for error messages.
+fn borrowLabel(variable: []const u8) []const u8 {
     return variable;
 }
 
@@ -861,7 +856,7 @@ test "NLL - collectIdentifiers finds all variable references" {
     } };
 
     var stmts = [_]*parser.Node{ &id_x, &bin };
-    var last_use = buildLastUseMap(&stmts, alloc);
+    var last_use = try buildLastUseMap(&stmts, alloc);
     defer last_use.deinit(alloc);
 
     // "x" last used at stmt 1 (appears in both 0 and 1)
@@ -888,7 +883,7 @@ test "NLL - buildLastUseMap with nested expressions" {
     var field = parser.Node{ .field_expr = .{ .object = &obj, .field = "x" } };
 
     var stmts = [_]*parser.Node{ &call, &field };
-    var last_use = buildLastUseMap(&stmts, alloc);
+    var last_use = try buildLastUseMap(&stmts, alloc);
     defer last_use.deinit(alloc);
 
     try std.testing.expectEqual(@as(usize, 0), last_use.get("foo").?);

@@ -160,99 +160,6 @@ pub const ZigRunner = struct {
         return true;
     }
 
-    /// Build the generated Zig project
-    pub fn build(self: *ZigRunner, target: []const u8, optimize: []const u8, module_name: []const u8, project_name: []const u8) !bool {
-        return self.buildWithType(target, optimize, module_name, project_name, .exe);
-    }
-
-    pub fn buildLib(self: *ZigRunner, target: []const u8, optimize: []const u8, module_name: []const u8, project_name: []const u8, build_type: module.BuildType) !bool {
-        return self.buildWithType(target, optimize, module_name, project_name, build_type);
-    }
-
-    fn buildWithType(self: *ZigRunner, target: []const u8, optimize: []const u8, module_name: []const u8, project_name: []const u8, build_type: module.BuildType) !bool {
-        var args: std.ArrayListUnmanaged([]const u8) = .{};
-        defer args.deinit(self.allocator);
-
-        try args.append(self.allocator, self.zig_path);
-        try args.append(self.allocator, "build");
-
-        var target_flag_alloc: ?[]const u8 = null;
-        if (target.len > 0) {
-            target_flag_alloc = try std.fmt.allocPrint(self.allocator, "-Dtarget={s}", .{target});
-            try args.append(self.allocator, target_flag_alloc.?);
-        }
-        defer if (target_flag_alloc) |tf| self.allocator.free(tf);
-
-        if (std.mem.eql(u8, optimize, "fast")) {
-            try args.append(self.allocator, "-Doptimize=ReleaseFast");
-        } else if (std.mem.eql(u8, optimize, "small")) {
-            try args.append(self.allocator, "-Doptimize=ReleaseSmall");
-        }
-
-        // zig build runs from the directory containing build.zig
-        var result = try self.runZigIn(args.items, cache.GENERATED_DIR);
-        defer result.deinit(self.allocator);
-
-        if (self.show_zig_output) {
-            try self.printRaw(result.stdout);
-            try self.printRaw(result.stderr);
-        }
-
-        if (!result.success) {
-            if (!self.show_zig_output) {
-                try self.reformatZigErrors(result.stderr);
-            }
-            return false;
-        }
-
-        // Determine source and destination paths based on build type + target platform.
-        const is_lib = build_type != .exe;
-        const is_windows = std.mem.indexOf(u8, target, "windows") != null;
-        const exe_ext: []const u8 = if (is_windows) ".exe" else "";
-        const static_ext: []const u8 = if (is_windows) ".lib" else ".a";
-        const dynamic_ext: []const u8 = if (is_windows) ".dll" else ".so";
-        const lib_prefix: []const u8 = if (is_windows) "" else "lib";
-        const ext: []const u8 = if (build_type == .dynamic) dynamic_ext else static_ext;
-
-        const src_bin = if (is_lib)
-            try std.fmt.allocPrint(self.allocator, "{s}/zig-out/lib/{s}{s}{s}", .{ cache.GENERATED_DIR, lib_prefix, project_name, ext })
-        else
-            try std.fmt.allocPrint(self.allocator, "{s}/zig-out/bin/{s}{s}", .{ cache.GENERATED_DIR, project_name, exe_ext });
-        defer self.allocator.free(src_bin);
-
-        try std.fs.cwd().makePath("bin");
-
-        const dst_name = if (is_lib)
-            try std.fmt.allocPrint(self.allocator, "bin/{s}{s}{s}", .{ lib_prefix, project_name, ext })
-        else
-            try std.fmt.allocPrint(self.allocator, "bin/{s}{s}", .{ project_name, exe_ext });
-        defer self.allocator.free(dst_name);
-
-        try std.fs.cwd().copyFile(src_bin, std.fs.cwd(), dst_name, .{});
-
-        // Remove generated zig-out and zig-cache — bin/ now has the only copy
-        const generated_zig_out = try std.fs.path.join(self.allocator,
-            &.{ cache.GENERATED_DIR, "zig-out" });
-        defer self.allocator.free(generated_zig_out);
-        std.fs.cwd().deleteTree(generated_zig_out) catch {};
-
-        const generated_zig_cache = try std.fs.path.join(self.allocator,
-            &.{ cache.GENERATED_DIR, ".zig-cache" });
-        defer self.allocator.free(generated_zig_cache);
-        std.fs.cwd().deleteTree(generated_zig_cache) catch {};
-
-        std.fs.cwd().deleteTree("zig-cache") catch {};
-        std.fs.cwd().deleteTree(".zig-cache") catch {};
-
-        _ = module_name;
-        if (is_lib) {
-            std.debug.print("Built: {s}\n", .{dst_name});
-        } else {
-            std.debug.print("Built: bin/{s}\n", .{project_name});
-        }
-        return true;
-    }
-
     /// Run Zig from a specific working directory and capture output
     fn runZigIn(self: *ZigRunner, args: []const []const u8, cwd: []const u8) !ZigResult {
         var child = std.process.Child.init(args, self.allocator);
@@ -280,8 +187,7 @@ pub const ZigRunner = struct {
     }
 
     /// Print raw output to stderr (for -zig flag)
-    fn printRaw(self: *ZigRunner, output: []const u8) !void {
-        _ = self;
+    fn printRaw(_: *ZigRunner, output: []const u8) !void {
         if (output.len == 0) return;
         var buf: [4096]u8 = undefined;
         var w = std.fs.File.stderr().writer(&buf);

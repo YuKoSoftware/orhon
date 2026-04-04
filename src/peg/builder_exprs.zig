@@ -229,7 +229,7 @@ pub fn buildCompareExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
                     !std.mem.eql(u8, r, "_") and
                     !std.mem.eql(u8, r, "TERM"))
                 {
-                    operands.append(ctx.alloc(), child) catch {};
+                    try operands.append(ctx.alloc(), child);
                 }
             }
         }
@@ -252,7 +252,7 @@ pub fn buildCompareExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
             defer idents.deinit(ctx.alloc());
             while (j < cap.end_pos) : (j += 1) {
                 if (ctx.tokens[j].kind == .identifier) {
-                    idents.append(ctx.alloc(), ctx.tokens[j].text) catch {};
+                    try idents.append(ctx.alloc(), ctx.tokens[j].text);
                     // Peek ahead: dot followed by identifier → continue collecting
                     if (j + 2 < cap.end_pos and
                         ctx.tokens[j + 1].kind == .dot and
@@ -291,7 +291,7 @@ pub fn buildCompareExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
             if (std.mem.eql(u8, r, "compare_op")) {
                 op = parser.Operator.parse(builder.tokenText(ctx, child.start_pos));
             } else if (!std.mem.eql(u8, r, "_") and !std.mem.eql(u8, r, "TERM")) {
-                operands.append(ctx.alloc(), child) catch {};
+                try operands.append(ctx.alloc(), child);
             }
         }
     }

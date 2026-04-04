@@ -97,7 +97,7 @@ pub fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: boo
     std.debug.print("Created project '{s}'\n", .{name});
     std.debug.print("  {s}/src/\n", .{base});
     std.debug.print("  {s}/src/{s}.orh\n", .{ base, name });
-    std.debug.print("  {s}/src/example/  (6 files — language manual)\n", .{base});
+    std.debug.print("  {s}/src/example/  (7 files — language manual)\n", .{base});
     if (!in_place) {
         std.debug.print("\nGet started:\n", .{});
         std.debug.print("  cd {s}\n", .{name});

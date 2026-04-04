@@ -9,8 +9,8 @@ const mir = @import("../mir/mir.zig");
 const declarations = @import("../declarations.zig");
 const errors = @import("../errors.zig");
 const K = @import("../constants.zig");
-const module = @import("../module.zig");
-const RT = @import("../types.zig").ResolvedType;
+const types = @import("../types.zig");
+const RT = types.ResolvedType;
 const builtins = @import("../builtins.zig");
 
 const CodeGen = codegen.CodeGen;
@@ -430,7 +430,7 @@ pub fn generateInterpolatedStringMirInline(cg: *CodeGen, parts: []const parser.I
         first = false;
     }
     // Use error propagation only if the enclosing function has an error return type.
-    // Otherwise use unreachable — page_allocator OOM is extremely rare in practice.
+    // Otherwise use unreachable — smp_allocator OOM is extremely rare in practice.
     if (cg.funcReturnTypeClass() == .error_union) {
         try cg.emit("}) catch |err| return err");
     } else {
@@ -858,16 +858,7 @@ pub fn isResultValueField(name: []const u8, decls: ?*declarations.DeclTable) boo
     // .value — universal unwrap syntax for error/null unions
     if (std.mem.eql(u8, name, "value")) return true;
     // Primitive type names — always valid as union payload access
-    const primitives = [_][]const u8{
-        "i8", "i16", "i32", "i64", "i128",
-        "u8", "u16", "u32", "u64", "u128",
-        "isize", "usize",
-        "f16", "f32", "f64", "f128",
-        "bool", "str", "void",
-    };
-    for (primitives) |p| {
-        if (std.mem.eql(u8, name, p)) return true;
-    }
+    if (types.isPrimitiveName(name)) return true;
     // Known user-defined types from the declaration table
     if (decls) |d| {
         if (d.structs.contains(name)) return true;

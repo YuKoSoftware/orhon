@@ -20,7 +20,6 @@ pub const SourceLoc = struct {
 pub const OrhonError = struct {
     message: []const u8,
     loc: ?SourceLoc = null,
-    notes: []const []const u8 = &.{},
 };
 
 /// The error reporter — used by every pass
@@ -59,14 +58,13 @@ pub const Reporter = struct {
     fn storeOwned(self: *Reporter, diag: OrhonError, list: *std.ArrayListUnmanaged(OrhonError)) !void {
         const owned_msg = try self.allocator.dupe(u8, diag.message);
         const owned_loc: ?SourceLoc = if (diag.loc) |loc| .{
-            .file = if (loc.file.len > 0) (self.allocator.dupe(u8, loc.file) catch "") else "",
+            .file = if (loc.file.len > 0) try self.allocator.dupe(u8, loc.file) else "",
             .line = loc.line,
             .col = loc.col,
         } else null;
         try list.append(self.allocator, .{
             .message = owned_msg,
             .loc = owned_loc,
-            .notes = diag.notes,
         });
     }
 
@@ -102,10 +100,10 @@ pub const Reporter = struct {
         const stderr = &w.interface;
 
         for (self.warnings.items) |diag| {
-            try printDiagnostic(stderr, &diag, "WARNING", self.mode);
+            try printDiagnostic(stderr, &diag, .warning, self.mode);
         }
         for (self.errors.items) |diag| {
-            try printDiagnostic(stderr, &diag, "ERROR", self.mode);
+            try printDiagnostic(stderr, &diag, .err, self.mode);
         }
 
         // Summary line
@@ -140,19 +138,32 @@ const WHITE = "\x1b[97m"; // bright white text
 // Full-width header bar: 50 spaces to pad the label
 const HEADER_PAD = "                                                  ";
 
-fn printDiagnostic(stderr: anytype, diag: *const OrhonError, label: []const u8, mode: BuildMode) !void {
-    const is_error = std.mem.eql(u8, label, "ERROR");
+const DiagKind = enum {
+    err,
+    warning,
+
+    fn label(self: DiagKind) []const u8 {
+        return switch (self) {
+            .err => "ERROR",
+            .warning => "WARNING",
+        };
+    }
+};
+
+fn printDiagnostic(stderr: anytype, diag: *const OrhonError, kind: DiagKind, mode: BuildMode) !void {
+    const is_error = kind == .err;
     const header_bg = if (is_error) "\x1b[41m" else "\x1b[43m"; // red / yellow background
     const header_fg = if (is_error) WHITE else "\x1b[30m"; // white on red, black on yellow
+    const lbl = kind.label();
 
     if (mode != .debug) {
-        try stderr.print("{s}: {s}\n", .{ label, diag.message });
+        try stderr.print("{s}: {s}\n", .{ lbl, diag.message });
         return;
     }
 
     // Full-width colored header bar
-    const pad_len = if (HEADER_PAD.len > label.len + 2) HEADER_PAD.len - label.len - 2 else 0;
-    try stderr.print("\n{s}{s}{s}  {s}{s}{s}\n", .{ header_bg, BOLD, header_fg, label, HEADER_PAD[0..pad_len], RESET });
+    const pad_len = if (HEADER_PAD.len > lbl.len + 2) HEADER_PAD.len - lbl.len - 2 else 0;
+    try stderr.print("\n{s}{s}{s}  {s}{s}{s}\n", .{ header_bg, BOLD, header_fg, lbl, HEADER_PAD[0..pad_len], RESET });
 
     // Message
     try stderr.print("\n  {s}{s}{s}\n", .{ BOLD, diag.message, RESET });
@@ -172,25 +183,22 @@ fn printDiagnostic(stderr: anytype, diag: *const OrhonError, label: []const u8, 
                 try stderr.print("{s}       │{s}\n", .{ DIM, RESET });
             }
         }
-        for (diag.notes) |note| {
-            try stderr.print("  {s}note:{s} {s}\n", .{ DIM, RESET, note });
-        }
     }
 }
 
-/// Read a specific line from a source file, returns null on failure
+/// Read a specific line from a source file into a static buffer, returns null on failure.
+/// Uses a fixed buffer to avoid heap allocation and memory leaks during error reporting.
 fn readSourceLine(file_path: []const u8, target_line: usize) ?[]const u8 {
     const file = std.fs.cwd().openFile(file_path, .{}) catch return null;
     defer file.close();
     const content = file.readToEndAlloc(std.heap.page_allocator, 1024 * 1024) catch return null;
-    // Don't defer free — the slice is valid for the duration of flush()
-    // This is a small leak per error but errors are fatal anyway
+    defer std.heap.page_allocator.free(content);
     var line_num: usize = 1;
     var start: usize = 0;
     for (content, 0..) |ch, i| {
         if (ch == '\n') {
             if (line_num == target_line) {
-                return content[start..i];
+                return copyToLineBuf(content[start..i]);
             }
             line_num += 1;
             start = i + 1;
@@ -198,9 +206,17 @@ fn readSourceLine(file_path: []const u8, target_line: usize) ?[]const u8 {
     }
     // Last line without trailing newline
     if (line_num == target_line and start < content.len) {
-        return content[start..];
+        return copyToLineBuf(content[start..]);
     }
     return null;
+}
+
+/// Copy a line into a static buffer so the source content can be freed.
+var line_buf: [1024]u8 = undefined;
+fn copyToLineBuf(line: []const u8) []const u8 {
+    const len = @min(line.len, line_buf.len);
+    @memcpy(line_buf[0..len], line[0..len]);
+    return line_buf[0..len];
 }
 
 // Maximum identifier length considered for Levenshtein suggestions.

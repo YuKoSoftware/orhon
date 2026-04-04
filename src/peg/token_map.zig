@@ -105,60 +105,41 @@ pub const TERMINAL_MAP = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "EOF", .eof },
 });
 
-/// Resolve a PEG grammar atom to a token kind.
-/// Returns null for lowercase rule references (those are rule names, not tokens).
-pub fn resolve(name: []const u8) ?TokenKind {
-    // Single-quoted literal (quotes already stripped by grammar parser)
-    if (LITERAL_MAP.get(name)) |kind| return kind;
-    // UPPER_CASE terminal
-    if (TERMINAL_MAP.get(name)) |kind| return kind;
-    return null;
-}
-
-/// Check if a name is a known contextual identifier (like 'dep', 'Error',
-/// 'Ptr', 'List', etc.). These are parsed as IDENTIFIER tokens but matched by text.
-/// The PEG engine matches these by checking both token kind (.identifier) and text.
-pub fn isContextualIdentifier(name: []const u8) bool {
-    return LITERAL_MAP.get(name) == null and
-        TERMINAL_MAP.get(name) == null and
-        name.len > 0 and std.ascii.isUpper(name[0]) == false;
-}
-
 // ============================================================
 // TESTS
 // ============================================================
 
 test "token_map - keywords resolve correctly" {
-    try std.testing.expectEqual(TokenKind.kw_func, resolve("func").?);
-    try std.testing.expectEqual(TokenKind.kw_struct, resolve("struct").?);
-    try std.testing.expectEqual(TokenKind.kw_return, resolve("return").?);
-    try std.testing.expectEqual(TokenKind.kw_elif, resolve("elif").?);
-    try std.testing.expectEqual(TokenKind.kw_type, resolve("type").?);
+    try std.testing.expectEqual(TokenKind.kw_func, LITERAL_MAP.get("func").?);
+    try std.testing.expectEqual(TokenKind.kw_struct, LITERAL_MAP.get("struct").?);
+    try std.testing.expectEqual(TokenKind.kw_return, LITERAL_MAP.get("return").?);
+    try std.testing.expectEqual(TokenKind.kw_elif, LITERAL_MAP.get("elif").?);
+    try std.testing.expectEqual(TokenKind.kw_type, LITERAL_MAP.get("type").?);
 }
 
 test "token_map - punctuation resolves correctly" {
-    try std.testing.expectEqual(TokenKind.lparen, resolve("(").?);
-    try std.testing.expectEqual(TokenKind.dotdot, resolve("..").?);
-    try std.testing.expectEqual(TokenKind.arrow, resolve("=>").?);
-    try std.testing.expectEqual(TokenKind.scope, resolve("::").?);
+    try std.testing.expectEqual(TokenKind.lparen, LITERAL_MAP.get("(").?);
+    try std.testing.expectEqual(TokenKind.dotdot, LITERAL_MAP.get("..").?);
+    try std.testing.expectEqual(TokenKind.arrow, LITERAL_MAP.get("=>").?);
+    try std.testing.expectEqual(TokenKind.scope, LITERAL_MAP.get("::").?);
 }
 
 test "token_map - operators resolve correctly" {
-    try std.testing.expectEqual(TokenKind.plus_plus, resolve("++").?);
-    try std.testing.expectEqual(TokenKind.lshift, resolve("<<").?);
-    try std.testing.expectEqual(TokenKind.plus_assign, resolve("+=").?);
-    try std.testing.expectEqual(TokenKind.neq, resolve("!=").?);
+    try std.testing.expectEqual(TokenKind.plus_plus, LITERAL_MAP.get("++").?);
+    try std.testing.expectEqual(TokenKind.lshift, LITERAL_MAP.get("<<").?);
+    try std.testing.expectEqual(TokenKind.plus_assign, LITERAL_MAP.get("+=").?);
+    try std.testing.expectEqual(TokenKind.neq, LITERAL_MAP.get("!=").?);
 }
 
 test "token_map - terminals resolve correctly" {
-    try std.testing.expectEqual(TokenKind.identifier, resolve("IDENTIFIER").?);
-    try std.testing.expectEqual(TokenKind.int_literal, resolve("INT_LITERAL").?);
-    try std.testing.expectEqual(TokenKind.newline, resolve("NL").?);
-    try std.testing.expectEqual(TokenKind.eof, resolve("EOF").?);
+    try std.testing.expectEqual(TokenKind.identifier, TERMINAL_MAP.get("IDENTIFIER").?);
+    try std.testing.expectEqual(TokenKind.int_literal, TERMINAL_MAP.get("INT_LITERAL").?);
+    try std.testing.expectEqual(TokenKind.newline, TERMINAL_MAP.get("NL").?);
+    try std.testing.expectEqual(TokenKind.eof, TERMINAL_MAP.get("EOF").?);
 }
 
 test "token_map - unknown names return null" {
-    try std.testing.expect(resolve("expr") == null);
-    try std.testing.expect(resolve("func_decl") == null);
-    try std.testing.expect(resolve("block") == null);
+    try std.testing.expect(LITERAL_MAP.get("expr") == null);
+    try std.testing.expect(TERMINAL_MAP.get("func_decl") == null);
+    try std.testing.expect(LITERAL_MAP.get("block") == null);
 }

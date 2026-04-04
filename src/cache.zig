@@ -16,13 +16,6 @@ pub const WARNINGS_FILE = ".orh-cache/warnings";
 pub const INTERFACES_FILE = ".orh-cache/interfaces";
 pub const ZIG_MODULES_DIR = ".orh-cache/zig_modules";
 
-/// A module entry in the cache
-pub const ModuleEntry = struct {
-    name: []const u8,
-    files: [][]const u8,
-    content_hash: u64,
-};
-
 /// The cache state
 pub const Cache = struct {
     hashes: std.StringHashMap(u64),
@@ -244,15 +237,6 @@ pub const Cache = struct {
         try writer.flush();
     }
 
-    /// Returns true if the dependency's current interface hash differs from cached,
-    /// or if no cached interface hash exists for the dependency.
-    pub fn depInterfaceChanged(self: *Cache, dep_name: []const u8) bool {
-        _ = self.interface_hashes.get(dep_name) orelse return true;
-        // The caller is responsible for comparing against the freshly computed hash.
-        // This function reports "changed" only when there is no stored hash at all.
-        // The actual comparison happens in pipeline.zig where both values are available.
-        return false;
-    }
 };
 
 /// A cached warning entry
@@ -498,19 +482,13 @@ fn hashCategory(
     return s;
 }
 
-/// Sort a slice of string slices alphabetically in-place using insertion sort.
-/// Insertion sort is chosen for its simplicity and low overhead for small slices.
+/// Sort a slice of string slices alphabetically in-place.
 fn sortNames(names: [][]const u8) void {
-    if (names.len <= 1) return;
-    var i: usize = 1;
-    while (i < names.len) : (i += 1) {
-        const key = names[i];
-        var j: usize = i;
-        while (j > 0 and std.mem.order(u8, names[j - 1], key) == .gt) : (j -= 1) {
-            names[j] = names[j - 1];
+    std.mem.sort([]const u8, names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.order(u8, a, b) == .lt;
         }
-        names[j] = key;
-    }
+    }.lessThan);
 }
 
 /// Hash a ResolvedType value into a running seed.
@@ -536,9 +514,9 @@ fn hashResolvedType(seed: u64, rt: types.ResolvedType) u64 {
         },
         .array => |arr| {
             s = hashResolvedType(s, arr.elem.*);
-            // size node is an AST pointer; use its address as a proxy (stable within a build)
-            const addr: u64 = @intFromPtr(arr.size);
-            s = XxHash3.hash(s, std.mem.asBytes(&addr));
+            // Hash the size expression content (e.g. int literal text) for cross-build stability
+            const size_text = if (arr.size.* == .int_literal) arr.size.int_literal else "?";
+            s = XxHash3.hash(s, size_text);
         },
         .union_type => |variants| {
             for (variants) |v| {

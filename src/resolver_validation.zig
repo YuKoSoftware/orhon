@@ -5,7 +5,6 @@ const std = @import("std");
 const resolver_mod = @import("resolver.zig");
 const parser = @import("parser.zig");
 const types = @import("types.zig");
-const declarations = @import("declarations.zig");
 const builtins = @import("builtins.zig");
 const errors = @import("errors.zig");
 const K = @import("constants.zig");
@@ -206,7 +205,7 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                 try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown generic type '{s}'", .{g.name});
             }
             // Validate type arguments (Ring/ORing second arg is a size, Vector first arg is a size)
-            const is_vector = std.mem.eql(u8, g.name, builtins.BT.VECTOR);
+            const is_vector = std.mem.eql(u8, g.name, K.Type.VECTOR);
             for (g.args, 0..) |arg, idx| {
                 if (is_vector and idx == 0) continue; // lane count, not a type
                 try validateType(self, arg, scope);

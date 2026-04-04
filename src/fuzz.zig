@@ -4,7 +4,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const peg_mod = @import("peg.zig");
-const errors = @import("errors.zig");
 
 pub fn main() !void {
     const alloc = std.heap.smp_allocator;
@@ -20,6 +19,10 @@ pub fn main() !void {
     var stderr_buf: [4096]u8 = undefined;
     var w = std.fs.File.stderr().writer(&stderr_buf);
     const out = &w.interface;
+
+    // Load grammar once — it's static across all iterations
+    var grammar = try peg_mod.loadGrammar(alloc);
+    defer grammar.deinit();
 
     for (0..iterations) |i| {
         const len = rand.intRangeAtMost(usize, 0, 1024);
@@ -100,14 +103,6 @@ pub fn main() !void {
         }
 
         // Parse (PEG engine)
-        var reporter = errors.Reporter.init(alloc, .debug);
-        defer reporter.deinit();
-
-        var grammar = peg_mod.loadGrammar(alloc) catch {
-            parse_err += 1;
-            continue;
-        };
-        defer grammar.deinit();
         var engine = peg_mod.Engine.init(&grammar, tokens.items, alloc);
         defer engine.deinit();
 

@@ -10,7 +10,6 @@ const K = @import("constants.zig");
 const types = @import("types.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
-const builtins = @import("builtins.zig");
 const scope_mod = @import("scope.zig");
 
 /// A tracked union variable — needs handling before scope exit
@@ -404,10 +403,10 @@ fn typeNodeIsUnion(node: *parser.Node) ?bool {
     switch (node.*) {
         .type_union => |members| {
             for (members) |m| {
-                if (m.* == .type_named and std.mem.eql(u8, m.type_named, builtins.BT.ERROR)) return true;
+                if (m.* == .type_named and std.mem.eql(u8, m.type_named, K.Type.ERROR)) return true;
             }
             for (members) |m| {
-                if (m.* == .type_named and std.mem.eql(u8, m.type_named, "null")) return false;
+                if (m.* == .type_named and std.mem.eql(u8, m.type_named, K.Type.NULL)) return false;
             }
             return null;
         },
@@ -444,7 +443,7 @@ fn typeCanPropagate(node: *parser.Node) bool {
         .type_union => |members| {
             // (Error | T) can propagate errors, (null | T) can propagate null
             for (members) |m| {
-                if (m.* == .type_named and (std.mem.eql(u8, m.type_named, builtins.BT.ERROR) or std.mem.eql(u8, m.type_named, "null")))
+                if (m.* == .type_named and (std.mem.eql(u8, m.type_named, K.Type.ERROR) or std.mem.eql(u8, m.type_named, K.Type.NULL)))
                     return true;
             }
             return false;
@@ -515,8 +514,6 @@ test "propagation - ResolvedType detects Error and null unions" {
 }
 
 test "propagation - typeNodeIsUnion detects union AST nodes" {
-    const alloc = std.testing.allocator;
-
     // Build a type_union node: (Error | i32)
     var error_type = parser.Node{ .type_named = "Error" };
     var i32_type = parser.Node{ .type_named = "i32" };
@@ -538,7 +535,6 @@ test "propagation - typeNodeIsUnion detects union AST nodes" {
     var plain = parser.Node{ .type_named = "i32" };
     try std.testing.expect(typeNodeIsUnion(&plain) == null);
 
-    _ = alloc;
 }
 
 test "propagation - call expr resolved via decl table" {

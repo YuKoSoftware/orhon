@@ -71,9 +71,7 @@ pub const Grammar = struct {
     }
 
     pub fn deinit(self: *Grammar) void {
-        const backing = self.arena.child_allocator;
         var arena_copy = self.arena;
-        _ = backing;
         arena_copy.deinit();
     }
 };
@@ -139,7 +137,7 @@ const GrammarParser = struct {
 
     fn parse(self: *GrammarParser) !void {
         while (self.pos < self.source.len) {
-            self.skipBlankAndComments();
+            self.skipWhitespaceAndNewlines();
             if (self.pos >= self.source.len) break;
 
             // A rule starts with an unindented identifier at column 0
@@ -441,10 +439,6 @@ const GrammarParser = struct {
                 self.skipLine();
             } else break;
         }
-    }
-
-    fn skipBlankAndComments(self: *GrammarParser) void {
-        self.skipWhitespaceAndNewlines();
     }
 
     fn skipLine(self: *GrammarParser) void {

@@ -125,6 +125,13 @@ pub const Primitive = enum {
         return self.isInteger() or self.isFloat() or
             self == .numeric_literal or self == .float_literal;
     }
+
+    /// Map an Orhon type name string to its Zig equivalent.
+    /// Returns the original string unchanged if it's not a primitive name.
+    pub fn nameToZig(name: []const u8) []const u8 {
+        if (fromName(name)) |p| return p.toZig();
+        return name;
+    }
 };
 
 /// Ownership state of a variable — used by ownership analysis pass
@@ -196,7 +203,7 @@ pub const ResolvedType = union(enum) {
             .primitive => true,
             .err, .null_type => true,
             .inferred, .unknown => false,
-            else => false,
+            .named, .slice, .array, .union_type, .tuple, .func_ptr, .generic, .ptr => false,
         };
     }
 
@@ -322,6 +329,7 @@ pub fn resolveTypeNode(alloc: std.mem.Allocator, node: *parser.Node) anyerror!Re
             return .{ .ptr = .{ .kind = p.kind, .elem = inner } };
         },
 
+        // Non-type AST nodes (77+ variants) — only type_* nodes resolve to types
         else => .unknown,
     };
 }
@@ -453,6 +461,12 @@ test "classifyNamed" {
 
     const named = classifyNamed("Player");
     try std.testing.expect(named == .named);
+}
+
+test "Primitive.nameToZig" {
+    try std.testing.expectEqualStrings("[]const u8", Primitive.nameToZig("str"));
+    try std.testing.expectEqualStrings("i32", Primitive.nameToZig("i32"));
+    try std.testing.expectEqualStrings("Player", Primitive.nameToZig("Player"));
 }
 
 test "isPrimitiveName" {

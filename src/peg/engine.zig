@@ -161,6 +161,7 @@ pub const Engine = struct {
         }
 
         // Memoize
+        // Memoization is an optimization — OOM here degrades performance, not correctness
         self.memo.put(self.allocator, key, if (result) |r|
             MemoEntry{ .success = r }
         else

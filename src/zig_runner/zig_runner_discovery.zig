@@ -54,8 +54,6 @@ fn zigBinaryName() []const u8 {
 }
 
 test "zig runner - find zig path format" {
-    const alloc = std.testing.allocator;
     const name = zigBinaryName();
     try std.testing.expect(name.len > 0);
-    _ = alloc;
 }

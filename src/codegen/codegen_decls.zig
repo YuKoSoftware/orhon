@@ -9,7 +9,6 @@ const mir = @import("../mir/mir.zig");
 const declarations = @import("../declarations.zig");
 const errors = @import("../errors.zig");
 const K = @import("../constants.zig");
-const module = @import("../module.zig");
 const RT = @import("../types.zig").ResolvedType;
 
 const CodeGen = codegen.CodeGen;
@@ -18,9 +17,6 @@ const CodeGen = codegen.CodeGen;
 // FUNCTIONS
 // ============================================================
 
-/// Walk a node tree and collect all variable names that appear as the
-/// LHS of an assignment (simple, compound, field, or index). Stops at
-/// nested func_decl boundaries so inner functions don't pollute the outer set.
 /// Emit a re-export for a zig-backed module declaration from the named zig module.
 /// Zig source files are registered as named Zig modules with a `_zig` suffix in the build graph.
 pub fn generateZigReExport(cg: *CodeGen, name: []const u8, is_pub: bool) anyerror!void {

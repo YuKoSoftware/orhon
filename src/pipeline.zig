@@ -90,7 +90,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
         const dst_file = std.fs.cwd().createFile(dst_path, .{}) catch continue;
         defer dst_file.close();
-        dst_file.writeAll(rewritten.items) catch {};
+        try dst_file.writeAll(rewritten.items);
     }
 
     // ── Zig Module Discovery ─────────────────────────────────

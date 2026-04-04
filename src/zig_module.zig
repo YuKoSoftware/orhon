@@ -10,11 +10,11 @@ const cache = @import("cache.zig");
 const constants = @import("constants.zig");
 
 /// Primitives that pass through unchanged from Zig to Orhon.
-const PASSTHROUGH_PRIMITIVES = [_][]const u8{
-    "u8",    "i8",   "i16",  "i32",  "i64",
-    "u16",   "u32",  "u64",  "f32",  "f64",
-    "bool",  "void", "usize",
-};
+const PASSTHROUGH_PRIMITIVES = std.StaticStringMap(void).initComptime(.{
+    .{ "u8", {} },  .{ "i8", {} },  .{ "i16", {} }, .{ "i32", {} }, .{ "i64", {} },
+    .{ "u16", {} }, .{ "u32", {} }, .{ "u64", {} }, .{ "f32", {} }, .{ "f64", {} },
+    .{ "bool", {} }, .{ "void", {} }, .{ "usize", {} },
+});
 
 /// Output buffer for type mapping. Wraps an unmanaged ArrayList(u8).
 pub const TypeBuf = struct {
@@ -51,11 +51,9 @@ pub fn mapType(tree: *const Ast, node: Node.Index, allocator: Allocator, out: *T
             }
 
             // Check primitives
-            for (PASSTHROUGH_PRIMITIVES) |prim| {
-                if (std.mem.eql(u8, name, prim)) {
-                    try out.append(allocator, name);
-                    return true;
-                }
+            if (PASSTHROUGH_PRIMITIVES.has(name)) {
+                try out.append(allocator, name);
+                return true;
             }
 
             // A bare identifier that isn't a primitive is a user-defined type.
@@ -576,8 +574,6 @@ pub const ConvertedModule = struct {
 
 /// C/C++ source file extensions recognised during auto-detection.
 const C_SOURCE_EXTENSIONS = [_][]const u8{ ".c", ".cpp", ".cc", ".cxx" };
-/// Extensions that indicate C++ (sets needs_cpp on the config).
-const CPP_EXTENSIONS = [_][]const u8{ ".cpp", ".cc", ".cxx" };
 
 /// Discovers .zig files in `source_dir`, converts each to .orh, writes to `output_dir`.
 /// If `output_dir` is null, defaults to `cache.ZIG_MODULES_DIR`.
@@ -699,8 +695,7 @@ fn readZonForZigFile(allocator: Allocator, zig_path: []const u8) !ZonConfig {
 }
 
 /// Scans the directory containing `zig_path` for C/C++ source files and merges
-/// any found into `config.source`, avoiding duplicates. Sets `needs_cpp` via
-/// a flag stored on the config (tracked externally by the caller through CPP_EXTENSIONS).
+/// any found into `config.source`, avoiding duplicates.
 fn mergeAdjacentCSources(allocator: Allocator, zig_path: []const u8, config: *ZonConfig) !void {
     const dir_path = std.fs.path.dirname(zig_path) orelse ".";
 

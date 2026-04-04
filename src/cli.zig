@@ -78,10 +78,10 @@ pub const CliArgs = struct {
     gen_syntax: bool, // -syntax flag for gendoc (generate syntax reference only)
     allocator: std.mem.Allocator, // owns duped strings
 
-    pub fn deinit(self: *const CliArgs) void {
+    pub fn deinit(self: *CliArgs) void {
         if (self.project_name.len > 0) self.allocator.free(self.project_name);
         if (!std.mem.eql(u8, self.source_dir, "src")) self.allocator.free(self.source_dir);
-        @constCast(&self.targets).deinit(self.allocator);
+        self.targets.deinit(self.allocator);
     }
 };
 
@@ -113,19 +113,38 @@ pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
     };
 
     // Parse command
+    const cmd_map = std.StaticStringMap(Command).initComptime(.{
+        .{ "build", .build },
+        .{ "run", .run },
+        .{ "test", .@"test" },
+        .{ "init", .init },
+        .{ "debug", .debug },
+        .{ "fmt", .fmt },
+        .{ "gendoc", .gendoc },
+        .{ "addtopath", .addtopath },
+        .{ "-addtopath", .addtopath },
+        .{ "version", .version },
+        .{ "--version", .version },
+        .{ "lsp", .lsp },
+        .{ "which", .which },
+        .{ "analysis", .analysis },
+        .{ "help", .help },
+        .{ "--help", .help },
+    });
+
     const cmd_str = args[1];
-    if (std.mem.eql(u8, cmd_str, "build")) {
-        cli.command = .build;
-    } else if (std.mem.eql(u8, cmd_str, "run")) {
-        cli.command = .run;
-    } else if (std.mem.eql(u8, cmd_str, "test")) {
-        cli.command = .@"test";
-    } else if (std.mem.eql(u8, cmd_str, "init")) {
-        cli.command = .init;
+    if (cmd_map.get(cmd_str)) |cmd| {
+        cli.command = cmd;
+    } else {
+        printUsage();
+        std.process.exit(1);
+    }
+
+    // Handle init's project name argument
+    if (cli.command == .init) {
         if (args.len >= 3) {
             cli.project_name = try allocator.dupe(u8, args[2]);
         } else {
-            // No name given — init in current directory, use dir name as project name
             cli.init_in_place = true;
             const cwd_path = try std.process.getCwdAlloc(allocator);
             defer allocator.free(cwd_path);
@@ -136,61 +155,28 @@ pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
             }
             cli.project_name = try allocator.dupe(u8, dir_name);
         }
-    } else if (std.mem.eql(u8, cmd_str, "debug")) {
-        cli.command = .debug;
-    } else if (std.mem.eql(u8, cmd_str, "fmt")) {
-        cli.command = .fmt;
-    } else if (std.mem.eql(u8, cmd_str, "gendoc")) {
-        cli.command = .gendoc;
-    } else if (std.mem.eql(u8, cmd_str, "addtopath") or std.mem.eql(u8, cmd_str, "-addtopath")) {
-        cli.command = .addtopath;
-    } else if (std.mem.eql(u8, cmd_str, "version") or std.mem.eql(u8, cmd_str, "--version")) {
-        cli.command = .version;
-    } else if (std.mem.eql(u8, cmd_str, "lsp")) {
-        cli.command = .lsp;
-    } else if (std.mem.eql(u8, cmd_str, "which")) {
-        cli.command = .which;
-    } else if (std.mem.eql(u8, cmd_str, "analysis")) {
-        cli.command = .analysis;
-    } else if (std.mem.eql(u8, cmd_str, "help") or std.mem.eql(u8, cmd_str, "--help")) {
-        cli.command = .help;
-    } else {
-        printUsage();
-        std.process.exit(1);
     }
 
     // Parse flags
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
-        const is_target_flag = std.mem.eql(u8, arg, "-linux_x64") or
-            std.mem.eql(u8, arg, "-linux_arm") or
-            std.mem.eql(u8, arg, "-win_x64") or
-            std.mem.eql(u8, arg, "-mac_x64") or
-            std.mem.eql(u8, arg, "-mac_arm") or
-            std.mem.eql(u8, arg, "-wasm") or
-            std.mem.eql(u8, arg, "-zig");
+        const target_map = std.StaticStringMap(BuildTarget).initComptime(.{
+            .{ "-linux_x64", .linux_x64 },
+            .{ "-linux_arm", .linux_arm },
+            .{ "-win_x64", .win_x64 },
+            .{ "-mac_x64", .mac_x64 },
+            .{ "-mac_arm", .mac_arm },
+            .{ "-wasm", .wasm },
+            .{ "-zig", .zig },
+        });
 
-        if (is_target_flag) {
+        if (target_map.get(arg)) |target| {
             if (cli.command != .build) {
                 std.debug.print("warning: target flag '{s}' ignored (only valid with 'build')\n", .{arg});
                 continue;
             }
-            if (std.mem.eql(u8, arg, "-linux_x64")) {
-                try cli.targets.append(allocator, .linux_x64);
-            } else if (std.mem.eql(u8, arg, "-linux_arm")) {
-                try cli.targets.append(allocator, .linux_arm);
-            } else if (std.mem.eql(u8, arg, "-win_x64")) {
-                try cli.targets.append(allocator, .win_x64);
-            } else if (std.mem.eql(u8, arg, "-mac_x64")) {
-                try cli.targets.append(allocator, .mac_x64);
-            } else if (std.mem.eql(u8, arg, "-mac_arm")) {
-                try cli.targets.append(allocator, .mac_arm);
-            } else if (std.mem.eql(u8, arg, "-wasm")) {
-                try cli.targets.append(allocator, .wasm);
-            } else if (std.mem.eql(u8, arg, "-zig")) {
-                try cli.targets.append(allocator, .zig);
-            }
+            try cli.targets.append(allocator, target);
         } else if (std.mem.eql(u8, arg, "-fast")) {
             cli.optimize = .fast;
         } else if (std.mem.eql(u8, arg, "-small")) {

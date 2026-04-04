@@ -82,9 +82,7 @@ pub const OwnershipChecker = struct {
         };
     }
 
-    /// Look up a field's type from the DeclTable using the variable's tracked type.
-    /// Returns true if primitive, false if non-primitive, null if unknown.
-    /// Check if a variable's type is a known struct in DeclTable
+    /// Check if a variable's type is a known struct in DeclTable.
     pub fn isKnownStruct(self: *const OwnershipChecker, scope: *OwnershipScope, obj_name: []const u8) bool {
         const var_state = scope.getState(obj_name) orelse return false;
         if (var_state.type_name.len > 0) {
@@ -175,8 +173,6 @@ pub const OwnershipChecker = struct {
                     try self.checkStatement(stmt, &block_scope);
                 }
 
-                // Check for unhandled error unions at scope exit
-                // (simplified — full impl tracks error union vars)
             },
 
             .test_decl => |t| {

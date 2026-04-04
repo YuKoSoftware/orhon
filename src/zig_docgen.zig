@@ -187,11 +187,7 @@ fn writeEntry(allocator: Allocator, buf: *std.ArrayListUnmanaged(u8), e: DocEntr
 
 /// Extract pub declarations from a Zig AST.
 fn extractDecls(tree: *const Ast, allocator: Allocator, entries: *std.ArrayListUnmanaged(DocEntry), parent_name: ?[]const u8) !void {
-    const decls = if (parent_name != null) blk: {
-        // For struct members, we need to find the container node
-        // This is called from the struct extraction below with root decls
-        break :blk tree.rootDecls();
-    } else tree.rootDecls();
+    const decls = tree.rootDecls();
 
     for (decls) |node| {
         try extractNode(tree, node, allocator, entries, parent_name);

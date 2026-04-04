@@ -253,6 +253,7 @@ pub fn annotateNode(self: *MirAnnotator, node: *parser.Node) anyerror!void {
             if (f.default_value) |dv| try annotateNode(self, dv);
         },
 
+        // Structural/type/metadata nodes don't need type annotation
         else => {},
     }
 }

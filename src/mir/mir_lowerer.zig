@@ -357,7 +357,7 @@ pub const MirLowerer = struct {
                     .interp_parts = interp.parts,
                 };
 
-                // injected_defer: defer std.heap.page_allocator.free(_orhon_interp_N)
+                // injected_defer: defer std.heap.smp_allocator.free(_orhon_interp_N)
                 const defer_node = try self.allocator.create(MirNode);
                 defer_node.* = .{
                     .ast = interp_node,

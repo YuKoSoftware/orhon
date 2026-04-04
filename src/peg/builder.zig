@@ -73,7 +73,7 @@ pub const BuildContext = struct {
             .message = message,
             .line = line,
             .col = col,
-        }) catch {};
+        }) catch return;
     }
 
     pub fn alloc(self: *BuildContext) std.mem.Allocator {

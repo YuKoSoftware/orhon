@@ -214,6 +214,20 @@ pub const DeclCollector = struct {
         }
     }
 
+    /// Resolve function parameter types into a ParamSig slice.
+    fn resolveParams(self: *DeclCollector, param_nodes: []*parser.Node) ![]ParamSig {
+        var params: std.ArrayListUnmanaged(ParamSig) = .{};
+        for (param_nodes) |param| {
+            if (param.* == .param) {
+                try params.append(self.allocator, .{
+                    .name = param.param.name,
+                    .type_ = try types.resolveTypeNode(self.table.typeAllocator(), param.param.type_annotation),
+                });
+            }
+        }
+        return params.toOwnedSlice(self.allocator);
+    }
+
     fn collectFunc(self: *DeclCollector, f: parser.FuncDecl, loc: ?errors.SourceLoc) anyerror!void {
         var params: std.ArrayListUnmanaged(ParamSig) = .{};
         for (f.params) |param| {
@@ -314,18 +328,9 @@ pub const DeclCollector = struct {
             for (s.members) |member| {
                 if (member.* == .func_decl) {
                     const f = member.func_decl;
-                    var params: std.ArrayListUnmanaged(ParamSig) = .{};
-                    for (f.params) |param| {
-                        if (param.* == .param) {
-                            try params.append(self.allocator, .{
-                                .name = param.param.name,
-                                .type_ = try types.resolveTypeNode(self.table.typeAllocator(), param.param.type_annotation),
-                            });
-                        }
-                    }
                     const method_sig = FuncSig{
                         .name = f.name,
-                        .params = try params.toOwnedSlice(self.allocator),
+                        .params = try self.resolveParams(f.params),
                         .param_nodes = f.params,
                         .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
                         .return_type_node = f.return_type,
@@ -345,18 +350,9 @@ pub const DeclCollector = struct {
         for (b.methods) |member| {
             if (member.* == .func_decl) {
                 const f = member.func_decl;
-                var params: std.ArrayListUnmanaged(ParamSig) = .{};
-                for (f.params) |param| {
-                    if (param.* == .param) {
-                        try params.append(self.allocator, .{
-                            .name = param.param.name,
-                            .type_ = try types.resolveTypeNode(self.table.typeAllocator(), param.param.type_annotation),
-                        });
-                    }
-                }
                 try methods.append(self.allocator, .{
                     .name = f.name,
-                    .params = try params.toOwnedSlice(self.allocator),
+                    .params = try self.resolveParams(f.params),
                     .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
                 });
             }
@@ -674,7 +670,7 @@ test "declaration collector - pub func is registered" {
 /// Used to prevent field names like `str`, `i32`, `File` etc.
 fn isReservedTypeName(name: []const u8) bool {
     if (types.isPrimitiveName(name)) return true;
-    if (std.mem.eql(u8, name, builtins.BT.ERROR)) return true;
+    if (std.mem.eql(u8, name, K.Type.ERROR)) return true;
     return builtins.isBuiltinType(name);
 }
 

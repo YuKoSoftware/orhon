@@ -4,9 +4,6 @@
 const std = @import("std");
 const borrow = @import("borrow.zig");
 const parser = @import("parser.zig");
-const declarations = @import("declarations.zig");
-const sema = @import("sema.zig");
-
 const BorrowChecker = borrow.BorrowChecker;
 
 pub fn checkStatement(self: *BorrowChecker, node: *parser.Node) anyerror!void {

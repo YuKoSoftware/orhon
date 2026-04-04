@@ -26,19 +26,12 @@ pub const PRIMITIVE_NAMES = [_][]const u8{
     "bool", "str", "void",
 };
 
-/// A resolved type binding — maps expression nodes to their resolved types
-pub const TypeBinding = struct {
-    node: *parser.Node,
-    resolved_type: RT,
-};
-
 /// Scope for variable type tracking
 pub const Scope = scope_mod.ScopeBase(RT);
 
 /// The type resolver
 pub const TypeResolver = struct {
     ctx: *const sema.SemanticContext,
-    bindings: std.ArrayListUnmanaged(TypeBinding),
     type_map: std.AutoHashMapUnmanaged(*parser.Node, RT),
     loop_depth: u32 = 0, // track nesting depth for break/continue validation
     struct_depth: u32 = 0, // track nesting depth for Self type validation
@@ -49,13 +42,11 @@ pub const TypeResolver = struct {
     pub fn init(ctx: *const sema.SemanticContext) TypeResolver {
         return .{
             .ctx = ctx,
-            .bindings = .{},
             .type_map = .{},
         };
     }
 
     pub fn deinit(self: *TypeResolver) void {
-        self.bindings.deinit(self.ctx.allocator);
         self.type_map.deinit(self.ctx.allocator);
         self.included_modules.deinit(self.ctx.allocator);
     }
@@ -593,8 +584,8 @@ pub fn inferCaptureType(iterable: *parser.Node, iter_type: RT) RT {
     return RT.inferred;
 }
 
-/// Check if two resolved types are compatible (same kind and name).
-/// Unions, error unions, and null unions are compatible with their inner types.
+/// Check if a resolved type looks like a generic type parameter (e.g. T, V, Key).
+/// Heuristic: named type starting with uppercase, length <= 4.
 pub fn isTypeParam(t: RT) bool {
     // A type param is a .named type that isn't a known primitive and looks like a param name.
     // Type params defined via T: type get stored as .primitive = "type" in scope,

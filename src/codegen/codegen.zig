@@ -10,7 +10,8 @@ const declarations = @import("../declarations.zig");
 const errors = @import("../errors.zig");
 const K = @import("../constants.zig");
 const module = @import("../module.zig");
-const RT = @import("../types.zig").ResolvedType;
+const types = @import("../types.zig");
+const RT = types.ResolvedType;
 const decls_impl = @import("codegen_decls.zig");
 const stmts_impl = @import("codegen_stmts.zig");
 const exprs_impl = @import("codegen_exprs.zig");
@@ -51,7 +52,7 @@ pub const CodeGen = struct {
     mir_root: ?*mir.MirNode = null,
     // Zig-backed module — all declarations are re-exported from {name}_zig
     is_zig_module: bool = false,
-    // MIR node for the current function — set by generateFuncMir/generateThreadFuncMir.
+    // MIR node for the current function — set by generateFuncMir.
     current_func_mir: ?*mir.MirNode = null,
     // Pre-statement hoisting buffer — interpolation temp vars are appended here,
     // flushed to main output before the statement that references them.
@@ -295,16 +296,6 @@ pub const CodeGen = struct {
         return try self.allocTypeStr("_{s}", .{orhon_name});
     }
 
-    /// Infer which union tag a value belongs to based on its literal type.
-    pub fn inferArbitraryUnionTag(value: *parser.Node, members_rt: ?[]const RT) ?[]const u8 { return exprs_impl.inferArbitraryUnionTag(value, members_rt); }
-
-    const TypeKind = enum { int, float, string, bool_ };
-
-    pub fn matchesKind(n: []const u8, kind: TypeKind) bool { return exprs_impl.matchesKind(n, kind); }
-
-    /// Search union members (MIR resolved types) for a type matching the given kind.
-    pub fn findMemberByKind(members_rt: ?[]const RT, kind: TypeKind) ?[]const u8 { return exprs_impl.findMemberByKind(members_rt, kind); }
-
     /// MIR-path: wrap a MirNode expression in an arbitrary union tag.
     pub fn generateArbitraryUnionWrappedExprMir(self: *CodeGen, m: *mir.MirNode, members_rt: ?[]const RT) anyerror!void { return exprs_impl.generateArbitraryUnionWrappedExprMir(self, m, members_rt); }
 
@@ -430,9 +421,6 @@ pub const CodeGen = struct {
 
     /// MIR-path function codegen — reads all data from MirNode.
     pub fn generateFuncMir(self: *CodeGen, m: *mir.MirNode) anyerror!void { return decls_impl.generateFuncMir(self, m); }
-
-    /// MIR-path thread function codegen.
-    pub fn generateThreadFuncMir(self: *CodeGen, m: *mir.MirNode) anyerror!void { return decls_impl.generateThreadFuncMir(self, m); }
 
     /// MIR-path collectAssigned — traverses MirNode tree.
     pub fn collectAssignedMir(m: *mir.MirNode, set: *std.StringHashMapUnmanaged(void), alloc: std.mem.Allocator) anyerror!void { return decls_impl.collectAssignedMir(m, set, alloc); }
@@ -588,7 +576,7 @@ pub const CodeGen = struct {
                 if (self.generic_struct_name) |gsn| {
                     if (std.mem.eql(u8, name, gsn)) return "@This()";
                 }
-                return builtins.primitiveToZig(name);
+                return types.Primitive.nameToZig(name);
             },
             .type_slice => |elem| blk: {
                 const inner = try self.typeToZig(elem);
@@ -606,7 +594,7 @@ pub const CodeGen = struct {
                 var other_types = std.ArrayListUnmanaged(*parser.Node){};
                 defer other_types.deinit(self.allocator);
                 for (u) |t| {
-                    if (t.* == .type_named and std.mem.eql(u8, t.type_named, builtins.BT.ERROR)) {
+                    if (t.* == .type_named and std.mem.eql(u8, t.type_named, K.Type.ERROR)) {
                         has_error = true;
                     } else if (t.* == .type_named and std.mem.eql(u8, t.type_named, "null")) {
                         has_null = true;
@@ -671,7 +659,7 @@ pub const CodeGen = struct {
                     .{ params_str.items, ret });
             },
             .type_generic => |g| blk: {
-                if (std.mem.eql(u8, g.name, builtins.BT.VECTOR)) {
+                if (std.mem.eql(u8, g.name, K.Type.VECTOR)) {
                     // Vector(N, T) → @Vector(N, T)
                     if (g.args.len >= 2) {
                         const size_str = if (g.args[0].* == .int_literal) g.args[0].int_literal else "0";
@@ -711,11 +699,11 @@ pub const CodeGen = struct {
                 try buf.appendSlice(self.allocator, "}");
                 break :blk try self.allocTypeStr("{s}", .{buf.items});
             },
-            .type_tuple_anon => |types| blk: {
+            .type_tuple_anon => |anon_types| blk: {
                 var buf = std.ArrayListUnmanaged(u8){};
                 defer buf.deinit(self.allocator);
                 try buf.appendSlice(self.allocator, "struct { ");
-                for (types, 0..) |t, i| {
+                for (anon_types, 0..) |t, i| {
                     const ft = try self.typeToZig(t);
                     try buf.writer(self.allocator).print("@\"{d}\": {s}, ", .{ i, ft });
                 }
@@ -723,7 +711,7 @@ pub const CodeGen = struct {
                 break :blk try self.allocTypeStr("{s}", .{buf.items});
             },
             // cast(i64, x) — type arg parsed as identifier by parseExpr
-            .identifier => |name| builtins.primitiveToZig(name),
+            .identifier => |name| types.Primitive.nameToZig(name),
             // Generic type constructors in expression position: List(T), Map(K,V), etc.
             // In type alias context (const Name: type = Ptr(u8)), the RHS is a call_expr.
             // Reuse the type_generic branch by extracting callee name and arg types.
@@ -740,7 +728,7 @@ pub const CodeGen = struct {
             .binary_expr => |b| blk: {
                 if (b.op != .bit_or) break :blk "anyopaque";
                 // Check for (Error | T) or (null | T) patterns
-                const left_is_error = b.left.* == .identifier and std.mem.eql(u8, b.left.identifier, builtins.BT.ERROR);
+                const left_is_error = b.left.* == .identifier and std.mem.eql(u8, b.left.identifier, K.Type.ERROR);
                 const left_is_null = b.left.* == .null_literal;
                 if (left_is_error) {
                     const inner = try self.typeToZig(b.right);
@@ -784,7 +772,7 @@ pub fn extractValueType(node: *parser.Node) ?*parser.Node {
         const members = node.type_union;
         var value_node: ?*parser.Node = null;
         for (members) |m| {
-            if (m.* == .type_named and (std.mem.eql(u8, m.type_named, builtins.BT.ERROR) or std.mem.eql(u8, m.type_named, "null"))) continue;
+            if (m.* == .type_named and (std.mem.eql(u8, m.type_named, K.Type.ERROR) or std.mem.eql(u8, m.type_named, "null"))) continue;
             if (value_node != null) return null; // multiple non-special members
             value_node = m;
         }

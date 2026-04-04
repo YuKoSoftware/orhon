@@ -38,37 +38,26 @@ pub fn validateMainReserved(
     var has_func_main = false;
 
     for (ast.program.top_level) |node| {
-        switch (node.*) {
-            .var_decl => |v| {
-                if (std.mem.eql(u8, v.name, "main")) {
-                    try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
-                }
-            },
-            .struct_decl => |s| {
-                if (std.mem.eql(u8, s.name, "main")) {
-                    try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
-                }
-            },
-            .enum_decl => |e| {
-                if (std.mem.eql(u8, e.name, "main")) {
-                    try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
-                }
-            },
-            .blueprint_decl => |b| {
-                if (std.mem.eql(u8, b.name, "main")) {
-                    try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
-                }
-            },
-            .func_decl => |f| {
-                if (std.mem.eql(u8, f.name, "main")) {
+        const name: ?[]const u8 = switch (node.*) {
+            .var_decl => |v| v.name,
+            .struct_decl => |s| s.name,
+            .enum_decl => |e| e.name,
+            .blueprint_decl => |b| b.name,
+            .func_decl => |f| f.name,
+            else => null,
+        };
+        if (name) |n| {
+            if (std.mem.eql(u8, n, "main")) {
+                if (node.* == .func_decl) {
                     if (!is_exe) {
                         try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), "func main() is only allowed in executable modules", .{});
                     } else {
                         has_func_main = true;
                     }
+                } else {
+                    try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
                 }
-            },
-            else => {},
+            }
         }
     }
 
@@ -80,7 +69,7 @@ pub fn validateMainReserved(
     return reporter.hasErrors();
 }
 
-/// Run semantic passes 5–9 and codegen passes 10–11 for a single module.
+/// Run semantic passes 5–8 and codegen passes 10–11 for a single module.
 /// Returns the generated Zig output string slice (owned by cg).
 pub fn runSemanticAndCodegen(
     allocator: std.mem.Allocator,

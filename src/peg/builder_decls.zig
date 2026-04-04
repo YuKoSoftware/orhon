@@ -8,12 +8,9 @@
 const std = @import("std");
 const builder = @import("builder.zig");
 const parser = @import("../parser.zig");
-const lexer = @import("../lexer.zig");
 const capture_mod = @import("capture.zig");
 const CaptureNode = capture_mod.CaptureNode;
 const Node = parser.Node;
-const Token = lexer.Token;
-const TokenKind = lexer.TokenKind;
 
 const constants = @import("../constants.zig");
 
@@ -218,40 +215,21 @@ pub fn buildParam(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 }
 
 pub fn buildConstDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // const_decl <- 'const' IDENTIFIER destruct_tail TERM
-    //            / 'const' IDENTIFIER (':' type)? '=' expr TERM
-
-    // Check for destructuring: const a, b = expr
-    if (cap.findChild("destruct_tail")) |dt| {
-        return buildDestructFromTail(ctx, cap, dt, true);
-    }
-
-    const name_pos = cap.start_pos + 1; // after 'const'
-    const name = builder.tokenText(ctx, name_pos);
-
-    var type_ann: ?*Node = null;
-    if (cap.findChild("type")) |t| {
-        type_ann = try builder.buildNode(ctx, t);
-    }
-
-    const value = if (cap.findChild("expr")) |e| try builder.buildNode(ctx, e) else try ctx.newNode(.{ .int_literal = "0" });
-
-    return ctx.newNode(.{ .var_decl = .{
-        .name = name,
-        .type_annotation = type_ann,
-        .value = value,
-        .is_pub = false,
-        .mutability = .constant,
-    } });
+    return buildVarOrConst(ctx, cap, .constant);
 }
 
 pub fn buildVarDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // Check for destructuring: var a, b = expr
+    return buildVarOrConst(ctx, cap, .mutable);
+}
+
+fn buildVarOrConst(ctx: *BuildContext, cap: *const CaptureNode, mutability: parser.Mutability) !*Node {
+    const is_const = mutability == .constant;
+
     if (cap.findChild("destruct_tail")) |dt| {
-        return buildDestructFromTail(ctx, cap, dt, false);
+        return buildDestructFromTail(ctx, cap, dt, is_const);
     }
 
-    const name_pos = cap.start_pos + 1;
+    const name_pos = cap.start_pos + 1; // after 'const'/'var'
     const name = builder.tokenText(ctx, name_pos);
 
     var type_ann: ?*Node = null;
@@ -266,6 +244,7 @@ pub fn buildVarDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         .type_annotation = type_ann,
         .value = value,
         .is_pub = false,
+        .mutability = mutability,
     } });
 }
 

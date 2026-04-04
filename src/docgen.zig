@@ -237,36 +237,7 @@ fn writeStructDoc(allocator: std.mem.Allocator, buf: *std.ArrayListUnmanaged(u8)
     }
     if (has_fields) try buf.append(allocator, '\n');
 
-    // Methods
-    var has_methods = false;
-    for (s.members) |m| {
-        if (m.* == .func_decl and m.func_decl.is_pub) {
-            if (!has_methods) {
-                try buf.appendSlice(allocator, "**Methods:**\n\n");
-                has_methods = true;
-            }
-            const f = m.func_decl;
-            try buf.appendSlice(allocator, "- `");
-            try buf.appendSlice(allocator, f.name);
-            try buf.append(allocator, '(');
-            for (f.params, 0..) |p, i| {
-                if (i > 0) try buf.appendSlice(allocator, ", ");
-                try buf.appendSlice(allocator, p.param.name);
-                try buf.appendSlice(allocator, ": ");
-                try formatType(p.param.type_annotation, buf, allocator);
-            }
-            try buf.appendSlice(allocator, ") ");
-            try formatType(f.return_type, buf, allocator);
-            try buf.append(allocator, '`');
-            if (f.doc) |doc| {
-                try buf.appendSlice(allocator, " — ");
-                const first_line = if (std.mem.indexOfScalar(u8, doc, '\n')) |nl| doc[0..nl] else doc;
-                try buf.appendSlice(allocator, first_line);
-            }
-            try buf.append(allocator, '\n');
-        }
-    }
-    if (has_methods) try buf.append(allocator, '\n');
+    try writeMethods(allocator, buf, s.members);
 
     try buf.appendSlice(allocator, "---\n\n");
 }
@@ -319,9 +290,15 @@ fn writeEnumDoc(allocator: std.mem.Allocator, buf: *std.ArrayListUnmanaged(u8), 
     }
     if (has_variants) try buf.append(allocator, '\n');
 
-    // Enum methods
+    try writeMethods(allocator, buf, e.members);
+
+    try buf.appendSlice(allocator, "---\n\n");
+}
+
+/// Write the "Methods" section for struct or enum members.
+fn writeMethods(allocator: std.mem.Allocator, buf: *std.ArrayListUnmanaged(u8), members: []*Node) !void {
     var has_methods = false;
-    for (e.members) |m| {
+    for (members) |m| {
         if (m.* == .func_decl and m.func_decl.is_pub) {
             if (!has_methods) {
                 try buf.appendSlice(allocator, "**Methods:**\n\n");
@@ -349,8 +326,6 @@ fn writeEnumDoc(allocator: std.mem.Allocator, buf: *std.ArrayListUnmanaged(u8), 
         }
     }
     if (has_methods) try buf.append(allocator, '\n');
-
-    try buf.appendSlice(allocator, "---\n\n");
 }
 
 /// Render a type AST node as a readable string

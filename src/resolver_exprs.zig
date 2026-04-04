@@ -53,11 +53,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
             // Primitive type names (i32, f64, etc.) may appear as arguments to cast() and similar
             if (types.isPrimitiveName(id_name)) return RT{ .named = id_name };
             // Compiler-intrinsic functions are resolved by codegen, not tracked in decls
-            if (builtins.isCompilerFunc(id_name)) return RT{ .named = id_name };
-            // Arithmetic mode functions (wrap, sat, overflow) are codegen-level intrinsics
-            if (std.mem.eql(u8, id_name, "wrap") or
-                std.mem.eql(u8, id_name, "sat") or
-                std.mem.eql(u8, id_name, "overflow")) return RT.unknown;
+            if (builtins.CompilerFunc.fromName(id_name) != null) return RT{ .named = id_name };
             // Known module names — used as qualified access prefixes (module.Type, module.func)
             if (self.ctx.all_decls) |ad| {
                 if (ad.contains(id_name)) return RT.unknown;
@@ -137,7 +133,8 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
 
         .call_expr => |c| {
             const callee_type = try resolveExpr(self, c.callee, scope);
-            // Resolve arg types and check for String/[]u8 coercion
+            // Resolve arg types and check for String/[]u8 coercion.
+            // Capped at 16 args — coercion checks skip later args (unlikely in practice).
             var arg_types_buf: [16]RT = undefined;
             const arg_count = @min(c.args.len, 16);
             for (c.args, 0..) |arg, idx| {
@@ -219,9 +216,9 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                     };
                     if (struct_name.len > 0) {
                         // Build "StructName.method" key and look in struct_methods
-                        const key = std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ struct_name, fe.field }) catch "";
-                        defer if (key.len > 0) self.ctx.allocator.free(key);
-                        if (key.len > 0) {
+                        const key = try std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ struct_name, fe.field });
+                        defer self.ctx.allocator.free(key);
+                        {
                             if (self.ctx.decls.struct_methods.get(key)) |sig| return sig.return_type;
                             // Cross-module: check all loaded module decls
                             if (self.ctx.all_decls) |ad| {
@@ -243,9 +240,9 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                     if (inner.object.* == .identifier) {
                         const type_name = inner.field;
                         const method_name = fe.field;
-                        const key = std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ type_name, method_name }) catch "";
-                        defer if (key.len > 0) self.ctx.allocator.free(key);
-                        if (key.len > 0) {
+                        const key = try std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ type_name, method_name });
+                        defer self.ctx.allocator.free(key);
+                        {
                             if (self.ctx.decls.struct_methods.get(key)) |sig| return sig.return_type;
                             if (self.ctx.all_decls) |ad| {
                                 var it = ad.iterator();
@@ -317,23 +314,17 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                 if (idx == 0) first_arg_type = t;
             }
             const loc = self.ctx.nodeLoc(node);
+            const func = builtins.CompilerFunc.fromName(cf.name);
 
             // Argument count validation
-            const expected: ?struct { min: usize, max: usize } = if (std.mem.eql(u8, cf.name, "cast") or std.mem.eql(u8, cf.name, "swap") or
-                std.mem.eql(u8, cf.name, "splitAt") or std.mem.eql(u8, cf.name, "hasField") or
-                std.mem.eql(u8, cf.name, "hasDecl") or std.mem.eql(u8, cf.name, "fieldType"))
-                .{ .min = 2, .max = 2 }
-            else if (std.mem.eql(u8, cf.name, "assert"))
-                .{ .min = 1, .max = 2 }
-            else if (std.mem.eql(u8, cf.name, "copy") or std.mem.eql(u8, cf.name, "move") or
-                std.mem.eql(u8, cf.name, "size") or std.mem.eql(u8, cf.name, "align") or
-                std.mem.eql(u8, cf.name, "typename") or std.mem.eql(u8, cf.name, "typeid") or
-                std.mem.eql(u8, cf.name, "typeOf") or std.mem.eql(u8, cf.name, "fieldNames") or
-                std.mem.eql(u8, cf.name, "wrap") or std.mem.eql(u8, cf.name, "sat") or
-                std.mem.eql(u8, cf.name, "overflow"))
-                .{ .min = 1, .max = 1 }
-            else
-                null;
+            const ArgCount = struct { min: usize, max: usize };
+            const expected: ?ArgCount = if (func) |f| switch (f) {
+                .cast, .swap, .splitAt, .hasField, .hasDecl, .fieldType => ArgCount{ .min = 2, .max = 2 },
+                .assert => ArgCount{ .min = 1, .max = 2 },
+                .copy, .move, .size, .@"align", .typename, .typeid, .typeOf,
+                .fieldNames, .wrap, .sat, .overflow,
+                => ArgCount{ .min = 1, .max = 1 },
+            } else null;
 
             if (expected) |exp| {
                 if (cf.args.len < exp.min or cf.args.len > exp.max) {
@@ -346,48 +337,37 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
             }
 
             // String literal validation for introspection functions
-            if (std.mem.eql(u8, cf.name, "hasField") or std.mem.eql(u8, cf.name, "hasDecl") or
-                std.mem.eql(u8, cf.name, "fieldType"))
-            {
-                if (cf.args.len >= 2 and cf.args[1].* != .string_literal) {
-                    try self.ctx.reporter.reportFmt(loc, "@{s} requires a string literal as second argument", .{cf.name});
-                }
-            }
+            if (func) |f| switch (f) {
+                .hasField, .hasDecl, .fieldType => {
+                    if (cf.args.len >= 2 and cf.args[1].* != .string_literal) {
+                        try self.ctx.reporter.reportFmt(loc, "@{s} requires a string literal as second argument", .{cf.name});
+                    }
+                },
+                else => {},
+            };
 
             // Return type resolution
-            if (std.mem.eql(u8, cf.name, "size") or std.mem.eql(u8, cf.name, "align")) return RT{ .primitive = .usize };
-            if (std.mem.eql(u8, cf.name, "typeid")) return RT{ .primitive = .usize };
-            if (std.mem.eql(u8, cf.name, "typename")) return RT{ .primitive = .string };
-            if (std.mem.eql(u8, cf.name, "typeOf")) return RT{ .primitive = .@"type" };
-            if (std.mem.eql(u8, cf.name, "assert")) return RT{ .primitive = .void };
-            if (std.mem.eql(u8, cf.name, "swap")) return RT{ .primitive = .void };
-            if (std.mem.eql(u8, cf.name, "hasField") or std.mem.eql(u8, cf.name, "hasDecl")) return RT{ .primitive = .bool };
-            if (std.mem.eql(u8, cf.name, "fieldType")) return RT{ .primitive = .@"type" };
-            if (std.mem.eql(u8, cf.name, "fieldNames")) return RT.inferred;
-            // cast(T, x) → returns T (first arg is the target type)
-            if (std.mem.eql(u8, cf.name, "cast")) {
-                if (cf.args.len >= 1 and cf.args[0].* == .identifier) {
-                    return RT{ .named = cf.args[0].identifier };
-                }
-                if (cf.args.len >= 1 and cf.args[0].* == .type_named) {
-                    const tn = cf.args[0].type_named;
-                    if (types.Primitive.fromName(tn)) |prim| return RT{ .primitive = prim };
-                    return RT{ .named = tn };
-                }
-            }
-            // copy(x), move(x) → returns same type as argument
-            if (std.mem.eql(u8, cf.name, "copy") or std.mem.eql(u8, cf.name, "move")) {
-                return first_arg_type;
-            }
-            // wrap(expr), sat(expr) → returns same type as inner expression
-            if (std.mem.eql(u8, cf.name, "wrap") or std.mem.eql(u8, cf.name, "sat")) {
-                return first_arg_type;
-            }
-            // overflow(expr) → returns same type (error union semantics tracked by propagation)
-            if (std.mem.eql(u8, cf.name, "overflow")) {
-                return first_arg_type;
-            }
-            return RT.unknown;
+            return if (func) |f| switch (f) {
+                .size, .@"align", .typeid => RT{ .primitive = .usize },
+                .typename => RT{ .primitive = .string },
+                .typeOf, .fieldType => RT{ .primitive = .@"type" },
+                .assert, .swap => RT{ .primitive = .void },
+                .hasField, .hasDecl => RT{ .primitive = .bool },
+                .fieldNames => RT.inferred,
+                .cast => blk: {
+                    if (cf.args.len >= 1 and cf.args[0].* == .identifier) {
+                        break :blk RT{ .named = cf.args[0].identifier };
+                    }
+                    if (cf.args.len >= 1 and cf.args[0].* == .type_named) {
+                        const tn = cf.args[0].type_named;
+                        if (types.Primitive.fromName(tn)) |prim| break :blk RT{ .primitive = prim };
+                        break :blk RT{ .named = tn };
+                    }
+                    break :blk RT.unknown;
+                },
+                .copy, .move, .wrap, .sat, .overflow => first_arg_type,
+                .splitAt => RT.inferred,
+            } else RT.unknown;
         },
 
         .array_literal => |elems| {

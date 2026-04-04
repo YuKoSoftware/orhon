@@ -4,39 +4,12 @@
 
 const std = @import("std");
 
+const K = @import("constants.zig");
+
 /// Builtin type names — language intrinsics the compiler knows about
 pub const BUILTIN_TYPES = [_][]const u8{
-    "Error",
-    "Vector",
-};
-
-/// Named constants for builtin type names used in comparisons across the compiler.
-pub const BT = struct {
-    pub const ERROR = "Error";
-    pub const VECTOR = "Vector";
-};
-
-/// Compiler function names (called with @ prefix: @cast, @copy, etc.)
-/// The AST stores bare names (without @); this list is used for name-based lookups.
-pub const COMPILER_FUNCS = [_][]const u8{
-    "typename",
-    "typeid",
-    "typeOf",
-    "cast",
-    "copy",
-    "move",
-    "swap",
-    "assert",
-    "size",
-    "align",
-    "hasField",
-    "hasDecl",
-    "fieldType",
-    "fieldNames",
-    "splitAt",
-    "wrap",
-    "sat",
-    "overflow",
+    K.Type.ERROR,
+    K.Type.VECTOR,
 };
 
 /// Typed enum for compiler functions — use `fromName()` to convert AST string names.
@@ -94,41 +67,15 @@ pub const BUILTIN_VALUES = [_][]const u8{
     "void",
 };
 
-/// Build metadata field names — valid only in root module file
-pub const BUILD_FIELDS = [_][]const u8{
-    "name",
-    "version",
-    "build",
-    "description",
-};
-
-/// Build type values for #build metadata
-pub const BUILD_TYPES = [_][]const u8{
-    "exe",
-    "static",
-    "dynamic",
-};
-
 /// Value types — fixed-size types that always copy, never move.
 /// Distinct from primitives (i32, f32) but share copy semantics.
 pub fn isValueType(name: []const u8) bool {
-    const value_types = [_][]const u8{"Vector"};
-    for (value_types) |vt| {
-        if (std.mem.eql(u8, name, vt)) return true;
-    }
-    return false;
+    return std.mem.eql(u8, name, K.Type.VECTOR);
 }
 
 pub fn isBuiltinType(name: []const u8) bool {
     for (BUILTIN_TYPES) |bt| {
         if (std.mem.eql(u8, name, bt)) return true;
-    }
-    return false;
-}
-
-pub fn isCompilerFunc(name: []const u8) bool {
-    for (COMPILER_FUNCS) |cf| {
-        if (std.mem.eql(u8, name, cf)) return true;
     }
     return false;
 }
@@ -140,33 +87,6 @@ pub fn isBuiltinValue(name: []const u8) bool {
     return false;
 }
 
-/// Map Orhon primitive type name to Zig equivalent
-pub fn primitiveToZig(orhon_type: []const u8) []const u8 {
-    const mappings = [_][2][]const u8{
-        .{ "str", "[]const u8" },
-        .{ "bool", "bool" },
-        .{ "i8", "i8" },
-        .{ "i16", "i16" },
-        .{ "i32", "i32" },
-        .{ "i64", "i64" },
-        .{ "i128", "i128" },
-        .{ "u8", "u8" },
-        .{ "u16", "u16" },
-        .{ "u32", "u32" },
-        .{ "u64", "u64" },
-        .{ "u128", "u128" },
-        .{ "isize", "isize" },
-        .{ "usize", "usize" },
-        .{ "f16", "f16" },
-        .{ "f32", "f32" },
-        .{ "f64", "f64" },
-        .{ "f128", "f128" },
-    };
-    for (mappings) |m| {
-        if (std.mem.eql(u8, orhon_type, m[0])) return m[1];
-    }
-    return orhon_type;
-}
 
 test "builtin type detection" {
     try std.testing.expect(isBuiltinType("Error"));
@@ -181,14 +101,14 @@ test "builtin type detection" {
     try std.testing.expect(!isBuiltinType("Handle"));
 }
 
-test "compiler func detection" {
-    try std.testing.expect(isCompilerFunc("cast"));
-    try std.testing.expect(isCompilerFunc("typeOf"));
-    try std.testing.expect(!isCompilerFunc("print"));
-    try std.testing.expect(isCompilerFunc("hasField"));
-    try std.testing.expect(isCompilerFunc("hasDecl"));
-    try std.testing.expect(isCompilerFunc("fieldType"));
-    try std.testing.expect(isCompilerFunc("fieldNames"));
+test "compiler func detection via fromName" {
+    try std.testing.expect(CompilerFunc.fromName("cast") != null);
+    try std.testing.expect(CompilerFunc.fromName("typeOf") != null);
+    try std.testing.expect(CompilerFunc.fromName("print") == null);
+    try std.testing.expect(CompilerFunc.fromName("hasField") != null);
+    try std.testing.expect(CompilerFunc.fromName("hasDecl") != null);
+    try std.testing.expect(CompilerFunc.fromName("fieldType") != null);
+    try std.testing.expect(CompilerFunc.fromName("fieldNames") != null);
 }
 
 test "value type detection" {
@@ -207,8 +127,3 @@ test "CompilerFunc.fromName" {
     try std.testing.expect(CompilerFunc.fromName("") == null);
 }
 
-test "primitive mapping" {
-    try std.testing.expectEqualStrings("[]const u8", primitiveToZig("str"));
-    try std.testing.expectEqualStrings("i32", primitiveToZig("i32"));
-
-}

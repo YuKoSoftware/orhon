@@ -1,7 +1,7 @@
 .{
     .name = .orhon,
     .fingerprint = 0x12ddde39fc6aa661,
-    .version = "0.21.0",
+    .version = "0.22.0",
     .minimum_zig_version = "0.15.2",
     .dependencies = .{},
     .paths = .{

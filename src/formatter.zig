@@ -84,7 +84,7 @@ pub fn format(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
         const trimmed = std.mem.trimLeft(u8, line, " \t");
         const is_comment = std.mem.startsWith(u8, trimmed, "//");
         const is_module_decl = std.mem.startsWith(u8, trimmed, "module ");
-        const is_import = std.mem.startsWith(u8, trimmed, "import ") or std.mem.startsWith(u8, trimmed, "include ");
+        const is_import = std.mem.startsWith(u8, trimmed, "import ") or std.mem.startsWith(u8, trimmed, "use ");
 
         // Replace tabs with 4 spaces in indentation
         const indent_end = blk: {

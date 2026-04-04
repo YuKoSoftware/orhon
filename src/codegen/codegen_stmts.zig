@@ -18,14 +18,7 @@ const CodeGen = codegen.CodeGen;
 pub fn generateBlockMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     try cg.emit("{\n");
     cg.indent += 1;
-
-    for (m.children) |child| {
-        try cg.flushPreStmts();
-        try cg.emitIndent();
-        try cg.generateStatementMir(child);
-        try cg.emit("\n");
-    }
-
+    try cg.generateBodyStatements(m);
     cg.indent -= 1;
     try cg.emitIndent();
     try cg.emit("}");
@@ -216,7 +209,8 @@ pub fn generateStatementMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         .func => {
             try cg.generateFuncMir(m);
         },
-        // Bare expression as statement — discard return value
+        // Expression-kind MirNodes used as statements — discard return value.
+        // Covers: call, field_expr, index, compiler_func, literal, identifier, etc.
         else => {
             if (m.kind == .call) try cg.emit("_ = ");
             try cg.generateExprMir(m);

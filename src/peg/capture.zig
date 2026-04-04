@@ -39,19 +39,6 @@ pub const CaptureNode = struct {
         return null;
     }
 
-    /// Find all children matching a rule name
-    pub fn findChildren(self: *const CaptureNode, name: []const u8, allocator: std.mem.Allocator) ![]*const CaptureNode {
-        var list = std.ArrayListUnmanaged(*const CaptureNode){};
-        for (self.children) |*child| {
-            if (child.rule) |r| {
-                if (std.mem.eql(u8, r, name)) {
-                    try list.append(allocator, child);
-                }
-            }
-        }
-        return list.toOwnedSlice(allocator);
-    }
-
     /// Get token text at a specific position within this capture's range
     pub fn tokenText(self: *const CaptureNode, tokens: []const Token, offset: usize) []const u8 {
         const idx = self.start_pos + offset;
@@ -59,14 +46,6 @@ pub const CaptureNode = struct {
         return "";
     }
 
-    /// Get the first token of a specific kind within the capture's range
-    pub fn findToken(self: *const CaptureNode, tokens: []const Token, kind: TokenKind) ?usize {
-        var i = self.start_pos;
-        while (i < self.end_pos and i < tokens.len) : (i += 1) {
-            if (tokens[i].kind == kind) return i;
-        }
-        return null;
-    }
 };
 
 // ============================================================
@@ -149,7 +128,7 @@ pub const CaptureEngine = struct {
 
     fn evalRuleRef(self: *CaptureEngine, name: []const u8, pos: usize, children: *std.ArrayListUnmanaged(CaptureNode)) ?usize {
         const cap = self.captureRule(name, pos) orelse return null;
-        children.append(self.allocator, cap) catch {};
+        children.append(self.allocator, cap) catch return null;
         return cap.end_pos;
     }
 

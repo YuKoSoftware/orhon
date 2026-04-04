@@ -7,12 +7,10 @@ const std = @import("std");
 const codegen = @import("codegen.zig");
 const parser = @import("../parser.zig");
 const mir = @import("../mir/mir.zig");
-const declarations = @import("../declarations.zig");
-const errors = @import("../errors.zig");
 const K = @import("../constants.zig");
 const module = @import("../module.zig");
-const RT = @import("../types.zig").ResolvedType;
-const builtins = @import("../builtins.zig");
+const types = @import("../types.zig");
+const RT = types.ResolvedType;
 
 const CodeGen = codegen.CodeGen;
 
@@ -20,33 +18,15 @@ const CodeGen = codegen.CodeGen;
 // UNION HELPERS (moved from codegen.zig per D-06)
 // ============================================================
 
-/// Infer which union tag a value belongs to based on its literal type.
-pub fn inferArbitraryUnionTag(value: *parser.Node, members_rt: ?[]const RT) ?[]const u8 {
-    return switch (value.*) {
-        .int_literal => findMemberByKind(members_rt, .int) orelse "i32",
-        .float_literal => findMemberByKind(members_rt, .float) orelse "f32",
-        .string_literal => findMemberByKind(members_rt, .string) orelse "str",
-        .bool_literal => findMemberByKind(members_rt, .bool_) orelse "bool",
-        else => null,
-    };
-}
-
 const TypeKind = enum { int, float, string, bool_ };
 
 pub fn matchesKind(n: []const u8, kind: TypeKind) bool {
+    const prim = types.Primitive.fromName(n) orelse return false;
     return switch (kind) {
-        .int => std.mem.eql(u8, n, "i8") or std.mem.eql(u8, n, "i16") or
-            std.mem.eql(u8, n, "i32") or std.mem.eql(u8, n, "i64") or
-            std.mem.eql(u8, n, "i128") or
-            std.mem.eql(u8, n, "u8") or std.mem.eql(u8, n, "u16") or
-            std.mem.eql(u8, n, "u32") or std.mem.eql(u8, n, "u64") or
-            std.mem.eql(u8, n, "u128") or
-            std.mem.eql(u8, n, "usize") or std.mem.eql(u8, n, "isize"),
-        .float => std.mem.eql(u8, n, "f16") or
-            std.mem.eql(u8, n, "f32") or std.mem.eql(u8, n, "f64") or
-            std.mem.eql(u8, n, "f128"),
-        .string => std.mem.eql(u8, n, "str"),
-        .bool_ => std.mem.eql(u8, n, "bool"),
+        .int => prim.isInteger(),
+        .float => prim.isFloat(),
+        .string => prim == .string,
+        .bool_ => prim == .bool,
     };
 }
 
@@ -143,7 +123,7 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                         try cg.emitFmt(" {s} ._{s})", .{ cmp, rhs });
                         return;
                     }
-                    const zig_rhs = builtins.primitiveToZig(rhs);
+                    const zig_rhs = types.Primitive.nameToZig(rhs);
                     try cg.emit("(@TypeOf(");
                     try cg.generateExprMir(val_mir);
                     try cg.emitFmt(") {s} {s})", .{ cmp, zig_rhs });
@@ -368,10 +348,10 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                 if (std.mem.eql(u8, name, gsn)) {
                     try cg.emit("@This()");
                 } else {
-                    try cg.emit(builtins.primitiveToZig(name));
+                    try cg.emit(types.Primitive.nameToZig(name));
                 }
             } else {
-                try cg.emit(builtins.primitiveToZig(name));
+                try cg.emit(types.Primitive.nameToZig(name));
             }
         },
         .unary => {
@@ -523,7 +503,7 @@ pub fn mirIsString(m: *const mir.MirNode) bool {
 /// Check if a MirNode represents a SIMD Vector type.
 pub fn mirIsVector(m: *const mir.MirNode) bool {
     if (m.resolved_type == .generic) {
-        return std.mem.eql(u8, m.resolved_type.generic.name, builtins.BT.VECTOR);
+        return std.mem.eql(u8, m.resolved_type.generic.name, K.Type.VECTOR);
     }
     return false;
 }

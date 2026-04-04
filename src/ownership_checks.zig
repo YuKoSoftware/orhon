@@ -192,15 +192,6 @@ pub fn checkExpr(self: *OwnershipChecker, node: *parser.Node, scope: *OwnershipS
         },
 
         .call_expr => |c| {
-            // a.free(x) — the freed value is moved (becomes invalid)
-            if (c.callee.* == .field_expr) {
-                const fe = c.callee.field_expr;
-                if (std.mem.eql(u8, fe.field, "free") and c.args.len == 1) {
-                    try checkExpr(self, fe.object, scope, true); // allocator is borrowed
-                    try checkExpr(self, c.args[0], scope, false); // freed value is moved
-                    return;
-                }
-            }
             try checkExpr(self, c.callee, scope, true); // callee is always borrowed
             for (c.args) |arg| {
                 // Arguments passed by value are moves, by mut& or const& are borrows
@@ -288,7 +279,6 @@ pub fn checkExpr(self: *OwnershipChecker, node: *parser.Node, scope: *OwnershipS
                 try checkExpr(self, field, scope, false);
             }
         },
-
 
         else => {},
     }

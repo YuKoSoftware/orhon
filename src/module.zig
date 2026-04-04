@@ -35,7 +35,6 @@ pub const FileOffset = struct {
     original_start: usize,  // line number in original file that maps to start_line (1 if no lines stripped, 2 if module line stripped)
 };
 
-/// Resolve a combined-buffer line number to (file_path, local_line).
 /// Format a set of expected token kinds as a human-readable string.
 /// Produces: "expected 'X'" for 1 item, "expected 'X' or 'Y'" for 2,
 /// and "expected 'X', 'Y', or 'Z'" for 3+.
@@ -60,6 +59,7 @@ pub fn formatExpectedSet(alloc: std.mem.Allocator, set: std.EnumSet(lexer.TokenK
     return buf.toOwnedSlice(alloc);
 }
 
+/// Resolve a combined-buffer line number to (file_path, local_line).
 pub fn resolveFileLoc(file_offsets: []const FileOffset, combined_line: usize) struct { file: []const u8, line: usize } {
     if (file_offsets.len == 0) return .{ .file = "", .line = combined_line };
 

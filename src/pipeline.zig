@@ -142,10 +142,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
     if (reporter.hasErrors()) return null;
 
-    // Check circular imports
-    try mod_resolver.checkCircularImports();
-    if (reporter.hasErrors()) return null;
-
     // Load incremental cache
     var comp_cache = cache.Cache.init(allocator);
     defer comp_cache.deinit();
@@ -194,6 +190,11 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
     // Scan and parse any #dep directories declared in the root module
     try mod_resolver.scanAndParseDeps(allocator, cli.source_dir);
+    if (reporter.hasErrors()) return null;
+
+    // Check circular imports — must run after parseModules/scanAndParseDeps
+    // which populate each module's imports list
+    try mod_resolver.checkCircularImports();
     if (reporter.hasErrors()) return null;
 
     // Validate all imports — report any modules that were imported but not found

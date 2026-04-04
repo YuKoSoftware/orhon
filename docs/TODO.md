@@ -4,15 +4,7 @@ Items ordered by importance and how much they unblock future work.
 
 ---
 
-## Bugs
-
-### var-not-reassigned false positive for method calls `medium`
-
-`var t = Thread.spawn(...)` triggers "use const" warning because the compiler sees
-no reassignment. But calling `t.join()` — a method taking `*Self` — requires mutable
-access. The compiler doesn't account for method calls that need `mut&` self when
-deciding whether `var` should be `const`. Affects any Zig-backed struct with `*Self`
-methods called from Orhon.
+## Core — Language Ergonomics
 
 ### Review metadata directives (`#name`, `#version`, `#build`, `#dep`) `medium`
 
@@ -24,9 +16,25 @@ All metadata directives need to be looked at together. Questions:
 
 Not blocking zero-magic work — metadata doesn't touch codegen. But needs a design pass.
 
----
+### Mixed numeric type checking and for-loop index type `medium`
 
-## Core — Language Ergonomics
+The spec says "mixing numeric types is a compile error" but the check is not yet
+enforced. Design decision needed on automatic widening rules:
+
+**Same-family widening (automatic, lossless):**
+- `i32 + i64` → `i64`, `f32 + f64` → `f64`, `u8 + u32` → `u32`
+
+**Cross-family mixing (require `@cast`):**
+- `i32 + f64` → error (int/float)
+- `u32 + i32` → error (signed/unsigned)
+- `usize + i32` → error (platform-dependent size)
+
+Also blocked on for-loop index type — currently `usize`. Options:
+- Typed index: `for (arr) |val, i: i32| { }`
+- Default index to `i32` instead of `usize`
+- Keep `usize` and require explicit `@cast`
+
+Once resolved, enable mixed numeric type checking in `resolver_exprs.zig`.
 
 ### std::thread limitations `medium`
 
@@ -35,7 +43,11 @@ Known Zig comptime friction with Orhon codegen:
   Users must write `thread.Thread(i32).spawn(func, arg)` instead of `thread.spawn(func, arg)`.
 - **spawn/spawn2 arity split** — `spawn(func, arg)` for 1-arg, `spawn2(func, a, b)` for 2-arg.
   Zig's `@call` needs a tuple but Orhon passes individual values. Needs spawn3+ for more args.
-- Also affected by Bugs: var-not-reassigned false positive.
+
+### Tuple math (element-wise arithmetic, scalar broadcast) `hard` — DEFERRED
+
+Specced in `docs/04-operators.md` but not implemented. Needs codegen expansion to
+per-field operations and scalar broadcast wrapping. No current use cases in Tamga.
 
 ### Bitfield as pure Orhon std module `hard` — DEFERRED
 
@@ -51,6 +63,12 @@ Known Zig comptime friction with Orhon codegen:
 
 - `generateExprMir()` in codegen_exprs.zig — 537 lines, one giant switch
 - Split into per-expression-kind functions (binary, call, field, index, etc.)
+
+### Deduplicate pipeline/LSP module resolution sequence `medium`
+
+`pipeline.zig` and `lsp/lsp_analysis.zig` both duplicate the same module resolution
+sequence: scan → parse → circular import check → validate imports. Extract into a
+shared function (e.g., `Resolver.resolveAll()`) that both call.
 
 ---
 

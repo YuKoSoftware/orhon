@@ -128,12 +128,21 @@ pub fn generateStatementMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         .assignment => {
             const assign_op = m.op orelse .assign;
             if (assign_op == .div_assign) {
+                const is_float_assign = m.lhs().resolved_type == .primitive and m.lhs().resolved_type.primitive.isFloat();
                 try cg.generateExprMir(m.lhs());
-                try cg.emit(" = @divTrunc(");
-                try cg.generateExprMir(m.lhs());
-                try cg.emit(", ");
-                try cg.generateExprMir(m.rhs());
-                try cg.emit(");");
+                if (is_float_assign) {
+                    try cg.emit(" = (");
+                    try cg.generateExprMir(m.lhs());
+                    try cg.emit(" / ");
+                    try cg.generateExprMir(m.rhs());
+                    try cg.emit(");");
+                } else {
+                    try cg.emit(" = @divTrunc(");
+                    try cg.generateExprMir(m.lhs());
+                    try cg.emit(", ");
+                    try cg.generateExprMir(m.rhs());
+                    try cg.emit(");");
+                }
             } else if (assign_op == .assign and
                 m.lhs().type_class == .null_union)
             {

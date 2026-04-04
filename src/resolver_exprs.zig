@@ -40,7 +40,10 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
 
         .identifier => |id_name| {
             if (scope.lookup(id_name)) |t| return t;
-            if (self.ctx.decls.funcs.get(id_name)) |sig| return sig.return_type;
+            if (self.ctx.decls.funcs.contains(id_name)) {
+                const sentinel = &@as(RT, .unknown);
+                return RT{ .func_ptr = .{ .params = &.{}, .return_type = sentinel } };
+            }
             if (self.ctx.decls.structs.contains(id_name)) return RT{ .named = id_name };
             if (self.ctx.decls.enums.contains(id_name)) return RT{ .named = id_name };
             if (self.ctx.decls.vars.get(id_name)) |v| return v.type_ orelse RT.unknown;
@@ -92,16 +95,37 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
         .binary_expr => |b| {
             const left = try resolveExpr(self, b.left, scope);
             const right = try resolveExpr(self, b.right, scope);
+            const l_is_str = left == .primitive and left.primitive == .string;
+            const r_is_str = right == .primitive and right.primitive == .string;
             // Reject == and != on str — use string.equals() instead
             if (b.op == .eq or b.op == .ne) {
-                const l_is_str = left == .primitive and left.primitive == .string;
-                const r_is_str = right == .primitive and right.primitive == .string;
                 if (l_is_str or r_is_str) {
                     try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
                         "cannot use '{s}' on str — use string.equals() for content comparison",
                         .{if (b.op == .eq) "==" else "!="});
                 }
             }
+            // Reject arithmetic on strings — use ++ for concatenation
+            const is_arithmetic = switch (b.op) {
+                .add, .sub, .mul, .div, .mod => true,
+                else => false,
+            };
+            if (is_arithmetic and (l_is_str or r_is_str)) {
+                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                    "cannot use '{s}' on str — use '++' for concatenation", .{b.op.toZig()});
+            }
+            // Reject ++ on numeric types — use + for arithmetic
+            if (b.op == .concat) {
+                const l_is_num = left == .primitive and left.primitive.isNumeric();
+                const r_is_num = right == .primitive and right.primitive.isNumeric();
+                if (l_is_num or r_is_num) {
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                        "cannot use '++' on numeric types — use '+' for arithmetic", .{});
+                }
+            }
+            // NOTE: mixed numeric type checking (i32 + usize etc.) deferred —
+            // needs design pass on coercion rules for index variables and literals.
+            // Zig handles these via comptime coercion; Orhon needs similar rules.
             if (b.op.isLogical() or b.op.isComparison()) return RT{ .primitive = .bool };
             if (b.op == .concat) return left;
             return left;
@@ -129,6 +153,11 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                 if (self.ctx.decls.structs.contains(name)) return RT{ .named = name };
                 // Builtin or included type constructor: Ptr(T)(...), List(i32)(...)
                 if (builtins.isBuiltinType(name) or self.isIncludedType(name)) return RT{ .named = name };
+                // Named args only valid for struct constructors
+                if (c.arg_names.len > 0) {
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                        "named arguments are only valid for struct constructors — '{s}' is not a struct", .{name});
+                }
                 if (scope.lookup(name)) |t| {
                     if (t == .func_ptr) {
                         // Function pointer call — OK
@@ -144,6 +173,25 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                     }
                 }
                 if (self.ctx.decls.funcs.get(name)) |sig| {
+                    // Argument count validation
+                    const n_defaults = blk: {
+                        var count: usize = 0;
+                        for (sig.param_nodes) |p| {
+                            if (p.* == .param and p.param.default_value != null) count += 1;
+                        }
+                        break :blk count;
+                    };
+                    const min_args = sig.params.len - n_defaults;
+                    const max_args = sig.params.len;
+                    if (c.args.len < min_args or c.args.len > max_args) {
+                        if (min_args == max_args) {
+                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                                "'{s}' expects {d} argument(s), got {d}", .{ name, max_args, c.args.len });
+                        } else {
+                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                                "'{s}' expects {d} to {d} argument(s), got {d}", .{ name, min_args, max_args, c.args.len });
+                        }
+                    }
                     return sig.return_type;
                 }
             }

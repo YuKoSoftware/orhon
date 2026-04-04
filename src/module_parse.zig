@@ -143,9 +143,10 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
                 break :blk try module.formatExpectedSet(alloc, err_info.expected_set);
             } else try std.fmt.allocPrint(alloc, "unexpected '{s}'", .{err_info.found});
             defer alloc.free(msg);
+            const resolved = module.resolveFileLoc(mod.file_offsets, err_info.line);
             try self.reporter.report(.{
                 .message = msg,
-                .loc = .{ .file = "", .line = err_info.line, .col = err_info.col },
+                .loc = .{ .file = resolved.file, .line = resolved.line, .col = err_info.col },
             });
             if (mod.ast_arena) |*a| a.deinit();
             mod.ast_arena = null;
@@ -169,9 +170,10 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
 
         // Report syntax errors from error recovery (skipped tokens)
         for (build_result.ctx.syntax_errors.items) |err| {
+            const resolved = module.resolveFileLoc(mod.file_offsets, err.line);
             try self.reporter.report(.{
                 .message = err.message,
-                .loc = .{ .file = "", .line = err.line, .col = err.col },
+                .loc = .{ .file = resolved.file, .line = resolved.line, .col = err.col },
             });
         }
 

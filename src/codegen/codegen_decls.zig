@@ -175,7 +175,9 @@ pub fn collectAssignedMir(m: *mir.MirNode, set: *std.StringHashMapUnmanaged(void
             }
         },
         .defer_stmt => try collectAssignedMir(m.body(), set, alloc),
-        else => {},
+        else => {
+            for (m.children) |child| try collectAssignedMir(child, set, alloc);
+        },
     }
 }
 

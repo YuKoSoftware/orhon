@@ -283,6 +283,15 @@ pub const Resolver = struct {
                 while (pos < content.len and content[pos] != '\n') pos += 1;
                 continue;
             }
+            // Skip block comments
+            if (pos + 1 < content.len and content[pos] == '/' and content[pos + 1] == '*') {
+                pos += 2;
+                while (pos + 1 < content.len) {
+                    if (content[pos] == '*' and content[pos + 1] == '/') { pos += 2; break; }
+                    pos += 1;
+                }
+                continue;
+            }
             break; // found a non-comment, non-blank line
         }
 

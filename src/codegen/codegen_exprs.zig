@@ -37,10 +37,14 @@ pub fn matchesKind(n: []const u8, kind: TypeKind) bool {
     return switch (kind) {
         .int => std.mem.eql(u8, n, "i8") or std.mem.eql(u8, n, "i16") or
             std.mem.eql(u8, n, "i32") or std.mem.eql(u8, n, "i64") or
+            std.mem.eql(u8, n, "i128") or
             std.mem.eql(u8, n, "u8") or std.mem.eql(u8, n, "u16") or
             std.mem.eql(u8, n, "u32") or std.mem.eql(u8, n, "u64") or
-            std.mem.eql(u8, n, "usize"),
-        .float => std.mem.eql(u8, n, "f32") or std.mem.eql(u8, n, "f64"),
+            std.mem.eql(u8, n, "u128") or
+            std.mem.eql(u8, n, "usize") or std.mem.eql(u8, n, "isize"),
+        .float => std.mem.eql(u8, n, "f16") or std.mem.eql(u8, n, "bf16") or
+            std.mem.eql(u8, n, "f32") or std.mem.eql(u8, n, "f64") or
+            std.mem.eql(u8, n, "f128"),
         .string => std.mem.eql(u8, n, "str"),
         .bool_ => std.mem.eql(u8, n, "bool"),
     };
@@ -171,19 +175,37 @@ pub fn generateExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             const rhs_is_vec = mirIsVector(m.rhs());
             const any_vec = lhs_is_vec or rhs_is_vec;
 
-            // Division → @divTrunc (skip for vectors — Zig @Vector supports native / and %)
+            // Division and modulo — use native / % for floats, @divTrunc/@mod for integers
+            // Skip for vectors — Zig @Vector supports native / and %
+            const is_float_op = m.lhs().resolved_type == .primitive and m.lhs().resolved_type.primitive.isFloat();
             if (!any_vec and bin_op == .div) {
-                try cg.emit("@divTrunc(");
-                try cg.generateExprMir(m.lhs());
-                try cg.emit(", ");
-                try cg.generateExprMir(m.rhs());
-                try cg.emit(")");
+                if (is_float_op) {
+                    try cg.emit("(");
+                    try cg.generateExprMir(m.lhs());
+                    try cg.emit(" / ");
+                    try cg.generateExprMir(m.rhs());
+                    try cg.emit(")");
+                } else {
+                    try cg.emit("@divTrunc(");
+                    try cg.generateExprMir(m.lhs());
+                    try cg.emit(", ");
+                    try cg.generateExprMir(m.rhs());
+                    try cg.emit(")");
+                }
             } else if (!any_vec and bin_op == .mod) {
-                try cg.emit("@mod(");
-                try cg.generateExprMir(m.lhs());
-                try cg.emit(", ");
-                try cg.generateExprMir(m.rhs());
-                try cg.emit(")");
+                if (is_float_op) {
+                    try cg.emit("(");
+                    try cg.generateExprMir(m.lhs());
+                    try cg.emit(" % ");
+                    try cg.generateExprMir(m.rhs());
+                    try cg.emit(")");
+                } else {
+                    try cg.emit("@mod(");
+                    try cg.generateExprMir(m.lhs());
+                    try cg.emit(", ");
+                    try cg.generateExprMir(m.rhs());
+                    try cg.emit(")");
+                }
             } else if (any_vec and lhs_is_vec != rhs_is_vec) {
                 // Vector-scalar broadcast: wrap scalar side with @splat
                 const op = codegen.opToZig(bin_op);
@@ -520,12 +542,21 @@ pub fn generateContinueExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     if (m.kind == .assignment) {
         const assign_op = m.op orelse .assign;
         if (assign_op == .div_assign) {
+            const is_float_cont = m.lhs().resolved_type == .primitive and m.lhs().resolved_type.primitive.isFloat();
             try cg.generateExprMir(m.lhs());
-            try cg.emit(" = @divTrunc(");
-            try cg.generateExprMir(m.lhs());
-            try cg.emit(", ");
-            try cg.generateExprMir(m.rhs());
-            try cg.emit(")");
+            if (is_float_cont) {
+                try cg.emit(" = (");
+                try cg.generateExprMir(m.lhs());
+                try cg.emit(" / ");
+                try cg.generateExprMir(m.rhs());
+                try cg.emit(")");
+            } else {
+                try cg.emit(" = @divTrunc(");
+                try cg.generateExprMir(m.lhs());
+                try cg.emit(", ");
+                try cg.generateExprMir(m.rhs());
+                try cg.emit(")");
+            }
         } else {
             try cg.generateExprMir(m.lhs());
             try cg.emitFmt(" {s} ", .{assign_op.toZig()});

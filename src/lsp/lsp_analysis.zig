@@ -168,13 +168,6 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         return empty;
     }
 
-    mod_resolver.checkCircularImports() catch {};
-    if (reporter.hasErrors()) {
-        lspLog("analysis: circular import errors", .{});
-        empty.diagnostics = toDiagnostics(allocator, &reporter, project_root) catch &.{};
-        return empty;
-    }
-
     mod_resolver.parseModules(a) catch {};
     if (reporter.hasErrors()) {
         lspLog("analysis: parse errors (continuing with partial symbols)", .{});
@@ -190,6 +183,14 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         if (has_unparsed) {
             mod_resolver.parseModules(a) catch {};
         }
+    }
+
+    // Check circular imports — after parseModules populates import lists
+    mod_resolver.checkCircularImports() catch {};
+    if (reporter.hasErrors()) {
+        lspLog("analysis: circular import errors", .{});
+        empty.diagnostics = toDiagnostics(allocator, &reporter, project_root) catch &.{};
+        return empty;
     }
 
     mod_resolver.scanAndParseDeps(a, "src") catch {};

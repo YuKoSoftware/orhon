@@ -545,7 +545,7 @@ INT_LITERAL     <- '0x' [0-9a-fA-F_]+          # hex
                  / '0b' [01_]+                  # binary
                  / '0o' [0-7_]+                 # octal
                  / [0-9] [0-9_]*               # decimal
-FLOAT_LITERAL   <- [0-9]+ '.' [0-9]+
+FLOAT_LITERAL   <- [0-9] [0-9_]* '.' [0-9] [0-9_]*  # simplified — lexer handles full parsing
 STRING_LITERAL  <- '"' (!'"' .)* '"'            # simplified — lexer handles escapes
 DOC_COMMENT     <- '///' (!'\n' .)*
 NL              <- '\n'

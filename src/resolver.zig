@@ -58,6 +58,17 @@ pub const TypeResolver = struct {
         self.included_modules.deinit(self.ctx.allocator);
     }
 
+    /// Check if a name exists in a parent scope within the function boundary.
+    /// Walks the parent chain from scope.parent, stopping before the module-level
+    /// root scope (parent == null). Used for cross-scope shadowing detection.
+    fn lookupInFuncScope(_: *const TypeResolver, scope: *Scope, name: []const u8) bool {
+        var s = scope.parent orelse return false;
+        while (s.parent != null) : (s = s.parent.?) {
+            if (s.vars.contains(name)) return true;
+        }
+        return false;
+    }
+
     /// Check if a type name exists in any `use`-d (included) module's DeclTable.
     pub fn isIncludedType(self: *const TypeResolver, name: []const u8) bool {
         const ad = self.ctx.all_decls orelse return false;
@@ -168,6 +179,11 @@ pub const TypeResolver = struct {
                             try self.validateType(param.param.type_annotation, &func_scope);
                             const t = try types.resolveTypeNode(self.ctx.decls.typeAllocator(), param.param.type_annotation);
                             try func_scope.define(param.param.name, t);
+                            // Type-check default value against declared param type
+                            if (param.param.default_value) |dv| {
+                                const dv_type = try self.resolveExpr(dv, &func_scope);
+                                try self.checkAssignCompat(t, dv_type, param);
+                            }
                         }
                     }
                 }
@@ -237,9 +253,13 @@ pub const TypeResolver = struct {
                             .{v.name});
                     }
                 }
-                // Duplicate variable check (only inside functions/blocks, not top-level)
-                if (scope.parent != null and scope.vars.contains(v.name)) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "variable '{s}' already declared in this scope", .{v.name});
+                // Duplicate/shadowing check (only inside functions/blocks, not top-level)
+                if (scope.parent != null) {
+                    if (scope.vars.contains(v.name)) {
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "variable '{s}' already declared in this scope", .{v.name});
+                    } else if (self.lookupInFuncScope(scope, v.name)) {
+                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "variable '{s}' shadows a declaration in an outer scope — shadowing is not allowed", .{v.name});
+                    }
                 }
                 {
                     const val_type = try self.resolveExpr(v.value, scope);
@@ -253,7 +273,7 @@ pub const TypeResolver = struct {
                             val_type.primitive == .float_literal))
                         {
                             try self.ctx.reporter.report(.{
-                                .message = "numeric literal requires explicit type",
+                                .message = "numeric literal requires explicit type — use 'const x: i32 = 42'",
                                 .loc = self.ctx.nodeLoc(node),
                             });
                         }
@@ -373,7 +393,16 @@ pub const TypeResolver = struct {
             .defer_stmt => |d| try self.resolveNode(d.body, scope),
             .destruct_decl => |d| {
                 _ = try self.resolveExpr(d.value, scope);
-                for (d.names) |name| try scope.define(name, RT.inferred);
+                for (d.names) |name| {
+                    if (scope.parent != null) {
+                        if (scope.vars.contains(name)) {
+                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "variable '{s}' already declared in this scope", .{name});
+                        } else if (self.lookupInFuncScope(scope, name)) {
+                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "variable '{s}' shadows a declaration in an outer scope — shadowing is not allowed", .{name});
+                        }
+                    }
+                    try scope.define(name, RT.inferred);
+                }
             },
             .break_stmt => {
                 if (self.loop_depth == 0) {

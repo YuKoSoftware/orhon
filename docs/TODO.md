@@ -33,25 +33,6 @@ Remaining questions:
 `#name` removed entirely — binary name always comes from the module name.
 Not blocking zero-magic work — metadata doesn't touch codegen. But needs a design pass.
 
-### Mixed numeric type checking and for-loop index type `medium`
-
-The spec says "mixing numeric types is a compile error" but the check is not yet
-enforced. Design decision needed on automatic widening rules:
-
-**Same-family widening (automatic, lossless):**
-- `i32 + i64` → `i64`, `f32 + f64` → `f64`, `u8 + u32` → `u32`
-
-**Cross-family mixing (require `@cast`):**
-- `i32 + f64` → error (int/float)
-- `u32 + i32` → error (signed/unsigned)
-- `usize + i32` → error (platform-dependent size)
-
-Also blocked on for-loop index type — currently `usize`. Options:
-- Typed index: `for (arr) |val, i: i32| { }`
-- Default index to `i32` instead of `usize`
-- Keep `usize` and require explicit `@cast`
-
-Once resolved, enable mixed numeric type checking in `resolver_exprs.zig`.
 
 ### std::thread limitations `medium`
 
@@ -222,12 +203,6 @@ all consuming switch arms and deciding whether `type_named` should absorb primit
 
 - `generateExprMir()` in codegen_exprs.zig — 537 lines, one giant switch
 - Split into per-expression-kind functions (binary, call, field, index, etc.)
-
-### Extract shared `blockHasEarlyExit` utility `easy`
-
-`blockHasEarlyExit` is duplicated in `propagation.zig`, `mir/mir_lowerer.zig`, and
-`ownership_checks.zig`. Extract to a shared location (e.g., `parser.zig` helper or
-new `ast_utils.zig`) so all three call the same function.
 
 ### Deduplicate pipeline/LSP module resolution sequence `medium`
 

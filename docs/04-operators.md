@@ -77,12 +77,46 @@ var a: []i32 = [1, 2] ++ [3, 4]       // array concatenation, types must match
 ```
 
 ## No Implicit Numeric Casts
-Mixing numeric types in expressions is a compile error. All conversions must be explicit via `@cast(T, x)` (see [[05-functions#Compiler Functions]]).
+Mixing numeric types in binary expressions is a compile error. This applies to all binary operators — arithmetic (`+`, `-`, `*`, `/`, `%`), comparison (`<`, `>`, `==`, etc.), and bitwise (`&`, `|`, `^`). Consistency: no special cases, one rule for all operators.
+
+All conversions must be explicit via `@cast(T, x)` (see [[05-functions#Compiler Functions]]).
 ```
 var x: i32 = 42
+var y: i64 = 100
 var f: f32 = 3.14
-var z = x + f                // ERROR — i32 + f32, types don't match
+var z = x + f                // ERROR — i32 + f32
+var z = x + y                // ERROR — i32 + i64
+var z = x < y                // ERROR — comparison across types too
 var z = @cast(f32, x) + f    // OK — explicit cast
+var z = @cast(i64, x) + y    // OK — explicit cast
+```
+
+**Numeric literals coerce freely** — literal values like `1`, `3.14` adapt to the target type automatically (matching Zig's comptime coercion). No cast needed:
+```
+var x: i32 = 42
+var y = x + 1                // OK — 1 coerces to i32
+var f: f64 = 3.14 + 1.0     // OK — literals coerce to f64
+```
+
+**Assignment and argument widening is allowed** — when the target type is known (variable declaration, function argument), same-family widening works without `@cast`. This matches Zig's integer widening coercion at assignment sites:
+```
+var x: i32 = 42
+var y: i64 = x               // OK — i32 widens to i64 at assignment
+func takes_big(n: i64) void { }
+takes_big(x)                  // OK — i32 widens to i64 at call site
+```
+
+**For-loop range indices are `usize`** — this is the native range counter type in Zig. Use `@cast` when mixing with other integer types:
+```
+for(0..10) |i| {
+    var n: i32 = @cast(i32, i)   // i is usize, cast to i32
+}
+```
+
+**`arr.len` is `usize`** — mixing with other integer types requires `@cast`:
+```
+var arr: []i32 = [1, 2, 3]
+var n: i32 = @cast(i32, arr.len)  // explicit cast from usize
 ```
 
 ---

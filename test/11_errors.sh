@@ -651,4 +651,7 @@ if echo "$NEG_OUT" | grep -qi "tuple capture count.*does not match"; then pass "
 else fail "rejects tuple capture count mismatch" "$NEG_OUT"; fi
 
 
+# mixed numeric types
+run_fixture neg_mixed_num fail_mixed_numeric.orh "cannot mix" "fixture: rejects mixed numeric types in binary expressions"
+
 report_results

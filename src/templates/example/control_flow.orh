@@ -55,10 +55,11 @@ func sum_array(arr: []i32) i32 {
     return total
 }
 
+// for-loop range indices are usize — use @cast when mixing with other integer types
 func sum_range(n: i32) i32 {
     var total: i32 = 0
     for(0..n) |i| {
-        total += i
+        total += @cast(i32, i)
     }
     return total
 }
@@ -132,7 +133,7 @@ func indexed_sum() i32 {
     const arr: [3]i32 = [10, 20, 30]
     var total: i32 = 0
     for(arr, 0..) |val, i| {
-        total += val + i
+        total += val + @cast(i32, i)
     }
     return total
 }

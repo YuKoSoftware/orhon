@@ -481,8 +481,24 @@ pub const TypeResolver = struct {
                 }
             },
             .assignment => |a| {
-                _ = try self.resolveExpr(a.left, scope);
-                _ = try self.resolveExpr(a.right, scope);
+                const left = try self.resolveExpr(a.left, scope);
+                const right = try self.resolveExpr(a.right, scope);
+                // Mixed numeric check for compound assignments (+=, -=, *=, /=)
+                if (a.op != .assign) {
+                    if (left == .primitive and right == .primitive) {
+                        const lp = left.primitive;
+                        const rp = right.primitive;
+                        if (lp.isNumeric() and rp.isNumeric() and
+                            lp != .numeric_literal and rp != .numeric_literal and
+                            lp != .float_literal and rp != .float_literal and
+                            lp != rp)
+                        {
+                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                                "cannot mix {s} and {s} in compound assignment — use @cast({s}, x) to convert",
+                                .{ lp.toName(), rp.toName(), lp.toName() });
+                        }
+                    }
+                }
             },
             .defer_stmt => |d| try self.resolveNode(d.body, scope),
             .destruct_decl => |d| {

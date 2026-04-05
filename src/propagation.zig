@@ -399,29 +399,7 @@ fn typeNodeIsUnion(node: *parser.Node) ?bool {
     }
 }
 
-/// Check if a block contains an early exit (return, break, continue)
-fn blockHasEarlyExit(node: *parser.Node) bool {
-    if (node.* != .block) return nodeIsEarlyExit(node);
-    for (node.block.statements) |stmt| {
-        if (nodeIsEarlyExit(stmt)) return true;
-    }
-    return false;
-}
-
-fn nodeIsEarlyExit(node: *parser.Node) bool {
-    return switch (node.*) {
-        .return_stmt => true,
-        .break_stmt => true,
-        .continue_stmt => true,
-        .block => blockHasEarlyExit(node),
-        .if_stmt => |i| blk: {
-            // if+else where both branches exit
-            const else_block = i.else_block orelse break :blk false;
-            break :blk blockHasEarlyExit(i.then_block) and blockHasEarlyExit(else_block);
-        },
-        else => false,
-    };
-}
+const blockHasEarlyExit = parser.blockHasEarlyExit;
 
 fn typeCanPropagate(node: *parser.Node) bool {
     switch (node.*) {

@@ -119,9 +119,22 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                         "cannot use '++' on numeric types — use '+' for arithmetic", .{});
                 }
             }
-            // NOTE: mixed numeric type checking (i32 + usize etc.) deferred —
-            // needs design pass on coercion rules for index variables and literals.
-            // Zig handles these via comptime coercion; Orhon needs similar rules.
+            // Mixed numeric type check — reject different numeric types in binary expressions.
+            // Literals (numeric_literal, float_literal) are excluded — they coerce freely.
+            // Assignment and argument widening are handled by typesCompatible, not here.
+            if (left == .primitive and right == .primitive) {
+                const lp = left.primitive;
+                const rp = right.primitive;
+                if (lp.isNumeric() and rp.isNumeric() and
+                    lp != .numeric_literal and rp != .numeric_literal and
+                    lp != .float_literal and rp != .float_literal and
+                    lp != rp)
+                {
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                        "cannot mix {s} and {s} in binary expression — use @cast({s}, x) to convert",
+                        .{ lp.toName(), rp.toName(), lp.toName() });
+                }
+            }
             if (b.op.isLogical() or b.op.isComparison()) return RT{ .primitive = .bool };
             if (b.op == .concat) return left;
             return left;

@@ -571,19 +571,10 @@ pub fn writeRangeExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
 /// Hoists the allocPrint call to a temp variable in pre_stmts, then emits only the
 /// MIR-path for loop codegen — Zig-style multi-object for.
 /// Each iterable in the header maps positionally to a capture.
-/// Range iterables (0.., a..b) get @intCast wrapping on their captures.
+/// Range captures keep their native usize type — no hidden @intCast.
 pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const caps = m.captures orelse &.{};
     const iters = m.iterables();
-
-    // Determine which iterables are ranges (need @intCast on their capture)
-    var needs_cast = false;
-    for (iters) |iter_m| {
-        if (iter_m.kind == .binary and (iter_m.op orelse .assign) == .range) {
-            needs_cast = true;
-            break;
-        }
-    }
 
     // Tuple capture — struct field destructuring on first iterable
     if (m.is_tuple_capture and caps.len > 0) {
@@ -605,8 +596,7 @@ pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         const field_names = resolveStructFieldNames(iters[0].resolved_type, cg.decls);
         const n_fields = if (field_names) |f| f.len else caps.len;
         for (caps[n_fields..]) |cap| {
-            // Range captures need intCast wrapper
-            try cg.emitFmt(", _orhon_{s}", .{cap});
+            try cg.emitFmt(", {s}", .{cap});
         }
         try cg.emit("| {\n");
         cg.indent += 1;
@@ -620,13 +610,6 @@ pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                 }
             }
             try cg.emitFmt("const {s} = _orhon_entry.@\"{d}\";\n", .{ cap, i });
-        }
-        // intCast extra captures (range iterables)
-        for (caps[n_fields..], iters[1..]) |cap, iter_m| {
-            if (iter_m.kind == .binary and (iter_m.op orelse .assign) == .range) {
-                try cg.emitIndent();
-                try cg.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ cap, cap });
-            }
         }
         for (m.body().children) |child| {
             try cg.emitIndent();
@@ -653,37 +636,10 @@ pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     try cg.emit(") |");
     for (caps, 0..) |cap, i| {
         if (i > 0) try cg.emit(", ");
-        const iter_m = if (i < iters.len) iters[i] else null;
-        const is_range = if (iter_m) |im| (im.kind == .binary and (im.op orelse .assign) == .range) else false;
-        if (is_range) {
-            try cg.emitFmt("_orhon_{s}", .{cap});
-        } else {
-            try cg.emit(cap);
-        }
+        try cg.emit(cap);
     }
-    if (needs_cast) {
-        try cg.emit("| {\n");
-        cg.indent += 1;
-        for (caps, 0..) |cap, i| {
-            const iter_m = if (i < iters.len) iters[i] else null;
-            const is_range = if (iter_m) |im| (im.kind == .binary and (im.op orelse .assign) == .range) else false;
-            if (is_range) {
-                try cg.emitIndent();
-                try cg.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ cap, cap });
-            }
-        }
-        for (m.body().children) |child| {
-            try cg.emitIndent();
-            try cg.generateStatementMir(child);
-            try cg.emit("\n");
-        }
-        cg.indent -= 1;
-        try cg.emitIndent();
-        try cg.emit("}");
-    } else {
-        try cg.emit("| ");
-        try cg.generateBlockMir(m.body());
-    }
+    try cg.emit("| ");
+    try cg.generateBlockMir(m.body());
 }
 
 /// Resolve struct field signatures from a slice/array element type via declarations.

@@ -574,6 +574,35 @@ test "Operator.isComparison" {
     try std.testing.expect(!Operator.assign.isComparison());
 }
 
+// ============================================================
+// AST UTILITIES
+// ============================================================
+
+/// Returns true if the given node or block contains an early exit
+/// (return, break, continue) at the top level of its statements.
+/// Recurses into nested blocks and if/else branches.
+pub fn blockHasEarlyExit(node: *Node) bool {
+    if (node.* != .block) return nodeIsEarlyExit(node);
+    for (node.block.statements) |stmt| {
+        if (nodeIsEarlyExit(stmt)) return true;
+    }
+    return false;
+}
+
+fn nodeIsEarlyExit(node: *Node) bool {
+    return switch (node.*) {
+        .return_stmt => true,
+        .break_stmt => true,
+        .continue_stmt => true,
+        .block => blockHasEarlyExit(node),
+        .if_stmt => |i| blk: {
+            const else_block = i.else_block orelse break :blk false;
+            break :blk blockHasEarlyExit(i.then_block) and blockHasEarlyExit(else_block);
+        },
+        else => false,
+    };
+}
+
 test "MetadataField.parse - known fields" {
     try std.testing.expectEqual(MetadataField.build, MetadataField.parse("build").?);
     try std.testing.expectEqual(MetadataField.version, MetadataField.parse("version").?);

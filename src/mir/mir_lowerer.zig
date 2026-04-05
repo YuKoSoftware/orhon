@@ -503,16 +503,7 @@ pub const MirLowerer = struct {
         return remaining;
     }
 
-    fn blockHasEarlyExit(node: *parser.Node) bool {
-        if (node.* != .block) return false;
-        for (node.block.statements) |stmt| {
-            switch (stmt.*) {
-                .return_stmt, .break_stmt, .continue_stmt => return true,
-                else => {},
-            }
-        }
-        return false;
-    }
+    const blockHasEarlyExit = parser.blockHasEarlyExit;
 
     /// Stamp `narrowed_to` on all identifier MirNodes within a subtree that
     /// reference `var_name`. Skips nodes that already have a narrowing set

@@ -368,7 +368,7 @@ run_fixture neg_matcharm fail_types.orh "not a member" "fixture: rejects invalid
 
 # struct errors
 run_fixture neg_struct_dup fail_structs.orh "duplicate field" "fixture: catches duplicate struct field"
-run_fixture neg_struct_pos fail_struct_positional.orh "require named arguments" "fixture: rejects positional struct constructor"
+run_fixture neg_struct_pos fail_struct_positional.orh "struct constructors use.*syntax" "fixture: rejects positional struct constructor"
 run_fixture neg_struct_var fail_struct_var.orh "mutable.*var.*not allowed" "fixture: rejects var in struct"
 # enum errors
 run_fixture neg_enum_dup fail_enums.orh "duplicate variant" "fixture: catches duplicate enum variant"
@@ -542,7 +542,7 @@ NEG_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$NEG_OUT" | grep -qi "func main.*only allowed in executable"; then pass "rejects func main() in library"
 else fail "rejects func main() in library" "$NEG_OUT"; fi
 
-# #name directive rejected (binary name comes from module name)
+# #name directive rejected (unknown metadata directive)
 cd "$TESTDIR"
 mkdir -p neg_hashname/src
 cat > neg_hashname/src/neg_hashname.orh <<'ORHON'
@@ -554,7 +554,7 @@ func main() void { }
 ORHON
 cd neg_hashname
 NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "#name is not supported"; then pass "rejects #name directive"
+if echo "$NEG_OUT" | grep -qi "unknown metadata directive"; then pass "rejects #name directive"
 else fail "rejects #name directive" "$NEG_OUT"; fi
 
 # circular imports (module A imports B, B imports A)
@@ -606,6 +606,49 @@ cd neg_moddir
 NEG_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$NEG_OUT" | grep -qi "not in the same directory"; then pass "rejects module files in different directories"
 else fail "rejects module files in different directories" "$NEG_OUT"; fi
+
+# tuple capture on non-struct element type
+cd "$TESTDIR"
+mkdir -p neg_tuple_nonstruct/src
+cat > neg_tuple_nonstruct/src/neg_tuple_nonstruct.orh <<'ORHON'
+module neg_tuple_nonstruct
+#version = (1, 0, 0)
+#build   = exe
+func main() void {
+    const nums: []i32 = [1, 2, 3]
+    for(nums) |(a, b)| {
+    }
+}
+ORHON
+cd neg_tuple_nonstruct
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "tuple capture requires a struct element type"; then pass "rejects tuple capture on non-struct element"
+else fail "rejects tuple capture on non-struct element" "$NEG_OUT"; fi
+
+# tuple capture count mismatch
+cd "$TESTDIR"
+mkdir -p neg_tuple_count/src
+cat > neg_tuple_count/src/neg_tuple_count.orh <<'ORHON'
+module neg_tuple_count
+#version = (1, 0, 0)
+#build   = exe
+struct Pair {
+    x: i32
+    y: i32
+}
+func make_pairs() []Pair {
+    return []
+}
+func main() void {
+    const pairs = make_pairs()
+    for(pairs) |(a, b, c)| {
+    }
+}
+ORHON
+cd neg_tuple_count
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "tuple capture count.*does not match"; then pass "rejects tuple capture count mismatch"
+else fail "rejects tuple capture count mismatch" "$NEG_OUT"; fi
 
 
 report_results

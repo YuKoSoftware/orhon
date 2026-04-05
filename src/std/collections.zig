@@ -87,6 +87,9 @@ pub fn Map(comptime K: type, comptime V: type) type {
 
         const Self = @This();
 
+        /// A key-value pair from the map.
+        pub const Entry = struct { key: K, value: V };
+
         /// Create a new map with the default allocator.
         pub fn new() Self {
             return .{};
@@ -145,6 +148,20 @@ pub fn Map(comptime K: type, comptime V: type) type {
             var iter = self.inner.iterator();
             while (iter.next()) |entry| {
                 buf[i] = entry.value_ptr.*;
+                i += 1;
+            }
+            return buf;
+        }
+
+        /// Returns a caller-owned slice of all key-value pairs in the map. Free with `alloc.free()`.
+        pub fn entries(self: *const Self) []const Entry {
+            const count = self.inner.count();
+            if (count == 0) return &.{};
+            const buf = self.alloc.alloc(Entry, count) catch return &.{};
+            var i: usize = 0;
+            var iter = self.inner.iterator();
+            while (iter.next()) |entry| {
+                buf[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* };
                 i += 1;
             }
             return buf;
@@ -305,6 +322,23 @@ test "Map keys and values" {
     try std.testing.expectEqual(@as(usize, 2), ks.len);
     const vs = map.values();
     try std.testing.expectEqual(@as(usize, 2), vs.len);
+}
+
+test "Map entries" {
+    var map = Map(i32, i32){};
+    defer map.free();
+    map.put(1, 10);
+    map.put(2, 20);
+    const es = map.entries();
+    try std.testing.expectEqual(@as(usize, 2), es.len);
+    var key_sum: i32 = 0;
+    var val_sum: i32 = 0;
+    for (es) |e| {
+        key_sum += e.key;
+        val_sum += e.value;
+    }
+    try std.testing.expectEqual(@as(i32, 3), key_sum);
+    try std.testing.expectEqual(@as(i32, 30), val_sum);
 }
 
 test "Map remove" {

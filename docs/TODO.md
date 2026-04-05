@@ -33,17 +33,6 @@ Remaining questions:
 `#name` removed entirely — binary name always comes from the module name.
 Not blocking zero-magic work — metadata doesn't touch codegen. But needs a design pass.
 
-### For-loop tuple captures `medium`
-
-Specced in `docs/07-control-flow.md` (line 29+): `for(my_map) |(key, value)| {}`.
-AST has `is_tuple_capture` field in `ForStmt` but it's never set by the PEG builder.
-The builder conflates tuple elements with index variables. Codegen only uses the first
-capture element. Needs:
-- Builder: detect parenthesized capture form, set `is_tuple_capture = true`
-- Resolver: type-check both capture variables from map/set element types
-- Codegen: emit Zig destructure pattern for tuple captures
-- Blocked on std::collections having iterable map/set types
-
 ### Mixed numeric type checking and for-loop index type `medium`
 
 The spec says "mixing numeric types is a compile error" but the check is not yet

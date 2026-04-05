@@ -107,26 +107,52 @@ pub fn buildFor(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     const body = if (cap.findChild("block")) |b| try builder.buildNode(ctx, b) else return error.NoBlock;
 
     // Extract captures from for_captures child
+    // Grammar: for_captures <- '(' IDENT (',' IDENT)* ')' (',' IDENT)?  (choice 0 = tuple)
+    //                        / IDENT (',' IDENT)?                        (choice 1 = simple)
     var captures = std.ArrayListUnmanaged([]const u8){};
+    var index_var: ?[]const u8 = null;
+    var is_tuple_capture = false;
+
     if (cap.findChild("for_captures")) |fc| {
-        for (fc.start_pos..fc.end_pos) |i| {
-            if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
-                try captures.append(ctx.alloc(), ctx.tokens[i].text);
+        // Detect tuple form by checking for leading '(' token
+        const is_tuple = fc.start_pos < ctx.tokens.len and ctx.tokens[fc.start_pos].kind == .lparen;
+        if (is_tuple) {
+            // Tuple capture: identifiers inside parens are captures,
+            // optional identifier after ')' is the index variable
+            is_tuple_capture = true;
+            var past_rparen = false;
+            for (fc.start_pos..fc.end_pos) |i| {
+                if (i >= ctx.tokens.len) break;
+                if (ctx.tokens[i].kind == .rparen) {
+                    past_rparen = true;
+                } else if (ctx.tokens[i].kind == .identifier) {
+                    if (past_rparen) {
+                        index_var = ctx.tokens[i].text;
+                    } else {
+                        try captures.append(ctx.alloc(), ctx.tokens[i].text);
+                    }
+                }
+            }
+        } else {
+            // Simple capture: first identifier is the capture, second is index
+            for (fc.start_pos..fc.end_pos) |i| {
+                if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
+                    try captures.append(ctx.alloc(), ctx.tokens[i].text);
+                }
+            }
+            if (captures.items.len >= 2) {
+                index_var = captures.pop();
             }
         }
     }
-    // If two captures, the second is the index variable
-    var index_var: ?[]const u8 = null;
-    if (captures.items.len >= 2) {
-        index_var = captures.pop();
-    }
+
     return ctx.newNode(.{ .for_stmt = .{
         .iterable = iterable,
         .captures = try captures.toOwnedSlice(ctx.alloc()),
         .index_var = index_var,
         .body = body,
         .is_compt = false,
-        .is_tuple_capture = false,
+        .is_tuple_capture = is_tuple_capture,
     } });
 }
 

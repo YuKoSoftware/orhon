@@ -35,7 +35,11 @@ pub fn buildProgram(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
                 // doc_block at program level — attach to the next top_level declaration
                 pending_doc = builder.extractDoc(ctx, child);
             } else if (std.mem.eql(u8, r, "metadata")) {
-                try metadata_list.append(ctx.alloc(), try builder.buildNode(ctx, child));
+                const node = builder.buildNode(ctx, child) catch |err| switch (err) {
+                    error.ParseError => continue, // unknown directive — error already reported
+                    else => return err,
+                };
+                try metadata_list.append(ctx.alloc(), node);
             } else if (std.mem.eql(u8, r, "import_decl")) {
                 try imports_list.append(ctx.alloc(), try builder.buildNode(ctx, child));
             } else if (std.mem.eql(u8, r, "top_level")) {
@@ -147,6 +151,12 @@ pub fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     const field_pos = cap.start_pos + 1; // after #
     const field = builder.tokenText(ctx, field_pos);
 
+    const parsed_field = parser.MetadataField.parse(field) orelse {
+        const msg = std.fmt.allocPrint(ctx.alloc(), "unknown metadata directive '#{s}' — expected #build, #version, #dep, or #description", .{field}) catch "unknown metadata directive";
+        ctx.reportError(msg, field_pos);
+        return error.ParseError;
+    };
+
     // Build value from first expr child
     if (cap.children.len > 0) {
         const value = try builder.buildNode(ctx, &cap.children[0]);
@@ -154,14 +164,12 @@ pub fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         if (cap.children.len > 1) {
             extra = try builder.buildNode(ctx, &cap.children[1]);
         }
-        const parsed_field = parser.MetadataField.parse(field);
-        return ctx.newNode(.{ .metadata = .{ .field = parsed_field, .value = value, .extra = extra, .raw_field = if (parsed_field == .unknown) field else null } });
+        return ctx.newNode(.{ .metadata = .{ .field = parsed_field, .value = value, .extra = extra } });
     }
 
     // Fallback — create a dummy value
     const dummy = try ctx.newNode(.{ .identifier = field });
-    const parsed_field2 = parser.MetadataField.parse(field);
-    return ctx.newNode(.{ .metadata = .{ .field = parsed_field2, .value = dummy, .raw_field = if (parsed_field2 == .unknown) field else null } });
+    return ctx.newNode(.{ .metadata = .{ .field = parsed_field, .value = dummy } });
 }
 
 // ============================================================

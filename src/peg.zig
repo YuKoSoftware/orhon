@@ -248,7 +248,7 @@ test "peg - validate program with struct methods" {
         \\    pub count: i32
         \\
         \\    pub func create(start: i32) Counter {
-        \\        return Counter(count: start)
+        \\        return Counter{count: start}
         \\    }
         \\
         \\    pub func get(self: const& Counter) i32 {

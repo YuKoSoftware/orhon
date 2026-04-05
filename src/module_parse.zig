@@ -295,12 +295,6 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
 
         // Validate metadata fields and check if root module
         for (build_result.node.program.metadata) |meta| {
-            if (meta.metadata.field == .unknown) {
-                // Report unknown metadata field — likely a typo
-                if (meta.metadata.raw_field) |raw| {
-                    try self.reporter.reportFmt(null, "unknown metadata field '#{s}' — expected #build, #version, #dep, or #description", .{raw});
-                }
-            }
             if (meta.metadata.field == .build) {
                 mod.is_root = true;
                 if (meta.metadata.value.* == .identifier) {

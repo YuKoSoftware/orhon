@@ -630,7 +630,7 @@ func main() void {
     }
 
     // Cross-module qualified is check — tests grammar/builder/codegen for is module.Type
-    const iso = tester.IsTestType(val: 42)
+    const iso = tester.IsTestType{val: 42}
     if(iso is tester.IsTestType) {
         console.println("PASS is_qualified")
     } else {
@@ -763,6 +763,20 @@ func main() void {
         console.println("PASS compt_struct_defaults")
     } else {
         console.println("FAIL compt_struct_defaults")
+    }
+
+    // Test: for loop tuple capture — struct field destructuring
+    if(tester.test_tuple_capture() == 21) {
+        console.println("PASS tuple_capture")
+    } else {
+        console.println("FAIL tuple_capture")
+    }
+
+    // Test: for loop tuple capture with index
+    if(tester.test_tuple_capture_index() == 213) {
+        console.println("PASS tuple_capture_index")
+    } else {
+        console.println("FAIL tuple_capture_index")
     }
 
     console.println("TESTER:DONE")

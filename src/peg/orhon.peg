@@ -336,7 +336,7 @@ unary_expr
 
 # Level 0 — Postfix (left-associative)
 postfix_expr
-    <- primary_expr (method_call / field_access / slice_access / index_access / call_access)*
+    <- primary_expr (method_call / field_access / slice_access / index_access / struct_init_access / call_access)*
 
 # method_call must come before field_access — both start with '.' IDENTIFIER,
 # but method_call is longer (has parens). PEG ordered choice needs longer match first.
@@ -354,8 +354,11 @@ slice_access
 index_access
     <- '[' or_expr ']'
 
+struct_init_access
+    <- '{' _ named_arg_list _ '}'
+
 call_access
-    <- '(' _ named_arg_list _ ')'
+    <- '(' _ arg_list _ ')'
 
 
 # ============================================================

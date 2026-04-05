@@ -40,7 +40,7 @@ pub struct Counter {
     pub count: i32
 
     pub func create(start: i32) Counter {
-        return Counter(count: start)
+        return Counter{count: start}
     }
 
     pub func get(self: const& Counter) i32 {
@@ -365,19 +365,19 @@ pub func concat_test() str {
 // ─── Struct instantiation ────────────────────────────────────
 
 pub func make_internal() i32 {
-    const s: Internal = Internal(value: 42, name: "test")
+    const s: Internal = Internal{value: 42, name: "test"}
     return s.value
 }
 
 // ─── Default field values ────────────────────────────────────
 
 pub func test_defaults() i32 {
-    const w: WithDefaults = WithDefaults(name: "test")
+    const w: WithDefaults = WithDefaults{name: "test"}
     return w.value
 }
 
 pub func test_defaults_override() i32 {
-    const w: WithDefaults = WithDefaults(name: "test", value: 99)
+    const w: WithDefaults = WithDefaults{name: "test", value: 99}
     return w.value
 }
 
@@ -1389,21 +1389,21 @@ func mul_point(p: Point2D) f64 {
 // Const auto-borrow (CBOR-01): const struct auto-borrows as *const T at call site
 
 pub func test_const_auto_borrow() f64 {
-    const pt: Point2D = Point2D(x: 3.0, y: 4.0)
+    const pt: Point2D = Point2D{x: 3.0, y: 4.0}
     return sum_point(pt)
 }
 
 // Var caller of promoted function — also emits mut& arg at call site (Pitfall 2)
 
 pub func test_var_caller_promoted() f64 {
-    var pt: Point2D = Point2D(x: 5.0, y: 6.0)
+    var pt: Point2D = Point2D{x: 5.0, y: 6.0}
     return mul_point(pt)
 }
 
 // @copy() on a const value produces an owned copy — auto-borrow is bypassed (CBOR-02)
 
 pub func test_const_copy() f64 {
-    const pt: Point2D = Point2D(x: 1.0, y: 2.0)
+    const pt: Point2D = Point2D{x: 1.0, y: 2.0}
     var pt2: Point2D = @copy(pt)
     pt2.x = 10.0
     return pt2.x + pt.x
@@ -1534,7 +1534,7 @@ func read_borrow_target(t: const& BorrowTarget) i32 {
 }
 
 pub func test_const_borrow_arg() i32 {
-    const target: BorrowTarget = BorrowTarget(value: 42)
+    const target: BorrowTarget = BorrowTarget{value: 42}
     return read_borrow_target(const& target)
 }
 
@@ -1556,7 +1556,7 @@ compt func Pair(A: type, B: type) type {
 }
 
 pub func test_compt_struct() i32 {
-    const p: Pair(i32, i32) = Pair(i32, i32)(first: 10, second: 32)
+    const p: Pair(i32, i32) = Pair(i32, i32){first: 10, second: 32}
     return p.sum()
 }
 
@@ -1577,7 +1577,7 @@ pub func test_has_field_missing() i32 {
 }
 
 pub func test_has_field_value() i32 {
-    var v: Vec2 = Vec2(x: 1.0, y: 2.0)
+    var v: Vec2 = Vec2{x: 1.0, y: 2.0}
     if(@hasField(v, "x")) {
         return 1
     }
@@ -1635,4 +1635,39 @@ pub func test_compt_struct_defaults() i32 {
 
 test "compt struct defaults" {
     @assert(test_compt_struct_defaults() == 0)
+}
+
+// ─── Tuple capture iteration ────────────────────────────────
+
+struct TuplePair {
+    x: i32
+    y: i32
+}
+
+// for loop with tuple capture — destructures struct fields
+pub func test_tuple_capture() i32 {
+    const pairs: [3]TuplePair = [TuplePair{x: 1, y: 2}, TuplePair{x: 3, y: 4}, TuplePair{x: 5, y: 6}]
+    var total: i32 = 0
+    for(pairs) |(x, y)| {
+        total += x + y
+    }
+    return total
+}
+
+// for loop with tuple capture and index
+pub func test_tuple_capture_index() i32 {
+    const pairs: [3]TuplePair = [TuplePair{x: 10, y: 20}, TuplePair{x: 30, y: 40}, TuplePair{x: 50, y: 60}]
+    var total: i32 = 0
+    for(pairs) |(x, y), i| {
+        total += x + y + i
+    }
+    return total
+}
+
+test "tuple capture" {
+    @assert(test_tuple_capture() == 21)
+}
+
+test "tuple capture index" {
+    @assert(test_tuple_capture_index() == 213)
 }

@@ -123,7 +123,7 @@ func read_point(p: Point) f64 {
 }
 
 func const_borrow_demo() i32 {
-    const p: Point = Point(x: 3.0, y: 4.0)
+    const p: Point = Point{x: 3.0, y: 4.0}
     const sum1: f64 = read_point(p)
     const sum2: f64 = read_point(p)
     if (sum1 == sum2) { return 1 }

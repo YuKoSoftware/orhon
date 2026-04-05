@@ -7,6 +7,7 @@ const std = @import("std");
 const codegen = @import("codegen.zig");
 const parser = @import("../parser.zig");
 const mir = @import("../mir/mir.zig");
+const declarations = @import("../declarations.zig");
 const K = @import("../constants.zig");
 const module = @import("../module.zig");
 const types = @import("../types.zig");
@@ -573,6 +574,47 @@ pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const caps = m.captures orelse &.{};
     const idx_var = m.index_var;
     const iter_m = m.iterable();
+
+    // Tuple capture — struct field destructuring
+    if (m.is_tuple_capture and caps.len > 0) {
+        if (m.is_compt) try cg.emit("inline ");
+        try cg.emit("for (");
+        try cg.generateExprMir(iter_m);
+        if (idx_var != null) try cg.emit(", 0..");
+        try cg.emit(") |_orhon_entry");
+        if (idx_var) |idx| {
+            try cg.emitFmt(", _orhon_{s}", .{idx});
+        }
+        try cg.emit("| {\n");
+        cg.indent += 1;
+        // Resolve struct field names from the iterable's element type
+        const field_names = resolveStructFieldNames(iter_m.resolved_type, cg.decls);
+        for (caps, 0..) |cap, i| {
+            try cg.emitIndent();
+            if (field_names) |fields| {
+                if (i < fields.len) {
+                    try cg.emitFmt("const {s} = _orhon_entry.{s};\n", .{ cap, fields[i].name });
+                    continue;
+                }
+            }
+            // Fallback: positional field access
+            try cg.emitFmt("const {s} = _orhon_entry.@\"{d}\";\n", .{ cap, i });
+        }
+        if (idx_var) |idx| {
+            try cg.emitIndent();
+            try cg.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ idx, idx });
+        }
+        for (m.body().children) |child| {
+            try cg.emitIndent();
+            try cg.generateStatementMir(child);
+            try cg.emit("\n");
+        }
+        cg.indent -= 1;
+        try cg.emitIndent();
+        try cg.emit("}");
+        return;
+    }
+
     const is_range = iter_m.kind == .binary and (iter_m.op orelse .assign) == .range;
     const needs_cast = is_range or idx_var != null;
     if (m.is_compt) try cg.emit("inline ");
@@ -617,6 +659,22 @@ pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         try cg.emit("| ");
         try cg.generateBlockMir(m.body());
     }
+}
+
+/// Resolve struct field signatures from a slice/array element type via declarations.
+fn resolveStructFieldNames(iter_type: RT, decls: ?*declarations.DeclTable) ?[]const declarations.FieldSig {
+    const elem_type = switch (iter_type) {
+        .slice => |s| s.*,
+        .array => |a| a.elem.*,
+        else => return null,
+    };
+    const type_name = switch (elem_type) {
+        .named => |n| n,
+        else => return null,
+    };
+    const d = decls orelse return null;
+    const sig = d.structs.get(type_name) orelse return null;
+    return sig.fields;
 }
 
 /// MIR-path destructuring codegen.

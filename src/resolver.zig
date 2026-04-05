@@ -364,7 +364,41 @@ pub const TypeResolver = struct {
                 defer for_scope.deinit();
                 // Infer capture type from iterable
                 const capture_type = inferCaptureType(f.iterable, iter_type);
-                for (f.captures) |v| try for_scope.define(v, capture_type);
+                if (f.is_tuple_capture) {
+                    // Tuple capture — destructure struct fields into individual captures
+                    const type_name = capture_type.name();
+                    const struct_sig = self.ctx.decls.structs.get(type_name);
+                    if (capture_type == .inferred or capture_type == .unknown) {
+                        // Unresolved element type — define all captures as inferred
+                        for (f.captures) |v| try for_scope.define(v, RT.inferred);
+                    } else if (struct_sig) |sig| {
+                        // Verify capture count matches struct field count
+                        if (f.captures.len != sig.fields.len) {
+                            try self.ctx.reporter.reportFmt(
+                                self.ctx.nodeLoc(node),
+                                "tuple capture count ({d}) does not match struct '{s}' field count ({d})",
+                                .{ f.captures.len, type_name, sig.fields.len },
+                            );
+                            // Define captures as inferred to allow continued analysis
+                            for (f.captures) |v| try for_scope.define(v, RT.inferred);
+                        } else {
+                            // Define each capture with the corresponding struct field's type
+                            for (f.captures, sig.fields) |v, field| {
+                                try for_scope.define(v, field.type_);
+                            }
+                        }
+                    } else {
+                        // Element type is not a struct
+                        try self.ctx.reporter.reportFmt(
+                            self.ctx.nodeLoc(node),
+                            "tuple capture requires a struct element type, got '{s}'",
+                            .{type_name},
+                        );
+                        for (f.captures) |v| try for_scope.define(v, RT.inferred);
+                    }
+                } else {
+                    for (f.captures) |v| try for_scope.define(v, capture_type);
+                }
                 if (f.index_var) |idx| try for_scope.define(idx, RT{ .primitive = .usize });
                 self.loop_depth += 1;
                 defer self.loop_depth -= 1;
@@ -974,7 +1008,7 @@ test "resolver - struct constructor resolves to named type" {
     defer arena.deinit();
     const a = arena.allocator();
 
-    // Point(x: 5) → should resolve to "Point"
+    // Point{x: 5} → should resolve to "Point"
     const callee = try a.create(parser.Node);
     callee.* = .{ .identifier = "Point" };
     const arg = try a.create(parser.Node);
@@ -1012,7 +1046,7 @@ test "resolver - positional struct constructor rejected" {
     defer arena.deinit();
     const a = arena.allocator();
 
-    // Point(5) → positional, should be rejected
+    // Point(5) → positional call on struct name, should be rejected
     const callee = try a.create(parser.Node);
     callee.* = .{ .identifier = "Point" };
     const arg = try a.create(parser.Node);

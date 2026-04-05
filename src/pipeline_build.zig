@@ -212,7 +212,7 @@ test "codegen - struct with method" {
         \\    pub x: f32
         \\    pub y: f32
         \\    pub func new(x: f32, y: f32) Vec2 {
-        \\        return Vec2(x: x, y: y)
+        \\        return Vec2{x: x, y: y}
         \\    }
         \\}
         \\

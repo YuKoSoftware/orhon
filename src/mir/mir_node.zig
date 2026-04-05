@@ -80,6 +80,8 @@ pub const MirNode = struct {
     captures: ?[][]const u8 = null,
     /// For-loop index variable name.
     index_var: ?[]const u8 = null,
+    /// For-loop tuple capture flag (struct field destructuring).
+    is_tuple_capture: bool = false,
     /// Destructuring binding names.
     names: ?[][]const u8 = null,
     /// Interpolated string parts (literal + expr interleaved).

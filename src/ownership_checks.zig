@@ -114,8 +114,8 @@ pub fn checkStatement(self: *OwnershipChecker, node: *parser.Node, scope: *Owner
             try checkExpr(self, f.iterable, scope, true);
             var for_scope = OwnershipScope.init(self.allocator, scope);
             defer for_scope.deinit();
-            // Determine if captures are primitive from the iterable type
-            const elem_is_prim = self.inferIterableElemPrimitive(f.iterable, scope);
+            // Tuple captures are struct field copies — always value types
+            const elem_is_prim = if (f.is_tuple_capture) true else self.inferIterableElemPrimitive(f.iterable, scope);
             for (f.captures) |v| try for_scope.define(v, elem_is_prim);
             // Index variable is always usize (primitive)
             if (f.index_var) |idx| try for_scope.define(idx, true);

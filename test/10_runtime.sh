@@ -58,7 +58,8 @@ for TEST_NAME in \
     field_type field_names \
     compt_struct \
     compt_struct_defaults \
-    negative_literal_args; do
+    negative_literal_args \
+    tuple_capture tuple_capture_index; do
     if echo "$BINOUT" | grep -q "PASS $TEST_NAME"; then pass "runtime: $TEST_NAME"
     else fail "runtime: $TEST_NAME"; fi
 done

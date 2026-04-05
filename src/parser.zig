@@ -156,30 +156,26 @@ pub const ImportDecl = struct {
 
 pub const MetadataField = enum {
     build,
-    name,
     version,
     dep,
     description,
-    unknown,
 
     const map = std.StaticStringMap(MetadataField).initComptime(.{
         .{ "build", .build },
-        .{ "name", .name },
         .{ "version", .version },
         .{ "dep", .dep },
         .{ "description", .description },
     });
 
-    pub fn parse(raw: []const u8) MetadataField {
-        return map.get(raw) orelse .unknown;
+    pub fn parse(raw: []const u8) ?MetadataField {
+        return map.get(raw);
     }
 };
 
 pub const Metadata = struct {
     field: MetadataField,
     value: *Node,
-    extra: ?*Node = null,              // version node for #dep, null otherwise
-    raw_field: ?[]const u8 = null,     // original field name for error reporting
+    extra: ?*Node = null, // version node for #dep, null otherwise
 };
 
 pub const FuncContext = enum {
@@ -451,7 +447,7 @@ pub const UnaryOp = struct {
 pub const CallExpr = struct {
     callee: *Node,
     args: []*Node,
-    arg_names: [][]const u8, // non-empty for named args: Player(name: "hero")
+    arg_names: [][]const u8, // non-empty for struct init: Player{name: "hero"}
 };
 
 pub const IndexExpr = struct {
@@ -580,14 +576,14 @@ test "Operator.isComparison" {
 }
 
 test "MetadataField.parse - known fields" {
-    try std.testing.expectEqual(MetadataField.build, MetadataField.parse("build"));
-    try std.testing.expectEqual(MetadataField.name, MetadataField.parse("name"));
-    try std.testing.expectEqual(MetadataField.version, MetadataField.parse("version"));
-    try std.testing.expectEqual(MetadataField.dep, MetadataField.parse("dep"));
-    try std.testing.expectEqual(MetadataField.description, MetadataField.parse("description"));
+    try std.testing.expectEqual(MetadataField.build, MetadataField.parse("build").?);
+    try std.testing.expectEqual(MetadataField.version, MetadataField.parse("version").?);
+    try std.testing.expectEqual(MetadataField.dep, MetadataField.parse("dep").?);
+    try std.testing.expectEqual(MetadataField.description, MetadataField.parse("description").?);
 }
 
-test "MetadataField.parse - unknown" {
-    try std.testing.expectEqual(MetadataField.unknown, MetadataField.parse("foo"));
-    try std.testing.expectEqual(MetadataField.unknown, MetadataField.parse(""));
+test "MetadataField.parse - unknown returns null" {
+    try std.testing.expect(MetadataField.parse("foo") == null);
+    try std.testing.expect(MetadataField.parse("") == null);
+    try std.testing.expect(MetadataField.parse("name") == null);
 }

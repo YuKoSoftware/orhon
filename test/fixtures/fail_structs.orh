@@ -18,7 +18,7 @@ struct Config {
 }
 
 func missing_field() void {
-    const c: Config = Config(host: "localhost")
+    const c: Config = Config{host: "localhost"}
 }
 
 func main() void { }

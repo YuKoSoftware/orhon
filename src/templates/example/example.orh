@@ -121,7 +121,7 @@ pub struct Player {
     health: f32
 
     pub func create(n: str) Player {
-        return Player(name: n, health: 100.0)
+        return Player{name: n, health: 100.0}
     }
 
     pub func is_alive(self: const& Player) bool {
@@ -134,7 +134,7 @@ pub struct Player {
 }
 
 func make_player() Player {
-    return Player(name: "hero", health: 100.0)
+    return Player{name: "hero", health: 100.0}
 }
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
@@ -250,7 +250,7 @@ test "add works" {
 }
 
 test "compt struct with method" {
-    const w: Wrapper(i32) = Wrapper(i32)(inner: 42)
+    const w: Wrapper(i32) = Wrapper(i32){inner: 42}
     @assert(w.get() == 42)
 }
 

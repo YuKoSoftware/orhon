@@ -11,12 +11,12 @@ struct Point {
 // reference types not allowed in variable declarations
 
 func ref_in_var() void {
-    var p: Point = Point(x: 1, y: 2)
+    var p: Point = Point{x: 1, y: 2}
     var r: mut& Point = mut& p
 }
 
 func ref_in_const() void {
-    var q: Point = Point(x: 3, y: 4)
+    var q: Point = Point{x: 3, y: 4}
     const r: const& Point = const& q
 }
 

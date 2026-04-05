@@ -166,7 +166,7 @@ const SYNTAX_DOC =
     \\    health: i32 = 100        // default value
     \\
     \\    pub func create(name: str) Player {
-    \\        return Player(name: name)
+    \\        return Player{name: name}
     \\    }
     \\
     \\    pub func isAlive(self: const& Player) bool {

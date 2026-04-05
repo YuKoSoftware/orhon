@@ -352,7 +352,7 @@ pub fn buildUnaryExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 }
 
 pub fn buildPostfixExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // postfix_expr <- primary_expr (method_call / field_access / slice_access / index_access / call_access)*
+    // postfix_expr <- primary_expr (method_call / field_access / slice_access / index_access / struct_init_access / call_access)*
     if (cap.children.len == 0) return error.NoPostfixChildren;
 
     var expr = try builder.buildNode(ctx, &cap.children[0]);
@@ -371,7 +371,18 @@ pub fn buildPostfixExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
             } else if (std.mem.eql(u8, r, "field_access")) {
                 const field_name = builder.tokenText(ctx, child.start_pos + 1);
                 expr = try ctx.newNode(.{ .field_expr = .{ .object = expr, .field = field_name } });
+            } else if (std.mem.eql(u8, r, "struct_init_access")) {
+                var args_list = std.ArrayListUnmanaged(*Node){};
+                var names_list = std.ArrayListUnmanaged([]const u8){};
+                var has_names = false;
+                try builder.collectCallArgs(ctx, child, &args_list, &names_list, &has_names);
+                expr = try ctx.newNode(.{ .call_expr = .{
+                    .callee = expr,
+                    .args = try args_list.toOwnedSlice(ctx.alloc()),
+                    .arg_names = if (has_names) try names_list.toOwnedSlice(ctx.alloc()) else &.{},
+                } });
             } else if (std.mem.eql(u8, r, "call_access")) {
+                // call_access handles positional args only (no named args)
                 var args_list = std.ArrayListUnmanaged(*Node){};
                 var names_list = std.ArrayListUnmanaged([]const u8){};
                 var has_names = false;

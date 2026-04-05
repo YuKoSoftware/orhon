@@ -12,7 +12,7 @@ struct Data {
 // use after move
 
 func use_after_move() void {
-    var a: Data = Data(name: "hello")
+    var a: Data = Data{name: "hello"}
     var b: Data = a
     console.println(a.name)
 }

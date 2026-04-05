@@ -26,10 +26,8 @@ Used for iterating over collections and ranges. `for` is the only loop for itera
 for(my_array) |value| { }                // value only
 for(my_array) |value, index| { }         // value and index
 for(0..10) |i| { }                       // range
-for(my_map) |(key, value)| { }           // Map yields tuples
-for(my_map) |(key, value), index| { }    // Map with index
-for(my_set) |key| { }                    // Set yields keys
-for(my_set) |key, index| { }             // Set with index
+for(entries) |(key, value)| { }          // tuple capture — destructures struct fields
+for(entries) |(key, value), index| { }   // tuple capture with index
 ```
 
 ## `while` — Condition Based

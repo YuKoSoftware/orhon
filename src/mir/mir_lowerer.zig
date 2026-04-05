@@ -624,6 +624,7 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
             m.is_compt = f.is_compt;
             m.captures = f.captures;
             m.index_var = f.index_var;
+            m.is_tuple_capture = f.is_tuple_capture;
         },
         .call_expr => |c| {
             m.arg_names = if (c.arg_names.len > 0) c.arg_names else null;

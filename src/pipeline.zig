@@ -559,10 +559,6 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                             build_type = module.parseBuildType(meta.metadata.value.identifier);
                         }
                     }
-                    if (meta.metadata.field == .name) {
-                        try reporter.reportFmt(.{ .file = mod.files[0], .line = 1, .col = 1 },
-                            "#name is not supported — the binary name is derived from the module name", .{});
-                    }
                     if (meta.metadata.field == .version) {
                         mt_version = module.extractVersion(meta.metadata.value);
                     }

@@ -146,12 +146,12 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
 
             if (c.callee.* == .identifier) {
                 const name = c.callee.identifier;
-                // Struct constructor: Player(name: "john", ...) → Player
+                // Struct constructor: Player{name: "john", ...} → Player
                 if (self.ctx.decls.structs.contains(name)) {
-                    // Reject positional arguments — struct constructors require named arguments
+                    // Reject positional arguments — struct constructors use {} syntax
                     if (c.args.len > 0 and c.arg_names.len == 0) {
                         try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
-                            "struct constructors require named arguments — use '{s}(field: value)' instead of '{s}(value)'", .{ name, name });
+                            "struct constructors use '{{}}' syntax — use '{s}{{field: value}}' instead of '{s}(value)'", .{ name, name });
                     }
                     return RT{ .named = name };
                 }

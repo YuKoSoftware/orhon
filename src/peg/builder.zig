@@ -158,6 +158,7 @@ const rule_dispatch = std.StaticStringMap(BuilderFn).initComptime(.{
     .{ "elif_chain", stmts_impl.buildElifChain },
     .{ "while_stmt", stmts_impl.buildWhile },
     .{ "for_stmt", stmts_impl.buildFor },
+    .{ "for_iterable", stmts_impl.buildForIterable },
     .{ "defer_stmt", stmts_impl.buildDefer },
     .{ "match_stmt", stmts_impl.buildMatch },
     .{ "match_arm", stmts_impl.buildMatchArm },

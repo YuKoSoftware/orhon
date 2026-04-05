@@ -275,9 +275,8 @@ pub const WhileStmt = struct {
 };
 
 pub const ForStmt = struct {
-    iterable: *Node,
+    iterables: []*Node,
     captures: [][]const u8,
-    index_var: ?[]const u8,
     body: *Node,
     is_compt: bool,
     is_tuple_capture: bool,

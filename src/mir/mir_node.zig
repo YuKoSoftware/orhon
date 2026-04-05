@@ -78,10 +78,10 @@ pub const MirNode = struct {
     field_names: ?[][]const u8 = null,
     /// For-loop capture variable names.
     captures: ?[][]const u8 = null,
-    /// For-loop index variable name.
-    index_var: ?[]const u8 = null,
     /// For-loop tuple capture flag (struct field destructuring).
     is_tuple_capture: bool = false,
+    /// Number of iterables in for-loop (children[0..num_iterables] are iterables, last child is body).
+    num_iterables: usize = 0,
     /// Destructuring binding names.
     names: ?[][]const u8 = null,
     /// Interpolated string parts (literal + expr interleaved).
@@ -137,9 +137,9 @@ pub const MirNode = struct {
         return self.children[0];
     }
 
-    /// children[0] — iterable for for_stmt.
-    pub fn iterable(self: *const MirNode) *MirNode {
-        return self.children[0];
+    /// children[0..num_iterables] — iterables for for_stmt.
+    pub fn iterables(self: *const MirNode) []*MirNode {
+        return self.children[0..self.num_iterables];
     }
 
     /// children[0..len-1] — params for func (everything except last child = body).

@@ -154,9 +154,10 @@ pub const MirLowerer = struct {
             },
             .for_stmt => |fs| {
                 var children = std.ArrayListUnmanaged(*MirNode){};
-                try children.append(self.allocator, try self.lowerNode(fs.iterable));
+                for (fs.iterables) |iter| try children.append(self.allocator, try self.lowerNode(iter));
                 try children.append(self.allocator, try self.lowerNode(fs.body));
                 mir_node_ptr.children = try children.toOwnedSlice(self.allocator);
+                mir_node_ptr.num_iterables = fs.iterables.len;
             },
             .defer_stmt => |d| {
                 var children = std.ArrayListUnmanaged(*MirNode){};
@@ -623,7 +624,6 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
         .for_stmt => |f| {
             m.is_compt = f.is_compt;
             m.captures = f.captures;
-            m.index_var = f.index_var;
             m.is_tuple_capture = f.is_tuple_capture;
         },
         .call_expr => |c| {

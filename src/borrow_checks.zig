@@ -47,7 +47,7 @@ pub fn checkStatement(self: *BorrowChecker, node: *parser.Node) anyerror!void {
             try self.checkNode(w.body);
         },
         .for_stmt => |f| {
-            try checkExpr(self, f.iterable);
+            for (f.iterables) |iter| try checkExpr(self, iter);
             try self.checkNode(f.body);
         },
         .match_stmt => |m| {

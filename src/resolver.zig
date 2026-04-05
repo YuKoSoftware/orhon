@@ -359,36 +359,48 @@ pub const TypeResolver = struct {
                 try self.resolveNode(w.body, scope);
             },
             .for_stmt => |f| {
-                const iter_type = try self.resolveExpr(f.iterable, scope);
                 var for_scope = Scope.init(self.ctx.allocator, scope);
                 defer for_scope.deinit();
-                // Infer capture type from iterable
-                const capture_type = inferCaptureType(f.iterable, iter_type);
+
+                // Resolve all iterables
+                var iter_types = std.ArrayListUnmanaged(RT){};
+                defer iter_types.deinit(self.ctx.allocator);
+                for (f.iterables) |iter| {
+                    const t = try self.resolveExpr(iter, scope);
+                    try iter_types.append(self.ctx.allocator, t);
+                }
+
                 if (f.is_tuple_capture) {
-                    // Tuple capture — destructure struct fields into individual captures
+                    // Tuple capture — first iterable provides struct fields, rest are extra captures
+                    const first_type = if (iter_types.items.len > 0) iter_types.items[0] else RT.inferred;
+                    const capture_type = if (f.iterables.len > 0) inferCaptureType(f.iterables[0], first_type) else RT.inferred;
+                    const extra_iterables = if (iter_types.items.len > 1) iter_types.items.len - 1 else 0;
                     const type_name = capture_type.name();
                     const struct_sig = self.ctx.decls.structs.get(type_name);
+
                     if (capture_type == .inferred or capture_type == .unknown) {
-                        // Unresolved element type — define all captures as inferred
                         for (f.captures) |v| try for_scope.define(v, RT.inferred);
                     } else if (struct_sig) |sig| {
-                        // Verify capture count matches struct field count
-                        if (f.captures.len != sig.fields.len) {
+                        const expected = sig.fields.len + extra_iterables;
+                        if (f.captures.len != expected) {
                             try self.ctx.reporter.reportFmt(
                                 self.ctx.nodeLoc(node),
-                                "tuple capture count ({d}) does not match struct '{s}' field count ({d})",
-                                .{ f.captures.len, type_name, sig.fields.len },
+                                "tuple capture count ({d}) does not match struct '{s}' field count ({d}){s}",
+                                .{ f.captures.len, type_name, sig.fields.len, if (extra_iterables > 0) " plus extra iterables" else "" },
                             );
-                            // Define captures as inferred to allow continued analysis
                             for (f.captures) |v| try for_scope.define(v, RT.inferred);
                         } else {
-                            // Define each capture with the corresponding struct field's type
-                            for (f.captures, sig.fields) |v, field| {
+                            // Struct field captures
+                            for (f.captures[0..sig.fields.len], sig.fields) |v, field| {
                                 try for_scope.define(v, field.type_);
+                            }
+                            // Extra captures from additional iterables (e.g., 0.. → usize)
+                            for (f.captures[sig.fields.len..], iter_types.items[1..]) |v, it| {
+                                const et = if (f.iterables.len > 1) inferCaptureType(f.iterables[1], it) else RT.inferred;
+                                try for_scope.define(v, et);
                             }
                         }
                     } else {
-                        // Element type is not a struct
                         try self.ctx.reporter.reportFmt(
                             self.ctx.nodeLoc(node),
                             "tuple capture requires a struct element type, got '{s}'",
@@ -397,9 +409,21 @@ pub const TypeResolver = struct {
                         for (f.captures) |v| try for_scope.define(v, RT.inferred);
                     }
                 } else {
-                    for (f.captures) |v| try for_scope.define(v, capture_type);
+                    // Non-tuple: each capture maps 1:1 to an iterable
+                    if (f.captures.len != f.iterables.len) {
+                        try self.ctx.reporter.reportFmt(
+                            self.ctx.nodeLoc(node),
+                            "for loop has {d} iterable(s) but {d} capture(s)",
+                            .{ f.iterables.len, f.captures.len },
+                        );
+                        for (f.captures) |v| try for_scope.define(v, RT.inferred);
+                    } else {
+                        for (f.captures, f.iterables, iter_types.items) |v, iter, it| {
+                            try for_scope.define(v, inferCaptureType(iter, it));
+                        }
+                    }
                 }
-                if (f.index_var) |idx| try for_scope.define(idx, RT{ .primitive = .usize });
+
                 self.loop_depth += 1;
                 defer self.loop_depth -= 1;
                 try self.resolveNode(f.body, &for_scope);

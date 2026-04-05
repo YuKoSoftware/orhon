@@ -224,7 +224,12 @@ while_stmt
     <- 'while' '(' expr ')' (':' '(' assign_expr ')')? block  {label: "while loop"}
 
 for_stmt
-    <- 'for' '(' expr ')' '|' for_captures '|' block  {label: "for loop"}
+    <- 'for' '(' for_iterable (',' for_iterable)* ')' '|' for_captures '|' block  {label: "for loop"}
+
+for_iterable
+    <- or_expr '..' or_expr   # bounded range: 0..n
+     / or_expr '..'           # open-ended counter: 0..
+     / expr                   # slice, array, identifier, call, etc.
 
 for_captures
     <- '(' IDENTIFIER (',' IDENTIFIER)* ')' (',' IDENTIFIER)?   # tuple: |(k, v), i|

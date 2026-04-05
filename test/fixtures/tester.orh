@@ -294,7 +294,7 @@ pub func sum_slice_test() i32 {
 pub func indexed_sum() i32 {
     const arr: [3]i32 = [10, 20, 30]
     var total: i32 = 0
-    for(arr) |val, i| {
+    for(arr, 0..) |val, i| {
         total += val + i
     }
     return total
@@ -1658,7 +1658,7 @@ pub func test_tuple_capture() i32 {
 pub func test_tuple_capture_index() i32 {
     const pairs: [3]TuplePair = [TuplePair{x: 10, y: 20}, TuplePair{x: 30, y: 40}, TuplePair{x: 50, y: 60}]
     var total: i32 = 0
-    for(pairs) |(x, y), i| {
+    for(pairs, 0..) |(x, y), i| {
         total += x + y + i
     }
     return total

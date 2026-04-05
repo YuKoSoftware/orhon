@@ -111,14 +111,18 @@ pub fn checkStatement(self: *OwnershipChecker, node: *parser.Node, scope: *Owner
         },
 
         .for_stmt => |f| {
-            try checkExpr(self, f.iterable, scope, true);
+            for (f.iterables) |iter| try checkExpr(self, iter, scope, true);
             var for_scope = OwnershipScope.init(self.allocator, scope);
             defer for_scope.deinit();
-            // Tuple captures are struct field copies — always value types
-            const elem_is_prim = if (f.is_tuple_capture) true else self.inferIterableElemPrimitive(f.iterable, scope);
-            for (f.captures) |v| try for_scope.define(v, elem_is_prim);
-            // Index variable is always usize (primitive)
-            if (f.index_var) |idx| try for_scope.define(idx, true);
+            if (f.is_tuple_capture) {
+                // Tuple captures are struct field copies — always value types
+                for (f.captures) |v| try for_scope.define(v, true);
+            } else {
+                // Each capture maps to an iterable
+                for (f.captures, f.iterables) |v, iter| {
+                    try for_scope.define(v, self.inferIterableElemPrimitive(iter, scope));
+                }
+            }
             try self.checkNode(f.body, &for_scope);
         },
 

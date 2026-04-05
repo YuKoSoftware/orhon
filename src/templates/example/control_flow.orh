@@ -131,7 +131,7 @@ func count_odd(limit: i32) i32 {
 func indexed_sum() i32 {
     const arr: [3]i32 = [10, 20, 30]
     var total: i32 = 0
-    for(arr) |val, i| {
+    for(arr, 0..) |val, i| {
         total += val + i
     }
     return total

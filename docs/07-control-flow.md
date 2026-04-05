@@ -23,11 +23,12 @@ Note: `else if` (two keywords) is not supported — use `elif`.
 Used for iterating over collections and ranges. `for` is the only loop for iteration — never used for conditions.
 
 ```
-for(my_array) |value| { }                // value only
-for(my_array) |value, index| { }         // value and index
-for(0..10) |i| { }                       // range
-for(entries) |(key, value)| { }          // tuple capture — destructures struct fields
-for(entries) |(key, value), index| { }   // tuple capture with index
+for(my_array) |value| { }                    // value only
+for(my_array, 0..) |value, index| { }       // value and explicit index
+for(0..10) |i| { }                          // range
+for(arr1, arr2) |a, b| { }                  // parallel iteration
+for(entries) |(key, value)| { }              // tuple capture — struct destructure
+for(entries, 0..) |(key, value), index| { }  // tuple capture with index
 ```
 
 ## `while` — Condition Based

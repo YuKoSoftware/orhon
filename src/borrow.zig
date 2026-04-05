@@ -273,7 +273,7 @@ fn collectIdentifiers(node: *parser.Node, map: *std.StringHashMapUnmanaged(usize
             try collectIdentifiers(w.body, map, allocator, stmt_idx);
         },
         .for_stmt => |f| {
-            try collectIdentifiers(f.iterable, map, allocator, stmt_idx);
+            for (f.iterables) |iter| try collectIdentifiers(iter, map, allocator, stmt_idx);
             try collectIdentifiers(f.body, map, allocator, stmt_idx);
         },
         .match_stmt => |m| {

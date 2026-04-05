@@ -555,6 +555,8 @@ pub fn writeRangeExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         try cg.emit(")");
     }
     try cg.emit("..");
+    // Open-ended range (0..) — rhs is void sentinel (type_named = "void"), emit nothing after ..
+    if (m.rhs().ast.* == .type_named) return;
     const right_is_literal = m.rhs().literal_kind == .int;
     if (right_is_literal) {
         try cg.generateExprMir(m.rhs());
@@ -567,29 +569,49 @@ pub fn writeRangeExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
 
 /// Generate string interpolation using std.fmt.allocPrint.
 /// Hoists the allocPrint call to a temp variable in pre_stmts, then emits only the
-/// temp var name as the expression — avoiding a memory leak by pairing with defer free.
-/// "hello @{name}, value @{x}!" →
-/// MIR-path for loop codegen.
+/// MIR-path for loop codegen — Zig-style multi-object for.
+/// Each iterable in the header maps positionally to a capture.
+/// Range iterables (0.., a..b) get @intCast wrapping on their captures.
 pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const caps = m.captures orelse &.{};
-    const idx_var = m.index_var;
-    const iter_m = m.iterable();
+    const iters = m.iterables();
 
-    // Tuple capture — struct field destructuring
+    // Determine which iterables are ranges (need @intCast on their capture)
+    var needs_cast = false;
+    for (iters) |iter_m| {
+        if (iter_m.kind == .binary and (iter_m.op orelse .assign) == .range) {
+            needs_cast = true;
+            break;
+        }
+    }
+
+    // Tuple capture — struct field destructuring on first iterable
     if (m.is_tuple_capture and caps.len > 0) {
         if (m.is_compt) try cg.emit("inline ");
         try cg.emit("for (");
-        try cg.generateExprMir(iter_m);
-        if (idx_var != null) try cg.emit(", 0..");
+        // First iterable: the struct slice
+        try cg.generateExprMir(iters[0]);
+        // Additional iterables (e.g., 0..)
+        for (iters[1..]) |iter_m| {
+            try cg.emit(", ");
+            if (iter_m.kind == .binary and (iter_m.op orelse .assign) == .range) {
+                try cg.writeRangeExprMir(iter_m);
+            } else {
+                try cg.generateExprMir(iter_m);
+            }
+        }
         try cg.emit(") |_orhon_entry");
-        if (idx_var) |idx| {
-            try cg.emitFmt(", _orhon_{s}", .{idx});
+        // Extra captures beyond struct fields (e.g., index from 0..)
+        const field_names = resolveStructFieldNames(iters[0].resolved_type, cg.decls);
+        const n_fields = if (field_names) |f| f.len else caps.len;
+        for (caps[n_fields..]) |cap| {
+            // Range captures need intCast wrapper
+            try cg.emitFmt(", _orhon_{s}", .{cap});
         }
         try cg.emit("| {\n");
         cg.indent += 1;
-        // Resolve struct field names from the iterable's element type
-        const field_names = resolveStructFieldNames(iter_m.resolved_type, cg.decls);
-        for (caps, 0..) |cap, i| {
+        // Bind struct fields to capture names
+        for (caps[0..n_fields], 0..) |cap, i| {
             try cg.emitIndent();
             if (field_names) |fields| {
                 if (i < fields.len) {
@@ -597,12 +619,14 @@ pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                     continue;
                 }
             }
-            // Fallback: positional field access
             try cg.emitFmt("const {s} = _orhon_entry.@\"{d}\";\n", .{ cap, i });
         }
-        if (idx_var) |idx| {
-            try cg.emitIndent();
-            try cg.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ idx, idx });
+        // intCast extra captures (range iterables)
+        for (caps[n_fields..], iters[1..]) |cap, iter_m| {
+            if (iter_m.kind == .binary and (iter_m.op orelse .assign) == .range) {
+                try cg.emitIndent();
+                try cg.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ cap, cap });
+            }
         }
         for (m.body().children) |child| {
             try cg.emitIndent();
@@ -615,37 +639,38 @@ pub fn generateForMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         return;
     }
 
-    const is_range = iter_m.kind == .binary and (iter_m.op orelse .assign) == .range;
-    const needs_cast = is_range or idx_var != null;
+    // Non-tuple: each iterable maps 1:1 to a capture
     if (m.is_compt) try cg.emit("inline ");
     try cg.emit("for (");
-    if (is_range) {
-        try cg.writeRangeExprMir(iter_m);
-    } else {
-        try cg.generateExprMir(iter_m);
-    }
-    if (idx_var != null) try cg.emit(", 0..");
-    try cg.emit(") |");
-    if (caps.len > 0) {
-        if (is_range) {
-            try cg.emitFmt("_orhon_{s}", .{caps[0]});
+    for (iters, 0..) |iter_m, i| {
+        if (i > 0) try cg.emit(", ");
+        if (iter_m.kind == .binary and (iter_m.op orelse .assign) == .range) {
+            try cg.writeRangeExprMir(iter_m);
         } else {
-            try cg.emit(caps[0]);
+            try cg.generateExprMir(iter_m);
         }
     }
-    if (idx_var) |idx| {
-        try cg.emitFmt(", _orhon_{s}", .{idx});
+    try cg.emit(") |");
+    for (caps, 0..) |cap, i| {
+        if (i > 0) try cg.emit(", ");
+        const iter_m = if (i < iters.len) iters[i] else null;
+        const is_range = if (iter_m) |im| (im.kind == .binary and (im.op orelse .assign) == .range) else false;
+        if (is_range) {
+            try cg.emitFmt("_orhon_{s}", .{cap});
+        } else {
+            try cg.emit(cap);
+        }
     }
     if (needs_cast) {
         try cg.emit("| {\n");
         cg.indent += 1;
-        if (is_range and caps.len > 0) {
-            try cg.emitIndent();
-            try cg.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ caps[0], caps[0] });
-        }
-        if (idx_var) |idx| {
-            try cg.emitIndent();
-            try cg.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ idx, idx });
+        for (caps, 0..) |cap, i| {
+            const iter_m = if (i < iters.len) iters[i] else null;
+            const is_range = if (iter_m) |im| (im.kind == .binary and (im.op orelse .assign) == .range) else false;
+            if (is_range) {
+                try cg.emitIndent();
+                try cg.emitFmt("const {s}: i32 = @intCast(_orhon_{s});\n", .{ cap, cap });
+            }
         }
         for (m.body().children) |child| {
             try cg.emitIndent();

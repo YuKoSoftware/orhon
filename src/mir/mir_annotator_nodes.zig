@@ -132,7 +132,7 @@ pub fn annotateNode(self: *MirAnnotator, node: *parser.Node) anyerror!void {
         },
 
         .for_stmt => |fs| {
-            try annotateNode(self, fs.iterable);
+            for (fs.iterables) |iter| try annotateNode(self, iter);
             try annotateNode(self, fs.body);
         },
 

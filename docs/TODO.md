@@ -33,16 +33,6 @@ Remaining questions:
 `#name` removed entirely — binary name always comes from the module name.
 Not blocking zero-magic work — metadata doesn't touch codegen. But needs a design pass.
 
-### ~~Unused import warnings~~ `easy` — DONE
-
-Scans module source files for `"importname."` qualifier patterns. Suppressed for:
-`use` imports (merge symbols), `#build = static/dynamic` library roots,
-std imports (`scope = "std"`), zig modules, and `.orh-cache/std/` modules.
-
-**Gap:** `use` imports are not checked — detecting unused `use` requires knowing
-the module's exported symbols, which needs declaration collection (post-parse).
-Should be added in the resolver where declarations are already available.
-
 ### For-loop tuple captures `medium`
 
 Specced in `docs/07-control-flow.md` (line 29+): `for(my_map) |(key, value)| {}`.
@@ -87,17 +77,6 @@ Known Zig comptime friction with Orhon codegen:
 Specced in `docs/04-operators.md` but not implemented. Needs codegen expansion to
 per-field operations and scalar broadcast wrapping. No current use cases in Tamga.
 
-### ~~Reject positional struct constructors~~ `easy` — DONE
-
-Resolver now rejects `Player(42, "hero")` with a clear error message:
-"struct constructors require named arguments." Unit test + integration fixture added.
-
-### ~~Spec: clarify `var` inside structs~~ `easy` — DONE
-
-Resolved: only `const` is allowed in structs (no mutable shared state). Spec example
-updated to use `const`. Compiler now rejects `var` in struct bodies with a clear error.
-Unit test + integration fixture added.
-
 ### Automatic error propagation `medium`
 
 `propagation.zig:374-376` comments say unhandled error unions in error-returning
@@ -106,51 +85,14 @@ Unhandled `(Error | T)` in a function returning `(Error | T)` is silently allowe
 but the error value is discarded at runtime. Either implement auto-propagation
 (insert `try`-like unwrap in codegen) or always reject unhandled unions.
 
-### `throw` narrowing for direct variable use `medium`
-
-After `throw result`, the variable should be narrowed to `T` for direct use.
-Currently `throw` emits the error check but doesn't unwrap the variable —
-`var x: i32 = result` after `throw` produces invalid Zig because `result` is
-still `anyerror!i32`. Only `result.i32` / `result.value` works (via explicit unwrap).
-
-### ~~Match on non-enum type without else~~ `easy` — DONE
-
-Match on numeric/string/bool types now requires an `else` arm. Pointer/reference
-types are unwrapped for exhaustiveness checking. Unit test + integration fixture added.
-
-### ~~`(null | Error | T)` TypeClass classification~~ `easy` — DONE
-
-Added `.null_error_union` TypeClass for unions containing both null and Error.
-Codegen emits two-pass unwrap (`.? catch unreachable`). All consumer sites in
-codegen_exprs, codegen_stmts, codegen_match, and mir_annotator updated.
-
-**Remaining gaps for `null_error_union`:**
+### `(null | Error | T)` remaining gaps `medium`
 
 - `is Error` codegen (`codegen_exprs.zig`) — generates `if (x) |_| false else |_| true`
   which unwraps the optional, not the error union. Needs two-step: null check then
   error check.
-- `throw` codegen (`codegen_stmts.zig`) — generates optional unwrap pattern instead
-  of error propagation. Needs optional unwrap first, then error propagation.
 - Narrowing fallback (`codegen_exprs.zig:305-307`) — after `is null` narrowing on
   `(null | Error | T)`, `.value` generates `.?` but should generate `catch unreachable`
   since null is already eliminated.
-
-### ~~Spec: clarify reference types in variable declarations~~ `easy` — DONE
-
-Resolved: the compiler is correct — reference types (`const& T`, `mut& T`) are only
-valid in function parameters, not variable declarations. Updated spec examples in
-`docs/09-memory.md` to use expression-level borrows instead of stored references.
-
-### ~~Interpolated string ownership/borrow checking~~ `easy` — DONE
-
-Both ownership and borrow checkers now walk `.expr` parts of interpolated strings.
-Use-after-move and active-mutable-borrow violations inside `"hello @{name}"` are caught.
-Unit tests added to both `ownership.zig` and `borrow.zig`.
-
-### ~~Borrow checker dead code: type-annotation-based mutability~~ `easy` — DONE
-
-Already cleaned up. `var_decl` handler uses `mut_borrow_expr`/`const_borrow_expr`
-directly. `isMutableBorrowType` remains used only for method self-parameter checks.
 
 ### `compt for` — implement grammar and builder `medium`
 
@@ -203,12 +145,6 @@ Root cause: the union registry generates function-scoped union names; cross-modu
 need unified union type names. The `arb_union_cross` and `arb_union_inferred` tests in
 `tester.orh` are blocked on this bug and cannot be added to `tester_main.orh` until fixed.
 
-### ~~Tuple literal resolver returns RT.inferred~~ `easy` — DONE
-
-Named tuple literals now resolve to `RT.tuple` with per-field types. Anonymous
-tuples (no field names) still return `RT.inferred` since there's no positional
-tuple type in the type system.
-
 ### Resolver: type-check test bodies `medium`
 
 The resolver (pass 5) has no `.test_decl` arm — test bodies are entirely skipped.
@@ -223,15 +159,14 @@ Ownership pass claims to enforce struct atomicity (no partial field moves) but h
 field-access tracking. `let b = player.name` moves a single field without error.
 Either implement field-level ownership states or document the limitation.
 
-### ~~Self outside struct scope~~ `easy` — DONE
+### `@this` — replace `Self` keyword `medium`
 
 `Self` rejected outside struct bodies (enforced via `struct_depth` in resolver).
 Needed for anonymous structs returned from `compt func` where no named type exists.
 Named structs can use their own name.
 
-**Planned:** Replace `Self` with `@this` compiler keyword. Blocked by a PEG engine
-bug — multi-token alternatives (`'@' 'this'`) in the type rule cause an alignment
-panic in the hash map. Needs PEG engine investigation first.
+Blocked by a PEG engine bug — multi-token alternatives (`'@' 'this'`) in the type
+rule cause an alignment panic in the hash map. Needs PEG engine fix first.
 
 ### PEG engine crash with multi-token type alternatives `medium`
 
@@ -294,21 +229,16 @@ in `interface.zig` tests. `type_tuple_anon` has contradictory handling in `types
 (treated as union) vs `codegen.zig` (treated as struct). Removing them requires updating
 all consuming switch arms and deciding whether `type_named` should absorb primitives.
 
-### ~~Dead parameter `obj_name` in `lookupStructMethod`~~ `easy` — DONE
-
-Removed unused `obj_name` parameter from `lookupStructMethod`. The function iterates
-all struct types by design (borrow checker has no type info), so the parameter was
-always discarded. All callers updated.
-
-### ~~Build-type string parsing duplicated~~ `easy` — DONE
-
-`module_parse.zig` now calls `module.parseBuildType()` instead of duplicating the
-if/else chain. Error reporting for unknown values preserved.
-
 ### Break up oversized functions `medium`
 
 - `generateExprMir()` in codegen_exprs.zig — 537 lines, one giant switch
 - Split into per-expression-kind functions (binary, call, field, index, etc.)
+
+### Extract shared `blockHasEarlyExit` utility `easy`
+
+`blockHasEarlyExit` is duplicated in `propagation.zig`, `mir/mir_lowerer.zig`, and
+`ownership_checks.zig`. Extract to a shared location (e.g., `parser.zig` helper or
+new `ast_utils.zig`) so all three call the same function.
 
 ### Deduplicate pipeline/LSP module resolution sequence `medium`
 
@@ -425,20 +355,6 @@ simplify coercion sequences.
 
 ## Testing Improvements
 
-### ~~Untested CLI commands~~ `easy` — DONE
-
-All three now have integration tests in `test/03_cli.sh`:
-- `orhon analysis` on a valid fixture — verifies PASS output
-- `orhon gendoc -syntax` — verifies `docs/syntax.md` produced
-- `orhon build -zig` — verifies `bin/zig/` directory created
-
-### ~~Missing negative test fixtures~~ `easy` — DONE
-
-All three cases now have tests:
-- Circular imports — `fail_circular_a.orh` / `fail_circular_b.orh` in `test/11_errors.sh`
-- `struct main {}` in exe module — tests `validateMainReserved` non-function branch
-- `orhon init "bad name!"` — tests name validation rejection in `test/04_init.sh`
-
 ### Incremental cache skip verification `medium`
 
 `test/05_compile.sh` only checks that rebuild succeeds and hashes file exists.
@@ -464,7 +380,7 @@ builds twice without changes and verifies generated `.zig` timestamps are unchan
 | Allocator via `.new(alloc)`, not generic param | Keeps generics pure (types only) |
 | SMP as default allocator | GeneralPurposeAllocator optimized for general use |
 | Zig-as-module for Zig interop | `.zig` files auto-convert to Orhon modules |
-| `throw` not `try` for error propagation | Less noisy, less hidden control flow |
+| Explicit error propagation via `if/return` | No hidden control flow, no special keywords |
 | Parenthesized guard syntax `(x if expr)` | Consistent with syntax containment rule |
 | Hub + satellite split pattern | All large file splits use same pattern for consistency |
 | `blueprint` for traits, not `impl` blocks | Everything visible at the definition site |

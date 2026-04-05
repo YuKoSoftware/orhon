@@ -38,15 +38,6 @@ pub fn checkStatement(self: *OwnershipChecker, node: *parser.Node, scope: *Owner
             }
         },
 
-        .throw_stmt => |t| {
-            // Check for use-after-move of the thrown variable
-            if (scope.getState(t.variable)) |state| {
-                if (state.state == .moved) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "use of moved value '{s}' — consider using @copy()", .{t.variable});
-                }
-            }
-        },
-
         .return_stmt => |r| {
             if (r.value) |v| {
                 try checkExpr(self, v, scope, false);
@@ -82,22 +73,35 @@ pub fn checkStatement(self: *OwnershipChecker, node: *parser.Node, scope: *Owner
         .if_stmt => |i| {
             try checkExpr(self, i.condition, scope, true);
 
-            // Snapshot state before branches — if either branch moves a
-            // variable, it must be considered moved after the if (conservative)
             const snapshot = try self.snapshotScope(scope);
             defer self.allocator.free(snapshot);
 
             try self.checkNode(i.then_block, scope);
             const after_then = try self.snapshotScope(scope);
             defer self.allocator.free(after_then);
+            const then_exits = blockHasEarlyExit(i.then_block);
 
             // Restore for else branch
             self.restoreScope(scope, snapshot);
 
             if (i.else_block) |e| try self.checkNode(e, scope);
+            const else_exits = if (i.else_block) |e| blockHasEarlyExit(e) else false;
 
-            // Merge: if moved in either branch, consider moved
-            self.mergeMovedStates(scope, after_then);
+            // Merge based on early-exit analysis:
+            // - Branch that exits early cannot affect post-if scope
+            // - Only merge moves from branches that fall through
+            if (then_exits and else_exits) {
+                // Both branches exit — code after if is unreachable
+                self.restoreScope(scope, snapshot);
+            } else if (then_exits) {
+                // Then-branch exits — only else-branch state matters (already in scope)
+            } else if (else_exits) {
+                // Else-branch exits — only then-branch state matters
+                self.restoreScope(scope, after_then);
+            } else {
+                // Neither exits — conservative merge (moved in either = moved)
+                self.mergeMovedStates(scope, after_then);
+            }
         },
 
         .while_stmt => |w| {
@@ -124,11 +128,11 @@ pub fn checkStatement(self: *OwnershipChecker, node: *parser.Node, scope: *Owner
             const snapshot = try self.snapshotScope(scope);
             defer self.allocator.free(snapshot);
 
-            // Check each arm, collecting moved states from all arms
-            var arm_snapshots = std.ArrayListUnmanaged([]OwnershipChecker.StateEntry){};
+            const ArmState = struct { snap: []OwnershipChecker.StateEntry, exits: bool };
+            var arm_states = std.ArrayListUnmanaged(ArmState){};
             defer {
-                for (arm_snapshots.items) |s| self.allocator.free(s);
-                arm_snapshots.deinit(self.allocator);
+                for (arm_states.items) |s| self.allocator.free(s.snap);
+                arm_states.deinit(self.allocator);
             }
 
             for (m.arms) |arm| {
@@ -137,15 +141,24 @@ pub fn checkStatement(self: *OwnershipChecker, node: *parser.Node, scope: *Owner
                     try checkExpr(self, arm.match_arm.pattern, scope, true);
                     if (arm.match_arm.guard) |g| try checkExpr(self, g, scope, true);
                     try self.checkNode(arm.match_arm.body, scope);
-                    try arm_snapshots.append(self.allocator, try self.snapshotScope(scope));
+                    try arm_states.append(self.allocator, .{
+                        .snap = try self.snapshotScope(scope),
+                        .exits = blockHasEarlyExit(arm.match_arm.body),
+                    });
                 }
             }
 
-            // Restore to pre-match state, then merge: moved in ANY arm → moved
+            // Restore to pre-match state, then merge only non-exiting arms
             self.restoreScope(scope, snapshot);
-            for (arm_snapshots.items) |s| {
-                self.mergeMovedStates(scope, s);
+            var all_exit = arm_states.items.len > 0;
+            for (arm_states.items) |s| {
+                if (!s.exits) {
+                    self.mergeMovedStates(scope, s.snap);
+                    all_exit = false;
+                }
             }
+            // If all arms exit, code after match is unreachable — restore pre-match
+            if (all_exit) self.restoreScope(scope, snapshot);
         },
 
         .defer_stmt => |d| {
@@ -292,4 +305,28 @@ pub fn checkExpr(self: *OwnershipChecker, node: *parser.Node, scope: *OwnershipS
 
         else => {},
     }
+}
+
+/// Check if a block contains an early exit (return, break, continue).
+/// For if statements, both branches must exit for the block to be an early exit.
+fn blockHasEarlyExit(node: *parser.Node) bool {
+    if (node.* != .block) return nodeIsEarlyExit(node);
+    for (node.block.statements) |stmt| {
+        if (nodeIsEarlyExit(stmt)) return true;
+    }
+    return false;
+}
+
+fn nodeIsEarlyExit(node: *parser.Node) bool {
+    return switch (node.*) {
+        .return_stmt => true,
+        .break_stmt => true,
+        .continue_stmt => true,
+        .block => blockHasEarlyExit(node),
+        .if_stmt => |i| blk: {
+            const else_block = i.else_block orelse break :blk false;
+            break :blk blockHasEarlyExit(i.then_block) and blockHasEarlyExit(else_block);
+        },
+        else => false,
+    };
 }

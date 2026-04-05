@@ -19,13 +19,10 @@ pub func maybe_value(flag: bool) (null | i32) {
     return null
 }
 
-// function using throw for error propagation
-pub func get_or_throw(id: i32) (Error | i32) {
+// function propagating error via return
+pub func get_or_propagate(id: i32) (Error | i32) {
     const result: (Error | i32) = safe_get(id)
-    if(result is Error) {
-        throw result
-    }
-    return result.i32
+    return result
 }
 
 // function demonstrating is check on null union

@@ -44,7 +44,6 @@ pub const LITERAL_MAP = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "false", .kw_false },
     .{ "blueprint", .kw_blueprint },
     .{ "is", .kw_is },
-    .{ "throw", .kw_throw },
     .{ "type", .kw_type },
     .{ "@", .at_sign },
 

@@ -42,7 +42,7 @@ Every keyword in Orhon earns its place. No keyword exists for convenience alone.
 func, var, const, if, elif, else, for, while, return, import, use, pub,
 match, struct, enum, blueprint, defer, thread, null, void, compt,
 any, module, test, and, or, not, as, type,
-break, continue, true, false, is, throw
+break, continue, true, false, is
 ```
 
 Compiler functions (`@cast`, `@copy`, `@move`, `@swap`, `@assert`, `@size`, `@align`, `@typename`, `@typeid`) are not keywords — they are intrinsics called with the `@` prefix. See [[05-functions#Compiler Functions]].
@@ -122,7 +122,7 @@ the type name carries meaning.
 
 Exceptions create invisible control flow paths. Every function might throw, and nothing
 in the signature tells you. Orhon uses `(Error | T)` union types — the error possibility
-is visible in the return type. `throw` propagates errors explicitly (see [[08-error-handling]]). The compiler tracks
+is visible in the return type. Errors are propagated explicitly via `if/return` (see [[08-error-handling]]). The compiler tracks
 error flow through every path.
 
 ### No garbage collection — compile-time memory management

@@ -204,7 +204,6 @@ pub const MirKind = enum {
     assignment,
     break_stmt,
     continue_stmt,
-    throw_stmt,
     // Expressions
     literal, // int, float, string, bool, null, error
     identifier,

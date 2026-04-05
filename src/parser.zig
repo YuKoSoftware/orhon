@@ -37,7 +37,6 @@ pub const NodeKind = enum {
     match_arm,
     break_stmt,
     continue_stmt,
-    throw_stmt,
     assignment,
     // Expressions
     binary_expr,
@@ -101,7 +100,6 @@ pub const Node = union(NodeKind) {
     match_arm: MatchArm,
     break_stmt,
     continue_stmt,
-    throw_stmt: ThrowStmt,
     assignment: BinaryOp,
     binary_expr: BinaryOp,
     unary_expr: UnaryOp,
@@ -291,10 +289,6 @@ pub const ForStmt = struct {
 
 pub const DeferStmt = struct {
     body: *Node,
-};
-
-pub const ThrowStmt = struct {
-    variable: []const u8,
 };
 
 pub const DestructDecl = struct {

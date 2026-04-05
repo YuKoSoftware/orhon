@@ -70,13 +70,15 @@ func check_and_report(value: i32) i32 {
     return 1
 }
 
-// ─── Throw Statement (error propagation) ─────────────────────────────────────
+// ─── Error Propagation ──────────────────────────────────────────────────────
 
-// throw propagates the error and narrows the type
-func divide_with_throw(a: i32, b: i32) (Error | i32) {
+// propagate error by returning it from an if check
+func divide_or_propagate(a: i32, b: i32) (Error | i32) {
     const result = safe_divide(a, b)
-    throw result
-    return result
+    if(result is Error) {
+        return result
+    }
+    return result.i32
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -96,6 +98,6 @@ test "error void" {
     @assert(check_and_report(0 - 1) == 0)
 }
 
-test "throw propagation" {
-    @assert(divide_with_throw(10, 2) == 5)
+test "error propagation" {
+    @assert(divide_or_propagate(10, 2) == 5)
 }

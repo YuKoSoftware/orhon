@@ -201,7 +201,6 @@ statement
         / const_decl
         / compt_decl
         / return_stmt
-        / throw_stmt
         / if_stmt
         / while_stmt
         / for_stmt
@@ -213,9 +212,6 @@ statement
 
 return_stmt
     <- 'return' (!NL !'}' !EOF expr)? TERM  {label: "return statement"}
-
-throw_stmt
-    <- 'throw' IDENTIFIER TERM  {label: "throw statement"}
 
 if_stmt
     <- 'if' '(' expr ')' block elif_chain?  {label: "if statement"}

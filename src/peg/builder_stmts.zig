@@ -1,5 +1,5 @@
 // builder_stmts.zig — Statement builders for the PEG AST builder
-// Contains: buildBlock, buildReturn, buildThrowStmt, buildIf, buildElifChain,
+// Contains: buildBlock, buildReturn, buildIf, buildElifChain,
 //           buildWhile, buildFor, buildDefer, buildMatch, buildMatchArm,
 //           buildExprOrAssignment
 
@@ -45,16 +45,6 @@ pub fn buildReturn(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         value = try builder.buildNode(ctx, e);
     }
     return ctx.newNode(.{ .return_stmt = .{ .value = value } });
-}
-
-pub fn buildThrowStmt(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
-    var i = cap.start_pos;
-    while (i < cap.end_pos and i < ctx.tokens.len) : (i += 1) {
-        if (ctx.tokens[i].kind == .identifier) {
-            return ctx.newNodeAt(.{ .throw_stmt = .{ .variable = ctx.tokens[i].text } }, i);
-        }
-    }
-    return error.InvalidCapture;
 }
 
 pub fn buildIf(ctx: *BuildContext, cap: *const CaptureNode) !*Node {

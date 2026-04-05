@@ -19,12 +19,9 @@ pub fn maybe_value(flag: bool) ?i32 {
     return null;
 }
 
-pub fn get_or_throw(id: i32) anyerror!i32 {
+pub fn get_or_propagate(id: i32) anyerror!i32 {
     const result: anyerror!i32 = safe_get(id); _ = &result;
-    if ((if (result) |_| false else |_| true)) {
-        if (result) |_| {} else |_err| return _err;
-    }
-    return result catch unreachable;
+    return result;
 }
 
 pub fn check_null(val: ?i32) i32 {

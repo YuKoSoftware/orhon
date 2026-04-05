@@ -176,11 +176,6 @@ pub fn generateStatementMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         .match_stmt => try cg.generateMatchMir(m),
         .break_stmt => try cg.emit("break;"),
         .continue_stmt => try cg.emit("continue;"),
-        .throw_stmt => {
-            const var_name = m.name orelse return;
-            try cg.emitFmt("if ({s}) |_| {{}} else |_err| return _err;", .{var_name});
-            try cg.error_narrowed.put(cg.allocator, var_name, {});
-        },
         .block => try cg.generateBlockMir(m),
         // Injected nodes from MirLowerer (interpolation hoisting)
         .temp_var => {

@@ -385,19 +385,6 @@ run_fixture neg_match fail_match.orh "not a member" "fixture: catches invalid ma
 run_fixture neg_match_guard fail_match_guard.orh "match with guards requires" "fixture: catches guarded match without else"
 run_fixture neg_match_noelse fail_match_no_else.orh "requires an 'else' arm" "fixture: rejects match on non-enum without else"
 
-# throw in void function
-cd "$TESTDIR"
-mkdir -p neg_throw/src
-cp "$FIXTURES/fail_throw.orh" neg_throw/src/neg_throw.orh
-sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_throw/' neg_throw/src/neg_throw.orh
-cd neg_throw
-NEG_OUT=$("$ORHON" build 2>&1 || true)
-if echo "$NEG_OUT" | grep -qi "throw\|error"; then
-    pass "rejects throw in void function"
-else
-    fail "rejects throw in void function" "$NEG_OUT"
-fi
-
 # old C interop directives rejected (CIMP-04)
 cd "$TESTDIR"
 mkdir -p neg_linkc/src

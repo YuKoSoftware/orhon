@@ -711,27 +711,6 @@ test "ownership - return marks non-primitive as moved" {
     try std.testing.expect(scope.getState("data").?.state == .moved);
 }
 
-test "ownership - throw use-after-move detected" {
-    const alloc = std.testing.allocator;
-    var reporter = errors.Reporter.init(alloc, .debug);
-    defer reporter.deinit();
-    var decl_table = declarations.DeclTable.init(alloc);
-    defer decl_table.deinit();
-    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
-
-    var checker = OwnershipChecker.init(alloc, &ctx);
-
-    var scope = OwnershipScope.init(alloc, null);
-    defer scope.deinit();
-
-    try scope.define("err", false);
-    _ = scope.setState("err", .moved);
-
-    var throw_node = parser.Node{ .throw_stmt = .{ .variable = "err" } };
-    try checker.checkStatement(&throw_node, &scope);
-    try std.testing.expect(reporter.hasErrors());
-}
-
 test "ownership - inferIterableElemPrimitive" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
@@ -881,4 +860,106 @@ test "ownership - interpolated string checks embedded exprs" {
     var interp = parser.Node{ .interpolated_string = .{ .parts = &parts } };
     try checker.checkExpr(&interp, &scope, false);
     try std.testing.expect(reporter.hasErrors());
+}
+
+test "ownership - if with return in then-block does not falsely move" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+
+    var checker = OwnershipChecker.init(alloc, &ctx);
+
+    var scope = OwnershipScope.init(alloc, null);
+    defer scope.deinit();
+
+    try scope.define("result", false);
+
+    // Build: if(flag) { return result }
+    var cond = parser.Node{ .bool_literal = true };
+    var ret_id = parser.Node{ .identifier = "result" };
+    var ret_stmt = parser.Node{ .return_stmt = .{ .value = &ret_id } };
+    var stmts = [_]*parser.Node{&ret_stmt};
+    var then_block = parser.Node{ .block = .{ .statements = &stmts } };
+    var if_node = parser.Node{ .if_stmt = .{
+        .condition = &cond,
+        .then_block = &then_block,
+        .else_block = null,
+    } };
+    try checker.checkStatement(&if_node, &scope);
+
+    // result should NOT be moved after if — the return exits the function
+    try std.testing.expect(scope.getState("result").?.state == .owned);
+    try std.testing.expect(!reporter.hasErrors());
+}
+
+test "ownership - if without return still marks moved (conservative)" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+
+    var checker = OwnershipChecker.init(alloc, &ctx);
+
+    var scope = OwnershipScope.init(alloc, null);
+    defer scope.deinit();
+
+    try scope.define("data", false);
+
+    // Build: if(flag) { use data (moves it) } — no return
+    var cond = parser.Node{ .bool_literal = true };
+    var use_id = parser.Node{ .identifier = "data" };
+    var stmts = [_]*parser.Node{&use_id};
+    var then_block = parser.Node{ .block = .{ .statements = &stmts } };
+    var if_node = parser.Node{ .if_stmt = .{
+        .condition = &cond,
+        .then_block = &then_block,
+        .else_block = null,
+    } };
+    try checker.checkStatement(&if_node, &scope);
+
+    // data should be moved — then-block doesn't exit, conservative merge applies
+    try std.testing.expect(scope.getState("data").?.state == .moved);
+}
+
+test "ownership - if/else both return discards moves" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+
+    var checker = OwnershipChecker.init(alloc, &ctx);
+
+    var scope = OwnershipScope.init(alloc, null);
+    defer scope.deinit();
+
+    try scope.define("x", false);
+
+    // Build: if(flag) { return x } else { return x }
+    var cond = parser.Node{ .bool_literal = true };
+    var ret_id1 = parser.Node{ .identifier = "x" };
+    var ret1 = parser.Node{ .return_stmt = .{ .value = &ret_id1 } };
+    var then_stmts = [_]*parser.Node{&ret1};
+    var then_block = parser.Node{ .block = .{ .statements = &then_stmts } };
+
+    var ret_id2 = parser.Node{ .identifier = "x" };
+    var ret2 = parser.Node{ .return_stmt = .{ .value = &ret_id2 } };
+    var else_stmts = [_]*parser.Node{&ret2};
+    var else_block = parser.Node{ .block = .{ .statements = &else_stmts } };
+
+    var if_node = parser.Node{ .if_stmt = .{
+        .condition = &cond,
+        .then_block = &then_block,
+        .else_block = &else_block,
+    } };
+    try checker.checkStatement(&if_node, &scope);
+
+    // Both branches exit — x should be restored to pre-branch state (owned)
+    try std.testing.expect(scope.getState("x").?.state == .owned);
 }

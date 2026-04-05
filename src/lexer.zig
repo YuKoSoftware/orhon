@@ -47,7 +47,6 @@ pub const TokenKind = enum {
     kw_true,
     kw_false,
     kw_is,
-    kw_throw,
     kw_type,
 
     // Compound borrow tokens
@@ -145,7 +144,6 @@ const KEYWORDS = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "true",     .kw_true },
     .{ "false",    .kw_false },
     .{ "is",       .kw_is },
-    .{ "throw",    .kw_throw },
     .{ "type",     .kw_type },
 });
 

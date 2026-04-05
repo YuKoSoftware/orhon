@@ -163,7 +163,6 @@ const rule_dispatch = std.StaticStringMap(BuilderFn).initComptime(.{
     .{ "match_arm", stmts_impl.buildMatchArm },
     .{ "break_stmt", buildBreakStmt },
     .{ "continue_stmt", buildContinueStmt },
-    .{ "throw_stmt", stmts_impl.buildThrowStmt },
     .{ "expr_or_assignment", stmts_impl.buildExprOrAssignment },
     .{ "assign_expr", stmts_impl.buildExprOrAssignment },
     // Expressions

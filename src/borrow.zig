@@ -262,9 +262,6 @@ fn collectIdentifiers(node: *parser.Node, map: *std.StringHashMapUnmanaged(usize
         .return_stmt => |r| {
             if (r.value) |val| try collectIdentifiers(val, map, allocator, stmt_idx);
         },
-        .throw_stmt => |t| {
-            try map.put(allocator, t.variable, stmt_idx);
-        },
         .if_stmt => |i| {
             try collectIdentifiers(i.condition, map, allocator, stmt_idx);
             try collectIdentifiers(i.then_block, map, allocator, stmt_idx);

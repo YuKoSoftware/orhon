@@ -74,37 +74,21 @@ match(result) {
 
 ---
 
-## throw Statement
+## Error Propagation
 
-`throw` propagates an error union upward and narrows the variable's type in the remainder of the function. It is syntactic sugar for the common pattern of checking for an error and returning it early.
-
-**Syntax:** `throw variable_name`
-
-**Requirements:**
-- `variable_name` must be of type `(Error | T)` — not a raw expression
-- The enclosing function must return an error union type (`(Error | T)`)
-
-**Semantics:** If the variable holds an error, the function returns it immediately. If it holds a value, execution continues and the variable is narrowed to `T` (no `.value` needed afterward).
+To propagate an error up the call stack, check for the error and return it:
 
 ```
-// without throw
-func divide_manual(a: i32, b: i32) (Error | i32) {
+func divide_or_propagate(a: i32, b: i32) (Error | i32) {
     const result = safe_divide(a, b)
     if(result is Error) {
         return result
     }
-    return result.value
-}
-
-// with throw
-func divide_with_throw(a: i32, b: i32) (Error | i32) {
-    var result = safe_divide(a, b)
-    throw result        // early return on error; result is now i32
-    return result       // .value not needed — type is narrowed
+    return result.i32
 }
 ```
 
-**Note:** `throw` only works on named variables (not inline expressions). This keeps control flow explicit and visible.
+The enclosing function must return an error union type (`(Error | T)`) for propagation to work. If no function in the call stack handles the error, it reaches `main` and the program crashes with the error message.
 
 ---
 

@@ -336,17 +336,6 @@ const SYNTAX_DOC =
     \\return x + y
     \\```
     \\
-    \\### Throw (error propagation)
-    \\
-    \\```orhon
-    \\func divide(a: i32, b: i32) (Error | i32) {
-    \\    if (b == 0) {
-    \\        throw division_by_zero
-    \\    }
-    \\    return a / b
-    \\}
-    \\```
-    \\
     \\### Defer
     \\
     \\```orhon
@@ -506,7 +495,7 @@ const SYNTAX_DOC =
     \\
     \\## Keywords
     \\
-    \\`func` `var` `const` `if` `else` `elif` `for` `while` `return` `throw`
+    \\`func` `var` `const` `if` `else` `elif` `for` `while` `return`
     \\`import` `use` `pub` `match` `struct` `enum` `defer` `thread`
     \\`null` `void` `compt` `any` `module` `test` `and` `or` `not` `as`
     \\`break` `continue` `true` `false` `is` `type` `blueprint`

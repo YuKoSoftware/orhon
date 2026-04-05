@@ -717,3 +717,76 @@ test "const auto-borrow - const_ref_params populated" {
     try std.testing.expect(!annotator.isConstRefParam("render", 1));
 }
 
+test "isNonPrimitiveType" {
+    // Primitives → false
+    try std.testing.expect(!MirAnnotator.isNonPrimitiveType(RT{ .primitive = .i32 }));
+    try std.testing.expect(!MirAnnotator.isNonPrimitiveType(RT{ .primitive = .string }));
+    // Unknown/inferred → false
+    try std.testing.expect(!MirAnnotator.isNonPrimitiveType(RT.unknown));
+    try std.testing.expect(!MirAnnotator.isNonPrimitiveType(RT.inferred));
+    // Named struct → true
+    try std.testing.expect(MirAnnotator.isNonPrimitiveType(RT{ .named = "MyStruct" }));
+    // Generic value type (Vector) → false
+    try std.testing.expect(!MirAnnotator.isNonPrimitiveType(RT{ .generic = .{ .name = "Vector", .args = &.{} } }));
+    // Generic non-value type (List) → true
+    try std.testing.expect(MirAnnotator.isNonPrimitiveType(RT{ .generic = .{ .name = "List", .args = &.{} } }));
+}
+
+test "typesMatch" {
+    // Primitive match
+    try std.testing.expect(MirAnnotator.typesMatch(RT{ .primitive = .i32 }, RT{ .primitive = .i32 }));
+    try std.testing.expect(!MirAnnotator.typesMatch(RT{ .primitive = .i32 }, RT{ .primitive = .f64 }));
+    // Named match
+    try std.testing.expect(MirAnnotator.typesMatch(RT{ .named = "Foo" }, RT{ .named = "Foo" }));
+    try std.testing.expect(!MirAnnotator.typesMatch(RT{ .named = "Foo" }, RT{ .named = "Bar" }));
+    // Generic match
+    try std.testing.expect(MirAnnotator.typesMatch(
+        RT{ .generic = .{ .name = "List", .args = &.{} } },
+        RT{ .generic = .{ .name = "List", .args = &.{} } },
+    ));
+    try std.testing.expect(!MirAnnotator.typesMatch(
+        RT{ .generic = .{ .name = "List", .args = &.{} } },
+        RT{ .generic = .{ .name = "Map", .args = &.{} } },
+    ));
+    // Cross-category mismatch
+    try std.testing.expect(!MirAnnotator.typesMatch(RT{ .primitive = .i32 }, RT{ .named = "i32" }));
+}
+
+test "detectCoercion - array_to_slice" {
+    const alloc = std.testing.allocator;
+    const elem = try alloc.create(RT);
+    defer alloc.destroy(elem);
+    elem.* = RT{ .primitive = .i32 };
+    var size_node = parser.Node{ .int_literal = "3" };
+    const src = RT{ .array = .{ .elem = elem, .size = &size_node } };
+    const dst = RT{ .slice = elem };
+    const result = MirAnnotator.detectCoercion(src, dst);
+    try std.testing.expectEqual(Coercion.array_to_slice, result.kind.?);
+}
+
+test "detectCoercion - numeric literal to arbitrary union" {
+    const members = &[_]RT{ RT{ .primitive = .i32 }, RT{ .primitive = .string } };
+    const src = RT{ .primitive = .numeric_literal };
+    const dst = RT{ .union_type = members };
+    const result = MirAnnotator.detectCoercion(src, dst);
+    try std.testing.expectEqual(Coercion.arbitrary_union_wrap, result.kind.?);
+    try std.testing.expectEqualStrings("i32", result.tag.?);
+}
+
+test "detectCoercion - float literal to arbitrary union" {
+    const members = &[_]RT{ RT{ .primitive = .f64 }, RT{ .primitive = .string } };
+    const src = RT{ .primitive = .float_literal };
+    const dst = RT{ .union_type = members };
+    const result = MirAnnotator.detectCoercion(src, dst);
+    try std.testing.expectEqual(Coercion.arbitrary_union_wrap, result.kind.?);
+    try std.testing.expectEqualStrings("f64", result.tag.?);
+}
+
+test "detectCoercion - null literal to null-containing union no wrap" {
+    const members = &[_]RT{ RT.null_type, RT{ .primitive = .i32 } };
+    const src = RT.null_type;
+    const dst = RT{ .union_type = members };
+    const result = MirAnnotator.detectCoercion(src, dst);
+    try std.testing.expect(result.kind == null);
+}
+

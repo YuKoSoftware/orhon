@@ -869,5 +869,73 @@ test "interface hashes load save roundtrip" {
     try std.testing.expectEqual(@as(?u64, 98765432109876), cache2.interface_hashes.get("str"));
 }
 
+test "interface hash changes on field type change" {
+    const alloc = std.testing.allocator;
+
+    // Build DeclTable with struct Point { x: f32 }
+    var decl1 = declarations.DeclTable.init(alloc);
+    defer decl1.deinit();
+    const fields1 = try alloc.alloc(declarations.FieldSig, 1);
+    fields1[0] = .{ .name = "x", .type_ = .{ .primitive = .f32 }, .has_default = false, .is_pub = true };
+    try decl1.structs.put("Point", .{ .name = "Point", .fields = fields1, .is_pub = true });
+    const hash1 = hashInterface(&decl1);
+
+    // Build DeclTable with struct Point { x: f64 } — different field type
+    var decl2 = declarations.DeclTable.init(alloc);
+    defer decl2.deinit();
+    const fields2 = try alloc.alloc(declarations.FieldSig, 1);
+    fields2[0] = .{ .name = "x", .type_ = .{ .primitive = .f64 }, .has_default = false, .is_pub = true };
+    try decl2.structs.put("Point", .{ .name = "Point", .fields = fields2, .is_pub = true });
+    const hash2 = hashInterface(&decl2);
+
+    try std.testing.expect(hash1 != hash2);
+}
+
+test "interface hash with slice type" {
+    const alloc = std.testing.allocator;
+
+    var decl1 = declarations.DeclTable.init(alloc);
+    defer decl1.deinit();
+    const inner = try decl1.type_arena.allocator().create(types.ResolvedType);
+    inner.* = .{ .primitive = .u8 };
+    const fields1 = try alloc.alloc(declarations.FieldSig, 1);
+    fields1[0] = .{ .name = "data", .type_ = .{ .slice = inner }, .has_default = false, .is_pub = true };
+    try decl1.structs.put("Buffer", .{ .name = "Buffer", .fields = fields1, .is_pub = true });
+    const hash1 = hashInterface(&decl1);
+
+    // Same struct, same field → same hash
+    var decl2 = declarations.DeclTable.init(alloc);
+    defer decl2.deinit();
+    const inner2 = try decl2.type_arena.allocator().create(types.ResolvedType);
+    inner2.* = .{ .primitive = .u8 };
+    const fields2 = try alloc.alloc(declarations.FieldSig, 1);
+    fields2[0] = .{ .name = "data", .type_ = .{ .slice = inner2 }, .has_default = false, .is_pub = true };
+    try decl2.structs.put("Buffer", .{ .name = "Buffer", .fields = fields2, .is_pub = true });
+    const hash2 = hashInterface(&decl2);
+
+    try std.testing.expectEqual(hash1, hash2);
+}
+
+test "interface hash with named type" {
+    const alloc = std.testing.allocator;
+
+    var decl1 = declarations.DeclTable.init(alloc);
+    defer decl1.deinit();
+    const fields1 = try alloc.alloc(declarations.FieldSig, 1);
+    fields1[0] = .{ .name = "inner", .type_ = .{ .named = "Widget" }, .has_default = false, .is_pub = true };
+    try decl1.structs.put("Container", .{ .name = "Container", .fields = fields1, .is_pub = true });
+    const hash1 = hashInterface(&decl1);
+
+    // Different named type → different hash
+    var decl2 = declarations.DeclTable.init(alloc);
+    defer decl2.deinit();
+    const fields2 = try alloc.alloc(declarations.FieldSig, 1);
+    fields2[0] = .{ .name = "inner", .type_ = .{ .named = "Gadget" }, .has_default = false, .is_pub = true };
+    try decl2.structs.put("Container", .{ .name = "Container", .fields = fields2, .is_pub = true });
+    const hash2 = hashInterface(&decl2);
+
+    try std.testing.expect(hash1 != hash2);
+}
+
 
 

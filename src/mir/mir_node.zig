@@ -239,3 +239,106 @@ pub const IfNarrowing = struct {
     else_type: ?[]const u8 = null,
     post_type: ?[]const u8 = null, // after if, if then-block has early exit
 };
+
+// ── Tests ──────────────────────────────────────────────────
+
+test "MirNode - body returns last child" {
+    var c0 = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var c1 = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .block, .children = &.{} };
+    var children = [_]*MirNode{ &c0, &c1 };
+    var node = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .func, .children = &children };
+    try std.testing.expect(node.body() == &c1);
+}
+
+test "MirNode - condition and thenBlock" {
+    var cond = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var then_blk = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .block, .children = &.{} };
+    var children = [_]*MirNode{ &cond, &then_blk };
+    var node = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .if_stmt, .children = &children };
+    try std.testing.expect(node.condition() == &cond);
+    try std.testing.expect(node.thenBlock() == &then_blk);
+    try std.testing.expect(node.elseBlock() == null);
+}
+
+test "MirNode - elseBlock present" {
+    var cond = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var then_blk = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .block, .children = &.{} };
+    var els = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .block, .children = &.{} };
+    var children = [_]*MirNode{ &cond, &then_blk, &els };
+    var node = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .if_stmt, .children = &children };
+    try std.testing.expect(node.elseBlock().? == &els);
+}
+
+test "MirNode - lhs and rhs" {
+    var left = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .identifier, .children = &.{} };
+    var right = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var children = [_]*MirNode{ &left, &right };
+    var node = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .binary, .children = &children };
+    try std.testing.expect(node.lhs() == &left);
+    try std.testing.expect(node.rhs() == &right);
+}
+
+test "MirNode - callArgs" {
+    var callee = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .identifier, .children = &.{} };
+    var arg1 = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var arg2 = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var children = [_]*MirNode{ &callee, &arg1, &arg2 };
+    var node = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .call, .children = &children };
+    try std.testing.expect(node.getCallee() == &callee);
+    try std.testing.expectEqual(@as(usize, 2), node.callArgs().len);
+}
+
+test "MirNode - params excludes body" {
+    var p1 = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .param_def, .children = &.{} };
+    var p2 = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .param_def, .children = &.{} };
+    var body_node = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .block, .children = &.{} };
+    var children = [_]*MirNode{ &p1, &p2, &body_node };
+    var node = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .func, .children = &children };
+    try std.testing.expectEqual(@as(usize, 2), node.params().len);
+    try std.testing.expect(node.body() == &body_node);
+}
+
+test "MirNode - params empty" {
+    var node = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .func, .children = &.{} };
+    try std.testing.expectEqual(@as(usize, 0), node.params().len);
+}
+
+test "MirNode - defaultChild" {
+    var def_val = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var children = [_]*MirNode{&def_val};
+    // field_def with children → has default
+    var field = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .field_def, .children = &children };
+    try std.testing.expect(field.defaultChild() != null);
+    // non-field_def/param_def → no default
+    var other = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &children };
+    try std.testing.expect(other.defaultChild() == null);
+    // field_def with no children → no default
+    var empty_field = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .field_def, .children = &.{} };
+    try std.testing.expect(empty_field.defaultChild() == null);
+}
+
+test "MirNode - matchArms and pattern" {
+    var val = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .identifier, .children = &.{} };
+    var pat = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var arm_body = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .block, .children = &.{} };
+    var arm_children = [_]*MirNode{ &pat, &arm_body };
+    var arm = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .match_arm, .children = &arm_children };
+    var match_children = [_]*MirNode{ &val, &arm };
+    var match_node = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .match_stmt, .children = &match_children };
+    try std.testing.expectEqual(@as(usize, 1), match_node.matchArms().len);
+    try std.testing.expect(arm.pattern() == &pat);
+}
+
+test "MirNode - guard present and absent" {
+    var pat = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var arm_body = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .block, .children = &.{} };
+    // No guard: 2 children [pattern, body]
+    var children2 = [_]*MirNode{ &pat, &arm_body };
+    var arm_no_guard = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .match_arm, .children = &children2 };
+    try std.testing.expect(arm_no_guard.guard() == null);
+    // With guard: 3 children [pattern, guard, body]
+    var guard_n = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .binary, .children = &.{} };
+    var children3 = [_]*MirNode{ &pat, &guard_n, &arm_body };
+    var arm_with_guard = MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .match_arm, .children = &children3 };
+    try std.testing.expect(arm_with_guard.guard().? == &guard_n);
+}

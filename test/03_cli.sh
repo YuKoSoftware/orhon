@@ -33,4 +33,12 @@ else
     fail "orhon init (no name) inits in current dir"
 fi
 
+# orhon version prints a version string
+VERSION_OUT=$("$ORHON" version 2>&1 || true)
+if echo "$VERSION_OUT" | grep -qE "[0-9]+\.[0-9]+"; then
+    pass "orhon version prints version"
+else
+    fail "orhon version prints version"
+fi
+
 report_results

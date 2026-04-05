@@ -83,3 +83,16 @@ test "classifyType - unions" {
 test "classifyType - named types" {
     try std.testing.expectEqual(TypeClass.plain, classifyType(RT{ .named = "MyStruct" }));
 }
+
+test "classifyType - ptr" {
+    const alloc = std.testing.allocator;
+    const elem = try alloc.create(RT);
+    defer alloc.destroy(elem);
+    elem.* = RT{ .named = "Point" };
+    try std.testing.expectEqual(TypeClass.plain, classifyType(RT{ .ptr = .{ .kind = .const_ref, .elem = elem } }));
+}
+
+test "classifyType - unknown and inferred" {
+    try std.testing.expectEqual(TypeClass.plain, classifyType(RT.unknown));
+    try std.testing.expectEqual(TypeClass.plain, classifyType(RT.inferred));
+}

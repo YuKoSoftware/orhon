@@ -286,3 +286,50 @@ test "appendJsonString escapes special characters" {
     try appendJsonString(&buf, std.testing.allocator, "hello \"world\"\nnew\\line");
     try std.testing.expectEqualStrings("hello \\\"world\\\"\\nnew\\\\line", buf.items);
 }
+
+test "jsonStr extracts string value" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"name\":\"hello\"}", .{});
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings("hello", jsonStr(parsed.value, "name").?);
+    try std.testing.expect(jsonStr(parsed.value, "missing") == null);
+}
+
+test "jsonInt extracts integer value" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"line\":42}", .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i64, 42), jsonInt(parsed.value, "line").?);
+    try std.testing.expect(jsonInt(parsed.value, "missing") == null);
+}
+
+test "jsonBool extracts boolean value" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"active\":true}", .{});
+    defer parsed.deinit();
+    try std.testing.expect(jsonBool(parsed.value, "active"));
+    try std.testing.expect(!jsonBool(parsed.value, "missing"));
+}
+
+test "jsonObj extracts nested object" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"doc\":{\"uri\":\"file:///test.orh\"}}", .{});
+    defer parsed.deinit();
+    const obj = jsonObj(parsed.value, "doc");
+    try std.testing.expect(obj != null);
+    try std.testing.expectEqualStrings("file:///test.orh", jsonStr(obj.?, "uri").?);
+}
+
+test "extractTextDocumentUri" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"textDocument\":{\"uri\":\"file:///src/main.orh\"}}", .{});
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings("file:///src/main.orh", extractTextDocumentUri(parsed.value).?);
+}
+
+test "extractTextDocumentUri - missing" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{}", .{});
+    defer parsed.deinit();
+    try std.testing.expect(extractTextDocumentUri(parsed.value) == null);
+}

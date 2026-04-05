@@ -683,6 +683,276 @@ test "DeclTable.blueprints map initializes empty" {
     try std.testing.expect(table.blueprints.count() == 0);
 }
 
+test "declaration collector - blueprint" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Build a blueprint with one method: func equals(self: const& Eq, other: const& Eq) bool
+    const self_type = try a.create(parser.Node);
+    self_type.* = .{ .type_named = "Eq" };
+    const self_ptr = try a.create(parser.Node);
+    self_ptr.* = .{ .type_ptr = .{ .kind = .const_ref, .elem = self_type } };
+    const other_type = try a.create(parser.Node);
+    other_type.* = .{ .type_named = "Eq" };
+    const other_ptr = try a.create(parser.Node);
+    other_ptr.* = .{ .type_ptr = .{ .kind = .const_ref, .elem = other_type } };
+
+    const p1 = try a.create(parser.Node);
+    p1.* = .{ .param = .{ .name = "self", .type_annotation = self_ptr, .default_value = null } };
+    const p2 = try a.create(parser.Node);
+    p2.* = .{ .param = .{ .name = "other", .type_annotation = other_ptr, .default_value = null } };
+    const params = try a.alloc(*parser.Node, 2);
+    params[0] = p1;
+    params[1] = p2;
+
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .type_named = "bool" };
+    const method = try a.create(parser.Node);
+    method.* = .{ .func_decl = .{
+        .name = "equals",
+        .params = params,
+        .return_type = ret,
+        .body = undefined,
+        .context = .normal,
+        .is_pub = true,
+    } };
+    const methods = try a.alloc(*parser.Node, 1);
+    methods[0] = method;
+
+    const bp_node = try a.create(parser.Node);
+    bp_node.* = .{ .blueprint_decl = .{ .name = "Eq", .methods = methods, .is_pub = true } };
+
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = bp_node;
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "testmod" } };
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{ .module = module_node, .metadata = &.{}, .imports = &.{}, .top_level = top_level } };
+
+    var collector = DeclCollector.init(alloc, &reporter);
+    defer collector.deinit();
+    try collector.collect(prog);
+
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expect(collector.table.blueprints.contains("Eq"));
+    const bp_sig = collector.table.blueprints.get("Eq").?;
+    try std.testing.expectEqual(@as(usize, 1), bp_sig.methods.len);
+    try std.testing.expectEqualStrings("equals", bp_sig.methods[0].name);
+    try std.testing.expectEqual(@as(usize, 2), bp_sig.methods[0].params.len);
+}
+
+test "declaration collector - type alias goes to types map" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // const Alias: type = SomeType
+    const type_ann = try a.create(parser.Node);
+    type_ann.* = .{ .type_named = "type" };
+    const val = try a.create(parser.Node);
+    val.* = .{ .identifier = "SomeType" };
+    const var_node = try a.create(parser.Node);
+    var_node.* = .{ .var_decl = .{
+        .name = "Alias",
+        .type_annotation = type_ann,
+        .value = val,
+        .mutability = .constant,
+        .is_pub = false,
+    } };
+
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = var_node;
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "testmod" } };
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{ .module = module_node, .metadata = &.{}, .imports = &.{}, .top_level = top_level } };
+
+    var collector = DeclCollector.init(alloc, &reporter);
+    defer collector.deinit();
+    try collector.collect(prog);
+
+    try std.testing.expect(!reporter.hasErrors());
+    // Should be in types map, NOT vars map
+    try std.testing.expect(collector.table.types.contains("Alias"));
+    try std.testing.expect(!collector.table.vars.contains("Alias"));
+}
+
+test "declaration collector - struct methods registered" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .type_named = "i32" };
+    const method = try a.create(parser.Node);
+    method.* = .{ .func_decl = .{
+        .name = "getX",
+        .params = &.{},
+        .return_type = ret,
+        .body = undefined,
+        .context = .normal,
+        .is_pub = true,
+    } };
+
+    const field_type = try a.create(parser.Node);
+    field_type.* = .{ .type_named = "i32" };
+    const field = try a.create(parser.Node);
+    field.* = .{ .field_decl = .{
+        .name = "x",
+        .type_annotation = field_type,
+        .default_value = null,
+        .is_pub = false,
+    } };
+
+    const members = try a.alloc(*parser.Node, 2);
+    members[0] = field;
+    members[1] = method;
+
+    const struct_node = try a.create(parser.Node);
+    struct_node.* = .{ .struct_decl = .{
+        .name = "Point",
+        .type_params = &.{},
+        .members = members,
+        .is_pub = false,
+    } };
+
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = struct_node;
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "testmod" } };
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{ .module = module_node, .metadata = &.{}, .imports = &.{}, .top_level = top_level } };
+
+    var collector = DeclCollector.init(alloc, &reporter);
+    defer collector.deinit();
+    try collector.collect(prog);
+
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expect(collector.table.struct_methods.get("Point.getX") != null);
+}
+
+test "declaration collector - field name conflicts with type" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const field_type = try a.create(parser.Node);
+    field_type.* = .{ .type_named = "i32" };
+    const field = try a.create(parser.Node);
+    field.* = .{ .field_decl = .{
+        .name = "i32", // conflicts with type name
+        .type_annotation = field_type,
+        .default_value = null,
+        .is_pub = false,
+    } };
+
+    const members = try a.alloc(*parser.Node, 1);
+    members[0] = field;
+    const struct_node = try a.create(parser.Node);
+    struct_node.* = .{ .struct_decl = .{
+        .name = "Bad",
+        .type_params = &.{},
+        .members = members,
+        .is_pub = false,
+    } };
+
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = struct_node;
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "testmod" } };
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{ .module = module_node, .metadata = &.{}, .imports = &.{}, .top_level = top_level } };
+
+    var collector = DeclCollector.init(alloc, &reporter);
+    defer collector.deinit();
+    try collector.collect(prog);
+
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "declaration collector - duplicate field name" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const t1 = try a.create(parser.Node);
+    t1.* = .{ .type_named = "i32" };
+    const f1 = try a.create(parser.Node);
+    f1.* = .{ .field_decl = .{ .name = "x", .type_annotation = t1, .default_value = null, .is_pub = false } };
+    const t2 = try a.create(parser.Node);
+    t2.* = .{ .type_named = "i32" };
+    const f2 = try a.create(parser.Node);
+    f2.* = .{ .field_decl = .{ .name = "x", .type_annotation = t2, .default_value = null, .is_pub = false } };
+
+    const members = try a.alloc(*parser.Node, 2);
+    members[0] = f1;
+    members[1] = f2;
+    const struct_node = try a.create(parser.Node);
+    struct_node.* = .{ .struct_decl = .{
+        .name = "Bad",
+        .type_params = &.{},
+        .members = members,
+        .is_pub = false,
+    } };
+
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = struct_node;
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "testmod" } };
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{ .module = module_node, .metadata = &.{}, .imports = &.{}, .top_level = top_level } };
+
+    var collector = DeclCollector.init(alloc, &reporter);
+    defer collector.deinit();
+    try collector.collect(prog);
+
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "declaration collector - hasDecl" {
+    const alloc = std.testing.allocator;
+    var table = DeclTable.init(alloc);
+    defer table.deinit();
+
+    try std.testing.expect(!table.hasDecl("foo"));
+
+    const ret_node = try alloc.create(parser.Node);
+    defer alloc.destroy(ret_node);
+    ret_node.* = .{ .type_named = "void" };
+    try table.funcs.put("foo", .{
+        .name = "foo",
+        .params = &.{},
+        .param_nodes = &.{},
+        .return_type = .{ .primitive = .void },
+        .return_type_node = ret_node,
+        .context = .normal,
+        .is_pub = false,
+    });
+    try std.testing.expect(table.hasDecl("foo"));
+    try std.testing.expect(!table.hasDecl("bar"));
+}
+
 test "isTypeAlias - detects type keyword annotation" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

@@ -868,3 +868,75 @@ pub fn isResultValueField(name: []const u8, decls: ?*declarations.DeclTable) boo
     if (builtins.isBuiltinType(name)) return true;
     return false;
 }
+
+// ── Tests ──────────────────────────────────────────────────
+
+test "isResultValueField" {
+    try std.testing.expect(isResultValueField("value", null));
+    try std.testing.expect(isResultValueField("i32", null));
+    try std.testing.expect(isResultValueField("str", null));
+    try std.testing.expect(isResultValueField("f64", null));
+    try std.testing.expect(!isResultValueField("x", null));
+    try std.testing.expect(!isResultValueField("myVar", null));
+}
+
+test "isResultValueField with decls" {
+    const alloc = std.testing.allocator;
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    try decl_table.structs.put("Player", .{ .name = "Player", .fields = &.{}, .is_pub = true });
+    try std.testing.expect(isResultValueField("Player", &decl_table));
+    try std.testing.expect(!isResultValueField("Unknown", &decl_table));
+}
+
+test "mapWrappingOp" {
+    try std.testing.expectEqualStrings("+%", mapWrappingOp(.add).?);
+    try std.testing.expectEqualStrings("-%", mapWrappingOp(.sub).?);
+    try std.testing.expectEqualStrings("*%", mapWrappingOp(.mul).?);
+    try std.testing.expect(mapWrappingOp(.div) == null);
+    try std.testing.expect(mapWrappingOp(.mod) == null);
+}
+
+test "mapSaturatingOp" {
+    try std.testing.expectEqualStrings("+|", mapSaturatingOp(.add).?);
+    try std.testing.expectEqualStrings("-|", mapSaturatingOp(.sub).?);
+    try std.testing.expectEqualStrings("*|", mapSaturatingOp(.mul).?);
+    try std.testing.expect(mapSaturatingOp(.div) == null);
+}
+
+test "mapOverflowBuiltin" {
+    try std.testing.expectEqualStrings("@addWithOverflow", mapOverflowBuiltin(.add).?);
+    try std.testing.expectEqualStrings("@subWithOverflow", mapOverflowBuiltin(.sub).?);
+    try std.testing.expectEqualStrings("@mulWithOverflow", mapOverflowBuiltin(.mul).?);
+    try std.testing.expect(mapOverflowBuiltin(.div) == null);
+}
+
+test "mirContainsIdentifier" {
+    var leaf = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .identifier, .children = &.{}, .name = "x" };
+    try std.testing.expect(mirContainsIdentifier(&leaf, "x"));
+    try std.testing.expect(!mirContainsIdentifier(&leaf, "y"));
+
+    // Nested: parent with child containing "y"
+    var child = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .identifier, .children = &.{}, .name = "y" };
+    var children = [_]*mir.MirNode{&child};
+    var parent = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .binary, .children = &children, .name = null };
+    try std.testing.expect(mirContainsIdentifier(&parent, "y"));
+    try std.testing.expect(!mirContainsIdentifier(&parent, "z"));
+}
+
+test "hasGuardedArm" {
+    var pat = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
+    var body_node = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .block, .children = &.{} };
+    // No guard (2 children)
+    var children2 = [_]*mir.MirNode{ &pat, &body_node };
+    var arm1 = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .match_arm, .children = &children2 };
+    var arms_no_guard = [_]*mir.MirNode{&arm1};
+    try std.testing.expect(!hasGuardedArm(&arms_no_guard));
+
+    // With guard (3 children)
+    var guard_n = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .binary, .children = &.{} };
+    var children3 = [_]*mir.MirNode{ &pat, &guard_n, &body_node };
+    var arm2 = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .match_arm, .children = &children3 };
+    var arms_with_guard = [_]*mir.MirNode{&arm2};
+    try std.testing.expect(hasGuardedArm(&arms_with_guard));
+}

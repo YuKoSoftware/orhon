@@ -655,3 +655,27 @@ pub fn generateDestructMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     }
 }
 
+// ── Tests ──────────────────────────────────────────────────
+
+test "matchesKind" {
+    try std.testing.expect(matchesKind("i32", .int));
+    try std.testing.expect(matchesKind("u64", .int));
+    try std.testing.expect(matchesKind("f64", .float));
+    try std.testing.expect(matchesKind("f32", .float));
+    try std.testing.expect(matchesKind("str", .string));
+    try std.testing.expect(matchesKind("bool", .bool_));
+    // Negative cases
+    try std.testing.expect(!matchesKind("i32", .float));
+    try std.testing.expect(!matchesKind("str", .int));
+    try std.testing.expect(!matchesKind("bool", .string));
+    try std.testing.expect(!matchesKind("UnknownType", .int));
+}
+
+test "findMemberByKind" {
+    const members = &[_]RT{ RT{ .primitive = .i32 }, RT{ .primitive = .string } };
+    try std.testing.expectEqualStrings("i32", findMemberByKind(members, .int).?);
+    try std.testing.expectEqualStrings("str", findMemberByKind(members, .string).?);
+    try std.testing.expect(findMemberByKind(members, .float) == null);
+    try std.testing.expect(findMemberByKind(null, .int) == null);
+}
+

@@ -180,6 +180,17 @@ an array type. This breaks `array_to_slice` coercion detection in the MIR annota
 `var arr: []i32 = [1, 2, 3]` likely produces invalid Zig. Fix: return a proper array
 resolved type, or special-case array literal nodes in coercion detection.
 
+### Cross-module arbitrary union type mismatch `medium`
+
+When a function in module A returns an arbitrary union type (e.g., `(i32 | str)`) and
+module B calls it, codegen generates two separate Zig union types with different names
+(e.g., `test_arb_union_cross__union_24527` vs `make_union_val__union_24528`). Zig rejects
+the type mismatch. Reproduction: `tester.orh` functions `test_arb_union_cross` and
+`test_arb_union_inferred` — both fail with "expected type X, found Y" at Zig compilation.
+Root cause: the union registry generates function-scoped union names; cross-module calls
+need unified union type names. The `arb_union_cross` and `arb_union_inferred` tests in
+`tester.orh` are blocked on this bug and cannot be added to `tester_main.orh` until fixed.
+
 ### Tuple literal resolver returns RT.inferred `easy`
 
 `resolver_exprs.zig:403` returns `RT.inferred` for tuple literals. Downstream passes
@@ -240,6 +251,14 @@ for anonymous structs in compt functions too. Currently codegen handles this cor
   2. Compt arithmetic (`1 << index` at compile time)
   3. Compt `@intFromEnum` equivalent
 - Users can create bitfields manually with `u32` + bitwise operators in the meantime
+
+### Stdlib cache not invalidated on compiler upgrade `easy`
+
+`std_bundle.zig:writeStdFile()` skips writing if the file already exists in
+`.orh-cache/std/`. When a user upgrades the compiler, the cached stdlib files
+from the old version are never overwritten — the new compiler runs with stale
+stdlib code. Fix: compare embedded content hash with cached file hash, or
+always overwrite, or add a version stamp to the cache directory.
 
 ### Named tuple nominal typing `medium`
 
@@ -312,6 +331,12 @@ be processed in parallel via a thread pool.
 Missing: wrapping for long lines, function signature breaking rules, alignment
 for multi-line assignments, comment-aware formatting, configurable style.
 
+### LSP — foldingRange brace stack overflow `easy`
+
+`lsp_view.zig:handleFoldingRange` uses a fixed `[256]usize` brace stack with no bounds
+check. Deeply nested code (>256 levels of `{`) would cause an out-of-bounds write.
+Fix: check `brace_depth < 256` before pushing, or use a dynamic list.
+
 ### LSP — feature-gated passes `medium`
 
 Gate passes by request type instead of running 1–9 on every change:
@@ -376,6 +401,27 @@ simplify coercion sequences.
 ---
 
 ## Testing Improvements
+
+### Untested CLI commands `easy`
+
+`orhon analysis`, `orhon gendoc`, and `orhon build -zig` have zero tests (unit or
+integration). Any of these could break silently. Add to `test/03_cli.sh`:
+- `orhon analysis` on a valid fixture → verify PASS output
+- `orhon gendoc -syntax` → verify `docs/syntax.md` produced
+- `orhon build -zig` → verify `bin/zig/` directory created
+
+### Missing negative test fixtures `easy`
+
+Several error paths have no integration test fixture:
+- Circular imports — no `fail_circular.orh` (module A imports B, B imports A)
+- `struct main {}` in exe module — `validateMainReserved` non-function branch untested
+- `orhon init "bad name!"` — name validation exists but no test verifies rejection
+
+### Incremental cache skip verification `medium`
+
+`test/05_compile.sh` only checks that rebuild succeeds and hashes file exists.
+It does not verify that unchanged modules are actually skipped. Add a test that
+builds twice without changes and verifies generated `.zig` timestamps are unchanged.
 
 ### Property-based pipeline testing `medium`
 

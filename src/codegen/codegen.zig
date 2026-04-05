@@ -818,3 +818,192 @@ test "codegen - type to zig" {
     try std.testing.expectEqualStrings("[]i32", slice_zig);
 }
 
+test "codegen - typeToZig Error type" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+
+    var err_type = parser.Node{ .type_named = "Error" };
+    try std.testing.expectEqualStrings("anyerror", try gen.typeToZig(&err_type));
+}
+
+test "codegen - typeToZig error union" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // (Error | i32) → anyerror!i32
+    const t1 = try a.create(parser.Node);
+    t1.* = .{ .type_named = "Error" };
+    const t2 = try a.create(parser.Node);
+    t2.* = .{ .type_named = "i32" };
+    const members = try a.alloc(*parser.Node, 2);
+    members[0] = t1;
+    members[1] = t2;
+    var union_type = parser.Node{ .type_union = members };
+    try std.testing.expectEqualStrings("anyerror!i32", try gen.typeToZig(&union_type));
+}
+
+test "codegen - typeToZig null union" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // (null | str) → ?[]const u8
+    const t1 = try a.create(parser.Node);
+    t1.* = .{ .type_named = "null" };
+    const t2 = try a.create(parser.Node);
+    t2.* = .{ .type_named = "str" };
+    const members = try a.alloc(*parser.Node, 2);
+    members[0] = t1;
+    members[1] = t2;
+    var union_type = parser.Node{ .type_union = members };
+    try std.testing.expectEqualStrings("?[]const u8", try gen.typeToZig(&union_type));
+}
+
+test "codegen - typeToZig ptr types" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const inner = try a.create(parser.Node);
+    inner.* = .{ .type_named = "Point" };
+    var const_ptr = parser.Node{ .type_ptr = .{ .kind = .const_ref, .elem = inner } };
+    try std.testing.expectEqualStrings("*const Point", try gen.typeToZig(&const_ptr));
+
+    const inner2 = try a.create(parser.Node);
+    inner2.* = .{ .type_named = "Point" };
+    var mut_ptr = parser.Node{ .type_ptr = .{ .kind = .mut_ref, .elem = inner2 } };
+    try std.testing.expectEqualStrings("*Point", try gen.typeToZig(&mut_ptr));
+}
+
+test "codegen - typeToZig array" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const elem = try a.create(parser.Node);
+    elem.* = .{ .type_named = "f32" };
+    const size = try a.create(parser.Node);
+    size.* = .{ .int_literal = "4" };
+    var arr = parser.Node{ .type_array = .{ .size = size, .elem = elem } };
+    try std.testing.expectEqualStrings("[4]f32", try gen.typeToZig(&arr));
+}
+
+test "codegen - typeToZig generic" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const arg = try a.create(parser.Node);
+    arg.* = .{ .type_named = "i32" };
+    const args = try a.alloc(*parser.Node, 1);
+    args[0] = arg;
+    var generic = parser.Node{ .type_generic = .{ .name = "List", .args = args } };
+    try std.testing.expectEqualStrings("List(i32)", try gen.typeToZig(&generic));
+}
+
+test "codegen - typeToZig tuple named" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const t1 = try a.create(parser.Node);
+    t1.* = .{ .type_named = "i32" };
+    const fields = try a.alloc(parser.NamedTypeField, 1);
+    fields[0] = .{ .name = "x", .type_node = t1, .default = null };
+    var tuple = parser.Node{ .type_tuple_named = fields };
+    try std.testing.expectEqualStrings("struct { x: i32, }", try gen.typeToZig(&tuple));
+}
+
+test "codegen - typeToZig Self in struct" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+
+    gen.in_struct = true;
+    var self_type = parser.Node{ .type_named = "Self" };
+    try std.testing.expectEqualStrings("@This()", try gen.typeToZig(&self_type));
+}
+
+test "codegen - sanitizeErrorName" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+
+    try std.testing.expectEqualStrings("division_by_zero", try gen.sanitizeErrorName("\"division by zero\""));
+    try std.testing.expectEqualStrings("not_found", try gen.sanitizeErrorName("not-found"));
+    try std.testing.expectEqualStrings("unknown_error", try gen.sanitizeErrorName("---"));
+    try std.testing.expectEqualStrings("unknown_error", try gen.sanitizeErrorName(""));
+    try std.testing.expectEqualStrings("a_b", try gen.sanitizeErrorName("a--b"));
+}
+
+test "codegen - extractValueType" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // (Error | i32) → i32
+    const err = try a.create(parser.Node);
+    err.* = .{ .type_named = "Error" };
+    const i32_n = try a.create(parser.Node);
+    i32_n.* = .{ .type_named = "i32" };
+    const m1 = try a.alloc(*parser.Node, 2);
+    m1[0] = err;
+    m1[1] = i32_n;
+    var union1 = parser.Node{ .type_union = m1 };
+    try std.testing.expect(extractValueType(&union1).? == i32_n);
+
+    // (null | str) → str
+    const null_n = try a.create(parser.Node);
+    null_n.* = .{ .type_named = "null" };
+    const str_n = try a.create(parser.Node);
+    str_n.* = .{ .type_named = "str" };
+    const m2 = try a.alloc(*parser.Node, 2);
+    m2[0] = null_n;
+    m2[1] = str_n;
+    var union2 = parser.Node{ .type_union = m2 };
+    try std.testing.expect(extractValueType(&union2).? == str_n);
+
+    // non-union → null
+    var plain = parser.Node{ .type_named = "i32" };
+    try std.testing.expect(extractValueType(&plain) == null);
+}
+

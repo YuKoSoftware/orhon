@@ -205,3 +205,38 @@ test "format - blank line after module" {
     defer alloc.free(result);
     try std.testing.expect(std.mem.indexOf(u8, result, "module myapp\n\nimport") != null);
 }
+
+test "format - empty input" {
+    const alloc = std.testing.allocator;
+    const result = try format(alloc, "");
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+
+test "format - no trailing newline added" {
+    const alloc = std.testing.allocator;
+    const input = "module myapp";
+    const result = try format(alloc, input);
+    defer alloc.free(result);
+    try std.testing.expect(result.len > 0);
+    try std.testing.expect(result[result.len - 1] == '\n');
+}
+
+test "format - blank line after imports block" {
+    const alloc = std.testing.allocator;
+    const input = "module myapp\n\nimport std::console\nfunc main() void {\n}\n";
+    const result = try format(alloc, input);
+    defer alloc.free(result);
+    // Should have blank line between import and func
+    try std.testing.expect(std.mem.indexOf(u8, result, "console\n\nfunc") != null);
+}
+
+test "format - idempotent" {
+    const alloc = std.testing.allocator;
+    const input = "module myapp\n\nimport std::console\n\nfunc main() void {\n    console.println(\"hello\")\n}\n";
+    const first = try format(alloc, input);
+    defer alloc.free(first);
+    const second = try format(alloc, first);
+    defer alloc.free(second);
+    try std.testing.expectEqualStrings(first, second);
+}

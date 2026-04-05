@@ -682,6 +682,96 @@ test "ownership - match arm merging is conservative" {
     try std.testing.expect(scope.getState("data").?.state == .moved);
 }
 
+test "ownership - return marks non-primitive as moved" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+
+    var checker = OwnershipChecker.init(alloc, &ctx);
+
+    var scope = OwnershipScope.init(alloc, null);
+    defer scope.deinit();
+
+    try scope.define("data", false);
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const id = try a.create(parser.Node);
+    id.* = .{ .identifier = "data" };
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .return_stmt = .{ .value = id } };
+
+    try checker.checkStatement(ret, &scope);
+    try std.testing.expect(!reporter.hasErrors());
+    try std.testing.expect(scope.getState("data").?.state == .moved);
+}
+
+test "ownership - throw use-after-move detected" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+
+    var checker = OwnershipChecker.init(alloc, &ctx);
+
+    var scope = OwnershipScope.init(alloc, null);
+    defer scope.deinit();
+
+    try scope.define("err", false);
+    _ = scope.setState("err", .moved);
+
+    var throw_node = parser.Node{ .throw_stmt = .{ .variable = "err" } };
+    try checker.checkStatement(&throw_node, &scope);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "ownership - inferIterableElemPrimitive" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = OwnershipChecker.init(alloc, &ctx);
+
+    var scope = OwnershipScope.init(alloc, null);
+    defer scope.deinit();
+
+    // Range expression → primitive
+    var low = parser.Node{ .int_literal = "0" };
+    var high = parser.Node{ .int_literal = "10" };
+    var range = parser.Node{ .range_expr = .{ .op = .range, .left = &low, .right = &high } };
+    try std.testing.expect(checker.inferIterableElemPrimitive(&range, &scope));
+
+    // Array of ints → primitive
+    var e1 = parser.Node{ .int_literal = "1" };
+    var elems = [_]*parser.Node{&e1};
+    var arr = parser.Node{ .array_literal = &elems };
+    try std.testing.expect(checker.inferIterableElemPrimitive(&arr, &scope));
+
+    // Unknown call → not primitive
+    var callee = parser.Node{ .identifier = "getItems" };
+    var call = parser.Node{ .call_expr = .{ .callee = &callee, .args = &.{}, .arg_names = &.{} } };
+    try std.testing.expect(!checker.inferIterableElemPrimitive(&call, &scope));
+
+    // Identifier of primitive var → primitive
+    try scope.define("nums", true);
+    var id = parser.Node{ .identifier = "nums" };
+    try std.testing.expect(checker.inferIterableElemPrimitive(&id, &scope));
+
+    // Identifier of non-primitive var → not primitive
+    try scope.define("structs", false);
+    var id2 = parser.Node{ .identifier = "structs" };
+    try std.testing.expect(!checker.inferIterableElemPrimitive(&id2, &scope));
+}
+
 test "ownership - inferPrimitiveFromValue" {
     var scope = OwnershipScope.init(std.testing.allocator, null);
     defer scope.deinit();

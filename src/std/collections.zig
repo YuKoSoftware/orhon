@@ -272,3 +272,47 @@ test "Set basic" {
     set.remove(1);
     try std.testing.expect(!set.has(1));
 }
+
+test "List set and remove" {
+    var list = List(i32){};
+    defer list.free();
+    list.add(10);
+    list.add(20);
+    list.add(30);
+    list.set(1, 25);
+    try std.testing.expectEqual(@as(i32, 25), list.get(1));
+    list.remove(0);
+    try std.testing.expectEqual(@as(i32, 2), list.len());
+    try std.testing.expectEqual(@as(i32, 25), list.get(0));
+}
+
+test "List pop" {
+    var list = List(i32){};
+    defer list.free();
+    list.add(1);
+    list.add(2);
+    const popped = list.pop();
+    try std.testing.expectEqual(@as(i32, 2), popped);
+    try std.testing.expectEqual(@as(i32, 1), list.len());
+}
+
+test "Map keys and values" {
+    var map = Map(i32, i32){};
+    defer map.free();
+    map.put(1, 10);
+    map.put(2, 20);
+    const ks = map.keys();
+    try std.testing.expectEqual(@as(usize, 2), ks.len);
+    const vs = map.values();
+    try std.testing.expectEqual(@as(usize, 2), vs.len);
+}
+
+test "Map remove" {
+    var map = Map(i32, i32){};
+    defer map.free();
+    map.put(1, 10);
+    map.put(2, 20);
+    map.remove(1);
+    try std.testing.expect(map.get(1) == null);
+    try std.testing.expectEqual(@as(i32, 1), map.len());
+}

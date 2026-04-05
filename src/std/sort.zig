@@ -78,3 +78,35 @@ test "intDesc" {
     try std.testing.expectEqual(@as(i32, 2), sorted[1]);
     try std.testing.expectEqual(@as(i32, 1), sorted[2]);
 }
+
+test "floatAsc" {
+    const input = [_]f64{ 3.0, 1.0, 2.0 };
+    const sorted = floatAsc(&input);
+    try std.testing.expectEqual(@as(f64, 1.0), sorted[0]);
+    try std.testing.expectEqual(@as(f64, 2.0), sorted[1]);
+    try std.testing.expectEqual(@as(f64, 3.0), sorted[2]);
+}
+
+test "floatDesc" {
+    const input = [_]f64{ 1.0, 3.0, 2.0 };
+    const sorted = floatDesc(&input);
+    try std.testing.expectEqual(@as(f64, 3.0), sorted[0]);
+    try std.testing.expectEqual(@as(f64, 2.0), sorted[1]);
+    try std.testing.expectEqual(@as(f64, 1.0), sorted[2]);
+}
+
+test "strAsc" {
+    const input = [_][]const u8{ "cherry", "apple", "banana" };
+    const sorted = strAsc(&input);
+    try std.testing.expectEqualStrings("apple", sorted[0]);
+    try std.testing.expectEqualStrings("banana", sorted[1]);
+    try std.testing.expectEqualStrings("cherry", sorted[2]);
+}
+
+test "reverse" {
+    const input = [_]i32{ 1, 2, 3 };
+    const rev = reverse(@as([]const i32, &input));
+    try std.testing.expectEqual(@as(i32, 3), rev[0]);
+    try std.testing.expectEqual(@as(i32, 2), rev[1]);
+    try std.testing.expectEqual(@as(i32, 1), rev[2]);
+}

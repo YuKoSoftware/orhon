@@ -703,6 +703,82 @@ test "borrow checker - field borrow from mut_borrow_expr field_expr" {
     try std.testing.expect(reporter.hasErrors());
 }
 
+test "borrow checker - isMutableBorrowType" {
+    // null → false
+    try std.testing.expect(!isMutableBorrowType(null));
+
+    // const& T → false
+    var elem1 = parser.Node{ .type_named = "Point" };
+    var const_ptr = parser.Node{ .type_ptr = .{ .kind = .const_ref, .elem = &elem1 } };
+    try std.testing.expect(!isMutableBorrowType(&const_ptr));
+
+    // mut& T → true
+    var elem2 = parser.Node{ .type_named = "Point" };
+    var mut_ptr = parser.Node{ .type_ptr = .{ .kind = .mut_ref, .elem = &elem2 } };
+    try std.testing.expect(isMutableBorrowType(&mut_ptr));
+
+    // non-ptr type → false
+    var named = parser.Node{ .type_named = "i32" };
+    try std.testing.expect(!isMutableBorrowType(&named));
+}
+
+test "borrow checker - lookupStructMethod" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+
+    // Register struct and struct method
+    try decl_table.structs.put("Point", .{ .name = "Point", .fields = &.{}, .is_pub = true });
+
+    var ret_node = parser.Node{ .type_named = "void" };
+    const key = try alloc.dupe(u8, "Point.scale");
+    try decl_table.struct_methods.put(alloc, key, .{
+        .name = "scale",
+        .params = &.{},
+        .param_nodes = &.{},
+        .return_type = .{ .primitive = .void },
+        .return_type_node = &ret_node,
+        .context = .normal,
+        .is_pub = true,
+    });
+
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
+    defer checker.deinit();
+
+    // Found
+    const sig = checker.lookupStructMethod("p", "scale");
+    try std.testing.expect(sig != null);
+    try std.testing.expectEqualStrings("scale", sig.?.name);
+
+    // Not found
+    try std.testing.expect(checker.lookupStructMethod("p", "nonexistent") == null);
+}
+
+test "borrow checker - removeLastBorrow" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var checker = BorrowChecker.init(alloc, &ctx);
+    defer checker.deinit();
+
+    try checker.addBorrow("x", null, true, null);
+    try checker.addBorrow("y", null, false, null);
+    try std.testing.expectEqual(@as(usize, 2), checker.active_borrows.items.len);
+
+    checker.removeLastBorrow("x");
+    try std.testing.expectEqual(@as(usize, 1), checker.active_borrows.items.len);
+
+    // Removing non-existent does nothing
+    checker.removeLastBorrow("z");
+    try std.testing.expectEqual(@as(usize, 1), checker.active_borrows.items.len);
+}
+
 test "borrow checker - extractBorrowTarget" {
     // identifier
     var id = parser.Node{ .identifier = "x" };

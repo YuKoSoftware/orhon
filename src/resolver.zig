@@ -1132,6 +1132,128 @@ test "resolver - validateType catches unknown qualified generic" {
     try std.testing.expect(reporter.hasErrors());
 }
 
+test "typesCompatible - same primitive" {
+    try std.testing.expect(typesCompatible(RT{ .primitive = .i32 }, RT{ .primitive = .i32 }));
+}
+
+test "typesCompatible - different primitive mismatch" {
+    try std.testing.expect(!typesCompatible(RT{ .primitive = .i32 }, RT{ .primitive = .string }));
+}
+
+test "typesCompatible - numeric literal with integer" {
+    try std.testing.expect(typesCompatible(RT{ .primitive = .numeric_literal }, RT{ .primitive = .i32 }));
+    try std.testing.expect(typesCompatible(RT{ .primitive = .numeric_literal }, RT{ .primitive = .u64 }));
+}
+
+test "typesCompatible - float literal with float" {
+    try std.testing.expect(typesCompatible(RT{ .primitive = .float_literal }, RT{ .primitive = .f32 }));
+    try std.testing.expect(typesCompatible(RT{ .primitive = .float_literal }, RT{ .primitive = .f64 }));
+}
+
+test "typesCompatible - integer to integer compatible" {
+    try std.testing.expect(typesCompatible(RT{ .primitive = .i32 }, RT{ .primitive = .i64 }));
+}
+
+test "typesCompatible - float to float compatible" {
+    try std.testing.expect(typesCompatible(RT{ .primitive = .f32 }, RT{ .primitive = .f64 }));
+}
+
+test "typesCompatible - named union member" {
+    const alloc = std.testing.allocator;
+    const members = try alloc.alloc(RT, 2);
+    defer alloc.free(members);
+    members[0] = RT{ .named = "Error" };
+    members[1] = RT{ .named = "i32" };
+    const union_t = RT{ .union_type = members };
+
+    try std.testing.expect(typesCompatible(RT{ .named = "Error" }, union_t));
+    try std.testing.expect(typesCompatible(RT{ .named = "i32" }, union_t));
+    try std.testing.expect(!typesCompatible(RT{ .named = "str" }, union_t));
+}
+
+test "typesCompatible - func_ptr always compatible" {
+    const sentinel = &@as(RT, .unknown);
+    const fp = RT{ .func_ptr = .{ .params = &.{}, .return_type = sentinel } };
+    try std.testing.expect(typesCompatible(fp, RT{ .primitive = .i32 }));
+    try std.testing.expect(typesCompatible(RT{ .primitive = .i32 }, fp));
+}
+
+test "typesCompatible - type param compatible with anything" {
+    try std.testing.expect(typesCompatible(RT{ .named = "T" }, RT{ .primitive = .i32 }));
+    try std.testing.expect(typesCompatible(RT{ .primitive = .string }, RT{ .named = "V" }));
+}
+
+test "typesMatchWithSubstitution - blueprint name maps to struct name" {
+    const bp = RT{ .named = "Eq" };
+    const st = RT{ .named = "Point" };
+    try std.testing.expect(typesMatchWithSubstitution(st, bp, "Eq", "Point"));
+    // Non-matching struct name
+    try std.testing.expect(!typesMatchWithSubstitution(RT{ .named = "Other" }, bp, "Eq", "Point"));
+}
+
+test "typesMatchWithSubstitution - non-self named exact match" {
+    try std.testing.expect(typesMatchWithSubstitution(RT{ .named = "i32" }, RT{ .named = "i32" }, "Eq", "Point"));
+    try std.testing.expect(!typesMatchWithSubstitution(RT{ .named = "str" }, RT{ .named = "i32" }, "Eq", "Point"));
+}
+
+test "typesMatchWithSubstitution - primitive match" {
+    try std.testing.expect(typesMatchWithSubstitution(RT{ .primitive = .bool }, RT{ .primitive = .bool }, "Eq", "Point"));
+    try std.testing.expect(!typesMatchWithSubstitution(RT{ .primitive = .i32 }, RT{ .primitive = .bool }, "Eq", "Point"));
+}
+
+test "typesMatchWithSubstitution - ptr with substitution" {
+    const alloc = std.testing.allocator;
+    const bp_elem = try alloc.create(RT);
+    defer alloc.destroy(bp_elem);
+    bp_elem.* = RT{ .named = "Eq" };
+    const st_elem = try alloc.create(RT);
+    defer alloc.destroy(st_elem);
+    st_elem.* = RT{ .named = "Point" };
+
+    const bp_ptr = RT{ .ptr = .{ .kind = .const_ref, .elem = bp_elem } };
+    const st_ptr = RT{ .ptr = .{ .kind = .const_ref, .elem = st_elem } };
+    try std.testing.expect(typesMatchWithSubstitution(st_ptr, bp_ptr, "Eq", "Point"));
+
+    // Wrong ptr kind
+    const st_mut = RT{ .ptr = .{ .kind = .mut_ref, .elem = st_elem } };
+    try std.testing.expect(!typesMatchWithSubstitution(st_mut, bp_ptr, "Eq", "Point"));
+}
+
+test "inferCaptureType - string produces u8" {
+    var dummy = parser.Node{ .int_literal = "0" };
+    const result = inferCaptureType(&dummy, RT{ .primitive = .string });
+    try std.testing.expectEqual(types.Primitive.u8, result.primitive);
+}
+
+test "inferCaptureType - slice produces element type" {
+    const alloc = std.testing.allocator;
+    const inner = try alloc.create(RT);
+    defer alloc.destroy(inner);
+    inner.* = RT{ .primitive = .i32 };
+    var dummy = parser.Node{ .int_literal = "0" };
+    const result = inferCaptureType(&dummy, RT{ .slice = inner });
+    try std.testing.expectEqual(types.Primitive.i32, result.primitive);
+}
+
+test "isTypeParam - single uppercase letter" {
+    try std.testing.expect(isTypeParam(RT{ .named = "T" }));
+    try std.testing.expect(isTypeParam(RT{ .named = "V" }));
+    try std.testing.expect(isTypeParam(RT{ .named = "Key" }));
+}
+
+test "isTypeParam - rejects non-type-params" {
+    try std.testing.expect(!isTypeParam(RT{ .named = "point" })); // lowercase
+    try std.testing.expect(!isTypeParam(RT{ .named = "Player" })); // too long
+    try std.testing.expect(!isTypeParam(RT{ .primitive = .i32 })); // not named
+}
+
+test "isLiteralCompatible" {
+    try std.testing.expect(isLiteralCompatible(RT{ .primitive = .numeric_literal }, RT{ .primitive = .i32 }));
+    try std.testing.expect(isLiteralCompatible(RT{ .primitive = .float_literal }, RT{ .primitive = .f64 }));
+    try std.testing.expect(!isLiteralCompatible(RT{ .primitive = .numeric_literal }, RT{ .primitive = .f32 }));
+    try std.testing.expect(!isLiteralCompatible(RT{ .primitive = .string }, RT{ .primitive = .i32 }));
+}
+
 test "resolver - validateType accepts known qualified generic" {
     const alloc = std.testing.allocator;
     var local_decls = declarations.DeclTable.init(alloc);
@@ -1178,4 +1300,293 @@ test "resolver - validateType accepts known qualified generic" {
 
     try resolver.validateType(generic_node, &scope);
     try std.testing.expect(!reporter.hasErrors());
+}
+
+/// Build a minimal program AST with one func containing the given body statements.
+/// Used by resolver error path tests.
+fn buildTestProgram(a: std.mem.Allocator, top_level_nodes: []*parser.Node) !*parser.Node {
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "testmod" } };
+    const prog = try a.create(parser.Node);
+    prog.* = .{ .program = .{
+        .module = module_node,
+        .metadata = &.{},
+        .imports = &.{},
+        .top_level = top_level_nodes,
+    } };
+    return prog;
+}
+
+/// Wrap statements in a func_decl node for resolve testing.
+fn wrapInFunc(a: std.mem.Allocator, stmts: []*parser.Node, ret_type_name: []const u8) !*parser.Node {
+    const body = try a.create(parser.Node);
+    body.* = .{ .block = .{ .statements = stmts } };
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .type_named = ret_type_name };
+    const func_node = try a.create(parser.Node);
+    func_node.* = .{ .func_decl = .{
+        .name = "test_fn",
+        .params = &.{},
+        .return_type = ret,
+        .body = body,
+        .context = .normal,
+        .is_pub = false,
+    } };
+    return func_node;
+}
+
+test "resolver - any as struct field type errors" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const field_type = try a.create(parser.Node);
+    field_type.* = .{ .type_named = "any" };
+    const field = try a.create(parser.Node);
+    field.* = .{ .field_decl = .{ .name = "x", .type_annotation = field_type, .default_value = null, .is_pub = false } };
+    const members = try a.alloc(*parser.Node, 1);
+    members[0] = field;
+    const struct_node = try a.create(parser.Node);
+    struct_node.* = .{ .struct_decl = .{ .name = "Bad", .type_params = &.{}, .members = members, .is_pub = false } };
+
+    const top = try a.alloc(*parser.Node, 1);
+    top[0] = struct_node;
+    const prog = try buildTestProgram(a, top);
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
+    defer resolver.deinit();
+    try resolver.resolve(prog);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "resolver - any return without any param errors" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const body = try a.create(parser.Node);
+    body.* = .{ .block = .{ .statements = &.{} } };
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .type_named = "any" };
+    // No any-typed params
+    const i32_type = try a.create(parser.Node);
+    i32_type.* = .{ .type_named = "i32" };
+    const param = try a.create(parser.Node);
+    param.* = .{ .param = .{ .name = "x", .type_annotation = i32_type, .default_value = null } };
+    const params = try a.alloc(*parser.Node, 1);
+    params[0] = param;
+
+    const func_node = try a.create(parser.Node);
+    func_node.* = .{ .func_decl = .{
+        .name = "bad_func",
+        .params = params,
+        .return_type = ret,
+        .body = body,
+        .context = .normal,
+        .is_pub = false,
+    } };
+
+    const top = try a.alloc(*parser.Node, 1);
+    top[0] = func_node;
+    const prog = try buildTestProgram(a, top);
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
+    defer resolver.deinit();
+    try resolver.resolve(prog);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "resolver - duplicate else in match errors" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Build match with two else arms
+    const match_val = try a.create(parser.Node);
+    match_val.* = .{ .int_literal = "1" };
+
+    const body1 = try a.create(parser.Node);
+    body1.* = .{ .int_literal = "0" };
+    const pat1 = try a.create(parser.Node);
+    pat1.* = .{ .identifier = "else" };
+    const arm1 = try a.create(parser.Node);
+    arm1.* = .{ .match_arm = .{ .pattern = pat1, .guard = null, .body = body1 } };
+
+    const body2 = try a.create(parser.Node);
+    body2.* = .{ .int_literal = "0" };
+    const pat2 = try a.create(parser.Node);
+    pat2.* = .{ .identifier = "else" };
+    const arm2 = try a.create(parser.Node);
+    arm2.* = .{ .match_arm = .{ .pattern = pat2, .guard = null, .body = body2 } };
+
+    const arms = try a.alloc(*parser.Node, 2);
+    arms[0] = arm1;
+    arms[1] = arm2;
+
+    const match = try a.create(parser.Node);
+    match.* = .{ .match_stmt = .{ .value = match_val, .arms = arms } };
+
+    const stmts = try a.alloc(*parser.Node, 1);
+    stmts[0] = match;
+    const func_node = try wrapInFunc(a, stmts, "void");
+    const top = try a.alloc(*parser.Node, 1);
+    top[0] = func_node;
+    const prog = try buildTestProgram(a, top);
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
+    defer resolver.deinit();
+    try resolver.resolve(prog);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "resolver - else arm not last in match errors" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const match_val = try a.create(parser.Node);
+    match_val.* = .{ .int_literal = "1" };
+
+    // else arm first
+    const body1 = try a.create(parser.Node);
+    body1.* = .{ .int_literal = "0" };
+    const pat1 = try a.create(parser.Node);
+    pat1.* = .{ .identifier = "else" };
+    const arm1 = try a.create(parser.Node);
+    arm1.* = .{ .match_arm = .{ .pattern = pat1, .guard = null, .body = body1 } };
+
+    // non-else arm after
+    const body2 = try a.create(parser.Node);
+    body2.* = .{ .int_literal = "0" };
+    const pat2 = try a.create(parser.Node);
+    pat2.* = .{ .int_literal = "42" };
+    const arm2 = try a.create(parser.Node);
+    arm2.* = .{ .match_arm = .{ .pattern = pat2, .guard = null, .body = body2 } };
+
+    const arms = try a.alloc(*parser.Node, 2);
+    arms[0] = arm1;
+    arms[1] = arm2;
+
+    const match = try a.create(parser.Node);
+    match.* = .{ .match_stmt = .{ .value = match_val, .arms = arms } };
+
+    const stmts = try a.alloc(*parser.Node, 1);
+    stmts[0] = match;
+    const func_node = try wrapInFunc(a, stmts, "void");
+    const top = try a.alloc(*parser.Node, 1);
+    top[0] = func_node;
+    const prog = try buildTestProgram(a, top);
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
+    defer resolver.deinit();
+    try resolver.resolve(prog);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "resolver - variable shadowing errors" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // const x: i32 = 1
+    const t1 = try a.create(parser.Node);
+    t1.* = .{ .type_named = "i32" };
+    const v1 = try a.create(parser.Node);
+    v1.* = .{ .int_literal = "1" };
+    const var1 = try a.create(parser.Node);
+    var1.* = .{ .var_decl = .{ .name = "x", .type_annotation = t1, .value = v1, .is_pub = false, .mutability = .constant } };
+
+    // nested block with const x: i32 = 2 (shadow)
+    const t2 = try a.create(parser.Node);
+    t2.* = .{ .type_named = "i32" };
+    const v2 = try a.create(parser.Node);
+    v2.* = .{ .int_literal = "2" };
+    const var2 = try a.create(parser.Node);
+    var2.* = .{ .var_decl = .{ .name = "x", .type_annotation = t2, .value = v2, .is_pub = false, .mutability = .constant } };
+    const inner_stmts = try a.alloc(*parser.Node, 1);
+    inner_stmts[0] = var2;
+    const inner_block = try a.create(parser.Node);
+    inner_block.* = .{ .block = .{ .statements = inner_stmts } };
+
+    // if(true) { inner_block }
+    const cond = try a.create(parser.Node);
+    cond.* = .{ .bool_literal = true };
+    const if_stmt = try a.create(parser.Node);
+    if_stmt.* = .{ .if_stmt = .{ .condition = cond, .then_block = inner_block, .else_block = null } };
+
+    const stmts = try a.alloc(*parser.Node, 2);
+    stmts[0] = var1;
+    stmts[1] = if_stmt;
+    const func_node = try wrapInFunc(a, stmts, "void");
+    const top = try a.alloc(*parser.Node, 1);
+    top[0] = func_node;
+    const prog = try buildTestProgram(a, top);
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
+    defer resolver.deinit();
+    try resolver.resolve(prog);
+    try std.testing.expect(reporter.hasErrors());
+}
+
+test "resolver - reference type in var decl errors" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const elem = try a.create(parser.Node);
+    elem.* = .{ .type_named = "i32" };
+    const ptr_type = try a.create(parser.Node);
+    ptr_type.* = .{ .type_ptr = .{ .kind = .const_ref, .elem = elem } };
+    const val = try a.create(parser.Node);
+    val.* = .{ .int_literal = "0" };
+    const var_node = try a.create(parser.Node);
+    var_node.* = .{ .var_decl = .{ .name = "x", .type_annotation = ptr_type, .value = val, .is_pub = false, .mutability = .constant } };
+
+    const stmts = try a.alloc(*parser.Node, 1);
+    stmts[0] = var_node;
+    const func_node = try wrapInFunc(a, stmts, "void");
+    const top = try a.alloc(*parser.Node, 1);
+    top[0] = func_node;
+    const prog = try buildTestProgram(a, top);
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var resolver = TypeResolver.init(&ctx);
+    defer resolver.deinit();
+    try resolver.resolve(prog);
+    try std.testing.expect(reporter.hasErrors());
 }

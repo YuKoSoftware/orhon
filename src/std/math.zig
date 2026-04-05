@@ -166,3 +166,36 @@ test "sqrt f32" {
 test "clamp i32" {
     try std.testing.expectEqual(@as(i32, 5), clamp(@as(i32, 5), @as(i32, 0), @as(i32, 10)));
 }
+
+test "pow f64" {
+    try std.testing.expectEqual(@as(f64, 8.0), pow(@as(f64, 2.0), @as(f64, 3.0)));
+}
+
+test "log and exp roundtrip" {
+    const x: f64 = 10.0;
+    try std.testing.expectApproxEqAbs(x, exp(log(x)), 1e-10);
+}
+
+test "log2 f64" {
+    try std.testing.expectEqual(@as(f64, 3.0), log2(@as(f64, 8.0)));
+}
+
+test "log10 f64" {
+    try std.testing.expectEqual(@as(f64, 2.0), log10(@as(f64, 100.0)));
+}
+
+test "sin cos identity" {
+    const x: f64 = 1.0;
+    const s = sin(x);
+    const c = cos(x);
+    try std.testing.expectApproxEqAbs(@as(f64, 1.0), s * s + c * c, 1e-10);
+}
+
+test "pi and e constants" {
+    try std.testing.expectApproxEqAbs(@as(f64, 3.14159), pi(), 0.001);
+    try std.testing.expectApproxEqAbs(@as(f64, 2.71828), e(), 0.001);
+}
+
+test "inf is infinite" {
+    try std.testing.expect(std.math.isInf(inf()));
+}

@@ -473,3 +473,65 @@ test "isIdentChar recognizes valid chars" {
     try std.testing.expect(!isIdentChar('.'));
     try std.testing.expect(!isIdentChar(' '));
 }
+
+test "pathToUri" {
+    const alloc = std.testing.allocator;
+    const uri = try pathToUri(alloc, "/home/user/project/src/main.orh");
+    defer alloc.free(uri);
+    try std.testing.expectEqualStrings("file:///home/user/project/src/main.orh", uri);
+}
+
+test "getDotContext - with dot" {
+    const source = "console.println";
+    // cursor at col 8 (on 'p' after the dot) on line 0
+    const result = getDotContext(source, 0, 8);
+    try std.testing.expect(result != null);
+    try std.testing.expectEqualStrings("console", result.?);
+}
+
+test "getDotContext - no dot" {
+    const source = "println";
+    const result = getDotContext(source, 0, 3);
+    try std.testing.expect(result == null);
+}
+
+test "getDotPrefix - with dot" {
+    try std.testing.expectEqualStrings("console", getDotPrefix("console.").?);
+    try std.testing.expectEqualStrings("math", getDotPrefix("math.add").?);
+}
+
+test "getDotPrefix - no dot" {
+    try std.testing.expect(getDotPrefix("println") == null);
+    try std.testing.expect(getDotPrefix("") == null);
+}
+
+test "getModuleName" {
+    try std.testing.expectEqualStrings("main", getModuleName("module main\n\nfunc f() void {}").?);
+    try std.testing.expectEqualStrings("app", getModuleName("  module app\n").?);
+    try std.testing.expect(getModuleName("func f() void {}") == null);
+    try std.testing.expect(getModuleName("") == null);
+}
+
+test "getImportedModules" {
+    const alloc = std.testing.allocator;
+    const source = "module main\n\nimport std::console\nimport mymod\n";
+    const modules = getImportedModules(source, alloc);
+    defer if (modules) |m| alloc.free(m);
+    try std.testing.expect(modules != null);
+    try std.testing.expectEqual(@as(usize, 2), modules.?.len);
+    try std.testing.expectEqualStrings("console", modules.?[0]);
+    try std.testing.expectEqualStrings("mymod", modules.?[1]);
+}
+
+test "getImportedModules - no imports" {
+    const alloc = std.testing.allocator;
+    const modules = getImportedModules("module main\nfunc f() void {}", alloc);
+    defer if (modules) |m| alloc.free(m);
+    try std.testing.expect(modules == null);
+}
+
+test "getLinePrefix" {
+    const source = "line one\nline two\n";
+    try std.testing.expectEqualStrings("line", getLinePrefix(source, 0, 4));
+    try std.testing.expectEqualStrings("line ", getLinePrefix(source, 1, 5));
+}

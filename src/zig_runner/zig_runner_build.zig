@@ -116,6 +116,99 @@ pub fn generateSharedCImportFiles(allocator: std.mem.Allocator, targets: anytype
     }
 }
 
+// ── Tests ──────────────────────────────────────────────────
+
+test "sanitizeHeaderStem - basic" {
+    const r = sanitizeHeaderStem("vk_mem_alloc.h");
+    try std.testing.expectEqualStrings("vk_mem_alloc", r.slice());
+}
+
+test "sanitizeHeaderStem - with path" {
+    const r = sanitizeHeaderStem("/usr/include/stdio.h");
+    try std.testing.expectEqualStrings("stdio", r.slice());
+}
+
+test "sanitizeHeaderStem - hpp extension" {
+    const r = sanitizeHeaderStem("my-lib.hpp");
+    try std.testing.expectEqualStrings("my_lib", r.slice());
+}
+
+test "sanitizeHeaderStem - no extension" {
+    const r = sanitizeHeaderStem("headeronly");
+    try std.testing.expectEqualStrings("headeronly", r.slice());
+}
+
+test "sanitizeHeaderStem - multiple dots" {
+    const r = sanitizeHeaderStem("a.b.c.h");
+    try std.testing.expectEqualStrings("a_b_c", r.slice());
+}
+
+test "emitLinkLibs - two libs" {
+    const alloc = std.testing.allocator;
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    const libs = [_][]const u8{ "SDL2", "opengl32" };
+    try emitLinkLibs(&buf, alloc, &libs, "exe");
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "linkSystemLibrary(\"SDL2\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "linkSystemLibrary(\"opengl32\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "linkLibC()") != null);
+}
+
+test "emitLinkLibs - empty" {
+    const alloc = std.testing.allocator;
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    try emitLinkLibs(&buf, alloc, &.{}, "exe");
+    try std.testing.expectEqual(@as(usize, 0), buf.items.len);
+}
+
+test "emitIncludePath" {
+    const alloc = std.testing.allocator;
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    try emitIncludePath(&buf, alloc, "src", "exe");
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "addIncludePath") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "src") != null);
+}
+
+test "emitCSourceFiles - cpp file" {
+    const alloc = std.testing.allocator;
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    const files = [_][]const u8{"render.cpp"};
+    try emitCSourceFiles(&buf, alloc, &files, false, "exe");
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "render.cpp") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "-std=c++17") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "linkLibCpp") != null);
+}
+
+test "emitCSourceFiles - c file" {
+    const alloc = std.testing.allocator;
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    const files = [_][]const u8{"util.c"};
+    try emitCSourceFiles(&buf, alloc, &files, false, "exe");
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "util.c") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "-std=c++17") == null);
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "linkLibCpp") == null);
+}
+
+test "emitCSourceFiles - empty no cpp" {
+    const alloc = std.testing.allocator;
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    try emitCSourceFiles(&buf, alloc, &.{}, false, "exe");
+    try std.testing.expectEqual(@as(usize, 0), buf.items.len);
+}
+
+test "emitCSourceFiles - needs_cpp flag" {
+    const alloc = std.testing.allocator;
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    try emitCSourceFiles(&buf, alloc, &.{}, true, "exe");
+    try std.testing.expect(std.mem.indexOf(u8, buf.items, "linkLibCpp") != null);
+}
+
 /// Emit addCSourceFiles + linkLibCpp calls for a Step.Compile artifact.
 pub fn emitCSourceFiles(
     buf: *std.ArrayListUnmanaged(u8),

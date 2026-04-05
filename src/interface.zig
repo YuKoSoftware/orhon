@@ -229,6 +229,393 @@ fn emitInterfaceDecl(node: *parser.Node, buf: *std.ArrayListUnmanaged(u8), alloc
     }
 }
 
+// ============================================================
+// TESTS
+// ============================================================
+
+fn testFormatType(alloc: std.mem.Allocator, node: *parser.Node) ![]u8 {
+    var buf = std.ArrayListUnmanaged(u8){};
+    try formatType(node, &buf, alloc);
+    return buf.toOwnedSlice(alloc);
+}
+
+test "formatType - primitive" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_primitive = "i32" };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("i32", result);
+}
+
+test "formatType - named" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_named = "Point" };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("Point", result);
+}
+
+test "formatType - slice" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const elem = try a.create(parser.Node);
+    elem.* = .{ .type_named = "u8" };
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_slice = elem };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("[]u8", result);
+}
+
+test "formatType - array" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const elem = try a.create(parser.Node);
+    elem.* = .{ .type_named = "f32" };
+    const size = try a.create(parser.Node);
+    size.* = .{ .int_literal = "3" };
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_array = .{ .size = size, .elem = elem } };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("[3]f32", result);
+}
+
+test "formatType - ptr const ref" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const elem = try a.create(parser.Node);
+    elem.* = .{ .type_named = "Point" };
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_ptr = .{ .kind = .const_ref, .elem = elem } };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("const&Point", result);
+}
+
+test "formatType - ptr mut ref" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const elem = try a.create(parser.Node);
+    elem.* = .{ .type_named = "Point" };
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_ptr = .{ .kind = .mut_ref, .elem = elem } };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("mut&Point", result);
+}
+
+test "formatType - union" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const t1 = try a.create(parser.Node);
+    t1.* = .{ .type_named = "Error" };
+    const t2 = try a.create(parser.Node);
+    t2.* = .{ .type_named = "i32" };
+    const arms = try a.alloc(*parser.Node, 2);
+    arms[0] = t1;
+    arms[1] = t2;
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_union = arms };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("(Error | i32)", result);
+}
+
+test "formatType - generic" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const arg = try a.create(parser.Node);
+    arg.* = .{ .type_named = "i32" };
+    const args = try a.alloc(*parser.Node, 1);
+    args[0] = arg;
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_generic = .{ .name = "List", .args = args } };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("List(i32)", result);
+}
+
+test "formatType - func type" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const p1 = try a.create(parser.Node);
+    p1.* = .{ .type_named = "i32" };
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .type_named = "bool" };
+    const params = try a.alloc(*parser.Node, 1);
+    params[0] = p1;
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_func = .{ .params = params, .ret = ret } };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("func(i32) bool", result);
+}
+
+test "formatType - tuple named" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const t1 = try a.create(parser.Node);
+    t1.* = .{ .type_named = "i32" };
+    const t2 = try a.create(parser.Node);
+    t2.* = .{ .type_named = "str" };
+    const fields = try a.alloc(parser.NamedTypeField, 2);
+    fields[0] = .{ .name = "x", .type_node = t1, .default = null };
+    fields[1] = .{ .name = "y", .type_node = t2, .default = null };
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_tuple_named = fields };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("(x: i32, y: str)", result);
+}
+
+test "formatType - tuple anon" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const t1 = try a.create(parser.Node);
+    t1.* = .{ .type_named = "i32" };
+    const t2 = try a.create(parser.Node);
+    t2.* = .{ .type_named = "str" };
+    const parts = try a.alloc(*parser.Node, 2);
+    parts[0] = t1;
+    parts[1] = t2;
+    const node = try a.create(parser.Node);
+    node.* = .{ .type_tuple_anon = parts };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("(i32, str)", result);
+}
+
+test "formatType - unknown node falls back to any" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const node = try a.create(parser.Node);
+    node.* = .{ .identifier = "x" };
+    const result = try testFormatType(alloc, node);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("any", result);
+}
+
+test "emitInterfaceDecl - pub func" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .type_named = "void" };
+    const pt = try a.create(parser.Node);
+    pt.* = .{ .type_named = "i32" };
+    const param = try a.create(parser.Node);
+    param.* = .{ .param = .{ .name = "x", .type_annotation = pt, .default_value = null } };
+    const params = try a.alloc(*parser.Node, 1);
+    params[0] = param;
+
+    const func_node = try a.create(parser.Node);
+    func_node.* = .{ .func_decl = .{
+        .name = "doStuff",
+        .params = params,
+        .return_type = ret,
+        .body = undefined,
+        .context = .normal,
+        .is_pub = true,
+    } };
+
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    try emitInterfaceDecl(func_node, &buf, alloc);
+    try std.testing.expectEqualStrings("pub func doStuff(x: i32) void\n\n", buf.items);
+}
+
+test "emitInterfaceDecl - private func skipped" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .type_named = "void" };
+    const func_node = try a.create(parser.Node);
+    func_node.* = .{ .func_decl = .{
+        .name = "helper",
+        .params = &.{},
+        .return_type = ret,
+        .body = undefined,
+        .context = .normal,
+        .is_pub = false,
+    } };
+
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    try emitInterfaceDecl(func_node, &buf, alloc);
+    try std.testing.expectEqualStrings("", buf.items);
+}
+
+test "emitInterfaceDecl - pub struct with pub field and method" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const field_type = try a.create(parser.Node);
+    field_type.* = .{ .type_named = "f64" };
+    const field = try a.create(parser.Node);
+    field.* = .{ .field_decl = .{
+        .name = "x",
+        .type_annotation = field_type,
+        .default_value = null,
+        .is_pub = true,
+    } };
+
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .type_named = "f64" };
+    const method = try a.create(parser.Node);
+    method.* = .{ .func_decl = .{
+        .name = "getX",
+        .params = &.{},
+        .return_type = ret,
+        .body = undefined,
+        .context = .normal,
+        .is_pub = true,
+    } };
+
+    const members = try a.alloc(*parser.Node, 2);
+    members[0] = field;
+    members[1] = method;
+
+    const struct_node = try a.create(parser.Node);
+    struct_node.* = .{ .struct_decl = .{
+        .name = "Point",
+        .type_params = &.{},
+        .members = members,
+        .is_pub = true,
+    } };
+
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    try emitInterfaceDecl(struct_node, &buf, alloc);
+
+    const expected =
+        \\pub struct Point {
+        \\    pub x: f64
+        \\    pub func getX() f64
+        \\}
+        \\
+        \\
+    ;
+    try std.testing.expectEqualStrings(expected, buf.items);
+}
+
+test "emitInterfaceDecl - pub enum with variants and method" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const v1 = try a.create(parser.Node);
+    v1.* = .{ .enum_variant = .{ .name = "Red", .fields = &.{} } };
+    const val = try a.create(parser.Node);
+    val.* = .{ .int_literal = "2" };
+    const v2 = try a.create(parser.Node);
+    v2.* = .{ .enum_variant = .{ .name = "Blue", .value = val, .fields = &.{} } };
+
+    const ret = try a.create(parser.Node);
+    ret.* = .{ .type_named = "str" };
+    const method = try a.create(parser.Node);
+    method.* = .{ .func_decl = .{
+        .name = "name",
+        .params = &.{},
+        .return_type = ret,
+        .body = undefined,
+        .context = .normal,
+        .is_pub = true,
+    } };
+
+    const backing = try a.create(parser.Node);
+    backing.* = .{ .type_named = "u8" };
+    const members = try a.alloc(*parser.Node, 3);
+    members[0] = v1;
+    members[1] = v2;
+    members[2] = method;
+
+    const enum_node = try a.create(parser.Node);
+    enum_node.* = .{ .enum_decl = .{
+        .name = "Color",
+        .backing_type = backing,
+        .members = members,
+        .is_pub = true,
+    } };
+
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    try emitInterfaceDecl(enum_node, &buf, alloc);
+
+    const expected =
+        \\pub enum Color(u8) {
+        \\    Red
+        \\    Blue = 2
+        \\    pub func name() str
+        \\}
+        \\
+        \\
+    ;
+    try std.testing.expectEqualStrings(expected, buf.items);
+}
+
+test "emitInterfaceDecl - pub var" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const type_ann = try a.create(parser.Node);
+    type_ann.* = .{ .type_named = "i32" };
+    const val = try a.create(parser.Node);
+    val.* = .{ .int_literal = "42" };
+
+    const var_node = try a.create(parser.Node);
+    var_node.* = .{ .var_decl = .{
+        .name = "MAX",
+        .type_annotation = type_ann,
+        .value = val,
+        .is_pub = true,
+        .mutability = .constant,
+    } };
+
+    var buf = std.ArrayListUnmanaged(u8){};
+    defer buf.deinit(alloc);
+    try emitInterfaceDecl(var_node, &buf, alloc);
+    try std.testing.expectEqualStrings("pub const MAX: i32 = 42\n\n", buf.items);
+}
+
 /// Generate a pub-only interface `.orh` file into `bin/<binary_name>.orh`.
 /// Called after a successful static or dynamic library build.
 pub fn generateInterface(

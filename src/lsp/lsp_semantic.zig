@@ -134,3 +134,24 @@ test "classifyToken keywords" {
     const ident = classifyToken(.identifier);
     try std.testing.expect(ident.token_type == null);
 }
+
+test "classifyToken operators" {
+    const plus = classifyToken(.plus);
+    try std.testing.expectEqual(SemanticTokenType.operator, plus.token_type.?);
+    const assign = classifyToken(.assign);
+    try std.testing.expectEqual(SemanticTokenType.operator, assign.token_type.?);
+    const at = classifyToken(.at_sign);
+    try std.testing.expectEqual(SemanticTokenType.operator, at.token_type.?);
+}
+
+test "classifyToken hash is keyword" {
+    const hash = classifyToken(.hash);
+    try std.testing.expectEqual(SemanticTokenType.keyword, hash.token_type.?);
+}
+
+test "classifyToken punctuation has no type" {
+    const lparen = classifyToken(.lparen);
+    try std.testing.expect(lparen.token_type == null);
+    const comma = classifyToken(.comma);
+    try std.testing.expect(comma.token_type == null);
+}

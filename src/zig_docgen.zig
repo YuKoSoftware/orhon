@@ -375,3 +375,119 @@ test "zig_docgen basic parse" {
     defer tree.deinit(allocator);
     try std.testing.expect(tree.errors.len == 0);
 }
+
+test "zig_docgen extractDecls - pub fn" {
+    const allocator = std.testing.allocator;
+    const source = "pub fn add(a: i32, b: i32) i32 { return a + b; }\n";
+    var tree = try Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+
+    var entries: std.ArrayListUnmanaged(DocEntry) = .{};
+    defer {
+        for (entries.items) |e| {
+            if (e.doc) |d| allocator.free(d);
+            allocator.free(e.signature);
+        }
+        entries.deinit(allocator);
+    }
+    try extractDecls(&tree, allocator, &entries, null);
+
+    try std.testing.expectEqual(@as(usize, 1), entries.items.len);
+    try std.testing.expectEqualStrings("add", entries.items[0].name);
+    try std.testing.expect(entries.items[0].kind == .function);
+    try std.testing.expect(!entries.items[0].is_method);
+}
+
+test "zig_docgen extractDecls - non-pub skipped" {
+    const allocator = std.testing.allocator;
+    const source = "fn helper() void {}\n";
+    var tree = try Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+
+    var entries: std.ArrayListUnmanaged(DocEntry) = .{};
+    defer entries.deinit(allocator);
+    try extractDecls(&tree, allocator, &entries, null);
+
+    try std.testing.expectEqual(@as(usize, 0), entries.items.len);
+}
+
+test "zig_docgen extractDecls - pub const" {
+    const allocator = std.testing.allocator;
+    const source = "pub const MAGIC = 42;\n";
+    var tree = try Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+
+    var entries: std.ArrayListUnmanaged(DocEntry) = .{};
+    defer {
+        for (entries.items) |e| {
+            if (e.doc) |d| allocator.free(d);
+            allocator.free(e.signature);
+        }
+        entries.deinit(allocator);
+    }
+    try extractDecls(&tree, allocator, &entries, null);
+
+    try std.testing.expectEqual(@as(usize, 1), entries.items.len);
+    try std.testing.expectEqualStrings("MAGIC", entries.items[0].name);
+    try std.testing.expect(entries.items[0].kind == .constant);
+}
+
+test "zig_docgen getDocComment - single line" {
+    const allocator = std.testing.allocator;
+    const source = "/// Hello world.\npub fn f() void {}\n";
+    var tree = try Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+
+    var entries: std.ArrayListUnmanaged(DocEntry) = .{};
+    defer {
+        for (entries.items) |e| {
+            if (e.doc) |d| allocator.free(d);
+            allocator.free(e.signature);
+        }
+        entries.deinit(allocator);
+    }
+    try extractDecls(&tree, allocator, &entries, null);
+
+    try std.testing.expectEqual(@as(usize, 1), entries.items.len);
+    try std.testing.expectEqualStrings("Hello world.", entries.items[0].doc.?);
+}
+
+test "zig_docgen getDocComment - multi line" {
+    const allocator = std.testing.allocator;
+    const source = "/// Line 1.\n/// Line 2.\npub fn f() void {}\n";
+    var tree = try Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+
+    var entries: std.ArrayListUnmanaged(DocEntry) = .{};
+    defer {
+        for (entries.items) |e| {
+            if (e.doc) |d| allocator.free(d);
+            allocator.free(e.signature);
+        }
+        entries.deinit(allocator);
+    }
+    try extractDecls(&tree, allocator, &entries, null);
+
+    try std.testing.expectEqual(@as(usize, 1), entries.items.len);
+    try std.testing.expectEqualStrings("Line 1.\nLine 2.", entries.items[0].doc.?);
+}
+
+test "zig_docgen getDocComment - no doc" {
+    const allocator = std.testing.allocator;
+    const source = "pub fn f() void {}\n";
+    var tree = try Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+
+    var entries: std.ArrayListUnmanaged(DocEntry) = .{};
+    defer {
+        for (entries.items) |e| {
+            if (e.doc) |d| allocator.free(d);
+            allocator.free(e.signature);
+        }
+        entries.deinit(allocator);
+    }
+    try extractDecls(&tree, allocator, &entries, null);
+
+    try std.testing.expectEqual(@as(usize, 1), entries.items.len);
+    try std.testing.expect(entries.items[0].doc == null);
+}

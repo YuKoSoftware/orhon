@@ -257,3 +257,25 @@ test "cli - build target names" {
     try std.testing.expectEqual(BuildTarget.wasm, .wasm);
     try std.testing.expectEqual(BuildTarget.zig, .zig);
 }
+
+test "cli - toZigTriple" {
+    try std.testing.expectEqualStrings("", BuildTarget.native.toZigTriple());
+    try std.testing.expectEqualStrings("x86_64-linux", BuildTarget.linux_x64.toZigTriple());
+    try std.testing.expectEqualStrings("aarch64-linux", BuildTarget.linux_arm.toZigTriple());
+    try std.testing.expectEqualStrings("x86_64-windows", BuildTarget.win_x64.toZigTriple());
+    try std.testing.expectEqualStrings("x86_64-macos", BuildTarget.mac_x64.toZigTriple());
+    try std.testing.expectEqualStrings("aarch64-macos", BuildTarget.mac_arm.toZigTriple());
+    try std.testing.expectEqualStrings("wasm32-freestanding", BuildTarget.wasm.toZigTriple());
+    try std.testing.expectEqualStrings("", BuildTarget.zig.toZigTriple());
+}
+
+test "cli - folderName" {
+    try std.testing.expectEqualStrings("native", BuildTarget.native.folderName());
+    try std.testing.expectEqualStrings("linux_x64", BuildTarget.linux_x64.folderName());
+    try std.testing.expectEqualStrings("linux_arm", BuildTarget.linux_arm.folderName());
+    try std.testing.expectEqualStrings("win_x64", BuildTarget.win_x64.folderName());
+    try std.testing.expectEqualStrings("mac_x64", BuildTarget.mac_x64.folderName());
+    try std.testing.expectEqualStrings("mac_arm", BuildTarget.mac_arm.folderName());
+    try std.testing.expectEqualStrings("wasm", BuildTarget.wasm.folderName());
+    try std.testing.expectEqualStrings("zig", BuildTarget.zig.folderName());
+}

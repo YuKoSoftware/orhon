@@ -1095,6 +1095,24 @@ test "extractConst — struct with non-pub methods skipped" {
     try std.testing.expect(result == null);
 }
 
+test "extractConst — negated number literal" {
+    const result = try testExtractConst("pub const NEG = -99;");
+    if (result) |actual| {
+        defer std.testing.allocator.free(actual);
+        try std.testing.expectEqualStrings("pub const NEG: i64 = -99", actual);
+    } else return error.TestUnexpectedResult;
+}
+
+test "extractConst — pub var skipped" {
+    const result = try testExtractConst("pub var X: i32 = 42;");
+    try std.testing.expect(result == null);
+}
+
+test "extractConst — enum skipped" {
+    const result = try testExtractConst("pub const E = enum { a, b, c };");
+    try std.testing.expect(result == null);
+}
+
 test "generateModule — end-to-end" {
     const source =
         \\pub fn add(a: i32, b: i32) i32 { return a + b; }

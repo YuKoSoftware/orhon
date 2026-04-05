@@ -49,7 +49,7 @@ for TEST_NAME in \
     thread thread_multi thread_params thread_void thread_done thread_join \
     atomic atomic_fetch atomic_swap atomic_bool \
     map_get \
-    const_auto_borrow var_caller_promoted const_copy \
+    const_auto_borrow var_caller_promoted const_copy const_borrow_arg \
     is_qualified is_not_qualified \
     error_void_ok error_void_fail \
     cast_to_enum null_multi_union empty_struct_construct \
@@ -57,7 +57,8 @@ for TEST_NAME in \
     has_decl has_decl_missing \
     field_type field_names \
     compt_struct \
-    compt_struct_defaults; do
+    compt_struct_defaults \
+    negative_literal_args; do
     if echo "$BINOUT" | grep -q "PASS $TEST_NAME"; then pass "runtime: $TEST_NAME"
     else fail "runtime: $TEST_NAME"; fi
 done

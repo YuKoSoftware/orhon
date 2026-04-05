@@ -149,7 +149,7 @@ struct Entry {
 func tuple_sum() i32 {
     const entries: [2]Entry = [Entry{key: 1, value: 10}, Entry{key: 2, value: 20}]
     var total: i32 = 0
-    for(entries) |(k, v)| {
+    for(entries) |k, v| {
         total += k + v
     }
     return total

@@ -616,7 +616,7 @@ module neg_tuple_nonstruct
 #build   = exe
 func main() void {
     const nums: []i32 = [1, 2, 3]
-    for(nums) |(a, b)| {
+    for(nums) |a, b| {
     }
 }
 ORHON
@@ -641,7 +641,7 @@ func make_pairs() []Pair {
 }
 func main() void {
     const pairs = make_pairs()
-    for(pairs) |(a, b, c)| {
+    for(pairs) |a, b, c| {
     }
 }
 ORHON

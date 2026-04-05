@@ -33,16 +33,6 @@ Remaining questions:
 `#name` removed entirely — binary name always comes from the module name.
 Not blocking zero-magic work — metadata doesn't touch codegen. But needs a design pass.
 
-### Remove parens from tuple capture syntax `easy`
-
-With Zig-style explicit index (`for(arr, 0..) |val, i|`), the index ambiguity is resolved.
-`|a, b|` on a single-iterable for is always struct destructure. The parens `|(k, v)|`
-still provide parse-time disambiguation but are no longer strictly necessary.
-
-Changes: simplify grammar `for_captures` to just `IDENTIFIER (',' IDENTIFIER)*`, update
-builder to collect all identifiers without paren detection, the resolver already handles
-type-based disambiguation. Update test fixtures and examples.
-
 ### Mixed numeric type checking and for-loop index type `medium`
 
 The spec says "mixing numeric types is a compile error" but the check is not yet

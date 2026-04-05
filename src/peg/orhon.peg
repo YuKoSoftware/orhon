@@ -232,8 +232,7 @@ for_iterable
      / expr                   # slice, array, identifier, call, etc.
 
 for_captures
-    <- '(' IDENTIFIER (',' IDENTIFIER)* ')' (',' IDENTIFIER)?   # tuple: |(k, v), i|
-     / IDENTIFIER (',' IDENTIFIER)?                              # simple: |val, i|
+    <- IDENTIFIER (',' IDENTIFIER)*
 
 defer_stmt
     <- 'defer' block  {label: "defer statement"}

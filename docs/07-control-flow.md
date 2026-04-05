@@ -27,8 +27,8 @@ for(my_array) |value| { }                    // value only
 for(my_array, 0..) |value, index| { }       // value and explicit index
 for(0..10) |i| { }                          // range
 for(arr1, arr2) |a, b| { }                  // parallel iteration
-for(entries) |(key, value)| { }              // tuple capture — struct destructure
-for(entries, 0..) |(key, value), index| { }  // tuple capture with index
+for(entries) |key, value| { }               // struct field destructure
+for(entries, 0..) |key, value, index| { }   // destructure with index
 ```
 
 ## `while` — Condition Based

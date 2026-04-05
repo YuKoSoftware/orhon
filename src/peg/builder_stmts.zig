@@ -129,34 +129,19 @@ pub fn buildFor(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     if (iterables.len == 0) return error.NoIterable;
     const body = if (cap.findChild("block")) |b| try builder.buildNode(ctx, b) else return error.NoBlock;
 
-    // Extract captures from for_captures child
-    // Grammar: for_captures <- '(' IDENT (',' IDENT)* ')' (',' IDENT)?  (tuple)
-    //                        / IDENT (',' IDENT)?                        (simple)
+    // Extract captures — flat list: for_captures <- IDENTIFIER (',' IDENTIFIER)*
+    // Tuple vs simple determined by resolver (captures > iterables = destructure)
     var captures = std.ArrayListUnmanaged([]const u8){};
-    var is_tuple_capture = false;
-
     if (cap.findChild("for_captures")) |fc| {
-        // Detect tuple form by checking for leading '(' token
-        const is_tuple = fc.start_pos < ctx.tokens.len and ctx.tokens[fc.start_pos].kind == .lparen;
-        if (is_tuple) {
-            // Tuple capture: identifiers inside parens are struct field captures,
-            // identifiers after ')' are additional captures (e.g., index from 0..)
-            is_tuple_capture = true;
-            for (fc.start_pos..fc.end_pos) |i| {
-                if (i >= ctx.tokens.len) break;
-                if (ctx.tokens[i].kind == .identifier) {
-                    try captures.append(ctx.alloc(), ctx.tokens[i].text);
-                }
-            }
-        } else {
-            // Simple captures: all identifiers are captures (no implicit index)
-            for (fc.start_pos..fc.end_pos) |i| {
-                if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
-                    try captures.append(ctx.alloc(), ctx.tokens[i].text);
-                }
+        for (fc.start_pos..fc.end_pos) |i| {
+            if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
+                try captures.append(ctx.alloc(), ctx.tokens[i].text);
             }
         }
     }
+
+    // Tuple capture: more captures than iterables (first iterable destructures into multiple)
+    const is_tuple_capture = captures.items.len > iterables.len;
 
     return ctx.newNode(.{ .for_stmt = .{
         .iterables = iterables,

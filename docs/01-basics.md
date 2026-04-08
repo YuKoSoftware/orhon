@@ -45,7 +45,7 @@ any, module, test, and, or, not, as, type,
 break, continue, true, false, is
 ```
 
-Compiler functions (`@cast`, `@copy`, `@move`, `@swap`, `@assert`, `@size`, `@align`, `@typename`, `@typeid`, `@typeOf`, `@splitAt`, `@hasField`, `@hasDecl`, `@fieldType`, `@fieldNames`) are not keywords — they are intrinsics called with the `@` prefix. See [[05-functions#Compiler Functions]].
+Compiler functions (`@cast`, `@copy`, `@move`, `@swap`, `@assert`, `@size`, `@align`, `@typename`, `@typeid`, `@typeOf`, `@splitAt`, `@hasField`, `@hasDecl`, `@fieldType`, `@fieldNames`, `@compileError`) are not keywords — they are intrinsics called with the `@` prefix. See [[05-functions#Compiler Functions]].
 
 ---
 

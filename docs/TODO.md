@@ -16,22 +16,6 @@ Actionable items for the current development phase. Deferred and future work is 
 
 ## Compt (Compile-Time Evaluation)
 
-### `compt func` codegen is incorrect `critical`
-
-Value-computing `compt func` emits `inline fn`, which does NOT guarantee compile-time
-evaluation — it just inlines machine code at call sites. Zig's `comptime` on parameters
-is what actually forces compile-time evaluation. The spec promises "entire body runs
-during compilation" but the implementation doesn't deliver that.
-
-**Design decision needed:** Hard compile-time guarantee (fix codegen to use `comptime`
-parameters — correct per spec but restricts usage) vs soft preference (fix spec to
-match current behavior — more permissive but weaker guarantees).
-
-### Missing `@compileError` compiler function `medium`
-
-Library authors can't enforce compile-time constraints. This is a trivial 1:1 Zig
-mapping (`@compileError`) that's missing. Should be added as a compiler function.
-
 ### No `inline for` support `medium`
 
 Can't iterate `@fieldNames` at compile time. Needed for reflection patterns and
@@ -123,9 +107,7 @@ builds twice without changes and verifies generated `.zig` timestamps are unchan
 
 | Decision | Options | Tradeoff |
 |----------|---------|----------|
-| `compt func` semantics | **A:** Hard compile-time (emit `comptime` params) **B:** Soft preference (keep `inline fn`, fix spec) | A is correct per spec but restricts usage; B is more permissive but weaker guarantees |
 | `inline for` timing | **A:** Add now for `@fieldNames` iteration **B:** Defer until more metaprogramming demand | A unblocks reflection patterns; B avoids premature feature surface |
-| `@compileError` ownership | **A:** Orhon compiler function **B:** Users write it in Zig sidecar files | A is ergonomic and trivial 1:1 mapping; B keeps compiler function list minimal |
 
 ---
 

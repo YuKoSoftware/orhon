@@ -63,7 +63,7 @@ of type arguments produces a distinct concrete type.
 ### Value-computing `compt` — returns a value
 
 When a `compt` function returns a regular type (not `type`), it computes a constant
-value at compile time. Maps to Zig `inline fn`:
+value at compile time. All parameters receive `comptime`, guaranteeing compile-time evaluation:
 
 ```
 compt func doubled(n: i32) i32 {
@@ -216,6 +216,22 @@ compt derive_debug() str {
     }
 }
 ```
+
+### `@compileError` — compile-time error
+
+Emits a compile error with a custom message. Used inside `compt func` bodies to
+enforce compile-time constraints:
+
+```
+compt func SmallOnly(T: type) type {
+    if (@size(T) > 8) {
+        @compileError("SmallOnly requires types of 8 bytes or fewer")
+    }
+    return T
+}
+```
+
+Maps 1:1 to Zig's `@compileError`. Takes exactly one string argument.
 
 ---
 

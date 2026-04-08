@@ -252,6 +252,21 @@ test "compt struct with method" {
     @assert(w.get() == 42)
 }
 
+// @compileError — compile-time constraint enforcement
+
+compt func SmallOnly(T: type) type {
+    if (@size(T) > 8) {
+        @compileError("SmallOnly requires types of 8 bytes or fewer")
+    }
+    return T
+}
+
+test "compileError allows small types" {
+    const S: type = SmallOnly(i32)
+    const val: S = 42
+    @assert(val == 42)
+}
+
 test "fibonacci" {
     @assert(fibonacci(10) == 55)
 }

@@ -1,5 +1,5 @@
 // scope.zig — Generic scope with parent-chain traversal
-// Used by resolver (pass 5), ownership (pass 6), and propagation (pass 9).
+// Used by resolver (pass 5), ownership (pass 6), and propagation (pass 8).
 
 const std = @import("std");
 

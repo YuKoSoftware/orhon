@@ -8,7 +8,7 @@ const errors = @import("errors.zig");
 const module = @import("module.zig");
 
 /// Shared context built after declaration collection (pass 4).
-/// Used by type resolution (pass 5) and validation passes 6–9; extended by MIR (pass 10) and codegen (pass 11).
+/// Used by type resolution (pass 5) and validation passes 6–8; extended by MIR (pass 9) and codegen (pass 11).
 pub const SemanticContext = struct {
     allocator: std.mem.Allocator,
     reporter: *errors.Reporter,

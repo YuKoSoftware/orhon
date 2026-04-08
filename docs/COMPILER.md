@@ -32,7 +32,9 @@ Source (.orh)
     ↓
 8.  Error Propagation Analysis
     ↓
-10. MIR Annotation + Lowering — self-contained MIR tree (TypeClass, UnionRegistry, MirNode)
+9.  MIR Annotation — type classification (TypeClass, UnionRegistry)
+    ↓
+10. MIR Tree Lowering — AST → self-contained MirNode tree
     ↓
 11. Zig Code Generation — MIR → Zig translation (codegen reads MirNode, not AST)
     ↓
@@ -121,13 +123,13 @@ src/
     borrow.zig              // hub — pass 7
     borrow_checks.zig       //   satellite — statement and expression borrow checks
     propagation.zig         // pass 8 (error propagation)
-    mir/                    // pass 10 — MIR annotation + lowering
+    mir/                    // pass 9 (annotation) + pass 10 (lowering)
         mir.zig             //   hub — re-exports (TypeClass, NodeMap, MirNode, etc.)
         mir_types.zig       //   type classification (TypeClass enum, Coercion)
         mir_node.zig        //   MIR tree node definitions (MirKind, MirNode)
-        mir_annotator.zig   //   annotation pass (type analysis)
+        mir_annotator.zig   //   pass 9 — annotation (type analysis)
         mir_annotator_nodes.zig // satellite — AST annotation and coercion detection
-        mir_lowerer.zig     //   lowering pass (tree construction)
+        mir_lowerer.zig     //   pass 10 — lowering (tree construction)
         mir_registry.zig    //   union/struct registry for type tracking
     codegen/                // pass 11 — pure 1:1 translator
         codegen.zig         //   hub — main code generation (MIR → Zig)

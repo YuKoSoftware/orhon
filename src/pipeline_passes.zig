@@ -186,7 +186,7 @@ pub fn runSemanticAndCodegen(
     try prop_checker.check(ast);
     if (reporter.hasErrors()) return null;
 
-    // ── Pass 10: MIR Annotation ─────────────────────────────
+    // ── Pass 9: MIR Annotation ──────────────────────────────
     var mir_annotator = mir.MirAnnotator.init(allocator, reporter, &decl_collector.table, &type_resolver.type_map, union_registry);
     defer mir_annotator.deinit();
     mir_annotator.all_decls = all_module_decls;
@@ -195,7 +195,7 @@ pub fn runSemanticAndCodegen(
     try mir_annotator.annotate(ast);
     if (reporter.hasErrors()) return null;
 
-    // ── Pass 10b: MIR Tree Lowering ───────────────────────
+    // ── Pass 10: MIR Tree Lowering ────────────────────────
     var mir_lowerer = mir.MirLowerer.init(
         allocator,
         &mir_annotator.node_map,

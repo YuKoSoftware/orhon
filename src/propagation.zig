@@ -1,4 +1,4 @@
-// propagation.zig — Error & Null Propagation Analysis pass (pass 9)
+// propagation.zig — Error & Null Propagation Analysis pass (pass 8)
 // Verifies all (Error | T) and (null | T) unions are handled before scope exit.
 // If not handled — compiler rejects the code.
 

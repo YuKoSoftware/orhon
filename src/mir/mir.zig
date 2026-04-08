@@ -1,4 +1,4 @@
-// mir.zig — MIR (Mid-level Intermediate Representation) pass (pass 10)
+// mir.zig — MIR (Mid-level Intermediate Representation) pass (pass 9)
 // Re-export hub — all implementations live in mir_*.zig files.
 
 pub const TypeClass = @import("mir_types.zig").TypeClass;

@@ -1,0 +1,26 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+func may_fail(n: i32) (Error | i32) {
+    if(n == 0) {
+        return Error("bad")
+    }
+    return n
+}
+
+// unhandled error union — must be handled with if/match
+
+func unhandled_error() void {
+    const result = may_fail(1)
+}
+
+// unsafe unwrap — accessing .i32 without checking first
+
+func unsafe_unwrap() i32 {
+    const result = may_fail(5)
+    return result.i32
+}
+
+func main() void { }

@@ -1,0 +1,15 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+struct Config {
+    pub host: str
+    pub port: i32
+}
+
+func positional_constructor() void {
+    const c: Config = Config("localhost", 8080)
+}
+
+func main() void { }

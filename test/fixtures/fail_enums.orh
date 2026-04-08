@@ -1,0 +1,14 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+// duplicate variant name in enum
+
+enum(u8) Color {
+    Red
+    Green
+    Red
+}
+
+func main() void { }

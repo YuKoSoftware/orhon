@@ -1,0 +1,112 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+// unknown return type
+
+func bad_return() Nope {
+    return 1
+}
+
+// unknown parameter type
+
+func bad_param(x: FakeType) void { }
+
+// unknown variable type
+
+func bad_var() void {
+    const x: Bogus = 1
+}
+
+// return type mismatch
+
+func returns_int() i32 {
+    return "hello"
+}
+
+// if condition must be bool
+
+func bad_if() void {
+    if(42) { }
+}
+
+// while condition must be bool
+
+func bad_while() void {
+    while(42) { }
+}
+
+// duplicate variable
+
+func dup_var() void {
+    const x: i32 = 1
+    const x: i32 = 2
+}
+
+// type mismatch on assignment
+
+func bad_assign() void {
+    var x: i32 = "hello"
+}
+
+// break outside loop
+
+func bad_break() void {
+    break
+}
+
+// continue outside loop
+
+func bad_continue() void {
+    continue
+}
+
+// calling a non-function
+
+func call_non_func() void {
+    const x: i32 = 5
+    const y: i32 = x()
+}
+
+// indexing a non-indexable type
+
+func index_bool() void {
+    const x: bool = true
+    const y: bool = x[0]
+}
+
+// struct as condition (non-primitive non-bool)
+
+struct Point {
+    x: i32
+    y: i32
+}
+
+func struct_as_cond() void {
+    const p = Point.new(1, 2)
+    if(p) { }
+}
+
+// match arm with wrong type name
+
+func get_val(flag: bool) (i32 | str) {
+    if(flag) { return 42 }
+    return "hello"
+}
+
+func bad_match() void {
+    const val = get_val(true)
+    match(val) {
+        i32   => { }
+        Strin => { }
+    }
+}
+
+// type error inside test body
+
+test "bad test type" {
+    const x: i32 = "hello"
+}
+
+func main() void { }

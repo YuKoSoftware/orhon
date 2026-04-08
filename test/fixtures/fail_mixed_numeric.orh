@@ -1,0 +1,38 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+// different integer widths
+func mix_int_width(a: i32, b: i64) i64 {
+    return a + b
+}
+
+// different float widths
+func mix_float_width(a: f32, b: f64) f64 {
+    return a + b
+}
+
+// integer + float
+func mix_int_float(a: i32, b: f32) f32 {
+    return a + b
+}
+
+// comparison across types
+func mix_compare(a: i32, b: i64) bool {
+    return a < b
+}
+
+// usize + i32
+func mix_usize(a: usize, b: i32) i32 {
+    return a + b
+}
+
+// compound assignment with mixed types
+func mix_compound(a: i32, b: usize) void {
+    var x: i32 = a
+    x += b
+}
+
+func main() void {
+}

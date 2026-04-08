@@ -1,0 +1,19 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+pub struct Counter {
+    pub count: i32
+
+    pub func increment(self: mut& Counter) void {
+        self.count = self.count + 1
+    }
+}
+
+func bad_method_arity() void {
+    var c: Counter = Counter{count: 0}
+    c.increment(42)
+}
+
+func main() void { }

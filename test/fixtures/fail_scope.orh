@@ -1,0 +1,17 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+// module-level var is not allowed (must be const) — parser catches first
+
+var top_level: i32 = 10
+
+// duplicate variable in same scope
+
+func dup_in_scope() void {
+    const x: i32 = 1
+    const x: i32 = 2
+}
+
+func main() void { }

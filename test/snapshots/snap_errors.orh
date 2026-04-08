@@ -1,0 +1,34 @@
+module snap_errors
+
+const ErrNotFound: Error = Error("not found")
+const ErrInvalid: Error = Error("invalid")
+
+// function returning (Error | i32) with both paths
+pub func safe_get(id: i32) (Error | i32) {
+    if(id < 0) {
+        return ErrInvalid
+    }
+    return id * 10
+}
+
+// function returning (null | i32) with both paths
+pub func maybe_value(flag: bool) (null | i32) {
+    if(flag) {
+        return 42
+    }
+    return null
+}
+
+// function propagating error via return
+pub func get_or_propagate(id: i32) (Error | i32) {
+    const result: (Error | i32) = safe_get(id)
+    return result
+}
+
+// function demonstrating is check on null union
+pub func check_null(val: (null | i32)) i32 {
+    if(val is null) {
+        return 0
+    }
+    return val.i32
+}

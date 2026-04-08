@@ -1,0 +1,12 @@
+module fixture
+#version = (1, 0, 0)
+#build   = exe
+
+pub struct A { pub x: i32 }
+
+func bad() (Error | A) {
+    return A{x: 1}
+}
+
+func main() void {
+}

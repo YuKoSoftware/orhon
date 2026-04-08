@@ -1,0 +1,25 @@
+module zig_module
+
+#version = (1, 0, 0)
+#build   = exe
+
+import std::console
+import zigmath
+
+func main() void {
+    const sum: i32 = zigmath.add(10, 32)
+    if(sum == 42) {
+        console.println("PASS zig_module_add")
+    } else {
+        console.println("FAIL zig_module_add")
+    }
+
+    const product: i32 = zigmath.mul(6, 7)
+    if(product == 42) {
+        console.println("PASS zig_module_mul")
+    } else {
+        console.println("FAIL zig_module_mul")
+    }
+
+    console.println("ZIGMOD:DONE")
+}

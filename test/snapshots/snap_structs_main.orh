@@ -1,0 +1,8 @@
+module snaptest_structs
+#version = (1, 0, 0)
+#build   = exe
+
+import snap_structs
+
+func main() void {
+}

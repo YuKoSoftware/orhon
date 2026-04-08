@@ -1,0 +1,20 @@
+module union_flat
+#version = (1, 0, 0)
+#build   = exe
+
+pub struct KeyPress { pub key: i32 }
+pub struct KeyRelease { pub key: i32 }
+
+pub struct MouseMove {
+    pub x: i32
+    pub y: i32
+}
+
+pub struct ButtonClick { pub id: i32 }
+
+// Union flattening: InputEvent members are inlined into AllEvents
+pub const InputEvent: type = (KeyPress | KeyRelease | MouseMove)
+pub const AllEvents: type = (InputEvent | ButtonClick)
+
+func main() void {
+}

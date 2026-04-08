@@ -1,0 +1,14 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+func classify(n: u32) u32 {
+    match(n) {
+        0 => { return 0 }
+        1 => { return 1 }
+    }
+    return 99
+}
+
+func main() void { }

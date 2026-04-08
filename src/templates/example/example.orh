@@ -1,0 +1,281 @@
+/// The example module is a living language manual.
+/// It covers every implemented feature with short examples.
+module example
+
+// ─── Imports ─────────────────────────────────────────────────────────────────
+
+// import — scoped access: use module name as prefix
+import std::console
+
+// use — flat access: symbols dumped directly into scope (no prefix needed)
+// List, Map, Set are available without a module prefix after use.
+use std::collections
+
+#description = "Language feature examples"
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+// module-level declarations are const only — var lives inside functions
+
+const MAX_SIZE: i32 = 100
+const PI: f64 = 3.14159
+
+// numeric literal formats
+
+const DECIMAL: i32 = 1_000_000
+const HEX: u32 = 0xFF
+const BINARY: u8 = 0b1010
+const OCTAL: u8 = 0o77
+
+// compile-time function — entire body evaluated at compile time
+
+compt func double(n: i32) i32 {
+    return n * 2
+}
+
+// ─── Module Metadata Directives ──────────────────────────────────────────────
+
+// These directives go in the module's anchor file (e.g. main.orh):
+//   #version = (1, 0, 0)   — semantic version
+//   #build   = exe                — build target: exe, static, dynamic
+
+// ─── Zig Modules ─────────────────────────────────────────────────────────────
+
+// Place a .zig file in src/ to create a zig-backed module. The compiler
+// auto-generates an .orh interface and re-exports the Zig implementation.
+// Other Orhon modules import it like any other module.
+
+// --- C Library Dependencies (.zon config) ----------------------------------
+
+// Modules that call C code declare dependencies via a paired .zon file.
+// Place a .zon file next to the .zig file with the same name.
+// The .zon file specifies link libraries, include paths, and source files.
+//
+// Example my_module.zon:
+//   .{
+//       .link = .{ "SDL3" },
+//       .include = .{ "vendor/" },
+//       .source = .{ "vendor/vma_impl.cpp" },
+//   }
+//
+// C++ linking is auto-detected from .cpp/.cc/.cxx file extensions.
+
+// ─── Defer ───────────────────────────────────────────────────────────────────
+
+// defer executes a statement when the current scope exits.
+// Used for cleanup — freeing resources, closing handles.
+
+// ─── Allocators ──────────────────────────────────────────────────────────────
+
+// Collections accept an optional allocator via .new(alloc).
+// Three modes: default SMP, inline allocator, external variable.
+
+/// Demonstrates the three allocator modes: default SMP, inline arena, and external.
+pub func allocator_demo() i32 {
+    // Mode 1: default SMP allocator (no argument)
+    var defaults: List(i32) = List(i32).new()
+    defaults.add(1)
+    defer { defaults.free() }
+
+    // Mode 2: inline arena allocator
+    var arena: allocator.Arena = allocator.Arena.create()
+    defer { arena.deinit() }
+    var arena_list: List(i32) = List(i32).withAlloc(arena.allocator())
+    arena_list.add(2)
+
+    // Mode 3: external allocator variable
+    var smp: allocator.SMP = allocator.SMP.create()
+    defer { smp.deinit() }
+    const a = smp.allocator()
+    var ext_list: List(i32) = List(i32).withAlloc(a)
+    ext_list.add(3)
+    defer { ext_list.free() }
+
+    return defaults.get(0) + arena_list.get(0) + ext_list.get(0)
+}
+
+// ─── Borrowing ───────────────────────────────────────────────────────────────
+
+// const& T — immutable borrow (many allowed simultaneously)
+// mut& T — mutable borrow (only one at a time)
+// Cannot have both immutable and mutable borrows simultaneously.
+//
+//   func read(data: const& Player) void { }
+//   func modify(data: mut& Player) void { }
+//
+// Use const& for large types to avoid copies. By-value passes copy.
+
+// ─── Structs ─────────────────────────────────────────────────────────────────
+
+/// A 2D point with x and y coordinates
+pub struct Point {
+    pub x: f64
+    pub y: f64
+}
+
+/// A game player with health tracking
+pub struct Player {
+    pub name: str
+    health: f32
+
+    pub func create(n: str) Player {
+        return Player{name: n, health: 100.0}
+    }
+
+    pub func is_alive(self: const& Player) bool {
+        return self.health > 0.0
+    }
+
+    pub func take_damage(self: mut& Player, amount: f32) void {
+        self.health = self.health - amount
+    }
+}
+
+func make_player() Player {
+    return Player{name: "hero", health: 100.0}
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+/// Cardinal directions
+pub enum(u8) Direction {
+    North
+    South
+    East
+    West
+}
+
+func go_north() Direction {
+    const d: Direction = North
+    return d
+}
+
+// Typed enum with explicit integer values
+
+/// SDL3 scancode subset — explicit integer assignments
+pub enum(u32) Scancode {
+    A = 4
+    B = 5
+    C = 6
+    Space = 44
+}
+
+// ─── Functions ───────────────────────────────────────────────────────────────
+
+func add(a: i32, b: i32) i32 {
+    return a + b
+}
+
+/// Multiplies two integers and returns the result.
+pub func multiply(a: i32, b: i32) i32 {
+    return a * b
+}
+
+func is_even(n: i32) bool {
+    return (n % 2) == 0
+}
+
+func greet_msg(name: str, greeting: str = "hello") str {
+    return greeting ++ " " ++ name
+}
+
+func fibonacci(n: i32) i32 {
+    if(n <= 1) {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+// ─── Operators ───────────────────────────────────────────────────────────────
+
+func arithmetic(a: i32, b: i32) i32 {
+    return (a + b) * (a - b) / (a % b)
+}
+
+func in_range(value: i32, low: i32, high: i32) bool {
+    return (value >= low) and (value <= high)
+}
+
+func is_valid(a: bool, b: bool) bool {
+    return (a and b) or (not a)
+}
+
+func bitwise_ops(a: i32, b: i32) i32 {
+    return (a & b) | (a ^ b)
+}
+
+func shift_ops(a: i32) i32 {
+    return (a << 2) >> 1
+}
+
+func greet(name: str) str {
+    return "Hello, " ++ name ++ "!"
+}
+
+// ─── Generic Structs ─────────────────────────────────────────────────────────
+
+// generic struct — type params resolved at compile time
+
+pub struct Pair(A: type, B: type) {
+    pub first: A
+    pub second: B
+}
+
+pub struct Box(T: type) {
+    pub value: T
+
+    pub func get(self: const& Box) T {
+        return self.value
+    }
+}
+
+// type-returning compt func — generates a new struct type at compile time
+
+compt func Wrapper(T: type) type {
+    return struct {
+        inner: T
+
+        pub func get(self: const& @this) T {
+            return self.inner
+        }
+    }
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+test "add works" {
+    @assert(add(2, 3) == 5)
+}
+
+test "compt struct with method" {
+    const w: Wrapper(i32) = Wrapper(i32){inner: 42}
+    @assert(w.get() == 42)
+}
+
+test "fibonacci" {
+    @assert(fibonacci(10) == 55)
+}
+
+test "struct methods" {
+    var p: Player = Player.create("test")
+    @assert(p.is_alive())
+    p.take_damage(150.0)
+    @assert(not p.is_alive())
+    p = Player.create("revived")
+    @assert(p.is_alive())
+}
+
+// ─── Terminal Colors ────────────────────────────────────────────────────────
+
+// console provides ANSI color constants and a supportsColor check
+
+func color_demo() bool {
+    if (console.supportsColor()) {
+        console.printColoredLn(console.GREEN, "ok")
+    }
+    return true
+}
+
+test "console.supportsColor" {
+    @assert(color_demo())
+}

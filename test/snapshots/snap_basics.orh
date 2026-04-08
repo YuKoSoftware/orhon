@@ -1,0 +1,26 @@
+module snap_basics
+
+// const declarations
+const MAX_COUNT: i32 = 100
+const APP_NAME: str = "orhon"
+
+// module-level const
+const RETRY_COUNT: i32 = 3
+
+// type alias
+const Speed: type = i32
+
+// public function with parameters and return
+pub func add(a: i32, b: i32) i32 {
+    return a + b
+}
+
+// public function returning str
+pub func greet(name: str) str {
+    return "hello" ++ " " ++ name
+}
+
+// compt function — generates inline fn
+pub compt func doubled(n: i32) i32 {
+    return n * 2
+}

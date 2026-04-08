@@ -1,0 +1,13 @@
+.zig-cache/
+zig-out/
+.claude/
+.obsidian/
+.orh-cache/
+*.txt
+*.o
+*.a
+test_union_*
+test_bf16
+test_f16
+test_payload
+test[0-9]*

@@ -1,0 +1,12 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+func bad_guard(n: i32) i32 {
+    match(n) {
+        (x if x > 0) => { return 1 }
+    }
+}
+
+func main() void {}

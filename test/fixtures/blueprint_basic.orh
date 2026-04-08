@@ -1,0 +1,14 @@
+module tester
+
+blueprint Eq {
+    func eq(self: const& Eq, other: const& Eq) bool
+}
+
+struct Point: Eq {
+    x: f32
+    y: f32
+
+    pub func eq(self: const& Point, other: const& Point) bool {
+        return self.x == other.x and self.y == other.y
+    }
+}

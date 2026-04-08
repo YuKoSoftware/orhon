@@ -1,0 +1,24 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+// unreachable code after return
+
+func after_return() i32 {
+    return 1
+    const x: i32 = 2
+}
+
+// unreachable code after if/else where both branches return
+
+func after_if_else() i32 {
+    if(true) {
+        return 1
+    } else {
+        return 2
+    }
+    const y: i32 = 3
+}
+
+func main() void { }

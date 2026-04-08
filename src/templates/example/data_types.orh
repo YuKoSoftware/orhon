@@ -1,0 +1,181 @@
+module example
+
+// ─── Fixed-Size Arrays ───────────────────────────────────────
+
+func array_sum() i32 {
+    const arr: [3]i32 = [10, 20, 30]
+    var total: i32 = 0
+    var i: i32 = 0
+    while(i < 3) : (i += 1) {
+        total += arr[i]
+    }
+    return total
+}
+
+func slice_sum() i32 {
+    var arr: [5]i32 = [1, 2, 3, 4, 5]
+    const part: []i32 = arr[1..4]
+    var total: i32 = 0
+    for(part) |val| {
+        total += val
+    }
+    return total
+}
+
+// ─── Function Pointers ──────────────────────────────────────────────────────
+
+func negate(x: i32) i32 {
+    return 0 - x
+}
+
+func apply(f: func(i32) i32, x: i32) i32 {
+    return f(x)
+}
+
+func call_via_pointer() i32 {
+    const f: func(i32) i32 = negate
+    return f(10)
+}
+
+// ─── Tuples ─────────────────────────────────────────────────────────────────
+
+// tuples use {} for both definition and construction — nominal typing
+// two tuples with identical fields but different names are different types
+const MinMax: type = {min: i32, max: i32}
+const Range: type = {min: i32, max: i32}
+// MinMax and Range are distinct types even though their fields match
+
+func min_max(a: i32, b: i32) MinMax {
+    if(a < b) {
+        return MinMax{min: a, max: b}
+    }
+    return MinMax{min: b, max: a}
+}
+
+func tuple_demo() i32 {
+    const result = min_max(3, 7)
+    const s = result.min + result.max
+    // destructuring — variable names must match field names
+    const min, max = min_max(1, 9)
+    return s + min + max
+}
+
+// ─── Integer Overflow ───────────────────────────────────────────────────────
+
+func wrap_add(a: i32, b: i32) i32 {
+    return @wrap(a + b)
+}
+
+func sat_add(a: i32, b: i32) i32 {
+    return @sat(a + b)
+}
+
+func checked_add(a: i32, b: i32) (Error | i32) {
+    return @overflow(a + b)
+}
+
+// ─── Compound Assignment ────────────────────────────────────────────────────
+
+func compound_demo() i32 {
+    var x: i32 = 10
+    x += 5
+    x -= 2
+    x *= 3
+    x /= 2
+    return x
+}
+
+// ─── typeOf ─────────────────────────────────────────────────────────────────
+
+// @typeOf(value) — returns the compile-time type of a value
+
+compt func typeof_demo() bool {
+    const x: i32 = 42
+    const T: type = @typeOf(x)
+    return T == i32
+}
+
+// ─── Generics with `any` ───────────────────────────────────────────────────
+
+func identity(val: any) any {
+    return val
+}
+
+compt func describe(val: any) str {
+    if(val is i32) { return "integer" }
+    if(val is f32) { return "float" }
+    if(val is str) { return "string" }
+    return "unknown"
+}
+
+// ─── SIMD Vectors ─────────────────────────────────────────────────────────────
+
+// Vector(N, T) maps to hardware SIMD registers.
+// Arithmetic operators work element-wise.
+
+func vector_add() Vector(4, f32) {
+    const a: Vector(4, f32) = [1.0, 2.0, 3.0, 4.0]
+    const b: Vector(4, f32) = [5.0, 6.0, 7.0, 8.0]
+    return a + b
+}
+
+// Scalar broadcast — the scalar is expanded to fill all lanes.
+
+func vector_scale() Vector(4, f32) {
+    const v: Vector(4, f32) = [1.0, 2.0, 3.0, 4.0]
+    return v * 2.0
+}
+
+// ─── size / align / typename ─────────────────────────────────────────────────
+
+// @size(T) — compile-time byte size of a type
+
+func size_demo() i32 {
+    return @size(i32)
+}
+
+// @align(T) — compile-time alignment of a type
+
+func align_demo() i32 {
+    return @align(i64)
+}
+
+// @typename(value) — returns the type name as a string at runtime
+// Example: @typename(42) returns "i32"
+
+// ─── Ownership Builtins ───────────────────────────────────────────────────────
+
+// @copy(value) — explicit deep copy
+// @move(value) — explicit move, original becomes invalid
+
+func copy_demo() i32 {
+    const a: [3]i32 = [1, 2, 3]
+    var b: [3]i32 = @copy(a)
+    b[0] = 99
+    return b[0]
+}
+
+// @swap(a, b) — swaps two values in place
+//   var x: i32 = 10
+//   var y: i32 = 20
+//   @swap(x, y)     // x is now 20, y is now 10
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+test "size and align" {
+    @assert(size_demo() == 4)
+    @assert(align_demo() == 8)
+}
+
+test "copy" {
+    @assert(copy_demo() == 99)
+}
+
+test "compound assignment" {
+    @assert(compound_demo() == 19)
+}
+
+test "identity generic" {
+    const x: i32 = identity(42)
+    @assert(x == 42)
+}

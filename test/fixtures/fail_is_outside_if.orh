@@ -1,0 +1,12 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+func check_outside(x: (i32 | str)) bool {
+    const result: bool = x is i32
+    return result
+}
+
+func main() void {
+}

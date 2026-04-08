@@ -1,0 +1,125 @@
+module example
+
+// ─── Error Handling ──────────────────────────────────────────────────────────
+
+const ErrNotFound = Error("not found")
+
+func safe_divide(a: i32, b: i32) (Error | i32) {
+    if(b == 0) {
+        return Error("division by zero")
+    }
+    return a / b
+}
+
+func divide_or_default(a: i32, b: i32) i32 {
+    const result = safe_divide(a, b)
+    if(result is Error) {
+        return 0
+    }
+    return result.i32
+}
+
+// ─── Null Handling ───────────────────────────────────────────────────────────
+
+func find_value(id: i32) (null | i32) {
+    if(id > 0) {
+        return id * 10
+    }
+    return null
+}
+
+func value_or_default(id: i32) i32 {
+    const result = find_value(id)
+    if(result is null) {
+        return 0
+    }
+    return result.i32
+}
+
+// ─── Arbitrary Unions ────────────────────────────────────────────────────────
+
+func get_value(flag: bool) (i32 | str) {
+    if(flag) {
+        return 42
+    }
+    return "hello"
+}
+
+func arb_union_check(flag: bool) i32 {
+    const val = get_value(flag)
+    if(val is i32) {
+        return val.i32
+    }
+    return 0
+}
+
+// ─── Error Union with Void ───────────────────────────────────────────────────
+
+func validate_input(value: i32) (Error | void) {
+    if(value < 0) {
+        return Error("negative value")
+    }
+    return
+}
+
+func check_and_report(value: i32) i32 {
+    const result = validate_input(value)
+    if(result is Error) {
+        return 0
+    }
+    return 1
+}
+
+// ─── Null + Error Union ─────────────────────────────────────────────────────
+
+// a value that can be null, an error, or a valid result
+func maybe_fetch(id: i32) (null | Error | i32) {
+    if(id == 0) { return null }
+    if(id < 0) { return Error("invalid id") }
+    return id * 100
+}
+
+func fetch_or_default(id: i32) i32 {
+    const result = maybe_fetch(id)
+    if(result is null) { return 0 }
+    if(result is Error) { return 0 - 1 }
+    return result.value
+}
+
+// ─── Error Propagation ──────────────────────────────────────────────────────
+
+// propagate error by returning it from an if check
+func divide_or_propagate(a: i32, b: i32) (Error | i32) {
+    const result = safe_divide(a, b)
+    if(result is Error) {
+        return result
+    }
+    return result.i32
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+test "error handling" {
+    @assert(divide_or_default(10, 2) == 5)
+    @assert(divide_or_default(10, 0) == 0)
+}
+
+test "null handling" {
+    @assert(value_or_default(5) == 50)
+    @assert(value_or_default(0) == 0)
+}
+
+test "error void" {
+    @assert(check_and_report(5) == 1)
+    @assert(check_and_report(0 - 1) == 0)
+}
+
+test "null error union" {
+    @assert(fetch_or_default(5) == 500)
+    @assert(fetch_or_default(0) == 0)
+    @assert(fetch_or_default(0 - 1) == 0 - 1)
+}
+
+test "error propagation" {
+    @assert(divide_or_propagate(10, 2) == 5)
+}

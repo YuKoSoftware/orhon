@@ -1,0 +1,25 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+// default param before required param — parser catches first
+
+func bad_defaults(a: i32 = 5, b: i32) i32 {
+    return a + b
+}
+
+// return type mismatch — declared i32, returns String
+
+func bad_return() i32 {
+    return "oops"
+}
+
+// calling a non-function value
+
+func call_value() void {
+    const x: i32 = 10
+    const y: i32 = x(5)
+}
+
+func main() void { }

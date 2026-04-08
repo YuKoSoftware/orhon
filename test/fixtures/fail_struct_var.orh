@@ -1,0 +1,6 @@
+module tester
+
+struct Bad {
+    x: i32
+    var count: i32 = 0
+}

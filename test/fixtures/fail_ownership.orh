@@ -1,0 +1,47 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+import std::console
+
+struct Data {
+    pub name: str
+}
+
+// use after move
+
+func use_after_move() void {
+    var a: Data = Data{name: "hello"}
+    var b: Data = a
+    console.println(a.name)
+}
+
+// use after @splitAt
+
+func use_after_split() void {
+    const arr: [4]i32 = [1, 2, 3, 4]
+    const left, right = @splitAt(arr, 2)
+    const x: i32 = arr[0]
+}
+
+// use after consuming method call
+
+struct Resource {
+    pub value: i32
+
+    pub func destroy(self: Resource) void {
+    }
+
+    pub func borrow(self: const& Resource) i32 {
+        return self.value
+    }
+}
+
+func use_after_consuming_method() void {
+    var r: Resource = Resource{value: 42}
+    r.destroy()
+    const v: i32 = r.borrow()
+}
+
+func main() void { }

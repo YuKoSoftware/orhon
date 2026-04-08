@@ -1,0 +1,233 @@
+module example
+
+// ─── If / Else ───────────────────────────────────────────────────────────────
+
+func max(a: i32, b: i32) i32 {
+    if(a > b) {
+        return a
+    } else {
+        return b
+    }
+}
+
+// ─── Elif Chains ────────────────────────────────────────────────────────────
+
+// elif chains multi-way branches — use match for value branching
+
+func classify_sign(n: i32) i32 {
+    if(n > 0) {
+        return 1
+    } elif(n < 0) {
+        return 0 - 1
+    } else {
+        return 0
+    }
+}
+
+// ─── While Loops ─────────────────────────────────────────────────────────────
+
+func countdown(n: i32) i32 {
+    var result: i32 = 0
+    var i: i32 = n
+    while(i > 0) {
+        result += i
+        i -= 1
+    }
+    return result
+}
+
+func sum_with_step(n: i32) i32 {
+    var total: i32 = 0
+    var i: i32 = 0
+    while(i < n) : (i += 1) {
+        total += i
+    }
+    return total
+}
+
+// ─── For Loops ───────────────────────────────────────────────────────────────
+
+func sum_array(arr: []i32) i32 {
+    var total: i32 = 0
+    for(arr) |val| {
+        total += val
+    }
+    return total
+}
+
+// for-loop range indices are usize — use @cast when mixing with other integer types
+func sum_range(n: i32) i32 {
+    var total: i32 = 0
+    for(0..n) |i| {
+        total += @cast(i32, i)
+    }
+    return total
+}
+
+// ─── Match ───────────────────────────────────────────────────────────────────
+
+func classify(n: i32) i32 {
+    match(n) {
+        0 => { return 0 }
+        1 => { return 10 }
+        2 => { return 20 }
+        else => { return 99 }
+    }
+}
+
+// ─── Defer ───────────────────────────────────────────────────────────────────
+
+func with_cleanup() i32 {
+    var x: i32 = 0
+    defer {
+        x = 0
+    }
+    x = 42
+    return x
+}
+
+// ─── Match Ranges ───────────────────────────────────────────────────────────
+
+// match arms can be ranges — inclusive on both ends
+
+func match_range(n: i32) i32 {
+    match(n) {
+        (1..3) => { return 1 }
+        (4..6) => { return 2 }
+        else => { return 0 }
+    }
+}
+
+// ─── Match Strings ──────────────────────────────────────────────────────────
+
+// match works on strings — each arm is a string literal
+
+func match_string(s: str) i32 {
+    match(s) {
+        "hello" => { return 1 }
+        "world" => { return 2 }
+        else    => { return 0 }
+    }
+}
+
+// ─── Break & Continue ────────────────────────────────────────────────────────
+
+func count_odd(limit: i32) i32 {
+    var count: i32 = 0
+    var i: i32 = 0
+    while(i < limit) {
+        i += 1
+        if((i % 2) == 0) {
+            continue
+        }
+        count += 1
+    }
+    return count
+}
+
+// ─── For with Index ─────────────────────────────────────────────────────────
+
+// for loop with index — iterates array and index simultaneously
+
+func indexed_sum() i32 {
+    const arr: [3]i32 = [10, 20, 30]
+    var total: i32 = 0
+    for(arr, 0..) |val, i| {
+        total += val + @cast(i32, i)
+    }
+    return total
+}
+
+// ─── For with Tuple Capture ─────────────────────────────────────────────────
+
+// for loop with tuple capture — destructures struct fields from slice elements
+
+struct Entry {
+    key: i32
+    value: i32
+}
+
+func tuple_sum() i32 {
+    const entries: [2]Entry = [Entry{key: 1, value: 10}, Entry{key: 2, value: 20}]
+    var total: i32 = 0
+    for(entries) |k, v| {
+        total += k + v
+    }
+    return total
+}
+
+// ─── Nested Loops ───────────────────────────────────────────────────────────
+
+// to break out of a nested loop, extract the inner logic into a func and use return
+
+func find_inner(limit: i32, i: i32) i32 {
+    var j: i32 = 0
+    while(j < limit) {
+        if(i + j == 5) { return i * 10 + j }
+        j += 1
+    }
+    return 0 - 1
+}
+
+func find_pair(limit: i32) i32 {
+    var i: i32 = 0
+    while(i < limit) {
+        const r = find_inner(limit, i)
+        if(r != 0 - 1) { return r }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+test "max" {
+    @assert(max(3, 7) == 7)
+}
+
+test "classify sign" {
+    @assert(classify_sign(5) == 1)
+    @assert(classify_sign(0 - 3) == 0 - 1)
+    @assert(classify_sign(0) == 0)
+}
+
+test "countdown" {
+    @assert(countdown(5) == 15)
+}
+
+test "with cleanup" {
+    @assert(with_cleanup() == 42)
+}
+
+test "match range" {
+    @assert(match_range(2) == 1)
+    @assert(match_range(5) == 2)
+    @assert(match_range(9) == 0)
+}
+
+test "match string" {
+    @assert(match_string("hello") == 1)
+    @assert(match_string("other") == 0)
+}
+
+test "indexed sum" {
+    @assert(indexed_sum() == 63)
+}
+
+// ─── Match Guards ────────────────────────────────────────────────────────────
+
+// match arms can have guards — the arm fires only when the guard is true
+
+func match_guard_example(n: i32) i32 {
+    match(n) {
+        (x if x > 0)  => { return x }
+        (x if x < 0)  => { return 0 - x }
+        else           => { return 0 }
+    }
+}
+
+test "match guard" {
+    @assert(match_guard_example(5) == 5)
+    @assert(match_guard_example(0 - 3) == 3)
+    @assert(match_guard_example(0) == 0)
+}

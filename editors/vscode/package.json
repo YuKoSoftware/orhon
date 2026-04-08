@@ -1,0 +1,83 @@
+{
+  "name": "orhon",
+  "displayName": "Orhon",
+  "description": "Language support for Orhon — syntax highlighting, diagnostics, hover, completion, references, rename, formatting, and more",
+  "version": "0.8.2",
+  "publisher": "YuKoSoftware",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "orhon",
+    "programming language",
+    "compiled",
+    "memory-safe",
+    "zig"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YuKoSoftware/orhon"
+  },
+  "icon": "icon.png",
+  "activationEvents": [
+    "onLanguage:orhon"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "orhon",
+        "aliases": [
+          "Orhon",
+          "orhon"
+        ],
+        "extensions": [
+          ".orh"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "orhon",
+        "scopeName": "source.orhon",
+        "path": "./syntaxes/orhon.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Orhon",
+      "properties": {
+        "orhon.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Orhon language server for diagnostics"
+        },
+        "orhon.lsp.path": {
+          "type": "string",
+          "default": "orhon",
+          "description": "Path to the orhon binary"
+        },
+        "orhon.inlayHints.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show inferred type hints for variables"
+        },
+        "orhon.completion.snippets": {
+          "type": "boolean",
+          "default": false,
+          "description": "Insert function call snippets with parameter placeholders"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.0.0"
+  }
+}

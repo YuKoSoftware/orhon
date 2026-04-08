@@ -1,0 +1,11 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+// string-literal imports are not supported — use .zig + .zon
+
+import "header.h"
+
+func main() void {
+}

@@ -1,0 +1,875 @@
+module comptest
+
+#version = (1, 0, 0)
+#build   = exe
+
+import std::console
+import std::string
+import tester
+
+func main() void {
+    // Runtime correctness — each check calls a tester function
+    // and prints PASS or FAIL. test.sh verifies no FAIL lines.
+
+    if(tester.add(2, 3) == 5) {
+        console.println("PASS add")
+    } else {
+        console.println("FAIL add")
+    }
+
+    if(tester.sub(10, 3) == 7) {
+        console.println("PASS sub")
+    } else {
+        console.println("FAIL sub")
+    }
+
+    if(tester.factorial(5) == 120) {
+        console.println("PASS factorial")
+    } else {
+        console.println("FAIL factorial")
+    }
+
+    if(tester.is_positive(1)) {
+        console.println("PASS is_positive")
+    } else {
+        console.println("FAIL is_positive")
+    }
+
+    if(tester.test_compound() == 70) {
+        console.println("PASS compound")
+    } else {
+        console.println("FAIL compound")
+    }
+
+    if(tester.sum_to(10) == 55) {
+        console.println("PASS sum_to")
+    } else {
+        console.println("FAIL sum_to")
+    }
+
+    if(tester.match_test(1) == 10) {
+        console.println("PASS match")
+    } else {
+        console.println("FAIL match")
+    }
+
+    if(tester.match_test(99) == 0) {
+        console.println("PASS match_default")
+    } else {
+        console.println("FAIL match_default")
+    }
+
+    if(tester.first_over(5) == 6) {
+        console.println("PASS break_continue")
+    } else {
+        console.println("FAIL break_continue")
+    }
+
+    if(tester.abs(0 - 7) == 7) {
+        console.println("PASS abs")
+    } else {
+        console.println("FAIL abs")
+    }
+
+    if(tester.doubled(21) == 42) {
+        console.println("PASS compt_func")
+    } else {
+        console.println("FAIL compt_func")
+    }
+
+    if(tester.add_default(5, 10) == 15) {
+        console.println("PASS default_param")
+    } else {
+        console.println("FAIL default_param")
+    }
+
+    if(tester.test_arithmetic(10, 5) == 0) {
+        console.println("PASS arithmetic")
+    } else {
+        console.println("FAIL arithmetic")
+    }
+
+    if(tester.test_comparisons(3, 5)) {
+        console.println("PASS comparisons")
+    } else {
+        console.println("FAIL comparisons")
+    }
+
+    if(tester.test_logical(true, false)) {
+        console.println("PASS logical")
+    } else {
+        console.println("FAIL logical")
+    }
+
+    if(tester.test_bitwise(6, 3) == 3) {
+        console.println("PASS bitwise")
+    } else {
+        console.println("FAIL bitwise")
+    }
+
+    if(tester.with_defer() == 99) {
+        console.println("PASS defer")
+    } else {
+        console.println("FAIL defer")
+    }
+
+    const greet_result: str = tester.greeting()
+    if(string.contains(greet_result, "hello world")) {
+        console.println("PASS greeting")
+    } else {
+        console.println("FAIL greeting")
+    }
+
+    const concat_result: str = tester.concat_test()
+    if(string.contains(concat_result, "foobar")) {
+        console.println("PASS concat")
+    } else {
+        console.println("FAIL concat")
+    }
+
+    if(tester.make_internal() == 42) {
+        console.println("PASS struct_instantiation")
+    } else {
+        console.println("FAIL struct_instantiation")
+    }
+
+    if(tester.test_defaults() == 42) {
+        console.println("PASS default_fields")
+    } else {
+        console.println("FAIL default_fields")
+    }
+
+    if(tester.test_defaults_override() == 99) {
+        console.println("PASS default_override")
+    } else {
+        console.println("FAIL default_override")
+    }
+
+    if(tester.test_static_method() == 10) {
+        console.println("PASS static_method")
+    } else {
+        console.println("FAIL static_method")
+    }
+
+    if(tester.test_mutable_method() == 3) {
+        console.println("PASS mutable_method")
+    } else {
+        console.println("FAIL mutable_method")
+    }
+
+    if(tester.test_error_ok() == 5) {
+        console.println("PASS error_ok")
+    } else {
+        console.println("FAIL error_ok")
+    }
+
+    if(tester.test_error_fail() == 0 - 1) {
+        console.println("PASS error_fail")
+    } else {
+        console.println("FAIL error_fail")
+    }
+
+    if(tester.test_null_some() == 50) {
+        console.println("PASS null_some")
+    } else {
+        console.println("FAIL null_some")
+    }
+
+    if(tester.test_null_none() == 0 - 1) {
+        console.println("PASS null_none")
+    } else {
+        console.println("FAIL null_none")
+    }
+
+    if(tester.test_null_inferred() == 50) {
+        console.println("PASS null_inferred")
+    } else {
+        console.println("FAIL null_inferred")
+    }
+
+    if(tester.test_null_reassign() == 42) {
+        console.println("PASS null_reassign")
+    } else {
+        console.println("FAIL null_reassign")
+    }
+
+    if(tester.test_enum() == 1) {
+        console.println("PASS enum_usage")
+    } else {
+        console.println("FAIL enum_usage")
+    }
+
+
+    if(tester.nested_scope() == 6) {
+        console.println("PASS nested_scopes")
+    } else {
+        console.println("FAIL nested_scopes")
+    }
+
+    if(tester.test_tuple() == 10) {
+        console.println("PASS tuple")
+    } else {
+        console.println("FAIL tuple")
+    }
+
+    if(tester.test_tuple_destruct() == 10) {
+        console.println("PASS tuple_destruct")
+    } else {
+        console.println("FAIL tuple_destruct")
+    }
+
+    if(tester.test_tuple_nominal() == 1) {
+        console.println("PASS tuple_nominal")
+    } else {
+        console.println("FAIL tuple_nominal")
+    }
+
+    if(tester.sum_slice_test() == 6) {
+        console.println("PASS slice_for")
+    } else {
+        console.println("FAIL slice_for")
+    }
+
+    if(tester.indexed_sum() == 63) {
+        console.println("PASS for_index")
+    } else {
+        console.println("FAIL for_index")
+    }
+
+    if(tester.sum_range(5) == 10) {
+        console.println("PASS for_range")
+    } else {
+        console.println("FAIL for_range")
+    }
+
+    if(tester.sum_while_continue(5) == 10) {
+        console.println("PASS while_continue")
+    } else {
+        console.println("FAIL while_continue")
+    }
+
+    const arr: [3]i32 = [10, 20, 30]
+    if(tester.sum_fixed_array(arr) == 60) {
+        console.println("PASS fixed_array")
+    } else {
+        console.println("FAIL fixed_array")
+    }
+
+    if(tester.array_index_test() == 20) {
+        console.println("PASS array_index")
+    } else {
+        console.println("FAIL array_index")
+    }
+
+    if(tester.slice_expr_test() == 9) {
+        console.println("PASS slice_expr")
+    } else {
+        console.println("FAIL slice_expr")
+    }
+
+    if(tester.apply_fn(tester.triple, 5) == 15) {
+        console.println("PASS func_ptr")
+    } else {
+        console.println("FAIL func_ptr")
+    }
+
+    if(tester.call_via_ptr() == 12) {
+        console.println("PASS func_ptr_var")
+    } else {
+        console.println("FAIL func_ptr_var")
+    }
+
+    if(tester.cast_to_i64(42) == 42) {
+        console.println("PASS cast_int")
+    } else {
+        console.println("FAIL cast_int")
+    }
+
+    if(tester.cast_to_f32(7) == 7.0) {
+        console.println("PASS cast_float")
+    } else {
+        console.println("FAIL cast_float")
+    }
+
+    if(tester.cast_float_to_int() == 3) {
+        console.println("PASS cast_float_to_int")
+    } else {
+        console.println("FAIL cast_float_to_int")
+    }
+
+    if(tester.typeid_same() == 1) {
+        console.println("PASS typeid_same")
+    } else {
+        console.println("FAIL typeid_same")
+    }
+
+    if(tester.typeid_diff() == 1) {
+        console.println("PASS typeid_diff")
+    } else {
+        console.println("FAIL typeid_diff")
+    }
+
+    if(tester.match_range(3) == 1 and tester.match_range(5) == 2 and tester.match_range(7) == 0) {
+        console.println("PASS match_range")
+    } else {
+        console.println("FAIL match_range")
+    }
+
+    if(tester.match_string("hello") == 1 and tester.match_string("world") == 2 and tester.match_string("x") == 0) {
+        console.println("PASS match_string")
+    } else {
+        console.println("FAIL match_string")
+    }
+
+    if(tester.test_list() == 20) {
+        console.println("PASS list")
+    } else {
+        console.println("FAIL list")
+    }
+
+    if(tester.test_list_len() == 40) {
+        console.println("PASS list_len")
+    } else {
+        console.println("FAIL list_len")
+    }
+
+    if(tester.test_map() == 42) {
+        console.println("PASS map")
+    } else {
+        console.println("FAIL map")
+    }
+
+    if(tester.test_set() == 1) {
+        console.println("PASS set")
+    } else {
+        console.println("FAIL set")
+    }
+
+    if(tester.test_map_iter() == 33) {
+        console.println("PASS map_iter")
+    } else {
+        console.println("FAIL map_iter")
+    }
+
+    if(tester.test_set_iter() == 10) {
+        console.println("PASS set_iter")
+    } else {
+        console.println("FAIL set_iter")
+    }
+
+    if(tester.test_split_at() == 21) {
+        console.println("PASS split_at")
+    } else {
+        console.println("FAIL split_at")
+    }
+
+    if(tester.test_split_list() == 100) {
+        console.println("PASS split_list")
+    } else {
+        console.println("FAIL split_list")
+    }
+
+    if(tester.test_wrap() == 5) {
+        console.println("PASS wrap")
+    } else {
+        console.println("FAIL wrap")
+    }
+
+    if(tester.test_sat() == 15) {
+        console.println("PASS sat")
+    } else {
+        console.println("FAIL sat")
+    }
+
+    if(tester.test_overflow_ok() == 8) {
+        console.println("PASS overflow")
+    } else {
+        console.println("FAIL overflow")
+    }
+
+    if(tester.test_alloc_default() == 300) {
+        console.println("PASS alloc_default")
+    } else {
+        console.println("FAIL alloc_default")
+    }
+
+    if(tester.test_alloc_arena() == 30) {
+        console.println("PASS alloc_arena")
+    } else {
+        console.println("FAIL alloc_arena")
+    }
+
+    if(tester.test_alloc_external() == 12) {
+        console.println("PASS alloc_external")
+    } else {
+        console.println("FAIL alloc_external")
+    }
+
+    if(tester.test_arb_union_return() == 1) {
+        console.println("PASS arb_union_return")
+    } else {
+        console.println("FAIL arb_union_return")
+    }
+
+    if(tester.test_arb_union_match() == 1) {
+        console.println("PASS arb_union_match")
+    } else {
+        console.println("FAIL arb_union_match")
+    }
+
+    if(tester.test_arb_union_field() == 99) {
+        console.println("PASS arb_union_field")
+    } else {
+        console.println("FAIL arb_union_field")
+    }
+
+    if(tester.test_arb_union_assign() == 1) {
+        console.println("PASS arb_union_assign")
+    } else {
+        console.println("FAIL arb_union_assign")
+    }
+
+    if(tester.test_arb_union_three() == 1) {
+        console.println("PASS arb_union_three")
+    } else {
+        console.println("FAIL arb_union_three")
+    }
+
+    if(tester.test_arb_value_positive() == 42) {
+        console.println("PASS arb_value_positive")
+    } else {
+        console.println("FAIL arb_value_positive")
+    }
+
+    if(tester.test_arb_value_negative() == 42) {
+        console.println("PASS arb_value_negative")
+    } else {
+        console.println("FAIL arb_value_negative")
+    }
+
+    if(tester.test_arb_value_inside() == 42) {
+        console.println("PASS arb_value_inside")
+    } else {
+        console.println("FAIL arb_value_inside")
+    }
+
+    if(tester.test_arb_value_match() == 42) {
+        console.println("PASS arb_value_match")
+    } else {
+        console.println("FAIL arb_value_match")
+    }
+
+    if(tester.test_str_upper() == 1) {
+        console.println("PASS str_upper")
+    } else {
+        console.println("FAIL str_upper")
+    }
+
+    if(tester.test_str_lower() == 1) {
+        console.println("PASS str_lower")
+    } else {
+        console.println("FAIL str_lower")
+    }
+
+    if(tester.test_str_replace() == 1) {
+        console.println("PASS str_replace")
+    } else {
+        console.println("FAIL str_replace")
+    }
+
+    if(tester.test_str_repeat() == 1) {
+        console.println("PASS str_repeat")
+    } else {
+        console.println("FAIL str_repeat")
+    }
+
+    if(tester.test_str_parse_int() == 42) {
+        console.println("PASS str_parse_int")
+    } else {
+        console.println("FAIL str_parse_int")
+    }
+
+    if(tester.test_str_parse_float() == 1) {
+        console.println("PASS str_parse_float")
+    } else {
+        console.println("FAIL str_parse_float")
+    }
+
+    if(tester.test_tostring_int() == 1) {
+        console.println("PASS tostring_int")
+    } else {
+        console.println("FAIL tostring_int")
+    }
+
+    if(tester.test_tostring_bool() == 1) {
+        console.println("PASS tostring_bool")
+    } else {
+        console.println("FAIL tostring_bool")
+    }
+
+    if(tester.test_interpolation() == 1) {
+        console.println("PASS interpolation")
+    } else {
+        console.println("FAIL interpolation")
+    }
+
+    if(tester.test_interpolation_int() == 1) {
+        console.println("PASS interpolation_int")
+    } else {
+        console.println("FAIL interpolation_int")
+    }
+
+    // Test: interpolation in if condition
+    if(tester.test_interpolation_if() == 1) {
+        console.println("PASS interpolation_if")
+    } else {
+        console.println("FAIL interpolation_if")
+    }
+
+    // Test: multiple interpolations in one statement
+    if(tester.test_interpolation_multi() == 1) {
+        console.println("PASS interpolation_multi")
+    } else {
+        console.println("FAIL interpolation_multi")
+    }
+
+    if(tester.test_string_eq() == 1) {
+        console.println("PASS string_eq")
+    } else {
+        console.println("FAIL string_eq")
+    }
+
+    if(tester.test_string_ne() == 1) {
+        console.println("PASS string_ne")
+    } else {
+        console.println("FAIL string_ne")
+    }
+
+    if(tester.test_string_eq_literal() == 1) {
+        console.println("PASS string_eq_literal")
+    } else {
+        console.println("FAIL string_eq_literal")
+    }
+
+    if(tester.test_string_eq_param("same", "same") == 1) {
+        console.println("PASS string_eq_param")
+    } else {
+        console.println("FAIL string_eq_param")
+    }
+
+    if(tester.test_thread() == 42) {
+        console.println("PASS thread")
+    } else {
+        console.println("FAIL thread")
+    }
+
+    if(tester.test_thread_multi() == 50) {
+        console.println("PASS thread_multi")
+    } else {
+        console.println("FAIL thread_multi")
+    }
+
+    if(tester.test_thread_params() == 42) {
+        console.println("PASS thread_params")
+    } else {
+        console.println("FAIL thread_params")
+    }
+
+    if(tester.test_thread_void() == 1) {
+        console.println("PASS thread_void")
+    } else {
+        console.println("FAIL thread_void")
+    }
+
+    if(tester.test_thread_done() == 10) {
+        console.println("PASS thread_done")
+    } else {
+        console.println("FAIL thread_done")
+    }
+
+    if(tester.test_thread_join() == 1) {
+        console.println("PASS thread_join")
+    } else {
+        console.println("FAIL thread_join")
+    }
+
+    if(tester.test_atomic() == 42) {
+        console.println("PASS atomic")
+    } else {
+        console.println("FAIL atomic")
+    }
+
+    if(tester.test_atomic_fetch() == 12) {
+        console.println("PASS atomic_fetch")
+    } else {
+        console.println("FAIL atomic_fetch")
+    }
+
+    if(tester.test_atomic_swap() == 100) {
+        console.println("PASS atomic_swap")
+    } else {
+        console.println("FAIL atomic_swap")
+    }
+
+    if(tester.test_atomic_bool() == 1) {
+        console.println("PASS atomic_bool")
+    } else {
+        console.println("FAIL atomic_bool")
+    }
+
+    if(tester.test_map_get() == 77) {
+        console.println("PASS map_get")
+    } else {
+        console.println("FAIL map_get")
+    }
+
+    // Test: struct passed by value
+    if(tester.test_struct_by_value() == 7.0) {
+        console.println("PASS struct_by_value")
+    } else {
+        console.println("FAIL struct_by_value")
+    }
+
+    // Test: var struct passed by value
+    if(tester.test_var_struct_by_value() == 30.0) {
+        console.println("PASS var_struct_by_value")
+    } else {
+        console.println("FAIL var_struct_by_value")
+    }
+
+    // Test: @copy() on const value produces owned copy
+    if(tester.test_const_copy() == 11.0) {
+        console.println("PASS const_copy")
+    } else {
+        console.println("FAIL const_copy")
+    }
+
+    // Test: static method with struct-typed first param (not receiver)
+    if(tester.test_static_method_struct_param() == 15.0) {
+        console.println("PASS static_method_struct_param")
+    } else {
+        console.println("FAIL static_method_struct_param")
+    }
+
+    // Test: elif on separate line from }
+    if(tester.test_elif_newline(1) == 10) {
+        console.println("PASS elif_newline")
+    } else {
+        console.println("FAIL elif_newline")
+    }
+
+    // Cross-module qualified is check — tests grammar/builder/codegen for is module.Type
+    const iso = tester.IsTestType{val: 42}
+    if(iso is tester.IsTestType) {
+        console.println("PASS is_qualified")
+    } else {
+        console.println("FAIL is_qualified")
+    }
+
+    // is not with a type that differs — i32 literal is not tester.IsTestType
+    const iso_n: i32 = 99
+    if(iso_n is not tester.IsTestType) {
+        console.println("PASS is_not_qualified")
+    } else {
+        console.println("FAIL is_not_qualified")
+    }
+
+    // Test: (Error | void) — success path returns void, no error
+    if(tester.test_error_void_ok() == 1) {
+        console.println("PASS error_void_ok")
+    } else {
+        console.println("FAIL error_void_ok")
+    }
+
+    // Test: (Error | void) — error path returns error
+    if(tester.test_error_void_fail() == 1) {
+        console.println("PASS error_void_fail")
+    } else {
+        console.println("FAIL error_void_fail")
+    }
+
+    // Test: @cast(EnumType, int) → @enumFromInt
+    if(tester.test_cast_to_enum() == 1) {
+        console.println("PASS cast_to_enum")
+    } else {
+        console.println("FAIL cast_to_enum")
+    }
+
+    // Test: (null | (A | B | C)) → ?(union(enum){...})
+    if(tester.test_null_multi_union() == 1) {
+        console.println("PASS null_multi_union")
+    } else {
+        console.println("FAIL null_multi_union")
+    }
+
+    // Test: ZeroField() → ZeroField{} (empty struct construction)
+    if(tester.test_empty_struct_construct() == 1) {
+        console.println("PASS empty_struct_construct")
+    } else {
+        console.println("FAIL empty_struct_construct")
+    }
+
+    // Test: match guards — (x if cond) arms
+    if(tester.match_guard(5) == 1 and tester.match_guard(0 - 3) == 0 - 1 and tester.match_guard(0) == 0) {
+        console.println("PASS match_guard")
+    } else {
+        console.println("FAIL match_guard")
+    }
+
+    // Test: match guard with enclosing scope variable
+    if(tester.match_guard_scope(10, 5) == 1 and tester.match_guard_scope(3, 5) == 0 and tester.match_guard_scope(5, 5) == 0) {
+        console.println("PASS match_guard_scope")
+    } else {
+        console.println("FAIL match_guard_scope")
+    }
+
+    // Test: negative literal arguments
+    if(tester.test_negative_args() == 1) {
+        console.println("PASS negative_literal_args")
+    } else {
+        console.println("FAIL negative_literal_args")
+    }
+
+    // Test: const& expr as call argument (explicit const borrow passing)
+    if(tester.test_const_borrow_arg() == 42) {
+        console.println("PASS const_borrow_arg")
+    } else {
+        console.println("FAIL const_borrow_arg")
+    }
+
+    // Struct introspection
+    if(tester.test_has_field() == 1) {
+        console.println("PASS has_field")
+    } else {
+        console.println("FAIL has_field")
+    }
+
+    if(tester.test_has_field_missing() == 1) {
+        console.println("PASS has_field_missing")
+    } else {
+        console.println("FAIL has_field_missing")
+    }
+
+    if(tester.test_has_field_value() == 1) {
+        console.println("PASS has_field_value")
+    } else {
+        console.println("FAIL has_field_value")
+    }
+
+    if(tester.test_has_decl() == 1) {
+        console.println("PASS has_decl")
+    } else {
+        console.println("FAIL has_decl")
+    }
+
+    if(tester.test_has_decl_missing() == 1) {
+        console.println("PASS has_decl_missing")
+    } else {
+        console.println("FAIL has_decl_missing")
+    }
+
+    if(tester.test_field_type() == 1) {
+        console.println("PASS field_type")
+    } else {
+        console.println("FAIL field_type")
+    }
+
+    if(tester.test_field_names() == 1) {
+        console.println("PASS field_names")
+    } else {
+        console.println("FAIL field_names")
+    }
+
+    // Test: compt func returning anonymous struct with method
+    if(tester.test_compt_struct() == 42) {
+        console.println("PASS compt_struct")
+    } else {
+        console.println("FAIL compt_struct")
+    }
+
+    // Test: compt struct default field values
+    if(tester.test_compt_struct_defaults() == 0) {
+        console.println("PASS compt_struct_defaults")
+    } else {
+        console.println("FAIL compt_struct_defaults")
+    }
+
+    // Test: for loop tuple capture — struct field destructuring
+    if(tester.test_tuple_capture() == 21) {
+        console.println("PASS tuple_capture")
+    } else {
+        console.println("FAIL tuple_capture")
+    }
+
+    // Test: for loop tuple capture with index
+    if(tester.test_tuple_capture_index() == 213) {
+        console.println("PASS tuple_capture_index")
+    } else {
+        console.println("FAIL tuple_capture_index")
+    }
+
+    // Test: (null | Error | T) — is Error check
+    if(tester.test_neu_is_error() == 1) {
+        console.println("PASS neu_is_error")
+    } else {
+        console.println("FAIL neu_is_error")
+    }
+
+    // Test: (null | Error | T) — is not Error check
+    if(tester.test_neu_is_not_error() == 1) {
+        console.println("PASS neu_is_not_error")
+    } else {
+        console.println("FAIL neu_is_not_error")
+    }
+
+    // Test: (null | Error | T) — .Error access
+    if(tester.test_neu_error_access() == 1) {
+        console.println("PASS neu_error_access")
+    } else {
+        console.println("FAIL neu_error_access")
+    }
+
+    // Test: (null | Error | T) — .value after null narrowing
+    if(tester.test_neu_value_after_null_narrow() == 42) {
+        console.println("PASS neu_value_after_null_narrow")
+    } else {
+        console.println("FAIL neu_value_after_null_narrow")
+    }
+
+    // Test: (null | Error | T) — .value after error narrowing
+    if(tester.test_neu_value_after_error_narrow() == 42) {
+        console.println("PASS neu_value_after_error_narrow")
+    } else {
+        console.println("FAIL neu_value_after_error_narrow")
+    }
+
+    // Test: (null | Error | T) — .value after both narrowings
+    if(tester.test_neu_value_after_both_narrow() == 42) {
+        console.println("PASS neu_value_after_both_narrow")
+    } else {
+        console.println("FAIL neu_value_after_both_narrow")
+    }
+
+    // Test: (null | Error | T) — match with all three arms
+    if(tester.test_neu_match_all_arms() == 1) {
+        console.println("PASS neu_match_all_arms")
+    } else {
+        console.println("FAIL neu_match_all_arms")
+    }
+
+    // Test: (null | Error | T) — match with Error + else
+    if(tester.test_neu_match_with_else() == 1) {
+        console.println("PASS neu_match_with_else")
+    } else {
+        console.println("FAIL neu_match_with_else")
+    }
+
+    // Test: array literal to slice assignment
+    if(tester.test_array_to_slice() == 1) {
+        console.println("PASS array_to_slice")
+    } else {
+        console.println("FAIL array_to_slice")
+    }
+
+    console.println("TESTER:DONE")
+}

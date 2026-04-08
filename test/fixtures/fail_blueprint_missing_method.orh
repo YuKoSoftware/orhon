@@ -1,0 +1,15 @@
+module fixture
+#version = (1, 0, 0)
+#build   = exe
+
+blueprint Eq {
+    func eq(self: const& Eq, other: const& Eq) bool
+}
+
+struct Point: Eq {
+    x: f32
+    y: f32
+}
+
+func main() void {
+}

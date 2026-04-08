@@ -1,0 +1,153 @@
+# Orhon — TODO
+
+Actionable items for the current development phase. Deferred and future work is in [[future]].
+
+---
+
+## Language Ergonomics
+
+### std::thread arity split `low`
+
+- **spawn/spawn2 arity split** — `spawn(f, arg)` for 1-arg, `spawn2(f, a, b)` for 2-arg.
+  Zig's `@call` needs a tuple but Orhon passes individual values. Needs spawn3+ for more args.
+  Requires positional tuple support to fix cleanly — deferred.
+
+---
+
+## Compt (Compile-Time Evaluation)
+
+### `compt func` codegen is incorrect `critical`
+
+Value-computing `compt func` emits `inline fn`, which does NOT guarantee compile-time
+evaluation — it just inlines machine code at call sites. Zig's `comptime` on parameters
+is what actually forces compile-time evaluation. The spec promises "entire body runs
+during compilation" but the implementation doesn't deliver that.
+
+**Design decision needed:** Hard compile-time guarantee (fix codegen to use `comptime`
+parameters — correct per spec but restricts usage) vs soft preference (fix spec to
+match current behavior — more permissive but weaker guarantees).
+
+### Missing `@compileError` compiler function `medium`
+
+Library authors can't enforce compile-time constraints. This is a trivial 1:1 Zig
+mapping (`@compileError`) that's missing. Should be added as a compiler function.
+
+### No `inline for` support `medium`
+
+Can't iterate `@fieldNames` at compile time. Needed for reflection patterns and
+compile-time metaprogramming over struct fields.
+
+### Zero negative tests for compt `medium`
+
+No `fail_*.orh` tests for compt misuse (e.g., passing runtime values to a compt func,
+invalid compt block contents). Need coverage for expected compilation failures.
+
+### Compt blocks in function bodies — thin coverage `low`
+
+Spec allows `compt` blocks inside function bodies, but test coverage and example
+module coverage is thin. Needs more fixtures and example module entries.
+
+### No compt-aware type resolution `low`
+
+The type resolver doesn't distinguish compt vs runtime contexts. This limits the
+compiler's ability to catch compt constraint violations early.
+
+---
+
+## Developer Experience
+
+### Error message quality `medium`
+
+- Cross-module errors should show module context
+- Generic instantiation failures should show the constraint that failed
+- Common mistake detection — token insertions/deletions at failure point
+- `else if` → suggest `elif` (currently produces generic parse error expecting `{`)
+
+### Formatter — line-length awareness `medium`
+
+Missing: wrapping for long lines, function signature breaking rules, alignment
+for multi-line assignments, comment-aware formatting, configurable style.
+
+### LSP — feature-gated passes `medium`
+
+Gate passes by request type instead of running 1–9 on every change:
+- **Completion:** passes 1–4 (parse + declarations)
+- **Hover:** passes 1–5 (+ type resolution)
+- **Diagnostics:** passes 1–9, debounced 100–300ms
+
+Add cancellation tokens for in-flight analysis.
+
+### LSP — incremental document sync `hard`
+
+Full reparse on every keystroke. No incremental updates, no background compilation,
+limited completion context.
+
+---
+
+## Testing
+
+### Incremental cache skip verification `medium`
+
+`test/05_compile.sh` only checks that rebuild succeeds and hashes file exists.
+It does not verify that unchanged modules are actually skipped. Add a test that
+builds twice without changes and verifies generated `.zig` timestamps are unchanged.
+
+### Property-based pipeline testing `medium`
+
+- Parse then pretty-print should round-trip
+- Type-checking the same input twice should give identical results
+- Codegen output should always be valid Zig (`zig ast-check`)
+
+---
+
+## Architectural Decisions (Settled)
+
+| Decision | Rationale |
+|----------|-----------|
+| Fix bugs before architecture work | Correctness before performance/elegance |
+| Pointers in std, not compiler | Borrows handle safe refs; std::ptr is the escape hatch |
+| Transparent (structural) type aliases | `Speed == i32`, not a distinct nominal type |
+| Allocator via `.withAlloc(alloc)`, not generic param | Keeps generics pure (types only) |
+| SMP as default allocator | GeneralPurposeAllocator optimized for general use |
+| Zig-as-module for Zig interop | `.zig` files auto-convert to Orhon modules |
+| Explicit error propagation via `if/return` | No hidden control flow, no special keywords |
+| Parenthesized guard syntax `(x if expr)` | Consistent with syntax containment rule |
+| Hub + satellite split pattern | All large file splits use same pattern for consistency |
+| `is` restricted to if/elif only | Narrowing only works in if/elif; `@typeOf` covers other contexts |
+| `blueprint` for traits, not `impl` blocks | Everything visible at the definition site |
+| No Zig IR layer in codegen | Direct string emission. MIR/SSA is the optimization target |
+
+---
+
+## Architectural Decisions (Open)
+
+| Decision | Options | Tradeoff |
+|----------|---------|----------|
+| `compt func` semantics | **A:** Hard compile-time (emit `comptime` params) **B:** Soft preference (keep `inline fn`, fix spec) | A is correct per spec but restricts usage; B is more permissive but weaker guarantees |
+| `inline for` timing | **A:** Add now for `@fieldNames` iteration **B:** Defer until more metaprogramming demand | A unblocks reflection patterns; B avoids premature feature surface |
+| `@compileError` ownership | **A:** Orhon compiler function **B:** Users write it in Zig sidecar files | A is ergonomic and trivial 1:1 mapping; B keeps compiler function list minimal |
+
+---
+
+## Explicitly NOT Adding
+
+| Feature | Why Not |
+|---------|---------|
+| Macros | `compt` covers the use cases without readability costs |
+| Algebraic effects | Too complex. Union-based errors + Zig module I/O is sufficient |
+| Row polymorphism / structural typing | Contradicts Orhon's nominal type system |
+| Garbage collection | Contradicts systems language positioning. Explicit allocators |
+| Exceptions | Union-based errors are better for compiled languages |
+| Operator overloading | Leads to unreadable code. Named methods are clearer |
+| Multiple inheritance | Composition via struct embedding is sufficient |
+| Implicit conversions | Explicit `@cast()` is correct. Implicit conversions cause subtle bugs |
+| Refinement types | Struct-validation pattern already covers this |
+| Full Polonius borrow checker | Overkill. NLL gives 85% of the benefit for 30% of the work |
+| Zig IR layer in codegen | Would model Zig semantics inside the compiler |
+| Arena allocator pairing syntax | `.withAlloc(alloc)` already covers composed allocators via Zig module |
+| `#derive` auto-generation | Blueprints require explicit implementation. No implicit anything |
+| `#extern` / `#packed` struct layout | `.zig` modules already support these natively |
+| `async` keyword | Wait for Zig's new async design, then map cleanly. `std::thread` + `thread.Atomic` covers parallelism |
+| Compound `is` (`and`/`or`) | Narrowing can't handle multiple simultaneous type checks. Use nested ifs |
+| `is` outside if/elif | `is` is a narrowing construct, not a general operator. Use `@typeOf` for type checks |
+| `capture()` / closures | No anonymous functions. State passed as arguments — explicit, obvious |

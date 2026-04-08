@@ -1,0 +1,6 @@
+module fixture
+#version = (1, 0, 0)
+#build   = exe
+import does_not_exist
+func main() void {
+}

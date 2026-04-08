@@ -1,0 +1,10 @@
+module {s}
+
+#version = (0, 1, 0)
+#build   = exe
+
+import std::console
+
+func main() void {
+    console.println("hello orhon !")
+}

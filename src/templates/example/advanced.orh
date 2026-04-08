@@ -1,0 +1,198 @@
+module example
+
+import std::console
+import std::thread
+use std::collections
+
+// ─── Collections ────────────────────────────────────────────────────────────
+
+// List(T) — growable array
+
+func list_demo() i32 {
+    var items: List(i32) = List(i32).new()
+    defer { items.free() }
+    items.add(10)
+    items.add(20)
+    items.add(30)
+    return items.get(1)
+}
+
+// Map(K, V) — key-value store
+
+func map_demo() i32 {
+    var scores: Map(str, i32) = Map(str, i32).new()
+    defer { scores.free() }
+    scores.put("alice", 42)
+    scores.put("bob", 99)
+    if(scores.has("alice")) { return 1 }
+    return 0
+}
+
+// Map.get returns (null | V)
+
+func map_get_demo() i32 {
+    var m: Map(str, i32) = Map(str, i32).new()
+    defer { m.free() }
+    m.put("x", 77)
+    const result: (null | i32) = m.get("x")
+    if(result is not null) {
+        return result.i32
+    }
+    return 0
+}
+
+// Set(T) — unique elements
+
+func set_demo() i32 {
+    var seen: Set(i32) = Set(i32).new()
+    defer { seen.free() }
+    seen.add(5)
+    seen.add(5)
+    seen.add(6)
+    if(seen.has(5) and seen.has(6)) { return 1 }
+    return 0
+}
+
+// ─── Threads ────────────────────────────────────────────────────────────────
+
+// Thread(T).spawn() — run a function in a new thread, join for the result
+
+func double_it(x: i32) i32 {
+    return x * 2
+}
+
+func thread_demo() i32 {
+    var t: thread.Thread(i32) = thread.Thread(i32).spawn(double_it, 21)
+    return t.join()
+}
+
+// ─── Atomics ────────────────────────────────────────────────────────────────
+
+// thread.Atomic(T) — lock-free atomic value for thread-safe shared state
+
+func atomic_demo() i32 {
+    var counter: thread.Atomic(i32) = thread.Atomic(i32).new(0)
+    counter.store(42)
+    return counter.load()
+}
+
+// ─── Cast ───────────────────────────────────────────────────────────────────
+
+// @cast(TargetType, value) — explicit type conversion
+
+func cast_demo() i64 {
+    const x: i32 = 42
+    return @cast(i64, x)
+}
+
+func cast_float() i32 {
+    return @cast(i32, 3.7)
+}
+
+// ─── typeid ─────────────────────────────────────────────────────────────────
+
+// @typeid(value) — compare types at runtime
+
+func typeid_demo() i32 {
+    const x: i32 = 1
+    const y: i32 = 2
+    if(@typeid(x) == @typeid(y)) { return 1 }
+    return 0
+}
+
+// ─── @splitAt ───────────────────────────────────────────────────────────────
+
+// @splitAt — splits array into two non-overlapping slices
+
+func split_demo() i32 {
+    const arr: [6]i32 = [1, 2, 3, 4, 5, 6]
+    const left, right = @splitAt(arr, 3)
+    var total: i32 = 0
+    for(left) |v| { total += v }
+    for(right) |v| { total += v }
+    return total
+}
+
+// ─── Pass by Value vs Reference ─────────────────────────────────────────────
+
+// By default, structs are passed by value (copied).
+// Use const& for large types to avoid copies.
+
+func read_point(p: Point) f64 {
+    return p.x + p.y
+}
+
+func by_value_demo() i32 {
+    const p: Point = Point{x: 3.0, y: 4.0}
+    const sum1: f64 = read_point(p)
+    const sum2: f64 = read_point(p)
+    if (sum1 == sum2) { return 1 }
+    return 0
+}
+
+// ─── Type Aliases ───────────────────────────────────────────────────────────
+
+// const Name: type = T — creates a transparent type alias
+
+const Speed: type = i32
+
+pub const Distance: type = f64
+
+// Aliases work with all type forms
+
+const Scores: type = List(i32)
+
+const OptionalInt: type = (null | i32)
+
+const Fallible: type = (Error | i32)
+
+func type_alias_demo() i32 {
+    const s: Speed = 42
+    return s
+}
+
+func type_alias_local() i32 {
+    const MyInt: type = i32
+    const x: MyInt = 7
+    return x
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+test "by value passing" {
+    @assert(by_value_demo() == 1)
+}
+
+test "type alias" {
+    @assert(type_alias_demo() == 42)
+    @assert(type_alias_local() == 7)
+}
+
+
+test "list" {
+    @assert(list_demo() == 20)
+}
+
+test "map" {
+    @assert(map_demo() == 1)
+}
+
+test "set" {
+    @assert(set_demo() == 1)
+}
+
+test "thread" {
+    @assert(thread_demo() == 42)
+}
+
+test "atomic" {
+    @assert(atomic_demo() == 42)
+}
+
+test "cast" {
+    @assert(cast_float() == 3)
+}
+
+test "split" {
+    @assert(split_demo() == 21)
+}

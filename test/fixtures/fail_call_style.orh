@@ -1,0 +1,27 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+pub struct Counter {
+    pub count: i32
+
+    pub func increment(self: mut& Counter) void {
+        self.count = self.count + 1
+    }
+
+    pub func zero() Counter {
+        return Counter{count: 0}
+    }
+}
+
+func bad_static_on_instance() void {
+    var c: Counter = Counter.zero()
+    c.zero()
+}
+
+func bad_instance_on_type() void {
+    Counter.increment()
+}
+
+func main() void { }

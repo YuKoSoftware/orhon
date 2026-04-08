@@ -1,0 +1,8 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+var x: i32 = 0
+
+func main() void { }

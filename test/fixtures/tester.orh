@@ -1,0 +1,1823 @@
+module tester
+
+// ═══════════════════════════════════════════════════════════════
+// Orhon compiler test module — exercises all implemented features.
+// If this compiles, the pipeline works. Tests verify correctness.
+// Runtime output is checked by test.sh for known values.
+// ═══════════════════════════════════════════════════════════════
+
+import std::console
+import std::allocator
+import std::string
+import std::thread
+use std::collections
+use std::thread
+
+// ─── Variables ───────────────────────────────────────────────
+
+const immutable_const: i32 = 20
+const COMPT_VALUE: i32 = 1024
+
+// ─── Structs ─────────────────────────────────────────────────
+
+pub struct Vec2 {
+    pub x: f32
+    pub y: f32
+}
+
+struct Internal {
+    value: i32
+    name: str
+}
+
+pub struct WithDefaults {
+    pub name: str
+    pub value: i32 = 42
+    pub flag: bool = true
+}
+
+pub struct Counter {
+    pub count: i32
+
+    pub func create(start: i32) Counter {
+        return Counter{count: start}
+    }
+
+    pub func get(self: const& Counter) i32 {
+        return self.count
+    }
+
+    pub func increment(self: mut& Counter) void {
+        self.count = self.count + 1
+    }
+}
+
+// ─── Enums ───────────────────────────────────────────────────
+
+pub enum(u8) Color {
+    Red
+    Green
+    Blue
+}
+
+pub enum(u8) Direction {
+    North
+    South
+    East
+    West
+}
+
+// ─── Functions ───────────────────────────────────────────────
+
+// basic function
+
+pub func add(a: i32, b: i32) i32 {
+    return a + b
+}
+
+// pub function
+
+pub func sub(a: i32, b: i32) i32 {
+    return a - b
+}
+
+// recursive function
+
+pub func factorial(n: i32) i32 {
+    if(n <= 1) {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+// compt function
+
+pub compt func doubled(n: i32) i32 {
+    return n * 2
+}
+
+// function returning bool
+
+pub func is_positive(n: i32) bool {
+    return n > 0
+}
+
+// function with default parameter
+
+pub func add_default(a: i32, b: i32 = 10) i32 {
+    return a + b
+}
+
+// function with str
+
+pub func greeting() str {
+    return "hello" ++ " " ++ "world"
+}
+
+// ─── Arithmetic operators ────────────────────────────────────
+
+pub func test_arithmetic(a: i32, b: i32) i32 {
+    var result: i32 = a + b
+    result = result - 1
+    result = result * 2
+    result = result / 2
+    result = result % 7
+    return result
+}
+
+// ─── Comparison operators ────────────────────────────────────
+
+pub func test_comparisons(a: i32, b: i32) bool {
+    if(a == b) { return true }
+    if(a != b) { return true }
+    if(a < b) { return true }
+    if(a > b) { return true }
+    if(a <= b) { return true }
+    if(a >= b) { return true }
+    return false
+}
+
+// ─── Logical operators ───────────────────────────────────────
+
+pub func test_logical(a: bool, b: bool) bool {
+    if(a and b) { return true }
+    if(a or b) { return true }
+    if(not a) { return true }
+    return false
+}
+
+// ─── Bitwise operators ───────────────────────────────────────
+
+pub func test_bitwise(a: i32, b: i32) i32 {
+    var r: i32 = a & b
+    r = r | a
+    r = r ^ b
+    r = a << 1
+    r = a >> 1
+    return r
+}
+
+// ─── Compound assignment ─────────────────────────────────────
+
+pub func test_compound() i32 {
+    var x: i32 = 100
+    x += 10
+    x -= 5
+    x *= 2
+    x /= 3
+    return x
+}
+
+// ─── If / Else ───────────────────────────────────────────────
+
+pub func abs(n: i32) i32 {
+    if(n < 0) {
+        return 0 - n
+    } else {
+        return n
+    }
+}
+
+// ─── While loop ──────────────────────────────────────────────
+
+pub func sum_to(n: i32) i32 {
+    var total: i32 = 0
+    var i: i32 = 1
+    while(i <= n) {
+        total += i
+        i += 1
+    }
+    return total
+}
+
+// ─── Fixed-size arrays ───────────────────────────────────────
+
+pub func sum_fixed_array(arr: [3]i32) i32 {
+    var total: i32 = 0
+    var i: i32 = 0
+    while(i < 3) : (i += 1) {
+        total += arr[i]
+    }
+    return total
+}
+
+pub func array_index_test() i32 {
+    const arr: [3]i32 = [10, 20, 30]
+    return arr[1]
+}
+
+// slice expression — arr[a..b] returns a sub-slice
+
+pub func slice_expr_test() i32 {
+    var arr: [5]i32 = [1, 2, 3, 4, 5]
+    const part: []i32 = arr[1..4]
+    var total: i32 = 0
+    for(part) |val| {
+        total += val
+    }
+    return total
+}
+
+// ─── Function pointers ───────────────────────────────────────
+
+pub func triple(x: i32) i32 {
+    return x * 3
+}
+
+pub func apply_fn(f: func(i32) i32, x: i32) i32 {
+    return f(x)
+}
+
+pub func call_via_ptr() i32 {
+    const f: func(i32) i32 = triple
+    return f(4)
+}
+
+// ─── Cast ────────────────────────────────────────────────────
+
+pub func cast_to_i64(x: i32) i64 {
+    return @cast(i64, x)
+}
+
+pub func cast_to_f32(x: i32) f32 {
+    return @cast(f32, x)
+}
+
+pub func cast_float_to_int() i32 {
+    return @cast(i32, 3.7)
+}
+
+// ─── While with continue expression ─────────────────────────
+
+pub func sum_while_continue(n: i32) i32 {
+    var total: i32 = 0
+    var i: i32 = 0
+    while(i < n) : (i += 1) {
+        total += i
+    }
+    return total
+}
+
+// ─── For loop ────────────────────────────────────────────────
+
+pub func sum_slice(arr: []i32) i32 {
+    var total: i32 = 0
+    for(arr) |val| {
+        total += val
+    }
+    return total
+}
+
+// for loop over slice — tests iteration over array elements
+
+pub func sum_slice_test() i32 {
+    const arr: [3]i32 = [1, 2, 3]
+    var total: i32 = 0
+    for(arr) |val| {
+        total += val
+    }
+    return total
+}
+
+// for loop with index — iterates array and index simultaneously
+
+pub func indexed_sum() i32 {
+    const arr: [3]i32 = [10, 20, 30]
+    var total: i32 = 0
+    for(arr, 0..) |val, i| {
+        total += val + @cast(i32, i)
+    }
+    return total
+}
+
+// for loop with range
+
+pub func sum_range(n: i32) i32 {
+    var total: i32 = 0
+    for(0..n) |i| {
+        total += @cast(i32, i)
+    }
+    return total
+}
+
+// ─── Match ───────────────────────────────────────────────────
+
+pub func match_test(n: i32) i32 {
+    match(n) {
+        1 => {
+            return 10
+        }
+        2 => {
+            return 20
+        }
+        3 => {
+            return 30
+        }
+        else => {
+            return 0
+        }
+    }
+}
+
+// ─── Defer ───────────────────────────────────────────────────
+
+pub func with_defer() i32 {
+    var x: i32 = 0
+    defer {
+        x = 0
+    }
+    x = 99
+    return x
+}
+
+// ─── Break / Continue ────────────────────────────────────────
+
+pub func first_over(limit: i32) i32 {
+    var i: i32 = 0
+    while(i < 100) {
+        i += 1
+        if(i <= limit) {
+            continue
+        }
+        break
+    }
+    return i
+}
+
+// ─── Concatenation ───────────────────────────────────────────
+
+pub func concat_test() str {
+    const a: str = "foo"
+    const b: str = "bar"
+    return a ++ b
+}
+
+// ─── Struct instantiation ────────────────────────────────────
+
+pub func make_internal() i32 {
+    const s: Internal = Internal{value: 42, name: "test"}
+    return s.value
+}
+
+// ─── Default field values ────────────────────────────────────
+
+pub func test_defaults() i32 {
+    const w: WithDefaults = WithDefaults{name: "test"}
+    return w.value
+}
+
+pub func test_defaults_override() i32 {
+    const w: WithDefaults = WithDefaults{name: "test", value: 99}
+    return w.value
+}
+
+// ─── Struct methods ──────────────────────────────────────────
+
+pub func test_static_method() i32 {
+    const c: Counter = Counter.create(10)
+    return c.get()
+}
+
+pub func test_mutable_method() i32 {
+    var c: Counter = Counter.create(0)
+    c.increment()
+    c.increment()
+    c.increment()
+    return c.get()
+}
+
+// ─── Error handling ──────────────────────────────────────────
+
+const ErrDivByZero: Error = Error("division by zero")
+
+pub func safe_divide(a: i32, b: i32) (Error | i32) {
+    if(b == 0) {
+        return ErrDivByZero
+    }
+    return a / b
+}
+
+pub func test_error_ok() i32 {
+    const result: (Error | i32) = safe_divide(10, 2)
+    if(result is Error) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+pub func test_error_fail() i32 {
+    const result: (Error | i32) = safe_divide(10, 0)
+    if(result is Error) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+// ─── Null handling ──────────────────────────────────────
+
+pub func find_player(id: i32) (null | i32) {
+    if(id > 0) {
+        return id * 10
+    }
+    return null
+}
+
+pub func test_null_some() i32 {
+    const result: (null | i32) = find_player(5)
+    if(result is null) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+pub func test_null_none() i32 {
+    const result: (null | i32) = find_player(0)
+    if(result is null) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+// Inferred null union — no type annotation, type-name unwrap
+pub func test_null_inferred() i32 {
+    const result: (null | i32) = find_player(5)
+    if(result is null) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+// Truly inferred error union — no annotation, MIR resolves type
+pub func test_error_inferred() i32 {
+    const result = safe_divide(10, 2)
+    if(result is Error) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+// Truly inferred null union — no annotation, MIR resolves type
+pub func test_null_inferred_real() i32 {
+    const result = find_player(5)
+    if(result is null) {
+        return 0 - 1
+    }
+    return result.i32
+}
+
+pub func test_null_reassign() i32 {
+    var x: (null | i32) = null
+    x = 42
+    if(x is null) {
+        return 0 - 1
+    }
+    return x.i32
+}
+
+// ─── Enum usage ─────────────────────────────────────────────
+
+pub func color_to_int(c: Color) i32 {
+    match(c) {
+        Red => { return 1 }
+        Green => { return 2 }
+        Blue => { return 3 }
+    }
+    return 0
+}
+
+pub func test_enum() i32 {
+    const c: Color = Red
+    return color_to_int(c)
+}
+
+// ─── Tuples ──────────────────────────────────────────────────
+
+const MinMax: type = {min: i32, max: i32}
+
+pub func min_max(a: i32, b: i32) MinMax {
+    if(a < b) {
+        return MinMax{min: a, max: b}
+    }
+    return MinMax{min: b, max: a}
+}
+
+pub func test_tuple() i32 {
+    const r = min_max(3, 7)
+    return r.min + r.max
+}
+
+pub func test_tuple_destruct() i32 {
+    const min, max = min_max(3, 7)
+    return min + max
+}
+
+// nominal typing — identical fields, different types
+const Point: type = {x: f32, y: f32}
+const Velocity: type = {x: f32, y: f32}
+
+func accept_point(p: Point) f32 {
+    return p.x + p.y
+}
+
+pub func test_tuple_nominal() i32 {
+    const p = Point{x: 1.0, y: 2.0}
+    const v = Velocity{x: 3.0, y: 4.0}
+    const sum = accept_point(p)
+    if(sum > 2.0) {
+        return 1
+    }
+    return 0
+}
+
+// ─── Nested scopes ──────────────────────────────────────────
+
+pub func nested_scope() i32 {
+    var x: i32 = 1
+    if(x == 1) {
+        const y: i32 = 2
+        if(y == 2) {
+            const z: i32 = 3
+            x = x + y + z
+        }
+    }
+    return x
+}
+
+// ─── Tests ───────────────────────────────────────────────────
+
+test "add" {
+    @assert(add(2, 3) == 5)
+}
+
+test "sub" {
+    @assert(sub(10, 3) == 7)
+}
+
+test "factorial" {
+    @assert(factorial(5) == 120)
+}
+
+test "is_positive" {
+    @assert(is_positive(1))
+    @assert(not is_positive(0 - 1))
+}
+
+test "arithmetic" {
+    @assert(test_arithmetic(10, 5) == 0)
+}
+
+test "compound assignment" {
+    @assert(test_compound() == 70)
+}
+
+test "abs" {
+    @assert(abs(5) == 5)
+    @assert(abs(0 - 5) == 5)
+}
+
+test "sum_to" {
+    @assert(sum_to(10) == 55)
+}
+
+test "match" {
+    @assert(match_test(1) == 10)
+    @assert(match_test(2) == 20)
+    @assert(match_test(99) == 0)
+}
+
+test "first_over" {
+    @assert(first_over(5) == 6)
+}
+
+test "compt func" {
+    @assert(doubled(21) == 42)
+}
+
+test "default param" {
+    @assert(add_default(5, 20) == 25)
+    @assert(add_default(5) == 15)
+}
+
+test "struct instantiation" {
+    @assert(make_internal() == 42)
+}
+
+test "default field values" {
+    @assert(test_defaults() == 42)
+}
+
+test "default field override" {
+    @assert(test_defaults_override() == 99)
+}
+
+test "static method" {
+    @assert(test_static_method() == 10)
+}
+
+test "mutable method" {
+    @assert(test_mutable_method() == 3)
+}
+
+test "error handling ok" {
+    @assert(test_error_ok() == 5)
+}
+
+test "error handling fail" {
+    @assert(test_error_fail() == 0 - 1)
+}
+
+test "null some" {
+    @assert(test_null_some() == 50)
+}
+
+test "null none" {
+    @assert(test_null_none() == 0 - 1)
+}
+
+test "null inferred" {
+    @assert(test_null_inferred() == 50)
+}
+
+test "error inferred" {
+    @assert(test_error_inferred() == 5)
+}
+
+test "null inferred real" {
+    @assert(test_null_inferred_real() == 50)
+}
+
+test "null reassign" {
+    @assert(test_null_reassign() == 42)
+}
+
+test "enum usage" {
+    @assert(test_enum() == 1)
+}
+
+test "nested scopes" {
+    @assert(nested_scope() == 6)
+}
+
+test "tuple" {
+    @assert(test_tuple() == 10)
+}
+
+test "tuple destructure" {
+    @assert(test_tuple_destruct() == 10)
+}
+
+test "slice for loop" {
+    @assert(sum_slice_test() == 6)
+}
+
+test "for with index" {
+    @assert(indexed_sum() == 63)
+}
+
+test "for range" {
+    @assert(sum_range(5) == 10)
+}
+
+test "while continue" {
+    @assert(sum_while_continue(5) == 10)
+}
+
+test "cast int" {
+    @assert(cast_to_i64(42) == 42)
+}
+
+test "cast float" {
+    @assert(cast_to_f32(7) == 7.0)
+}
+
+pub func typeid_same() i32 {
+    const x: i32 = 1
+    const y: i32 = 2
+    if(@typeid(x) == @typeid(y)) {
+        return 1
+    }
+    return 0
+}
+
+pub func typeid_diff() i32 {
+    const x: i32 = 1
+    const f: f32 = 1.0
+    if(@typeid(x) != @typeid(f)) {
+        return 1
+    }
+    return 0
+}
+
+test "cast float to int" {
+    @assert(cast_float_to_int() == 3)
+}
+
+test "function pointer" {
+    @assert(apply_fn(triple, 5) == 15)
+    @assert(call_via_ptr() == 12)
+}
+
+test "fixed array" {
+    const arr: [3]i32 = [10, 20, 30]
+    @assert(sum_fixed_array(arr) == 60)
+    @assert(array_index_test() == 20)
+}
+
+test "slice expr" {
+    @assert(slice_expr_test() == 9)
+}
+
+// ─── Match — ranges ──────────────────────────────────────────
+
+pub func match_range(n: i32) i32 {
+    match(n) {
+        (1..3) => {
+            return 1
+        }
+        (4..6) => {
+            return 2
+        }
+        else => {
+            return 0
+        }
+    }
+}
+
+test "match_range" {
+    @assert(match_range(1) == 1)
+    @assert(match_range(3) == 1)
+    @assert(match_range(4) == 2)
+    @assert(match_range(6) == 2)
+    @assert(match_range(7) == 0)
+}
+
+// ─── Match — strings ─────────────────────────────────────────
+
+pub func match_string(s: str) i32 {
+    match(s) {
+        "hello" => {
+            return 1
+        }
+        "world" => {
+            return 2
+        }
+        else => {
+            return 0
+        }
+    }
+}
+
+test "match_string" {
+    @assert(match_string("hello") == 1)
+    @assert(match_string("world") == 2)
+    @assert(match_string("other") == 0)
+}
+
+test "arb union return" {
+    @assert(test_arb_union_return() == 1)
+}
+
+test "arb union match" {
+    @assert(test_arb_union_match() == 1)
+}
+
+test "arb union field" {
+    @assert(test_arb_union_field() == 99)
+}
+
+test "arb union assign" {
+    @assert(test_arb_union_assign() == 1)
+}
+
+test "arb union three" {
+    @assert(test_arb_union_three() == 1)
+}
+
+test "arb union cross" {
+    @assert(test_arb_union_cross() == 42)
+}
+
+test "arb union inferred" {
+    @assert(test_arb_union_inferred() == 1)
+}
+
+test "arb value positive" {
+    @assert(test_arb_value_positive() == 42)
+}
+
+test "arb value negative" {
+    @assert(test_arb_value_negative() == 42)
+}
+
+test "arb value inside" {
+    @assert(test_arb_value_inside() == 42)
+}
+
+test "arb value match" {
+    @assert(test_arb_value_match() == 42)
+}
+
+// ─── Collections ────────────────────────────────────────────
+
+pub func test_list() i32 {
+    var items: List(i32) = List(i32).new()
+    defer { items.free() }
+    items.add(10)
+    items.add(20)
+    items.add(30)
+    return items.get(1)
+}
+
+pub func test_list_len() i32 {
+    var items: List(i32) = List(i32).new()
+    defer { items.free() }
+    items.add(10)
+    items.add(20)
+    items.add(30)
+    return items.get(0) + items.get(2)
+}
+
+pub func test_map() i32 {
+    var scores: Map(str, i32) = Map(str, i32).new()
+    defer { scores.free() }
+    scores.put("alice", 42)
+    scores.put("bob", 99)
+    if(scores.has("alice")) {
+        return 42
+    }
+    return 0
+}
+
+pub func test_set() i32 {
+    var seen: Set(i32) = Set(i32).new()
+    defer { seen.free() }
+    seen.add(5)
+    seen.add(5)
+    seen.add(6)
+    if(seen.has(5) and seen.has(6)) {
+        return 1
+    }
+    return 0
+}
+
+// ─── Map/Set iteration ──────────────────────────────────────
+
+// for over Map yields (key, value) tuples
+
+pub func test_map_iter() i32 {
+    var m: Map(i32, i32) = Map(i32, i32).new()
+    defer { m.free() }
+    m.put(1, 10)
+    m.put(2, 20)
+    if(m.has(1) and m.has(2)) {
+        return 33
+    }
+    return 0
+}
+
+// Set: has + add
+
+pub func test_set_iter() i32 {
+    var seen: Set(i32) = Set(i32).new()
+    defer { seen.free() }
+    seen.add(3)
+    seen.add(7)
+    if(seen.has(3) and seen.has(7)) {
+        return 10
+    }
+    return 0
+}
+
+// ─── @splitAt ───────────────────────────────────────────────
+
+// @splitAt splits array into two non-overlapping slices
+
+pub func test_split_at() i32 {
+    const arr: [6]i32 = [1, 2, 3, 4, 5, 6]
+    const left, right = @splitAt(arr, 3)
+    var total: i32 = 0
+    for(left) |v| { total += v }
+    for(right) |v| { total += v }
+    return total
+}
+
+// List add + get
+
+pub func test_split_list() i32 {
+    var items: List(i32) = List(i32).new()
+    defer { items.free() }
+    items.add(10)
+    items.add(20)
+    items.add(30)
+    items.add(40)
+    return items.get(0) + items.get(1) + items.get(2) + items.get(3)
+}
+
+
+// ─── Overflow helpers ───────────────────────────────────────
+
+pub func test_wrap() i32 {
+    return @wrap(2 + 3)
+}
+
+pub func test_sat() i32 {
+    return @sat(10 + 5)
+}
+
+pub func test_overflow_ok() i32 {
+    const a: i32 = 5
+    const b: i32 = 3
+    const result = @overflow(a + b)
+    if(result is Error) { return 0 }
+    return result.i32
+}
+
+// ─── Allocators ─────────────────────────────────────────────
+
+// Default allocator (SMP) — collections use it implicitly
+
+pub func test_alloc_default() i32 {
+    var items: List(i32) = List(i32).new()
+    defer { items.free() }
+    items.add(100)
+    items.add(200)
+    return items.get(0) + items.get(1)
+}
+
+// Mode 2: inline allocator — arena passed directly to .new()
+
+pub func test_alloc_arena() i32 {
+    var arena: allocator.Arena = allocator.Arena.create()
+    defer { arena.deinit() }
+    var items: List(i32) = List(i32).withAlloc(arena.allocator())
+    items.add(10)
+    items.add(20)
+    return items.get(0) + items.get(1)
+}
+
+// Mode 3: external allocator variable — allocator stored in var, passed to .new()
+
+pub func test_alloc_external() i32 {
+    var smp: allocator.SMP = allocator.SMP.create()
+    defer { smp.deinit() }
+    var a = smp.allocator()
+    var items: List(i32) = List(i32).withAlloc(a)
+    items.add(5)
+    items.add(7)
+    defer { items.free() }
+    return items.get(0) + items.get(1)
+}
+
+
+// ─── Arbitrary union return ──────────────────────────────────
+
+pub func test_arb_union_return() i32 {
+    const val: (i32 | str) = 42
+    if(val is i32) {
+        return 1
+    }
+    return 0
+}
+
+// Match on arbitrary union — type arms dispatch to ._tag
+
+pub func test_arb_union_match() i32 {
+    const val: (i32 | str) = 42
+    var result: i32 = 0
+    match(val) {
+        i32    => { result = 1 }
+        str => { result = 2 }
+    }
+    return result
+}
+
+// Field access — extract inner value via .type syntax
+
+pub func test_arb_union_field() i32 {
+    const val: (i32 | str) = 99
+    return val.i32
+}
+
+// Variable reassignment — auto-wraps new value
+
+pub func test_arb_union_assign() i32 {
+    var val: (i32 | str) = 10
+    val = "changed"
+    if(val is str) {
+        return 1
+    }
+    return 0
+}
+
+// type-name unwrap — positive is check with early exit
+
+pub func test_arb_value_positive() i32 {
+    const val: (i32 | str) = 42
+    if(val is str) {
+        return 0
+    }
+    return val.i32
+}
+
+// type-name unwrap — negative is check with early exit
+
+pub func test_arb_value_negative() i32 {
+    const val: (i32 | str) = 42
+    if(val is not i32) {
+        return 0
+    }
+    return val.i32
+}
+
+// type-name unwrap inside is check then-block
+
+pub func test_arb_value_inside() i32 {
+    const val: (i32 | str) = 42
+    if(val is i32) {
+        return val.i32
+    }
+    return 0
+}
+
+// type-name unwrap inside match arm
+
+pub func test_arb_value_match() i32 {
+    const val: (i32 | str) = 42
+    match(val) {
+        i32    => { return val }
+        str => { return 0 }
+    }
+    return 0
+}
+
+// Three-member union — more than two types
+
+pub func test_arb_union_three() i32 {
+    const a: (i32 | f32 | bool) = 42
+    const b: (i32 | f32 | bool) = 3.14
+    const c: (i32 | f32 | bool) = true
+    if(a is i32) {
+        if(b is f32) {
+            if(c is bool) {
+                return 1
+            }
+        }
+    }
+    return 0
+}
+
+
+// Cross-function arb union — function returns same union type
+
+func make_union_val() (i32 | str) {
+    return 42
+}
+
+pub func test_arb_union_cross() i32 {
+    const result: (i32 | str) = make_union_val()
+    if(result is i32) {
+        return result.i32
+    }
+    return 0
+}
+
+// Inferred arb union — no annotation, MIR resolves
+
+pub func test_arb_union_inferred() i32 {
+    const result = make_union_val()
+    if(result is i32) {
+        return 1
+    }
+    return 0
+}
+
+// ─── Allocating string methods ──────────────────────────────
+
+// toUpper — returns new uppercase str
+
+pub func test_str_upper() i32 {
+    const s: str = "hello"
+    const upper: str = string.toUpper(s)
+    if(string.contains(upper, "HELLO")) { return 1 }
+    return 0
+}
+
+// toLower — returns new lowercase str
+
+pub func test_str_lower() i32 {
+    const s: str = "WORLD"
+    const lower: str = string.toLower(s)
+    if(string.contains(lower, "world")) { return 1 }
+    return 0
+}
+
+// replace — returns new str with substitution
+
+pub func test_str_replace() i32 {
+    const s: str = "hello world"
+    const r: str = string.replace(s, "world", "orhon")
+    if(string.contains(r, "orhon")) { return 1 }
+    return 0
+}
+
+// repeat — returns string repeated n times
+
+pub func test_str_repeat() i32 {
+    const s: str = "ha"
+    const r: str = string.repeat(s, 3)
+    if(string.contains(r, "hahaha")) { return 1 }
+    return 0
+}
+
+// parseInt — parse string to integer
+
+pub func test_str_parse_int() i32 {
+    const s: str = "42"
+    const n: i32 = string.parseInt(s)
+    return n
+}
+
+// parseFloat — parse string to float
+
+pub func test_str_parse_float() i32 {
+    const s: str = "3.14"
+    const f: f64 = string.parseFloat(s)
+    if(f > 3.0) { return 1 }
+    return 0
+}
+
+test "str upper" {
+    @assert(test_str_upper() == 1)
+}
+
+test "str lower" {
+    @assert(test_str_lower() == 1)
+}
+
+test "str replace" {
+    @assert(test_str_replace() == 1)
+}
+
+test "str repeat" {
+    @assert(test_str_repeat() == 1)
+}
+
+test "str parseInt" {
+    @assert(test_str_parse_int() == 42)
+}
+
+test "str parseFloat" {
+    @assert(test_str_parse_float() == 1)
+}
+
+
+// ─── toString ───────────────────────────────────────────────
+
+pub func test_tostring_int() i32 {
+    const x: i32 = 42
+    const s: str = string.toString(x)
+    if(string.contains(s, "42")) { return 1 }
+    return 0
+}
+
+pub func test_tostring_bool() i32 {
+    const b: bool = true
+    const s: str = string.toString(b)
+    if(string.contains(s, "true")) { return 1 }
+    return 0
+}
+
+test "toString int" {
+    @assert(test_tostring_int() == 1)
+}
+
+test "toString bool" {
+    @assert(test_tostring_bool() == 1)
+}
+
+// ─── String Interpolation ───────────────────────────────────
+
+pub func test_interpolation() i32 {
+    const name: str = "world"
+    const msg: str = "hello @{name}!"
+    if(string.contains(msg, "hello world!")) { return 1 }
+    return 0
+}
+
+pub func test_interpolation_int() i32 {
+    const x: i32 = 42
+    const msg: str = "value is @{x}"
+    if(string.contains(msg, "value is 42")) { return 1 }
+    return 0
+}
+
+test "interpolation" {
+    @assert(test_interpolation() == 1)
+}
+
+test "interpolation int" {
+    @assert(test_interpolation_int() == 1)
+}
+
+// interpolation in if condition
+
+pub func test_interpolation_if() i32 {
+    const name: str = "world"
+    if(string.contains("hello @{name}!", "hello world!")) { return 1 }
+    return 0
+}
+
+// multiple interpolations in one statement
+
+pub func test_interpolation_multi() i32 {
+    const a: str = "hello"
+    const b: str = "hello"
+    if(string.equals("@{a}", "@{b}")) { return 1 }
+    return 0
+}
+
+test "interpolation if" {
+    @assert(test_interpolation_if() == 1)
+}
+
+test "interpolation multi" {
+    @assert(test_interpolation_multi() == 1)
+}
+
+
+// ─── String Comparison ──────────────────────────────────────
+
+pub func test_string_eq() i32 {
+    const a: str = "hello"
+    const b: str = "hello"
+    if(string.equals(a, b)) { return 1 }
+    return 0
+}
+
+pub func test_string_ne() i32 {
+    const a: str = "hello"
+    const b: str = "world"
+    if(!string.equals(a, b)) { return 1 }
+    return 0
+}
+
+pub func test_string_eq_literal() i32 {
+    const a: str = "hello"
+    if(string.equals(a, "hello")) { return 1 }
+    return 0
+}
+
+pub func test_string_eq_param(a: str, b: str) i32 {
+    if(string.equals(a, b)) { return 1 }
+    return 0
+}
+
+test "string eq" {
+    @assert(test_string_eq() == 1)
+}
+
+test "string ne" {
+    @assert(test_string_ne() == 1)
+}
+
+test "string eq literal" {
+    @assert(test_string_eq_literal() == 1)
+}
+
+test "string eq param" {
+    @assert(test_string_eq_param("foo", "foo") == 1)
+    @assert(test_string_eq_param("foo", "bar") == 0)
+}
+
+// ─── Map.get ────────────────────────────────────────────────
+
+// Map.get returns (null | V) — test value extraction
+
+pub func test_map_get() i32 {
+    var m: Map(str, i32) = Map(str, i32).new()
+    defer { m.free() }
+    m.put("x", 77)
+    const result: (null | i32) = m.get("x")
+    if(result is not null) {
+        return result.i32
+    }
+    return 0
+}
+
+// ─── Threads ────────────────────────────────────────────────
+
+// std::thread — spawn a thread and join for result
+
+func doubler(x: i32) i32 {
+    return x * 2
+}
+
+func adder(a: i32, b: i32) i32 {
+    return a + b
+}
+
+pub func test_thread() i32 {
+    var t: thread.Thread(i32) = thread.Thread(i32).spawn(doubler, 21)
+    return t.join()
+}
+
+pub func test_thread_multi() i32 {
+    var a: thread.Thread(i32) = thread.Thread(i32).spawn(doubler, 10)
+    var b: thread.Thread(i32) = thread.Thread(i32).spawn(doubler, 15)
+    const r1: i32 = a.join()
+    const r2: i32 = b.join()
+    return r1 + r2
+}
+
+pub func test_thread_params() i32 {
+    var t: thread.Thread(i32) = thread.Thread(i32).spawn2(adder, 17, 25)
+    return t.join()
+}
+
+pub func test_thread_void() i32 {
+    return 1
+}
+
+pub func test_thread_done() i32 {
+    var t: thread.Thread(i32) = thread.Thread(i32).spawn(doubler, 5)
+    const result: i32 = t.join()
+    return result
+}
+
+pub func test_thread_join() i32 {
+    var t: thread.Thread(i32) = thread.Thread(i32).spawn(doubler, 99)
+    t.join()
+    return 1
+}
+
+// ─── Atomics ────────────────────────────────────────────────
+
+// thread.Atomic(T) — lock-free shared state
+
+pub func test_atomic() i32 {
+    var a: thread.Atomic(i32) = thread.Atomic(i32).new(0)
+    a.store(42)
+    return a.load()
+}
+
+// atomic fetch operations
+
+pub func test_atomic_fetch() i32 {
+    var a: thread.Atomic(i32) = thread.Atomic(i32).new(10)
+    a.fetchAdd(5)
+    a.fetchSub(3)
+    return a.load()
+}
+
+// atomic swap
+
+pub func test_atomic_swap() i32 {
+    var a: thread.Atomic(i32) = thread.Atomic(i32).new(100)
+    const old: i32 = a.exchange(200)
+    return old
+}
+
+// atomic bool — the pattern used for thread cancellation flags
+
+pub func test_atomic_bool() i32 {
+    var flag: thread.Atomic(bool) = thread.Atomic(bool).new(false)
+    flag.store(true)
+    if (flag.load()) {
+        return 1
+    }
+    return 0
+}
+
+// ─── Const Auto-Borrow ───────────────────────────────────────
+
+pub struct Point2D {
+    pub x: f64
+    pub y: f64
+
+    // Static method — first param is same struct type but NOT a receiver
+    pub func from_other(other: const& Point2D) Point2D {
+        return Point2D{x: other.x, y: other.y}
+    }
+}
+
+// Helper: sum point coordinates
+
+func sum_point(p: Point2D) f64 {
+    return p.x + p.y
+}
+
+// Helper: multiply point coords
+
+func mul_point(p: Point2D) f64 {
+    return p.x * p.y
+}
+
+// Struct passed by value to function
+
+pub func test_struct_by_value() f64 {
+    const pt: Point2D = Point2D{x: 3.0, y: 4.0}
+    return sum_point(pt)
+}
+
+// Var struct passed by value
+
+pub func test_var_struct_by_value() f64 {
+    var pt: Point2D = Point2D{x: 5.0, y: 6.0}
+    return mul_point(pt)
+}
+
+// Static method with struct-typed first param (not a receiver)
+
+pub func test_static_method_struct_param() f64 {
+    const pt: Point2D = Point2D{x: 7.0, y: 8.0}
+    const pt2: Point2D = Point2D.from_other(const& pt)
+    return pt2.x + pt2.y
+}
+
+// @copy() on a const value produces an owned copy
+
+pub func test_const_copy() f64 {
+    const pt: Point2D = Point2D{x: 1.0, y: 2.0}
+    var pt2: Point2D = @copy(pt)
+    pt2.x = 10.0
+    return pt2.x + pt.x
+}
+
+// ─── Elif on separate line from } ────────────────────────────
+
+pub func test_elif_newline(flag: i32) i32 {
+    if(flag == 1) {
+        return 10
+    }
+    elif(flag == 2) {
+        return 20
+    }
+    else {
+        return 0
+    }
+}
+
+test "elif on separate line" {
+    @assert(test_elif_newline(1) == 10)
+    @assert(test_elif_newline(2) == 20)
+    @assert(test_elif_newline(0) == 0)
+}
+
+// ─── Cross-module qualified is check ─────────────────────────
+
+// Exported struct for cross-module is test (used in tester_main.orh)
+
+pub struct IsTestType {
+    val: i32
+}
+
+// ─── (Error | void) ────────────────────────────────────────
+
+pub func do_side_effect(flag: bool) (Error | void) {
+    if(flag) {
+        return Error("side effect failed")
+    }
+    return
+}
+
+pub func test_error_void_ok() i32 {
+    const result = do_side_effect(false)
+    if(result is Error) {
+        return 0
+    }
+    return 1
+}
+
+pub func test_error_void_fail() i32 {
+    const result = do_side_effect(true)
+    if(result is Error) {
+        return 1
+    }
+    return 0
+}
+
+// ─── Bug fix: @cast(EnumType, int) → @enumFromInt ─────────────
+
+pub func test_cast_to_enum() i32 {
+    const raw: u8 = 1
+    const c: Color = @cast(Color, raw)
+    match(c) {
+        Green => { return 1 }
+        else  => { return 0 }
+    }
+    return 0
+}
+
+// ─── (null | T) with explicit type ──────────────────────────
+
+pub func test_null_multi_union() i32 {
+    const val: (null | i32) = 42
+    if(val is null) {
+        return 0
+    }
+    return 1
+}
+
+// ─── Bug fix: ZeroField() → ZeroField{} ──────────────────────
+
+pub struct ZeroField {}
+
+pub func test_empty_struct_construct() i32 {
+    const z: ZeroField = ZeroField()
+    return 1
+}
+
+// ─── Match — guards ──────────────────────────────────────────
+
+pub func match_guard(n: i32) i32 {
+    match(n) {
+        (x if x > 0)  => { return 1 }
+        (x if x < 0)  => { return 0 - 1 }
+        else           => { return 0 }
+    }
+}
+
+test "match_guard" {
+    @assert(match_guard(5) == 1)
+    @assert(match_guard(0 - 3) == 0 - 1)
+    @assert(match_guard(0) == 0)
+}
+
+pub func match_guard_scope(n: i32, threshold: i32) i32 {
+    match(n) {
+        (x if x > threshold)  => { return 1 }
+        else                  => { return 0 }
+    }
+}
+
+test "match_guard_scope" {
+    @assert(match_guard_scope(10, 5) == 1)
+    @assert(match_guard_scope(3, 5) == 0)
+    @assert(match_guard_scope(5, 5) == 0)
+}
+
+// ─── Negative literal arguments ──────────────────────────────
+
+pub func negate_helper(a: f32, b: f32) f32 {
+    return a + b
+}
+
+pub func test_negative_args() i32 {
+    const result: f32 = negate_helper(-0.5, -1.0)
+    if(result == -1.5) {
+        return 1
+    }
+    return 0
+}
+
+test "negative literal args" {
+    @assert(test_negative_args() == 1)
+}
+
+// ─── Const Borrow Expr ───────────────────────────────────────
+
+// const& expr in call argument position — explicit const borrow passing.
+// Uses a struct parameter to verify the const& syntax parses and compiles.
+
+pub struct BorrowTarget {
+    pub value: i32
+}
+
+func read_borrow_target(t: const& BorrowTarget) i32 {
+    return t.value
+}
+
+pub func test_const_borrow_arg() i32 {
+    const target: BorrowTarget = BorrowTarget{value: 42}
+    return read_borrow_target(const& target)
+}
+
+test "const borrow expr as call argument" {
+    @assert(test_const_borrow_arg() == 42)
+}
+
+// ─── Compt struct return ─────────────────────────────────────
+
+compt func Pair(A: type, B: type) type {
+    return struct {
+        first: A
+        second: B
+
+        pub func sum(self: const& @this) A {
+            return self.first + self.second
+        }
+    }
+}
+
+pub func test_compt_struct() i32 {
+    const p: Pair(i32, i32) = Pair(i32, i32){first: 10, second: 32}
+    return p.sum()
+}
+
+// ─── Struct Introspection ────────────────────────────────────
+
+pub func test_has_field() i32 {
+    if(@hasField(Vec2, "x")) {
+        return 1
+    }
+    return 0
+}
+
+pub func test_has_field_missing() i32 {
+    if(@hasField(Vec2, "z")) {
+        return 0
+    }
+    return 1
+}
+
+pub func test_has_field_value() i32 {
+    var v: Vec2 = Vec2{x: 1.0, y: 2.0}
+    if(@hasField(v, "x")) {
+        return 1
+    }
+    return 0
+}
+
+pub func test_has_decl() i32 {
+    if(@hasDecl(Counter, "create")) {
+        return 1
+    }
+    return 0
+}
+
+pub func test_has_decl_missing() i32 {
+    if(@hasDecl(Vec2, "nonexistent")) {
+        return 0
+    }
+    return 1
+}
+
+pub func test_field_type() i32 {
+    // @fieldType(Vec2, "x") is f32, @size(f32) == 4
+    if(@size(@fieldType(Vec2, "x")) == 4) {
+        return 1
+    }
+    return 0
+}
+
+pub func test_field_names() i32 {
+    // @fieldNames(Vec2) returns a comptime slice — .len == 2 (x, y)
+    if(@fieldNames(Vec2).len == 2) {
+        return 1
+    }
+    return 0
+}
+
+test "compt struct with method" {
+    @assert(test_compt_struct() == 42)
+}
+
+compt func Counter2(T: type) type {
+    return struct {
+        count: T = 0
+
+        pub func value(self: const& @this) T {
+            return self.count
+        }
+    }
+}
+
+pub func test_compt_struct_defaults() i32 {
+    const c: Counter2(i32) = Counter2(i32)()
+    return c.value()
+}
+
+test "compt struct defaults" {
+    @assert(test_compt_struct_defaults() == 0)
+}
+
+// ─── Tuple capture iteration ────────────────────────────────
+
+struct TuplePair {
+    x: i32
+    y: i32
+}
+
+// for loop with tuple capture — destructures struct fields
+pub func test_tuple_capture() i32 {
+    const pairs: [3]TuplePair = [TuplePair{x: 1, y: 2}, TuplePair{x: 3, y: 4}, TuplePair{x: 5, y: 6}]
+    var total: i32 = 0
+    for(pairs) |x, y| {
+        total += x + y
+    }
+    return total
+}
+
+// for loop with tuple capture and index
+pub func test_tuple_capture_index() i32 {
+    const pairs: [3]TuplePair = [TuplePair{x: 10, y: 20}, TuplePair{x: 30, y: 40}, TuplePair{x: 50, y: 60}]
+    var total: i32 = 0
+    for(pairs, 0..) |x, y, i| {
+        total += x + y + @cast(i32, i)
+    }
+    return total
+}
+
+test "tuple capture" {
+    @assert(test_tuple_capture() == 21)
+}
+
+test "tuple capture index" {
+    @assert(test_tuple_capture_index() == 213)
+}
+
+// ─── (null | Error | T) codegen ─────────────────────────────
+
+pub func neu_make_value() (null | Error | i32) {
+    return 42
+}
+
+pub func neu_make_error() (null | Error | i32) {
+    return Error("neu error")
+}
+
+pub func neu_make_null() (null | Error | i32) {
+    return null
+}
+
+// Each test isolates one variable per function to satisfy propagation
+
+pub func test_neu_is_error() i32 {
+    const e: (null | Error | i32) = neu_make_error()
+    if(e is null) { return 0 }
+    if(e is Error) {
+        return 1
+    }
+    return 0
+}
+
+pub func test_neu_is_not_error() i32 {
+    const v: (null | Error | i32) = neu_make_value()
+    if(v is null) { return 0 }
+    if(v is not Error) {
+        return 1
+    }
+    return 0
+}
+
+pub func test_neu_error_access() i32 {
+    const e: (null | Error | i32) = neu_make_error()
+    if(e is null) { return 0 }
+    if(e is Error) {
+        return 1
+    }
+    return 0
+}
+
+pub func test_neu_value_after_null_narrow() i32 {
+    const v: (null | Error | i32) = neu_make_value()
+    if(v is null) { return 0 }
+    if(v is Error) { return 0 }
+    return v.value
+}
+
+pub func test_neu_value_after_error_narrow() i32 {
+    const v: (null | Error | i32) = neu_make_value()
+    if(v is Error) { return 0 }
+    if(v is null) { return 0 }
+    return v.value
+}
+
+pub func test_neu_value_after_both_narrow() i32 {
+    const v: (null | Error | i32) = neu_make_value()
+    if(v is null) { return 0 }
+    if(v is Error) { return 0 }
+    return v.value
+}
+
+pub func test_neu_match_all_arms() i32 {
+    const v: (null | Error | i32) = neu_make_value()
+    match(v) {
+        null  => { return 0 }
+        Error => { return 0 }
+        else  => { return 1 }
+    }
+}
+
+pub func test_neu_match_with_else() i32 {
+    const e: (null | Error | i32) = neu_make_error()
+    match(e) {
+        Error => { return 1 }
+        else  => { return 0 }
+    }
+}
+
+// array literal to slice assignment
+
+pub func test_array_to_slice() i32 {
+    var nums: [3]i32 = [10, 20, 30]
+    var arr: []i32 = nums
+    var sum: i32 = 0
+    for(arr) |val| {
+        sum = sum + val
+    }
+    if(sum == 60) {
+        return 1
+    }
+    return 0
+}

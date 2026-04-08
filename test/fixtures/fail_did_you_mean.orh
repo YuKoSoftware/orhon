@@ -1,0 +1,15 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+import std::console
+
+func greet(name: str) void {
+    console.println(name)
+}
+
+func main() void {
+    const message: str = "hello"
+    console.println(mesage)
+}

@@ -1,0 +1,3 @@
+module circular_b
+import circular_a
+pub func bar() i32 { return 2 }

@@ -1,0 +1,8 @@
+module snaptest_basics
+#version = (1, 0, 0)
+#build   = exe
+
+import snap_basics
+
+func main() void {
+}

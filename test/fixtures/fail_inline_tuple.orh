@@ -1,0 +1,15 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+// inline tuple types in return position are not valid syntax
+// tuples must be defined as named type aliases: const T: type = {x: i32, y: i32}
+
+func bad_return(a: i32, b: i32) (min: i32, max: i32) {
+    return a + b
+}
+
+func main() void {
+    const r = bad_return(1, 2)
+}

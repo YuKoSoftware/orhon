@@ -1,0 +1,14 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+func check_compound(x: (i32 | str), y: (i32 | str)) i32 {
+    if(x is i32 and y is str) {
+        return 1
+    }
+    return 0
+}
+
+func main() void {
+}

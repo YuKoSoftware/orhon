@@ -1,0 +1,7 @@
+module multizig
+#version = (1, 0, 0)
+#build   = static
+
+pub func triple(n: i32) i32 {
+    return n * 3
+}

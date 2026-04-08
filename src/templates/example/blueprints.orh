@@ -1,0 +1,39 @@
+module example
+
+// ─── Blueprints ─────────────────────────────────────────────────────────────
+
+// blueprints define strict contracts — structs must implement all methods
+
+blueprint Measurable {
+    func measure(self: const& Measurable) f32
+}
+
+blueprint Scalable {
+    func scale(self: mut& Scalable, factor: f32) ()
+}
+
+// struct conformance — `: Blueprint` means "I satisfy this contract"
+
+struct Circle: Measurable {
+    radius: f32
+
+    pub func measure(self: const& Circle) f32 {
+        return self.radius * self.radius * 3.14
+    }
+}
+
+// multiple blueprints — all methods must be implemented
+
+struct Rectangle: Measurable, Scalable {
+    width: f32
+    height: f32
+
+    pub func measure(self: const& Rectangle) f32 {
+        return self.width * self.height
+    }
+
+    pub func scale(self: mut& Rectangle, factor: f32) () {
+        self.width = self.width * factor
+        self.height = self.height * factor
+    }
+}

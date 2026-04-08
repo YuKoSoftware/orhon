@@ -1,0 +1,6 @@
+module bptest
+#version = (1, 0, 0)
+#build   = exe
+
+func main() void {
+}

@@ -1,0 +1,579 @@
+# ============================================================
+# Orhon PEG Grammar — Formal Syntax Specification
+# ============================================================
+#
+# This grammar describes the complete syntax of the Orhon language.
+# It matches the hand-written recursive descent parser exactly.
+#
+# Conventions:
+#   UPPER_CASE  = terminal tokens (from lexer)
+#   lower_case  = grammar rules
+#   /           = ordered choice (PEG)
+#   *           = zero or more
+#   +           = one or more
+#   ?           = optional
+#   &           = positive lookahead
+#   !           = negative lookahead
+#   NL          = newline (statement terminator)
+#   _           = optional whitespace/newlines (skipped between tokens)
+#
+# Newlines are significant as statement terminators.
+# Inside braces, brackets, and parens, newlines are skipped freely.
+#
+# Token names match lexer.zig TokenKind values.
+# ============================================================
+
+
+# ============================================================
+# PROGRAM STRUCTURE
+# ============================================================
+
+program
+    <- _ module_decl (_ (doc_block / metadata / import_decl / top_level / error_skip))* _ EOF
+
+# Error recovery: skip tokens until the next top-level declaration keyword or EOF.
+# This allows the parser to continue past syntax errors and report multiple errors.
+error_skip
+    <- (!top_level_start !EOF .)+
+
+# Token lookahead for top-level declaration starts (used by error_skip to resync)
+top_level_start
+    <- 'func' / 'pub' / 'struct' / 'blueprint' / 'enum' / 'const' / 'var'
+     / 'compt' / 'test' / 'import' / '#'
+
+module_decl
+    <- doc_block? _ 'module' IDENTIFIER NL  {label: "module declaration"}
+
+metadata
+    <- '#' metadata_body NL  {label: "metadata directive"}
+
+metadata_body
+    <- IDENTIFIER '=' expr                      # #field = value
+
+import_decl
+    <- 'import' import_path ('as' IDENTIFIER)? NL
+     / 'use' import_path NL  {label: "import declaration"}
+
+import_path
+    <- STRING_LITERAL                           # string path (error: use .zig + .zon)
+     / IDENTIFIER '::' IDENTIFIER   # scoped: std::console, global::utils
+     / IDENTIFIER                               # bare: project-local module
+
+
+# ============================================================
+# TOP-LEVEL DECLARATIONS
+# ============================================================
+
+top_level
+    <- doc_block? top_level_decl
+
+top_level_decl
+    <- pub_decl
+     / func_decl
+     / compt_decl
+     / struct_decl
+     / blueprint_decl
+     / enum_decl
+     / const_decl
+     / var_decl
+     / test_decl
+
+pub_decl
+    <- 'pub' (func_decl
+            / struct_decl
+            / blueprint_decl
+            / enum_decl
+            / const_decl
+            / compt_decl)
+
+
+# ============================================================
+# FUNCTION DECLARATIONS
+# ============================================================
+
+func_decl
+    <- 'func' func_name '(' _ param_list _ ')' type (block / TERM)  {label: "function declaration"}
+
+func_name
+    <- IDENTIFIER
+
+param_list
+    <- (param (_ ',' _ param)* (_ ',')?)?
+
+param
+    <- param_name ':' type ('=' expr)?  {label: "parameter"}
+
+param_name
+    <- IDENTIFIER / 'var' / 'const'
+
+compt_decl
+    <- 'compt' func_decl  {label: "compt declaration"}
+
+
+# ============================================================
+# STRUCT DECLARATIONS
+# ============================================================
+
+struct_decl
+    <- 'struct' IDENTIFIER generic_params? (':' blueprint_list)? '{' _ struct_body _ '}'  {label: "struct declaration"}
+
+blueprint_list
+    <- IDENTIFIER (',' _ IDENTIFIER)*
+
+generic_params
+    <- '(' _ param_list _ ')'
+
+struct_body
+    <- (struct_member _)*
+
+struct_member
+    <- doc_block? 'pub'? (func_decl / var_decl / const_decl / compt_decl / field_decl)
+
+field_decl
+    <- IDENTIFIER ':' type ('=' expr)? TERM  {label: "field declaration"}
+
+
+# ============================================================
+# BLUEPRINT DECLARATIONS
+# ============================================================
+
+blueprint_decl
+    <- 'blueprint' IDENTIFIER '{' _ blueprint_body _ '}'  {label: "blueprint declaration"}
+
+blueprint_body
+    <- (blueprint_method _)*
+
+blueprint_method
+    <- doc_block? 'func' IDENTIFIER '(' _ param_list? _ ')' type? TERM
+
+
+# ============================================================
+# ENUM DECLARATIONS
+# ============================================================
+
+enum_decl
+    <- 'enum' '(' type ')' IDENTIFIER '{' _ enum_body _ '}'  {label: "enum declaration"}
+
+enum_body
+    <- (enum_member _)*
+
+enum_member
+    <- doc_block? 'pub'? enum_variant
+
+enum_variant
+    <- IDENTIFIER ('=' int_literal)? TERM
+
+
+# ============================================================
+# VARIABLE DECLARATIONS
+# ============================================================
+
+const_decl
+    <- 'const' IDENTIFIER destruct_tail TERM
+     / 'const' IDENTIFIER (':' type)? '=' expr TERM  {label: "constant declaration"}
+
+var_decl
+    <- 'var' IDENTIFIER destruct_tail TERM
+     / 'var' IDENTIFIER (':' type)? '=' expr TERM  {label: "variable declaration"}
+
+destruct_tail
+    <- (',' IDENTIFIER)+ '=' expr
+
+
+# ============================================================
+# TEST DECLARATIONS
+# ============================================================
+
+test_decl
+    <- 'test' STRING_LITERAL block  {label: "test declaration"}
+
+
+# ============================================================
+# STATEMENTS
+# ============================================================
+
+block
+    <- '{' _ statement* _ '}'  {label: "block"}
+
+statement
+    <- _ (var_decl
+        / const_decl
+        / compt_decl
+        / return_stmt
+        / if_stmt
+        / while_stmt
+        / for_stmt
+        / defer_stmt
+        / match_stmt
+        / break_stmt
+        / continue_stmt
+        / expr_or_assignment) _
+
+return_stmt
+    <- 'return' (!NL !'}' !EOF expr)? TERM  {label: "return statement"}
+
+if_stmt
+    <- 'if' '(' expr ')' block _ elif_chain?  {label: "if statement"}
+
+elif_chain
+    <- 'elif' '(' expr ')' block _ elif_chain?
+     / 'else' block
+
+while_stmt
+    <- 'while' '(' expr ')' (':' '(' assign_expr ')')? block  {label: "while loop"}
+
+for_stmt
+    <- 'for' '(' for_iterable (',' for_iterable)* ')' '|' for_captures '|' block  {label: "for loop"}
+
+for_iterable
+    <- or_expr '..' or_expr   # bounded range: 0..n
+     / or_expr '..'           # open-ended counter: 0..
+     / expr                   # slice, array, identifier, call, etc.
+
+for_captures
+    <- IDENTIFIER (',' IDENTIFIER)*
+
+defer_stmt
+    <- 'defer' block  {label: "defer statement"}
+
+match_stmt
+    <- 'match' expr '{' _ match_arm* _ '}'  {label: "match statement"}
+
+match_arm
+    <- _ match_pattern '=>' block _  {label: "match arm"}
+
+match_pattern
+    <- 'else'
+     / parenthesized_pattern
+     / expr                                     # bare literal, identifier, enum variant
+
+parenthesized_pattern
+    <- '(' _ IDENTIFIER _ 'if' _ expr _ ')'    # guarded binding: (x if x > 0)
+     / '(' _ expr _ ')'                         # parenthesized value or range: (1..10)
+
+break_stmt
+    <- 'break' TERM  {label: "break statement"}
+
+continue_stmt
+    <- 'continue' TERM  {label: "continue statement"}
+
+expr_or_assignment
+    <- expr assign_op expr TERM
+     / expr TERM
+
+assign_expr
+    <- expr assign_op expr
+     / expr
+
+assign_op
+    <- '=' / '+=' / '-=' / '*=' / '/='
+
+
+# ============================================================
+# EXPRESSIONS — Operator Precedence Tower
+# ============================================================
+# Lowest precedence at top, highest at bottom.
+# Each level calls the next level down.
+
+expr
+    <- range_expr  {label: "expression"}
+
+# Level 12 — Range (non-associative)
+range_expr
+    <- or_expr '..' or_expr
+     / or_expr
+
+# Level 11 — Logical OR (left-associative)
+or_expr
+    <- and_expr ('or' and_expr)*
+
+# Level 10 — Logical AND (left-associative)
+and_expr
+    <- not_expr ('and' not_expr)*
+
+# Level 9 — Logical NOT (prefix, right-associative)
+not_expr
+    <- 'not' not_expr
+     / compare_expr
+
+# Level 8 — Comparison (non-associative)
+compare_expr
+    <- bitor_expr compare_op bitor_expr
+     / bitor_expr 'is' 'not'? (IDENTIFIER ('.' IDENTIFIER)* / 'null')
+     / bitor_expr
+
+compare_op
+    <- '==' / '!=' / '<=' / '>=' / '<' / '>'
+
+# Level 7 — Bitwise OR (left-associative)
+bitor_expr
+    <- bitxor_expr ('|' bitxor_expr)*
+
+# Level 6 — Bitwise XOR (left-associative)
+bitxor_expr
+    <- bitand_expr ('^' bitand_expr)*
+
+# Level 5 — Bitwise AND (left-associative)
+bitand_expr
+    <- shift_expr ('&' shift_expr)*
+
+# Level 4 — Bit Shift (left-associative)
+shift_expr
+    <- add_expr (('<<' / '>>') add_expr)*
+
+# Level 3 — Addition (left-associative)
+add_expr
+    <- mul_expr (('+' / '++' / '-') mul_expr)*
+
+# Level 2 — Multiplication (left-associative)
+mul_expr
+    <- unary_expr (('*' / '/' / '%') unary_expr)*
+
+# Level 1 — Unary (prefix, right-associative)
+unary_expr
+    <- '!' unary_expr
+     / '-' unary_expr
+     / 'const&' unary_expr
+     / 'mut&' unary_expr
+     / postfix_expr
+
+# Level 0 — Postfix (left-associative)
+postfix_expr
+    <- primary_expr (method_call / field_access / slice_access / index_access / struct_init_access / call_access)*
+
+# method_call must come before field_access — both start with '.' IDENTIFIER,
+# but method_call is longer (has parens). PEG ordered choice needs longer match first.
+method_call
+    <- '.' (IDENTIFIER / 'var' / 'const') '(' _ arg_list _ ')'
+
+field_access
+    <- '.' (IDENTIFIER / 'var' / 'const')
+
+# slice_access must come before index_access — both start with '[' expr,
+# but slice has '..' after. PEG ordered choice needs longer match first.
+slice_access
+    <- '[' or_expr '..' or_expr ']'
+
+index_access
+    <- '[' or_expr ']'
+
+struct_init_access
+    <- '{' _ named_arg_list _ '}'
+
+call_access
+    <- '(' _ arg_list _ ')'
+
+
+# ============================================================
+# PRIMARY EXPRESSIONS
+# ============================================================
+
+primary_expr
+    <- compiler_func
+     / int_literal
+     / float_literal
+     / string_literal
+     / bool_literal
+     / null_literal
+     / void_literal
+     / array_literal
+     / tuple_type_literal
+     / version_literal
+     / grouped_expr
+     / error_literal
+     / struct_expr
+     / identifier_expr
+
+# Built-in compiler functions
+compiler_func
+    <- compiler_func_name '(' _ arg_list _ ')'  {label: "compiler function"}
+
+compiler_func_name
+    <- '@' 'cast' / '@' 'copy' / '@' 'move' / '@' 'swap'
+     / '@' 'assert' / '@' 'size' / '@' 'align'
+     / '@' 'typename' / '@' 'typeid' / '@' 'typeOf'
+     / '@' 'hasField' / '@' 'hasDecl' / '@' 'fieldType' / '@' 'fieldNames'
+     / '@' 'splitAt'
+     / '@' 'wrap' / '@' 'sat' / '@' 'overflow'
+
+# Literals
+int_literal     <- INT_LITERAL
+float_literal   <- FLOAT_LITERAL
+bool_literal    <- 'true' / 'false'
+null_literal    <- 'null'
+void_literal    <- 'void'
+
+string_literal
+    <- STRING_LITERAL                           # may contain @{expr} interpolation
+
+array_literal
+    <- '[' _ (expr (_ ',' _ expr)* (_ ',')?)? _ ']'  {label: "array literal"}
+
+# Tuple type literal: {name: type, name: type = default, ...}
+# Used in type alias definitions: const Point: type = {x: f32, y: f32}
+tuple_type_literal
+    <- '{' _ IDENTIFIER ':' type (_ '=' _ expr)? (_ ',' _ IDENTIFIER ':' type (_ '=' _ expr)?)* (_ ',')? _ '}'  {label: "tuple type literal"}
+
+# Version literal: (major, minor, patch) — used for #version metadata
+version_literal
+    <- '(' _ INT_LITERAL _ ',' _ INT_LITERAL _ ',' _ INT_LITERAL _ ')'  {label: "version literal"}
+
+grouped_expr
+    <- '(' _ expr _ ')'
+
+# Error literal: Error("message")
+error_literal
+    <- 'Error' '(' STRING_LITERAL ')'  {label: "error literal"}
+
+# Anonymous struct expression: struct { fields, methods, constants }
+struct_expr
+    <- 'struct' '{' _ (struct_member _)* _ '}'  {label: "struct expression"}
+
+# Plain identifier — variable, function name, enum variant
+identifier_expr
+    <- IDENTIFIER
+
+
+# ============================================================
+# ARGUMENT LISTS
+# ============================================================
+
+arg_list
+    <- (expr (_ ',' _ expr)* (_ ',')?)?
+
+named_arg_list
+    <- (named_or_positional_arg (_ ',' _ named_or_positional_arg)* (_ ',')?)?
+
+named_or_positional_arg
+    <- IDENTIFIER ':' expr
+     / expr
+
+
+# ============================================================
+# TYPES
+# ============================================================
+
+type
+    <- borrow_type
+     / ref_type
+     / paren_type
+     / slice_type
+     / array_type
+     / func_type
+     / scoped_generic_type
+     / scoped_type
+     / generic_type
+     / self_type
+     / named_type
+     / keyword_type  {label: "type"}
+
+# const& T — immutable reference
+borrow_type
+    <- 'const&' type  {label: "borrow type"}
+
+# mut& T — mutable reference
+ref_type
+    <- 'mut&' type  {label: "reference type"}
+
+# Parenthesized type — dispatches based on content:
+#   ()                          → void
+#   (T | U | ...)              → union type
+#   (T)                        → grouped type (returns inner type)
+paren_type
+    <- '(' _ ')'                                                        # void
+     / '(' _ type (_ '|' _ type)+ _ ')'                                # union
+     / '(' _ type _ ')'  {label: "parenthesized type"}                 # grouped
+
+# []T — slice type
+slice_type
+    <- '[' ']' type  {label: "slice type"}
+
+# [n]T — array type
+array_type
+    <- '[' expr ']' type  {label: "array type"}
+
+# func(T, U) R — function type
+func_type
+    <- 'func' '(' _ type_list _ ')' type  {label: "function type"}
+
+type_list
+    <- (type (_ ',' _ type)* (_ ',')?)?
+
+# module.Generic(T) — scoped generic type (must come before scoped_type)
+scoped_generic_type
+    <- IDENTIFIER '.' IDENTIFIER '(' _ generic_arg_list _ ')'
+
+# module.Type — scoped named type
+scoped_type
+    <- IDENTIFIER '.' IDENTIFIER
+
+# Name(T, U) — generic type instantiation
+# Special: Vector first arg is expr, Ring/ORing second arg is expr
+generic_type
+    <- IDENTIFIER '(' _ generic_arg_list _ ')'  {label: "generic type"}
+
+generic_arg_list
+    <- (type_or_expr (_ ',' _ type_or_expr)* (_ ',')?)?
+
+type_or_expr
+    <- type / expr
+
+# @this — self-referencing type (replacement for Self)
+self_type
+    <- '@' 'this'
+
+# Named type — identifier, primitive, or keyword type
+named_type
+    <- IDENTIFIER
+
+# Keyword types
+keyword_type
+    <- 'type' / 'any' / 'void' / 'null'
+
+
+# ============================================================
+# DOC COMMENTS
+# ============================================================
+
+# Doc comments (///) attach to the declaration that follows them.
+# Multiple consecutive /// lines merge into a single doc block.
+doc_block
+    <- DOC_COMMENT (_ DOC_COMMENT)*  {label: "doc comment"}
+
+
+# ============================================================
+# TERMINAL TOKENS
+# ============================================================
+# These map directly to lexer.zig TokenKind values.
+# The lexer produces these tokens; the PEG grammar consumes them.
+
+IDENTIFIER      <- [a-zA-Z_] [a-zA-Z0-9_]*
+INT_LITERAL     <- '0x' [0-9a-fA-F_]+          # hex
+                 / '0b' [01_]+                  # binary
+                 / '0o' [0-7_]+                 # octal
+                 / [0-9] [0-9_]*               # decimal
+FLOAT_LITERAL   <- [0-9] [0-9_]* '.' [0-9] [0-9_]*  # simplified — lexer handles full parsing
+STRING_LITERAL  <- '"' (!'"' .)* '"'            # simplified — lexer handles escapes
+DOC_COMMENT     <- '///' (!'\n' .)*
+NL              <- '\n'
+EOF             <- !.
+
+# Statement terminator: newline, or lookahead '}' or EOF (no newline needed before })
+# Matches the parser's expectNewlineOrEof + rbrace behavior.
+TERM            <- NL / &'}' / EOF
+
+# Whitespace and comments (skipped between tokens by lexer)
+_               <- ([ \t\n] / '//' (!'\n' .)* '\n')*
+
+
+# ============================================================
+# KEYWORDS (reserved — cannot be used as identifiers)
+# ============================================================
+# func var const if else elif for while return throw import use
+# pub match struct enum defer null void compt
+# any module test and or not as break continue true false
+# is type blueprint
+# Compound borrow tokens: const& mut&
+# Compiler functions use @ prefix: @cast @copy @move @swap @assert
+# @size @align @typename @typeid @typeOf
+# @hasField @hasDecl @fieldType @fieldNames

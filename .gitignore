@@ -11,3 +11,4 @@ test_bf16
 test_f16
 test_payload
 test[0-9]*
+docs/superpowers/

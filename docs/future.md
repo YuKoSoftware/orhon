@@ -66,6 +66,21 @@ simplify coercion sequences.
 
 ---
 
+## Language Features (deferred)
+
+### `@call` compiler function — controlled call semantics `medium`
+
+Maps to Zig's `@call(modifier, fn, args)`. Lets the caller control call behavior:
+- `@call(.compile_time, fn, args)` — force compile-time evaluation on any function
+- `@call(.always_inline, fn, args)` — force inlining
+- `@call(.always_tail, fn, args)` — force tail call optimization
+
+Deferred until `compt func` codegen is correct and compt system is stable.
+Complementary to `compt func`: `compt func` marks a function as *always* compile-time,
+`@call(.compile_time, ...)` lets the *caller* force it on any function.
+
+---
+
 ## Tooling & Ecosystem
 
 ### Source mapping for debugger `hard`

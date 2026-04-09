@@ -96,6 +96,38 @@ Split on the placeholder and write in parts.
 
 ---
 
+## Anti-Hallucination Rules
+
+- Never guess Zig APIs — use zig-mcp tools (`search_std_lib`, `get_std_lib_item`,
+  `get_builtin_function`) or WebFetch to verify before using any std lib function
+  not already present in this project's source code
+- Never assume a function signature — read the source file first
+- When unsure about Zig 0.15 behavior, look it up; don't extrapolate from older versions
+- Never invent Orhon syntax — check `src/peg/orhon.peg` for what actually exists
+- If zig-mcp returns no result for an API, it doesn't exist — don't use it
+
+---
+
+## Mandatory Read-Before-Edit
+
+- Always read a file before modifying it — the full relevant section, not just a few lines
+- Read `docs/COMPILER.md` before touching compiler pipeline code
+- Read the relevant language spec doc (`docs/01-basics.md` through `docs/15-testing.md`)
+  before changing language feature behavior
+- Read `test_log.txt` after running tests, before claiming success
+
+---
+
+## Code Quality Rules
+
+- Keep changes minimal — don't refactor surrounding code unless asked
+- Match existing patterns in the file being edited (naming, error handling style, structure)
+- Never add features, abstractions, or "improvements" beyond what was requested
+- When adding to codegen, follow the split-file pattern in `src/codegen/`
+- Follow the hub+satellite pattern when splitting large files
+
+---
+
 ## Workflow Rules
 
 ### Zero magic rule
@@ -119,6 +151,15 @@ check that no existing file covers the topic. README is introduction only.
 New functionality should come with tests when it makes sense. Don't clutter —
 one or two focused tests per feature. Tests live in the same file as the code
 they test (Zig `test` blocks).
+
+### Verification discipline
+- After meaningful changes to `.zig` files: run `zig build` to check compilation
+- After changes that affect language features: run the relevant test stage
+  (e.g., `bash test/09_language.sh`)
+- After broad changes: run `./testall.sh`
+- Never claim "this should work" — verify it
+- After completing any change touching 3+ files or adding a new feature, run a
+  code review via `superpowers:requesting-code-review` before claiming done
 
 ---
 

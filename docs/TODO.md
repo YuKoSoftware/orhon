@@ -4,37 +4,12 @@ Actionable items for the current development phase. Deferred and future work is 
 
 ---
 
-## Language Ergonomics
-
-### std::thread arity split `low`
-
-- **spawn/spawn2 arity split** — `spawn(f, arg)` for 1-arg, `spawn2(f, a, b)` for 2-arg.
-  Zig's `@call` needs a tuple but Orhon passes individual values. Needs spawn3+ for more args.
-  Requires positional tuple support to fix cleanly — deferred.
-
----
-
 ## Compt (Compile-Time Evaluation)
-
-### No `inline for` support `medium`
-
-Can't iterate `@fieldNames` at compile time. Needed for reflection patterns and
-compile-time metaprogramming over struct fields.
 
 ### Zero negative tests for compt `medium`
 
 No `fail_*.orh` tests for compt misuse (e.g., passing runtime values to a compt func,
 invalid compt block contents). Need coverage for expected compilation failures.
-
-### Compt blocks in function bodies — thin coverage `low`
-
-Spec allows `compt` blocks inside function bodies, but test coverage and example
-module coverage is thin. Needs more fixtures and example module entries.
-
-### No compt-aware type resolution `low`
-
-The type resolver doesn't distinguish compt vs runtime contexts. This limits the
-compiler's ability to catch compt constraint violations early.
 
 ---
 
@@ -46,6 +21,8 @@ compiler's ability to catch compt constraint violations early.
 - Generic instantiation failures should show the constraint that failed
 - Common mistake detection — token insertions/deletions at failure point
 - `else if` → suggest `elif` (currently produces generic parse error expecting `{`)
+- Compt constraint violations (e.g., passing runtime values to compt func) should
+  produce Orhon-level errors instead of surfacing as Zig errors
 
 ### Formatter — line-length awareness `medium`
 
@@ -100,14 +77,6 @@ builds twice without changes and verifies generated `.zig` timestamps are unchan
 | `is` restricted to if/elif only | Narrowing only works in if/elif; `@typeOf` covers other contexts |
 | `blueprint` for traits, not `impl` blocks | Everything visible at the definition site |
 | No Zig IR layer in codegen | Direct string emission. MIR/SSA is the optimization target |
-
----
-
-## Architectural Decisions (Open)
-
-| Decision | Options | Tradeoff |
-|----------|---------|----------|
-| `inline for` timing | **A:** Add now for `@fieldNames` iteration **B:** Defer until more metaprogramming demand | A unblocks reflection patterns; B avoids premature feature surface |
 
 ---
 

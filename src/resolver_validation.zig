@@ -177,9 +177,31 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                 while (tyi.next()) |k| try candidates.append(self.ctx.allocator, k.*);
                 for (&resolver_mod.PRIMITIVE_NAMES) |pn| try candidates.append(self.ctx.allocator, pn);
 
+                // Check if the type exists as a pub declaration in any other loaded module
+                var cross_module_hint: ?[]const u8 = null;
+                if (self.ctx.all_decls) |ad| {
+                    var mod_it = ad.iterator();
+                    while (mod_it.next()) |entry| {
+                        const mod_name = entry.key_ptr.*;
+                        const mod_decls = entry.value_ptr.*;
+                        if (mod_decls == self.ctx.decls) continue;
+                        const found = (if (mod_decls.structs.get(type_name)) |st| st.is_pub else false) or
+                            (if (mod_decls.enums.get(type_name)) |e| e.is_pub else false) or
+                            mod_decls.types.contains(type_name);
+                        if (found) {
+                            cross_module_hint = try std.fmt.allocPrint(self.ctx.allocator,
+                                " \u{2014} '{s}' exists in module '{s}' (add 'use {s}')", .{ type_name, mod_name, mod_name });
+                            break;
+                        }
+                    }
+                }
+                defer if (cross_module_hint) |h| self.ctx.allocator.free(h);
+
                 const suggestion = try errors.formatSuggestion(type_name, candidates.items, self.ctx.allocator);
                 defer if (suggestion) |s| self.ctx.allocator.free(s);
-                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown type '{s}'{s}", .{ type_name, suggestion orelse "" });
+
+                const hint = cross_module_hint orelse suggestion orelse "";
+                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown type '{s}'{s}", .{ type_name, hint });
             }
         },
         .type_slice => |elem| try validateType(self, elem, scope),

@@ -708,4 +708,29 @@ NEG_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$NEG_OUT" | grep -qi "helper"; then pass "unknown identifier mentions source module"
 else fail "unknown identifier mentions source module" "$NEG_OUT"; fi
 
+# cross-module unknown type should mention source module
+cd "$TESTDIR"
+mkdir -p neg_cross_type/src
+cat > neg_cross_type/src/neg_cross_type.orh <<'ORHON'
+module neg_cross_type
+#version = (1, 0, 0)
+#build = exe
+import shapes
+
+func main() void {
+    const p: Circle = Circle{radius: 5}
+}
+ORHON
+cat > neg_cross_type/src/shapes.orh <<'ORHON'
+module shapes
+
+pub struct Circle {
+    radius: i32
+}
+ORHON
+cd neg_cross_type
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "shapes"; then pass "unknown type mentions source module"
+else fail "unknown type mentions source module" "$NEG_OUT"; fi
+
 report_results

@@ -8,10 +8,7 @@ Actionable items for the current development phase. Deferred and future work is 
 
 ### Error message quality `medium`
 
-- Cross-module errors should show module context
 - Generic instantiation failures should show the constraint that failed
-- Common mistake detection — token insertions/deletions at failure point
-- `else if` → suggest `elif` (currently produces generic parse error expecting `{`)
 - Compt constraint violations (e.g., passing runtime values to compt func) should
   produce Orhon-level errors instead of surfacing as Zig errors
 

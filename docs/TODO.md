@@ -4,15 +4,6 @@ Actionable items for the current development phase. Deferred and future work is 
 
 ---
 
-## Compt (Compile-Time Evaluation)
-
-### Zero negative tests for compt `medium`
-
-No `fail_*.orh` tests for compt misuse (e.g., passing runtime values to a compt func,
-invalid compt block contents). Need coverage for expected compilation failures.
-
----
-
 ## Developer Experience
 
 ### Error message quality `medium`

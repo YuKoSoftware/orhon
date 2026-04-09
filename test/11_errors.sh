@@ -683,4 +683,29 @@ run_fixture neg_compt_nested fail_compt.orh "unable to resolve comptime\|comptim
 # else if → elif
 run_fixture neg_else_if fail_else_if.orh "elif" "fixture: suggests elif instead of else if"
 
+# cross-module unknown identifier should mention source module
+cd "$TESTDIR"
+mkdir -p neg_cross/src
+cat > neg_cross/src/neg_cross.orh <<'ORHON'
+module neg_cross
+#version = (1, 0, 0)
+#build = exe
+import helper
+
+func main() void {
+    const x: i32 = greet()
+}
+ORHON
+cat > neg_cross/src/helper.orh <<'ORHON'
+module helper
+
+pub func greet() i32 {
+    return 42
+}
+ORHON
+cd neg_cross
+NEG_OUT=$("$ORHON" build 2>&1 || true)
+if echo "$NEG_OUT" | grep -qi "helper"; then pass "unknown identifier mentions source module"
+else fail "unknown identifier mentions source module" "$NEG_OUT"; fi
+
 report_results

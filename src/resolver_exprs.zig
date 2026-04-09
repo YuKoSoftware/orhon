@@ -82,9 +82,33 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
             var vit = self.ctx.decls.vars.keyIterator();
             while (vit.next()) |k| try candidates.append(self.ctx.allocator, k.*);
 
+            // Check if the identifier exists as a pub declaration in any other loaded module
+            var cross_module_hint: ?[]const u8 = null;
+            if (self.ctx.all_decls) |ad| {
+                var mod_it = ad.iterator();
+                while (mod_it.next()) |entry| {
+                    const mod_name = entry.key_ptr.*;
+                    const mod_decls = entry.value_ptr.*;
+                    // Skip current module — its decls were already checked above
+                    if (mod_decls == self.ctx.decls) continue;
+                    const found = (if (mod_decls.funcs.get(id_name)) |f| f.is_pub else false) or
+                        (if (mod_decls.structs.get(id_name)) |st| st.is_pub else false) or
+                        (if (mod_decls.enums.get(id_name)) |e| e.is_pub else false) or
+                        mod_decls.vars.contains(id_name);
+                    if (found) {
+                        cross_module_hint = try std.fmt.allocPrint(self.ctx.allocator,
+                            " \u{2014} '{s}' exists in module '{s}' (add 'import {s}')", .{ id_name, mod_name, mod_name });
+                        break;
+                    }
+                }
+            }
+            defer if (cross_module_hint) |h| self.ctx.allocator.free(h);
+
             const suggestion = try errors.formatSuggestion(id_name, candidates.items, self.ctx.allocator);
             defer if (suggestion) |s| self.ctx.allocator.free(s);
-            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown identifier '{s}'{s}", .{ id_name, suggestion orelse "" });
+
+            const hint = cross_module_hint orelse suggestion orelse "";
+            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown identifier '{s}'{s}", .{ id_name, hint });
             return RT.unknown;
         },
 

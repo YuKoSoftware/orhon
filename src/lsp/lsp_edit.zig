@@ -41,7 +41,7 @@ const findVisibleSymbolByName = lsp_utils.findVisibleSymbolByName;
 // COMPLETION
 // ============================================================
 
-pub fn handleCompletion(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo, use_snippets: bool, doc_store: *const std.StringHashMap([]u8)) ![]u8 {
+pub fn handleCompletion(allocator: std.mem.Allocator, root: std.json.Value, id: std.json.Value, symbols: []const SymbolInfo, use_snippets: bool, doc_store: *const std.StringHashMap([]u8), project_root: ?[]const u8) ![]u8 {
     const params = jsonObj(root, "params") orelse return buildEmptyResponse(allocator, id);
     const uri = extractTextDocumentUri(params) orelse return buildEmptyResponse(allocator, id);
     const pos = jsonObj(params, "position") orelse return buildEmptyResponse(allocator, id);
@@ -56,6 +56,17 @@ pub fn handleCompletion(allocator: std.mem.Allocator, root: std.json.Value, id: 
     // Get the text before cursor on this line to determine context
     const prefix = getLinePrefix(source, line_0, col_0);
     lspLog("completion: prefix='{s}'", .{prefix});
+
+    // Check if we're in an import context
+    const trimmed = std.mem.trimLeft(u8, prefix, " \t");
+    if (std.mem.startsWith(u8, trimmed, "import std::")) {
+        lspLog("completion: import std:: context", .{});
+        return buildStdImportCompletionResponse(allocator, id);
+    }
+    if (std.mem.eql(u8, trimmed, "import") or std.mem.startsWith(u8, trimmed, "import ")) {
+        lspLog("completion: import context", .{});
+        return buildImportCompletionResponse(allocator, id, project_root);
+    }
 
     // Determine which modules are visible in this file
     const current_module = getModuleName(source);
@@ -111,6 +122,94 @@ fn buildDotCompletionResponse(allocator: std.mem.Allocator, id: std.json.Value, 
 
     try buf.appendSlice(allocator, "]}}");
     return allocator.dupe(u8, buf.items);
+}
+
+// Standard library module names — must match std_bundle.zig ensureStdFiles()
+const STD_MODULES = [_][]const u8{
+    "allocator",   "bitfield",    "collections", "compression", "console",
+    "crypto",      "csv",         "encoding",    "fs",          "http",
+    "ini",         "json",        "linear",      "math",        "mem",
+    "net",         "ptr",         "random",      "regex",       "simd",
+    "sort",        "stream",      "string",      "system",      "testing",
+    "thread",      "time",        "toml",        "tui",         "xml",
+    "yaml",
+};
+
+fn buildStdImportCompletionResponse(allocator: std.mem.Allocator, id: std.json.Value) ![]u8 {
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    defer buf.deinit(allocator);
+
+    try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
+    try writeJsonValue(&buf, allocator, id);
+    try buf.appendSlice(allocator, ",\"result\":{\"isIncomplete\":false,\"items\":[");
+
+    var first = true;
+    for (STD_MODULES) |mod| {
+        if (!first) try buf.append(allocator, ',');
+        first = false;
+        try appendCompletionItem(&buf, allocator, mod, "std module", .module_, '0');
+    }
+
+    try buf.appendSlice(allocator, "]}}");
+    return allocator.dupe(u8, buf.items);
+}
+
+fn buildImportCompletionResponse(allocator: std.mem.Allocator, id: std.json.Value, project_root: ?[]const u8) ![]u8 {
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    defer buf.deinit(allocator);
+
+    try buf.appendSlice(allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
+    try writeJsonValue(&buf, allocator, id);
+    try buf.appendSlice(allocator, ",\"result\":{\"isIncomplete\":false,\"items\":[");
+
+    var first = true;
+
+    // Offer "std::" scope prefix
+    try appendCompletionItem(&buf, allocator, "std::", "standard library", .module_, '0');
+    first = false;
+
+    // Scan project src/ for user modules
+    if (project_root) |root| {
+        const src_path = std.fmt.allocPrint(allocator, "{s}/src", .{root}) catch null;
+        defer if (src_path) |p| allocator.free(p);
+        if (src_path) |sp| {
+            var modules = std.StringHashMap(void).init(allocator);
+            defer modules.deinit();
+            collectModuleNames(allocator, sp, &modules) catch {};
+            var it = modules.iterator();
+            while (it.next()) |entry| {
+                if (!first) try buf.append(allocator, ',');
+                first = false;
+                try appendCompletionItem(&buf, allocator, entry.key_ptr.*, "project module", .module_, '1');
+            }
+        }
+    }
+
+    try buf.appendSlice(allocator, "]}}");
+    return allocator.dupe(u8, buf.items);
+}
+
+/// Scan a directory for .orh files and extract module names from `module <name>` declarations.
+fn collectModuleNames(allocator: std.mem.Allocator, dir_path: []const u8, modules: *std.StringHashMap(void)) anyerror!void {
+    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch return;
+    defer dir.close();
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind == .directory) {
+            const sub = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dir_path, entry.name });
+            defer allocator.free(sub);
+            try collectModuleNames(allocator, sub, modules);
+        } else if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".orh")) {
+            const full = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dir_path, entry.name });
+            defer allocator.free(full);
+            const content = std.fs.cwd().readFileAlloc(allocator, full, 64 * 1024) catch continue;
+            defer allocator.free(content);
+            if (lsp_utils.getModuleName(content)) |name| {
+                if (!modules.contains(name))
+                    try modules.put(name, {});
+            }
+        }
+    }
 }
 
 fn buildGeneralCompletionResponse(allocator: std.mem.Allocator, id: std.json.Value, symbols: []const SymbolInfo, current_module: ?[]const u8, imports: ?[]const []const u8, use_snippets: bool) ![]u8 {

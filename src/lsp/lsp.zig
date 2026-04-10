@@ -352,7 +352,7 @@ pub fn serve(allocator: std.mem.Allocator) !void {
             .document_symbol => try dispatchLsp(allocator, stdout, id, "documentSymbol",
                 lsp_view.handleDocumentSymbols(allocator, root, id, cached_symbols)),
             .completion => try dispatchLsp(allocator, stdout, id, "completion",
-                lsp_edit.handleCompletion(allocator, root, id, cached_symbols, enable_snippets, &doc_store)),
+                lsp_edit.handleCompletion(allocator, root, id, cached_symbols, enable_snippets, &doc_store, project_root)),
             .references => try dispatchLsp(allocator, stdout, id, "references",
                 lsp_nav.handleReferences(allocator, root, id, cached_symbols)),
             .rename => try dispatchLsp(allocator, stdout, id, "rename",

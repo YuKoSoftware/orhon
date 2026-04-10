@@ -93,6 +93,7 @@ pub const CompletionItemKind = enum(u8) {
     field = 5,
     enum_member = 20,
     type_ = 25, // for builtin/primitive types
+    module_ = 9, // for module imports
 };
 
 // ============================================================

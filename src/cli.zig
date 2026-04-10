@@ -76,6 +76,7 @@ pub const CliArgs = struct {
     gen_api: bool, // -api flag for gendoc (generate project API docs only)
     gen_std: bool, // -std flag for gendoc (generate stdlib docs only)
     gen_syntax: bool, // -syntax flag for gendoc (generate syntax reference only)
+    line_length: u32, // max line length for fmt (0 = disabled)
     allocator: std.mem.Allocator, // owns duped strings
 
     pub fn deinit(self: *CliArgs) void {
@@ -109,6 +110,7 @@ pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
         .gen_api = false,
         .gen_std = false,
         .gen_syntax = false,
+        .line_length = 100,
         .allocator = allocator,
     };
 
@@ -189,6 +191,20 @@ pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
             cli.gen_std = true;
         } else if (std.mem.eql(u8, arg, "-syntax")) {
             cli.gen_syntax = true;
+        } else if (std.mem.startsWith(u8, arg, "--line-length=")) {
+            const val = arg["--line-length=".len..];
+            cli.line_length = std.fmt.parseInt(u32, val, 10) catch {
+                std.debug.print("warning: invalid --line-length value '{s}', using default 100\n", .{val});
+                continue;
+            };
+        } else if (std.mem.eql(u8, arg, "--line-length")) {
+            i += 1;
+            if (i < args.len) {
+                cli.line_length = std.fmt.parseInt(u32, args[i], 10) catch {
+                    std.debug.print("warning: invalid --line-length value '{s}', using default 100\n", .{args[i]});
+                    continue;
+                };
+            }
         } else {
             // Treat as source directory
             cli.source_dir = try allocator.dupe(u8, arg);

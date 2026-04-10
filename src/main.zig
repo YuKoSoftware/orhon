@@ -41,7 +41,7 @@ pub fn main() !void {
 
     if (cli.command == .fmt) {
         const formatter = @import("formatter.zig");
-        try formatter.formatProject(allocator, cli.source_dir);
+        try formatter.formatProject(allocator, cli.source_dir, cli.line_length);
         return;
     }
 

@@ -6,12 +6,6 @@ Actionable items for the current development phase. Deferred and future work is 
 
 ## Developer Experience
 
-### Error message quality `medium`
-
-- Generic instantiation failures should show the constraint that failed
-- Compt constraint violations (e.g., passing runtime values to compt func) should
-  produce Orhon-level errors instead of surfacing as Zig errors
-
 ### Formatter — line-length awareness `medium`
 
 Missing: wrapping for long lines, function signature breaking rules, alignment

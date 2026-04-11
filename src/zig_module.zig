@@ -1601,6 +1601,55 @@ test "generateModule — no pub declarations returns null" {
     try std.testing.expect(result == null);
 }
 
+test "generateModule — cross-module type resolution via alias" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\const mod_a = @import("module_a.zig");
+        \\pub fn useHandle(h: mod_a.HandleA) bool { _ = h; return true; }
+    ;
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+
+    const sibling_imports: []const []const u8 = &.{"module_a"};
+    const result = try generateModule("module_b", &tree, allocator, sibling_imports);
+    if (result) |actual| {
+        defer allocator.free(actual);
+        try std.testing.expect(std.mem.indexOf(u8, actual, "module_a.HandleA") != null);
+        try std.testing.expect(std.mem.indexOf(u8, actual, "useHandle") != null);
+    } else return error.TestUnexpectedResult;
+}
+
+test "generateModule — cross-module type resolution via inline import" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\pub fn useHandle(h: @import("module_a.zig").HandleA) bool { _ = h; return true; }
+    ;
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+
+    const sibling_imports: []const []const u8 = &.{"module_a"};
+    const result = try generateModule("module_b", &tree, allocator, sibling_imports);
+    if (result) |actual| {
+        defer allocator.free(actual);
+        try std.testing.expect(std.mem.indexOf(u8, actual, "module_a.HandleA") != null);
+        try std.testing.expect(std.mem.indexOf(u8, actual, "useHandle") != null);
+    } else return error.TestUnexpectedResult;
+}
+
+test "generateModule — non-sibling qualified types still unmappable" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\const foo = @import("foo.zig");
+        \\pub fn bar(x: foo.Baz) void { _ = x; }
+    ;
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+
+    // "foo" is NOT in sibling list — function should be skipped
+    const result = try generateModule("test_mod", &tree, allocator, &.{});
+    try std.testing.expect(result == null);
+}
+
 // ---------------------------------------------------------------------------
 // File discovery tests
 // ---------------------------------------------------------------------------

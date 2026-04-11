@@ -1,0 +1,4 @@
+module fail_handle
+
+handle Foo
+handle Foo

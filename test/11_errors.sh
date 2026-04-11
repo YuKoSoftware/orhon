@@ -375,6 +375,9 @@ run_fixture neg_struct_var fail_struct_var.orh "mutable.*var.*not allowed" "fixt
 # enum errors
 run_fixture neg_enum_dup fail_enums.orh "duplicate variant" "fixture: catches duplicate enum variant"
 
+# handle errors
+run_fixture neg_handle_dup fail_handle.orh "duplicate handle" "fixture: catches duplicate handle declaration"
+
 # function errors (first error in file: default before required)
 run_fixture neg_func fail_functions.orh "defaults.*must.*after\|required.*param" "fixture: catches default before required param"
 run_fixture neg_method_arity fail_method_arity.orh "expects 0 argument.*got 1" "fixture: rejects wrong method call arity"

@@ -1,0 +1,18 @@
+module handle_basic
+
+handle WindowHandle
+pub handle DeviceHandle
+
+func get_handle() WindowHandle {
+    return @cast(WindowHandle, 0)
+}
+
+func use_handle(h: WindowHandle) i32 {
+    return 42
+}
+
+test "handle pass through" {
+    const h = get_handle()
+    const result = use_handle(h)
+    @assert(result == 42)
+}

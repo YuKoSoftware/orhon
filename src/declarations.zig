@@ -62,6 +62,12 @@ pub const BlueprintSig = struct {
     is_pub: bool,
 };
 
+/// A handle declaration summary
+pub const HandleSig = struct {
+    name: []const u8,
+    is_pub: bool,
+};
+
 /// A variable/constant declaration
 pub const VarSig = struct {
     name: []const u8,
@@ -75,6 +81,7 @@ pub const DeclTable = struct {
     funcs: std.StringHashMap(FuncSig),
     structs: std.StringHashMap(StructSig),
     enums: std.StringHashMap(EnumSig),
+    handles: std.StringHashMap(HandleSig),
     vars: std.StringHashMap(VarSig),
     types: std.StringHashMap([]const u8), // type aliases and compt types
     blueprints: std.StringHashMap(BlueprintSig),
@@ -94,6 +101,7 @@ pub const DeclTable = struct {
             .funcs = std.StringHashMap(FuncSig).init(allocator),
             .structs = std.StringHashMap(StructSig).init(allocator),
             .enums = std.StringHashMap(EnumSig).init(allocator),
+            .handles = std.StringHashMap(HandleSig).init(allocator),
             .vars = std.StringHashMap(VarSig).init(allocator),
             .types = std.StringHashMap([]const u8).init(allocator),
             .blueprints = std.StringHashMap(BlueprintSig).init(allocator),
@@ -124,6 +132,7 @@ pub const DeclTable = struct {
             self.allocator.free(entry.value_ptr.variants);
         }
         self.enums.deinit();
+        self.handles.deinit();
         self.vars.deinit();
         self.types.deinit();
         // Free owned slices stored in BlueprintSig values
@@ -150,6 +159,7 @@ pub const DeclTable = struct {
         return self.funcs.contains(name) or
                self.structs.contains(name) or
                self.enums.contains(name) or
+               self.handles.contains(name) or
                self.vars.contains(name) or
                self.types.contains(name);
     }
@@ -203,6 +213,7 @@ pub const DeclCollector = struct {
             .struct_decl => |s| try self.collectStruct(s, loc),
             .blueprint_decl => |b| try self.collectBlueprint(b, loc),
             .enum_decl => |e| try self.collectEnum(e, loc),
+            .handle_decl => |h| try self.collectHandle(h, loc),
             .var_decl => |v| {
                 if (v.mutability == .mutable) {
                     try self.reporter.reportFmt(loc, "module-level 'var' is not allowed — use 'const' for module-level declarations", .{});
@@ -424,6 +435,17 @@ pub const DeclCollector = struct {
         }
 
         try self.table.enums.put(e.name, sig);
+    }
+
+    fn collectHandle(self: *DeclCollector, h: parser.HandleDecl, loc: ?errors.SourceLoc) anyerror!void {
+        if (self.table.handles.contains(h.name)) {
+            try self.reporter.reportFmt(loc, "duplicate handle declaration: '{s}'", .{h.name});
+            return;
+        }
+        try self.table.handles.put(h.name, .{
+            .name = h.name,
+            .is_pub = h.is_pub,
+        });
     }
 
     fn collectVar(self: *DeclCollector, v: parser.VarDecl, is_const: bool, loc: ?errors.SourceLoc) anyerror!void {

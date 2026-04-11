@@ -106,6 +106,9 @@ pub const MirLowerer = struct {
             .enum_decl => |e| {
                 mir_node_ptr.children = try self.lowerSlice(e.members);
             },
+            .handle_decl => {
+                mir_node_ptr.children = &.{};
+            },
             .field_decl => |f| {
                 if (f.default_value) |dv| {
                     var children = std.ArrayListUnmanaged(*MirNode){};
@@ -556,6 +559,10 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
             m.is_pub = e.is_pub;
             m.backing_type = e.backing_type;
         },
+        .handle_decl => |h| {
+            m.name = h.name;
+            m.is_pub = h.is_pub;
+        },
         .var_decl => |v| {
             m.name = v.name;
             m.is_pub = v.is_pub;
@@ -656,6 +663,7 @@ fn astToMirKind(node: *parser.Node) MirKind {
         .func_decl => .func,
         .struct_decl => .struct_def,
         .enum_decl => .enum_def,
+        .handle_decl => .handle_def,
         .field_decl => .field_def,
         .param => .param_def,
         .enum_variant => .enum_variant_def,

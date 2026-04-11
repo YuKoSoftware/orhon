@@ -38,7 +38,7 @@ error_skip
 
 # Token lookahead for top-level declaration starts (used by error_skip to resync)
 top_level_start
-    <- 'func' / 'pub' / 'struct' / 'blueprint' / 'enum' / 'const' / 'var'
+    <- 'func' / 'pub' / 'struct' / 'blueprint' / 'enum' / 'handle' / 'const' / 'var'
      / 'compt' / 'test' / 'import' / '#'
 
 module_decl
@@ -74,6 +74,7 @@ top_level_decl
      / struct_decl
      / blueprint_decl
      / enum_decl
+     / handle_decl
      / const_decl
      / var_decl
      / test_decl
@@ -83,6 +84,7 @@ pub_decl
             / struct_decl
             / blueprint_decl
             / enum_decl
+            / handle_decl
             / const_decl
             / compt_decl)
 
@@ -162,6 +164,14 @@ enum_member
 
 enum_variant
     <- IDENTIFIER ('=' int_literal)? TERM
+
+
+# ============================================================
+# HANDLE DECLARATIONS
+# ============================================================
+
+handle_decl
+    <- 'handle' IDENTIFIER TERM  {label: "handle declaration"}
 
 
 # ============================================================
@@ -571,7 +581,7 @@ _               <- ([ \t\n] / '//' (!'\n' .)* '\n')*
 # KEYWORDS (reserved — cannot be used as identifiers)
 # ============================================================
 # func var const if else elif for while return throw import use
-# pub match struct enum defer null void compt
+# pub match struct enum handle defer null void compt
 # any module test and or not as break continue true false
 # is type blueprint
 # Compound borrow tokens: const& mut&

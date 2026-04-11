@@ -186,6 +186,7 @@ pub const MirKind = enum {
     func,
     struct_def,
     enum_def,
+    handle_def,
     var_decl,
     test_def,
     destruct,

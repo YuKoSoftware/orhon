@@ -1,7 +1,7 @@
 // builder_decls.zig — Declaration builders for the PEG AST builder
 // Contains: buildProgram, buildModuleDecl, buildImport, buildMetadata,
 //           buildFuncDecl, buildParam, buildConstDecl, buildVarDecl,
-//           buildStructDecl, buildBlueprintDecl, buildEnumDecl, buildFieldDecl,
+//           buildStructDecl, buildBlueprintDecl, buildEnumDecl, buildHandleDecl, buildFieldDecl,
 //           buildEnumVariant, buildDestructDecl, buildTestDecl, buildPubDecl, buildComptDecl
 // All functions receive *BuildContext as first parameter.
 
@@ -374,6 +374,21 @@ pub fn buildEnumDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
         .name = name,
         .backing_type = backing,
         .members = try members.toOwnedSlice(ctx.alloc()),
+        .is_pub = false,
+    } });
+}
+
+pub fn buildHandleDecl(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
+    // handle_decl <- 'handle' IDENTIFIER TERM
+    var name: []const u8 = "";
+    for (cap.start_pos..cap.end_pos) |i| {
+        if (i < ctx.tokens.len and ctx.tokens[i].kind == .identifier) {
+            name = ctx.tokens[i].text;
+            break;
+        }
+    }
+    return ctx.newNode(.{ .handle_decl = .{
+        .name = name,
         .is_pub = false,
     } });
 }

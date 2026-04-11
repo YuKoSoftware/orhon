@@ -390,6 +390,7 @@ pub const CodeGen = struct {
             },
             .struct_def => try self.generateStructMir(m),
             .enum_def => try self.generateEnumMir(m),
+            .handle_def => try self.generateHandleMir(m),
             .var_decl => try self.generateTopLevelDeclMir(m),
             .test_def => try self.generateTestMir(m),
             .import => {}, // imports handled separately in generate()
@@ -427,6 +428,13 @@ pub const CodeGen = struct {
 
     /// MIR-path enum codegen — iterates MirNode children instead of AST members.
     pub fn generateEnumMir(self: *CodeGen, m: *mir.MirNode) anyerror!void { return decls_impl.generateEnumMir(self, m); }
+
+    // ============================================================
+    // HANDLES
+    // ============================================================
+
+    /// MIR-path handle codegen — emits const Name = *anyopaque;
+    pub fn generateHandleMir(self: *CodeGen, m: *mir.MirNode) anyerror!void { return decls_impl.generateHandleMir(self, m); }
 
     // ============================================================
     // VAR / CONST DECLARATIONS

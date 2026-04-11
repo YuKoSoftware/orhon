@@ -146,6 +146,9 @@ pub const TypeResolver = struct {
                     }
                 }
             },
+            .handle_decl => |h| {
+                try scope.define(h.name, RT{ .named = h.name });
+            },
             .blueprint_decl => |b| {
                 try scope.define(b.name, RT{ .named = b.name });
             },
@@ -266,6 +269,7 @@ pub const TypeResolver = struct {
                 }
             },
             .enum_decl => {},
+            .handle_decl => {},
             .block => |b| {
                 var block_scope = Scope.init(self.ctx.allocator, scope);
                 defer block_scope.deinit();

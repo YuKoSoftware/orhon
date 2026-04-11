@@ -305,6 +305,19 @@ pub fn generateEnumMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
 }
 
 // ============================================================
+// HANDLES
+// ============================================================
+
+/// MIR-path handle codegen — emits `const Name = *anyopaque;`
+pub fn generateHandleMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
+    const handle_name = m.name orelse return;
+    if (cg.is_zig_module) return cg.generateZigReExport(handle_name, m.is_pub);
+
+    if (m.is_pub) try cg.emit("pub ");
+    try cg.emitFmt("const {s} = *anyopaque;\n", .{handle_name});
+}
+
+// ============================================================
 // VARIABLE DECLARATIONS
 // ============================================================
 

@@ -1,0 +1,27 @@
+module example
+
+// --- Handle Types ----------------------------------------------------------
+
+// handles are opaque pointer types — safe, nominally typed, zero cost
+// you can store them, pass them, return them, but never dereference or cast them
+// each handle is its own type: ResourceHandle != ConnectionHandle
+
+handle ResourceHandle
+handle ConnectionHandle
+
+// handles work as function parameters and return types
+
+func create_resource() ResourceHandle {
+    return @cast(ResourceHandle, 0)
+}
+
+func check_resource(r: ResourceHandle) bool {
+    return r != @cast(ResourceHandle, 0)
+}
+
+// --- Tests -----------------------------------------------------------------
+
+test "handle round trip" {
+    const r = create_resource()
+    @assert(check_resource(r) == false)
+}

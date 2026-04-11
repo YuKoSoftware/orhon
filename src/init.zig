@@ -18,6 +18,7 @@ const DATA_TYPES_TEMPLATE       = @embedFile("templates/example/data_types.orh")
 const STRINGS_TEMPLATE          = @embedFile("templates/example/strings.orh");
 const ADVANCED_TEMPLATE         = @embedFile("templates/example/advanced.orh");
 const BLUEPRINTS_TEMPLATE       = @embedFile("templates/example/blueprints.orh");
+const HANDLES_TEMPLATE          = @embedFile("templates/example/handles.orh");
 
 // ============================================================
 // PROJECT INITIALIZATION
@@ -79,6 +80,7 @@ pub fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: boo
         .{ "strings.orh",        STRINGS_TEMPLATE },
         .{ "advanced.orh",       ADVANCED_TEMPLATE },
         .{ "blueprints.orh",    BLUEPRINTS_TEMPLATE },
+        .{ "handles.orh",       HANDLES_TEMPLATE },
     };
 
     inline for (example_files) |entry| {
@@ -97,7 +99,7 @@ pub fn initProject(allocator: std.mem.Allocator, name: []const u8, in_place: boo
     std.debug.print("Created project '{s}'\n", .{name});
     std.debug.print("  {s}/src/\n", .{base});
     std.debug.print("  {s}/src/{s}.orh\n", .{ base, name });
-    std.debug.print("  {s}/src/example/  (7 files — language manual)\n", .{base});
+    std.debug.print("  {s}/src/example/  (8 files — language manual)\n", .{base});
     if (!in_place) {
         std.debug.print("\nGet started:\n", .{});
         std.debug.print("  cd {s}\n", .{name});

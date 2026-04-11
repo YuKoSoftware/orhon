@@ -16,6 +16,25 @@ const PASSTHROUGH_PRIMITIVES = std.StaticStringMap(void).initComptime(.{
     .{ "bool", {} }, .{ "void", {} }, .{ "usize", {} },
 });
 
+/// Check if a mapped Orhon type string is a primitive (safe to use in struct fields).
+fn isPrimitiveOrhonType(t: []const u8) bool {
+    return PASSTHROUGH_PRIMITIVES.has(t) or std.mem.eql(u8, t, "str");
+}
+
+/// Orhon keywords that cannot be used as parameter names.
+const ORHON_KEYWORDS = std.StaticStringMap(void).initComptime(.{
+    .{ "handle", {} }, .{ "func", {} }, .{ "struct", {} }, .{ "enum", {} },
+    .{ "match", {} }, .{ "import", {} }, .{ "module", {} }, .{ "pub", {} },
+    .{ "const", {} }, .{ "var", {} }, .{ "if", {} }, .{ "else", {} },
+    .{ "while", {} }, .{ "for", {} }, .{ "return", {} }, .{ "break", {} },
+    .{ "continue", {} }, .{ "defer", {} }, .{ "test", {} }, .{ "use", {} },
+    .{ "blueprint", {} }, .{ "compt", {} }, .{ "type", {} }, .{ "is", {} },
+});
+
+fn isOrhonKeyword(name: []const u8) bool {
+    return ORHON_KEYWORDS.has(name);
+}
+
 /// Maps local Zig import aliases to sibling module names.
 /// Built from top-level `const sdl = @import("tamga_sdl3_bridge.zig")` declarations.
 const ImportAliasMap = struct {
@@ -165,6 +184,11 @@ fn mapTypeEx(tree: *const Ast, node: Node.Index, allocator: Allocator, out: *Typ
                 return true;
             }
 
+            // anyopaque — opaque pointer base type, not expressible as bare Orhon type.
+            // Pointer-to-anyopaque is handled above (mapped to usize).
+            // Bare anyopaque (non-pointer) is unmappable.
+            if (std.mem.eql(u8, name, "anyopaque")) return false;
+
             // A bare identifier that isn't a primitive is a user-defined type.
             // Qualified names (std.mem.Allocator) are caught by field_access.
             try out.append(allocator, name);
@@ -220,6 +244,14 @@ fn mapTypeEx(tree: *const Ast, node: Node.Index, allocator: Allocator, out: *Typ
 
                 // *T or *const T — single-item pointer
                 .one => {
+                    // *anyopaque / *const anyopaque → usize (opaque pointers as integers)
+                    if (tree.nodeTag(ptr_info.ast.child_type) == .identifier) {
+                        const child_name = tree.tokenSlice(tree.nodeMainToken(ptr_info.ast.child_type));
+                        if (std.mem.eql(u8, child_name, "anyopaque")) {
+                            try out.append(allocator, "usize");
+                            return true;
+                        }
+                    }
                     const is_const = ptr_info.const_token != null;
                     if (is_const) {
                         try out.append(allocator, "const& ");
@@ -355,9 +387,13 @@ fn extractFnInnerEx(
         }
         first_param = false;
 
-        // Parameter name
+        // Parameter name — prefix with _ if it collides with an Orhon keyword
         if (param.name_token) |name_tok| {
-            try params.appendSlice(allocator, tree.tokenSlice(name_tok));
+            const pname = tree.tokenSlice(name_tok);
+            if (isOrhonKeyword(pname)) {
+                try params.appendSlice(allocator, "_");
+            }
+            try params.appendSlice(allocator, pname);
         } else {
             try params.appendSlice(allocator, "_");
         }
@@ -710,6 +746,14 @@ pub fn extractConst(tree: *const Ast, node: Node.Index, allocator: Allocator, im
         }
     }
 
+    // Type alias: `pub const Name = SomeType` → `pub const Name: type = MappedType`
+    // Covers pointer types (e.g., `pub const VmaAllocation = *anyopaque` → usize),
+    // and other mappable type expressions.
+    if (try mapTypeAlloc(tree, init_node, allocator, import_aliases)) |mapped_type| {
+        defer allocator.free(mapped_type);
+        return try std.fmt.allocPrint(allocator, "pub const {s}: type = {s}", .{ name, mapped_type });
+    }
+
     return null;
 }
 
@@ -756,10 +800,10 @@ pub fn extractStruct(
     try result.appendSlice(allocator, name);
     try result.appendSlice(allocator, " {\n");
 
+    // First pass: extract function members (methods)
     var has_members = false;
     for (container.ast.members) |member| {
         const member_tag = tree.nodeTag(member);
-        // Only handle fn_decl and fn_proto variants
         if (member_tag == .fn_decl or member_tag == .fn_proto or
             member_tag == .fn_proto_multi or member_tag == .fn_proto_one or
             member_tag == .fn_proto_simple)
@@ -768,6 +812,55 @@ pub fn extractStruct(
                 defer allocator.free(sig);
                 if (has_members) try result.append(allocator, '\n');
                 try result.appendSlice(allocator, sig);
+                try result.append(allocator, '\n');
+                has_members = true;
+            }
+        }
+    }
+
+    // Second pass: extract container fields (struct data members).
+    // Only for data-only structs (no methods) to avoid breaking structs that
+    // were already working with method-only extraction.
+    if (!has_members) {
+        for (container.ast.members) |member| {
+            const member_tag = tree.nodeTag(member);
+            if (member_tag != .container_field and member_tag != .container_field_init and
+                member_tag != .container_field_align) continue;
+
+            const field_token = tree.nodeMainToken(member);
+            // Skip tuple-like fields (no name)
+            if (tree.tokenTag(field_token) != .identifier) continue;
+            if (tree.tokenTag(field_token + 1) != .colon) continue;
+            const field_name = tree.tokenSlice(field_token);
+
+            // Get type expression node
+            const type_node: Node.Index = switch (member_tag) {
+                .container_field => blk: {
+                    const data = tree.nodeData(member).node_and_extra;
+                    break :blk data[0];
+                },
+                .container_field_init => blk: {
+                    const data = tree.nodeData(member).node_and_opt_node;
+                    break :blk data[0];
+                },
+                .container_field_align => blk: {
+                    const data = tree.nodeData(member).node_and_node;
+                    break :blk data[0];
+                },
+                else => continue,
+            };
+
+            // Map the field type to Orhon — only emit primitive-typed fields.
+            var type_buf = TypeBuf{};
+            defer type_buf.deinit(allocator);
+            if (try mapTypeEx(tree, type_node, allocator, &type_buf, null, import_aliases)) {
+                const mapped = type_buf.items();
+                if (!isPrimitiveOrhonType(mapped)) continue;
+                if (has_members) try result.append(allocator, '\n');
+                try result.appendSlice(allocator, "    pub ");
+                try result.appendSlice(allocator, field_name);
+                try result.appendSlice(allocator, ": ");
+                try result.appendSlice(allocator, mapped);
                 try result.append(allocator, '\n');
                 has_members = true;
             }
@@ -804,15 +897,38 @@ pub fn generateModule(
 
     const header_len = result.items.len;
 
+    // Track known type names: primitives + types we successfully extract.
+    // Used in pass 2 to filter functions that reference unknown types.
+    var known_types = std.StringHashMapUnmanaged(void){};
+    defer {
+        // Free allocated keys (type names extracted from declarations)
+        var kt_it = known_types.keyIterator();
+        while (kt_it.next()) |key| {
+            // Only free keys that were heap-allocated (not static primitive names)
+            if (!PASSTHROUGH_PRIMITIVES.has(key.*) and
+                !std.mem.eql(u8, key.*, "str") and !std.mem.eql(u8, key.*, "any") and
+                !std.mem.eql(u8, key.*, "type"))
+            {
+                allocator.free(key.*);
+            }
+        }
+        known_types.deinit(allocator);
+    }
+    for (&[_][]const u8{ "u8", "i8", "i16", "i32", "i64", "u16", "u32", "u64", "f32", "f64", "bool", "void", "usize", "str", "any", "type" }) |prim| {
+        try known_types.put(allocator, prim, {});
+    }
+
     const root_decls = tree.rootDecls();
+
+    // Pass 1: Extract type declarations (structs, enums, type aliases, constants)
     for (root_decls) |decl_node| {
         const tag = tree.nodeTag(decl_node);
 
         const decl_str: ?[]const u8 = switch (tag) {
-            // Function declarations — try generic struct extraction first, fall back to plain fn
-            .fn_decl, .fn_proto, .fn_proto_multi, .fn_proto_one, .fn_proto_simple => try extractGenericStruct(tree, decl_node, allocator, &import_alias_map) orelse try extractFn(tree, decl_node, allocator, &import_alias_map),
+            // Generic struct from function pattern
+            .fn_decl, .fn_proto, .fn_proto_multi, .fn_proto_one, .fn_proto_simple => try extractGenericStruct(tree, decl_node, allocator, &import_alias_map),
 
-            // Variable declarations (const/var)
+            // Variable declarations: structs, enums, constants, type aliases
             .simple_var_decl, .global_var_decl, .local_var_decl, .aligned_var_decl => try extractConst(tree, decl_node, allocator, &import_alias_map),
 
             else => null,
@@ -820,6 +936,54 @@ pub fn generateModule(
 
         if (decl_str) |s| {
             defer allocator.free(s);
+            // Track the type name for known-type filtering
+            if (std.mem.startsWith(u8, s, "pub struct ")) {
+                const rest = s["pub struct ".len..];
+                const end = std.mem.indexOfAny(u8, rest, " {(\n") orelse rest.len;
+                if (end > 0) try known_types.put(allocator, try allocator.dupe(u8, rest[0..end]), {});
+            } else if (std.mem.startsWith(u8, s, "pub const ")) {
+                const rest = s["pub const ".len..];
+                const end = std.mem.indexOfAny(u8, rest, ":") orelse rest.len;
+                if (end > 0) {
+                    // Check if it's a type alias (contains ": type =")
+                    if (std.mem.indexOf(u8, s, ": type =") != null) {
+                        try known_types.put(allocator, try allocator.dupe(u8, rest[0..end]), {});
+                    }
+                }
+            } else if (std.mem.startsWith(u8, s, "pub enum")) {
+                const rest = s["pub enum".len..];
+                // Skip enum tag: "pub enum(u32) Name"
+                const paren_end = std.mem.indexOfScalar(u8, rest, ')');
+                const name_start = if (paren_end) |pe| pe + 2 else 1; // skip ") "
+                if (name_start < rest.len) {
+                    const name_rest = rest[name_start..];
+                    const end = std.mem.indexOfAny(u8, name_rest, " {\n") orelse name_rest.len;
+                    if (end > 0) try known_types.put(allocator, try allocator.dupe(u8, name_rest[0..end]), {});
+                }
+            }
+            try result.appendSlice(allocator, s);
+            try result.appendSlice(allocator, "\n\n");
+        }
+    }
+
+    // Pass 2: Extract standalone functions, filtering out those with unknown types
+    for (root_decls) |decl_node| {
+        const tag = tree.nodeTag(decl_node);
+
+        // Only functions (skip generic structs — already extracted in pass 1)
+        if (tag != .fn_decl and tag != .fn_proto and tag != .fn_proto_multi and
+            tag != .fn_proto_one and tag != .fn_proto_simple) continue;
+
+        // Skip if already extracted as generic struct
+        if (try extractGenericStruct(tree, decl_node, allocator, &import_alias_map)) |gs| {
+            allocator.free(gs);
+            continue;
+        }
+
+        if (try extractFn(tree, decl_node, allocator, &import_alias_map)) |s| {
+            defer allocator.free(s);
+            // Check that all type references in the signature are known
+            if (hasUnknownTypes(s, &known_types)) continue;
             try result.appendSlice(allocator, s);
             try result.appendSlice(allocator, "\n\n");
         }
@@ -832,6 +996,40 @@ pub fn generateModule(
     }
 
     return try result.toOwnedSlice(allocator);
+}
+
+/// Check if a function declaration string references any unknown types.
+/// Scans type positions in the signature (after ':' and before ',', ')', '{').
+fn hasUnknownTypes(decl: []const u8, known: *const std.StringHashMapUnmanaged(void)) bool {
+    // Simple heuristic: find type tokens after ':' and check each word
+    var i: usize = 0;
+    while (i < decl.len) {
+        if (decl[i] == ':') {
+            i += 1;
+            // Skip whitespace
+            while (i < decl.len and decl[i] == ' ') i += 1;
+            // Skip reference qualifiers
+            if (i + 5 <= decl.len and std.mem.eql(u8, decl[i .. i + 5], "mut& ")) i += 5;
+            if (i + 7 <= decl.len and std.mem.eql(u8, decl[i .. i + 7], "const& ")) i += 7;
+            // Skip '(' for union types
+            if (i < decl.len and decl[i] == '(') { i += 1; continue; }
+            // Read type name
+            const start = i;
+            while (i < decl.len and (std.ascii.isAlphanumeric(decl[i]) or decl[i] == '_')) i += 1;
+            if (i > start) {
+                // Qualified names (module.Type) are trusted — module resolution validates them
+                if (i < decl.len and decl[i] == '.') continue;
+                const type_name = decl[start..i];
+                // Skip Orhon keywords that appear in union syntax
+                if (std.mem.eql(u8, type_name, "null") or
+                    std.mem.eql(u8, type_name, "Error")) continue;
+                if (!known.contains(type_name)) return true;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    return false;
 }
 
 /// Scans Zig source text for @import("sibling.zig") patterns where sibling
@@ -937,10 +1135,12 @@ pub fn discoverZigFiles(allocator: Allocator, source_dir: []const u8) ![]ZigModu
 /// A successfully converted zig module with its name and optional .zon build config.
 pub const ConvertedModule = struct {
     name: []const u8,
+    source_path: []const u8, // original .zig file path (e.g. "src/TamgaSDL3/tamga_sdl3.zig")
     config: ZonConfig,
 
     pub fn deinit(self: *const ConvertedModule, allocator: Allocator) void {
         allocator.free(self.name);
+        allocator.free(self.source_path);
         self.config.deinit(allocator);
     }
 };
@@ -1037,11 +1237,17 @@ pub fn discoverAndConvert(allocator: Allocator, source_dir: []const u8, output_d
 
         // Track the converted module
         const name_copy = allocator.dupe(u8, entry.module_name) catch continue;
+        const path_copy = allocator.dupe(u8, entry.file_path) catch {
+            allocator.free(name_copy);
+            continue;
+        };
         converted.append(allocator, .{
             .name = name_copy,
+            .source_path = path_copy,
             .config = config,
         }) catch {
             allocator.free(name_copy);
+            allocator.free(path_copy);
             config.deinit(allocator);
             continue;
         };
@@ -1584,8 +1790,9 @@ test "generateModule — end-to-end" {
     const result = try testGenerateModule("mylib", source);
     if (result) |actual| {
         defer std.testing.allocator.free(actual);
+        // Pass 1 emits type/const declarations, pass 2 emits functions
         try std.testing.expectEqualStrings(
-            "module mylib\n\npub func add(a: i32, b: i32) i32\n\npub const MAGIC: i64 = 42\n\n",
+            "module mylib\n\npub const MAGIC: i64 = 42\n\npub func add(a: i32, b: i32) i32\n\n",
             actual,
         );
     } else return error.TestUnexpectedResult;

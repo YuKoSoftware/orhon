@@ -173,7 +173,13 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             } else false;
             if (!has_user_orh) {
                 mod_ptr.is_zig_module = true;
-                mod_ptr.zig_source_path = try std.fmt.allocPrint(allocator, "{s}/{s}.zig", .{ cli.source_dir, name });
+                mod_ptr.zig_source_path = try allocator.dupe(u8, cm.source_path);
+            } else {
+                // Mixed module: user .orh files + .zig sidecar.
+                // Mark as having a sidecar so the pipeline copies the .zig to {name}_zig.zig
+                // and re-exports body-less declarations from it.
+                mod_ptr.has_zig_sidecar = true;
+                mod_ptr.zig_source_path = try allocator.dupe(u8, cm.source_path);
             }
         }
     }
@@ -183,7 +189,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         const name = cm.name;
         if (mod_resolver.modules.getPtr(name)) |mod_ptr| {
             mod_ptr.is_zig_module = true;
-            mod_ptr.zig_source_path = try std.fmt.allocPrint(allocator, "{s}/{s}.zig", .{ std_dir, name });
+            mod_ptr.zig_source_path = try allocator.dupe(u8, cm.source_path);
         }
     }
 
@@ -412,7 +418,8 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         // Copy the original .zig file to .orh-cache/generated/{name}_zig.zig
         // so the build system can register it as a named module.
         // Skip std modules — already copied with import rewriting in the early pipeline.
-        if (mod_ptr.is_zig_module) {
+        // Also handles mixed modules (user .orh + .zig sidecar).
+        if (mod_ptr.is_zig_module or mod_ptr.has_zig_sidecar) {
             if (mod_ptr.zig_source_path) |zig_src| {
                 if (!std.mem.startsWith(u8, zig_src, cache.CACHE_DIR)) {
                     try cache.ensureGeneratedDir();
@@ -434,7 +441,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         _ = try passes.runSemanticAndCodegen(
             allocator, ast, mod_name, decl_collector, &all_module_decls,
             locs_ptr, file_offsets, &module_builds, reporter, cli,
-            mod_ptr.is_zig_module, &union_registry,
+            mod_ptr.is_zig_module, mod_ptr.has_zig_sidecar, &union_registry,
         ) orelse return null;
 
         // Capture new union entries from this module for caching
@@ -754,7 +761,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         while (bmod_it.next()) |bmod_entry| {
             const bmod = bmod_entry.value_ptr;
             if (bmod.is_root) continue;
-            if (bmod.is_zig_module) {
+            if (bmod.is_zig_module or bmod.has_zig_sidecar) {
                 try extra_zig_mods.append(allocator, bmod.name);
             }
         }

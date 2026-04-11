@@ -8,6 +8,7 @@ const types = @import("types.zig");
 const builtins = @import("builtins.zig");
 const errors = @import("errors.zig");
 const K = @import("constants.zig");
+const cache = @import("cache.zig");
 
 const TypeResolver = resolver_mod.TypeResolver;
 const Scope = resolver_mod.Scope;
@@ -160,6 +161,13 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
             }
 
             if (!is_known) {
+                // Auto-mapped zig module declarations may reference Zig-internal types
+                // that don't exist in Orhon. Skip validation for these — the re-export
+                // codegen passes them through to Zig which handles them natively.
+                if (self.ctx.nodeLoc(node)) |loc| {
+                    if (std.mem.startsWith(u8, loc.file, cache.ZIG_MODULES_DIR)) return;
+                }
+
                 // @this / Self outside struct gets a specific error message
                 if (std.mem.eql(u8, type_name, K.Type.THIS) or std.mem.eql(u8, type_name, K.Type.SELF_DEPRECATED)) {
                     try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),

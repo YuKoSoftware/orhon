@@ -101,6 +101,7 @@ pub const Module = struct {
     locs: ?parser.LocMap,     // AST node → source location map
     file_offsets: []FileOffset, // maps combined-buffer lines → original files
     is_zig_module: bool = false, // true if auto-generated from .zig file
+    has_zig_sidecar: bool = false, // true if user .orh module also has a .zig sidecar
     zig_source_path: ?[]const u8 = null, // path to original .zig file
 };
 /// The module resolver
@@ -160,9 +161,24 @@ pub const Resolver = struct {
         while (it.next()) |entry| {
             const mod_name = entry.key_ptr.*;
 
-            // Skip if this module is already registered (user .orh files take precedence)
-            if (self.modules.contains(mod_name)) {
-                for (entry.value_ptr.items) |f| self.allocator.free(f);
+            // If module already registered (user .orh takes precedence), merge auto-generated
+            // zig_modules .orh files into it — this makes sidecar declarations available.
+            if (self.modules.getPtr(mod_name)) |existing| {
+                // Only merge .orh files from the zig_modules cache (auto-generated from .zig)
+                var merged = false;
+                for (entry.value_ptr.items) |f| {
+                    if (std.mem.startsWith(u8, f, cache.ZIG_MODULES_DIR)) {
+                        // Append sidecar .orh to existing module's file list
+                        const new_files = try self.allocator.alloc([]const u8, existing.files.len + 1);
+                        @memcpy(new_files[0..existing.files.len], existing.files);
+                        new_files[existing.files.len] = f;
+                        self.allocator.free(existing.files);
+                        existing.files = new_files;
+                        merged = true;
+                    } else {
+                        self.allocator.free(f);
+                    }
+                }
                 self.allocator.free(mod_name);
                 continue;
             }

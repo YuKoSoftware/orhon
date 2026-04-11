@@ -51,6 +51,10 @@ pub const CodeGen = struct {
     mir_root: ?*mir.MirNode = null,
     // Zig-backed module — all declarations are re-exported from {name}_zig
     is_zig_module: bool = false,
+    // Mixed module — user .orh + .zig sidecar; body-less decls re-exported from {name}_zig
+    has_zig_sidecar: bool = false,
+    // Tracks emitted declaration names for deduplication in mixed modules
+    emitted_names: std.StringHashMapUnmanaged(void) = .{},
     // MIR node for the current function — set by generateFuncMir.
     current_func_mir: ?*mir.MirNode = null,
     // Pre-statement hoisting buffer — interpolation temp vars are appended here,
@@ -206,6 +210,7 @@ pub const CodeGen = struct {
         self.error_narrowed.deinit(self.allocator);
         self.null_narrowed.deinit(self.allocator);
         self.pre_stmts.deinit(self.allocator);
+        self.emitted_names.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -381,6 +386,15 @@ pub const CodeGen = struct {
     /// MIR-path top-level dispatch — switches on MirKind.
     /// Struct/enum use MirNode children; func/var/test still read AST with MIR context.
     pub fn generateTopLevelMir(self: *CodeGen, m: *mir.MirNode) anyerror!void {
+        // Deduplicate: mixed modules merge sidecar .orh files, which can duplicate
+        // declarations from the user's .orh. Skip if we already emitted this name.
+        if (self.has_zig_sidecar) {
+            if (m.name) |name| {
+                if (self.emitted_names.contains(name)) return;
+                try self.emitted_names.put(self.allocator, name, {});
+            }
+        }
+
         switch (m.kind) {
             .func => {
                 const prev = self.current_func_mir;

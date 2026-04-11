@@ -90,6 +90,9 @@ pub const PropagationChecker = struct {
     fn checkTopLevel(self: *PropagationChecker, node: *parser.Node) anyerror!void {
         switch (node.*) {
             .func_decl => |f| {
+                // Skip body-less declarations (e.g., auto-mapped zig sidecar functions)
+                if (f.body.* == .block and f.body.block.statements.len == 0) return;
+
                 var scope = PropagationScope.init(self.allocator, null);
                 defer scope.deinit();
 

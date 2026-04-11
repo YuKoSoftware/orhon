@@ -57,7 +57,8 @@ pub fn generateUnionsFile(registry: *const UnionRegistry, allocator: std.mem.All
         for (entry.members) |member| {
             const tag = sanitizeTagName(member, allocator) catch continue;
             defer allocator.free(tag);
-            const zig_type = memberToZig(member, entry.module_types);
+            const zig_type = try memberToZig(member, entry.module_types, allocator);
+            defer allocator.free(zig_type);
             try w.print("_{s}: {s}, ", .{ tag, zig_type });
         }
 
@@ -69,17 +70,17 @@ pub fn generateUnionsFile(registry: *const UnionRegistry, allocator: std.mem.All
 
 /// Map a union member name to its Zig type representation.
 /// Primitives go through Primitive.nameToZig(), user types use module.Type format.
-fn memberToZig(member: []const u8, module_types: []const mir_registry.ModuleType) []const u8 {
+/// Returns an allocated string for module-qualified types — caller must free.
+fn memberToZig(member: []const u8, module_types: []const mir_registry.ModuleType, allocator: std.mem.Allocator) ![]const u8 {
     // Check if it's a user type with a known module
     for (module_types) |mt| {
         if (std.mem.eql(u8, mt.type_name, member)) {
-            // User types are qualified in the union definition via @import above
-            // The caller emits the type name directly since the module is already imported
-            return member;
+            // Qualify with module name: module.Type
+            return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ mt.module_name, mt.type_name });
         }
     }
-    // Primitive type — map to Zig equivalent
-    return Primitive.nameToZig(member);
+    // Primitive type — map to Zig equivalent (static string, dupe for uniform ownership)
+    return try allocator.dupe(u8, Primitive.nameToZig(member));
 }
 
 /// Sanitize a type name into a valid Zig identifier for union tag names.

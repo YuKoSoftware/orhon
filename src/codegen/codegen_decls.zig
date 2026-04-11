@@ -31,13 +31,30 @@ pub fn generateFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     // zig-backed module — re-export from zig source module
     if (cg.is_zig_module) return cg.generateZigReExport(func_name, m.is_pub);
 
-    // Body-less declaration — skip codegen.
+    // Body-less declaration — re-export from sidecar if mixed module, else skip.
     // Never skip main or void functions (they can legitimately have empty bodies).
+    if (m.children.len == 0) {
+        // No children at all — body-less declaration
+        if (cg.has_zig_sidecar) return cg.generateZigReExport(func_name, m.is_pub);
+        return;
+    }
     const body_m = m.body();
     const is_void_ret = if (m.return_type) |rt| rt.* == .type_named and
         std.mem.eql(u8, rt.type_named, K.Type.VOID) else false;
     if (body_m.kind == .block and body_m.children.len == 0 and
-        !std.mem.eql(u8, func_name, "main") and !is_void_ret) return;
+        !std.mem.eql(u8, func_name, "main"))
+    {
+        if (!is_void_ret) {
+            // Non-void body-less func — re-export from sidecar if mixed module, else skip.
+            if (cg.has_zig_sidecar) return cg.generateZigReExport(func_name, m.is_pub);
+            return;
+        }
+        // Void functions with empty bodies and parameters are sidecar functions — re-export.
+        // Void functions with no parameters are legitimately empty (e.g., showCursor).
+        if (cg.has_zig_sidecar and m.params().len > 0) {
+            return cg.generateZigReExport(func_name, m.is_pub);
+        }
+    }
 
     // Track current function for MIR return type queries
     const prev_func_mir = cg.current_func_mir;
@@ -191,6 +208,12 @@ pub fn getRootIdentMir(m: *const mir.MirNode) ?[]const u8 {
 pub fn generateStructMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const struct_name = m.name orelse return;
     if (cg.is_zig_module) return cg.generateZigReExport(struct_name, m.is_pub);
+
+    // Mixed module with sidecar — structs with only body-less methods come from the .zig
+    // sidecar and should be re-exported rather than generated as empty Zig structs.
+    if (cg.has_zig_sidecar and isSidecarStruct(m)) {
+        return cg.generateZigReExport(struct_name, m.is_pub);
+    }
 
     const tp = m.type_params;
     const is_generic = tp != null and tp.?.len > 0;
@@ -376,4 +399,20 @@ pub fn generateTestMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     cg.reassigned_vars.deinit(cg.allocator);
     cg.reassigned_vars = prev_reassigned_vars;
     try cg.emit("\n");
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+/// Check if a struct MIR node is from a .zig sidecar — all its methods are body-less.
+fn isSidecarStruct(m: *mir.MirNode) bool {
+    if (m.children.len == 0) return true;
+    for (m.children) |child| {
+        if (child.kind == .func) {
+            const body_m = child.body();
+            if (body_m.kind == .block and body_m.children.len > 0) return false;
+        }
+    }
+    return true;
 }

@@ -390,6 +390,17 @@ fn generateFieldAccessMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     const field = m.name orelse "";
     const obj_mir = m.children[0];
     const obj_tc = obj_mir.type_class;
+
+    // Self-module reference: module.func where module is the current module.
+    // Strip the prefix — re-exports / local defs make it available unqualified.
+    if (obj_mir.kind == .identifier) {
+        const obj_name = obj_mir.name orelse "";
+        if (obj_name.len > 0 and std.mem.eql(u8, obj_name, cg.module_name)) {
+            try cg.emit(field);
+            return;
+        }
+    }
+
     if (cg.match_var_subst) |subst| {
         if (obj_mir.kind == .identifier and std.mem.eql(u8, obj_mir.name orelse "", subst.original)) {
             if (codegen.isResultValueField(field, cg.decls) or std.mem.eql(u8, field, K.Type.ERROR)) {

@@ -4,6 +4,24 @@ Actionable items for the current development phase. Deferred and future work is 
 
 ---
 
+## Compiler Bugs
+
+### `_unions` cross-import for root-module user types `medium`
+
+Arbitrary unions whose members include user types from the *root* module fail at the
+Zig build step. Codegen emits `_unions.zig` containing `@import("rootmod")`, but
+`src/zig_runner/zig_runner_multi.zig` only cross-wires shared `mod_*` modules — root
+modules aren't in `shared_set`, so the import is never wired and Zig errors with
+`no module named 'rootmod' available within module '_unions'`.
+
+Reproduces with a 2-member `(A | B)` local var where A/B are same-module structs.
+Affects type-alias unions and inline arbitrary unions equally. Fix lives in the
+cross-wire pass in `zig_runner_multi.zig`.
+
+Discovered while resolving GAP-005 (2026-04-12). Tracked in tamga's `compiler-gaps.md`.
+
+---
+
 ## Developer Experience
 
 ### LSP — feature-gated passes `medium`

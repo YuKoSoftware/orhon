@@ -1941,3 +1941,101 @@ test "resolver - @tuple accepted when slotted into anytype param" {
     // @tuple inside anytype arg must be accepted — no errors expected
     try std.testing.expect(!reporter.hasErrors());
 }
+
+test "resolver - @tuple accepted when slotted into anytype param via field_expr callee" {
+    // Tests the module-qualified call path: bitfield.fake_bitfield_fn(@tuple(1, 2, 3))
+    // The callee is a field_expr{object: "bitfield", field: "fake_bitfield_fn"}.
+    // The resolver must look up fake_bitfield_fn in the "bitfield" module's DeclTable
+    // and detect its `any`-typed parameter so that in_anytype_arg is set correctly.
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Build: @tuple(1, 2, 3)
+    const e1 = try a.create(parser.Node);
+    e1.* = .{ .int_literal = "1" };
+    const e2 = try a.create(parser.Node);
+    e2.* = .{ .int_literal = "2" };
+    const e3 = try a.create(parser.Node);
+    e3.* = .{ .int_literal = "3" };
+    const elems = try a.alloc(*parser.Node, 3);
+    elems[0] = e1;
+    elems[1] = e2;
+    elems[2] = e3;
+    const tuple_node = try a.create(parser.Node);
+    tuple_node.* = .{ .tuple_literal = .{ .elements = elems, .names = null } };
+
+    // Build: bitfield.fake_bitfield_fn(@tuple(1, 2, 3))
+    const obj_node = try a.create(parser.Node);
+    obj_node.* = .{ .identifier = "bitfield" };
+    const callee_node = try a.create(parser.Node);
+    callee_node.* = .{ .field_expr = .{ .object = obj_node, .field = "fake_bitfield_fn" } };
+    const call_args = try a.alloc(*parser.Node, 1);
+    call_args[0] = tuple_node;
+    const call_node = try a.create(parser.Node);
+    call_node.* = .{ .call_expr = .{
+        .callee = callee_node,
+        .args = call_args,
+        .arg_names = &.{},
+    } };
+
+    // Wrap in a func body: func test_fn(): void { bitfield.fake_bitfield_fn(@tuple(1, 2, 3)) }
+    const stmts = try a.alloc(*parser.Node, 1);
+    stmts[0] = call_node;
+    const func_node = try wrapInFunc(a, stmts, "void");
+    const top = try a.alloc(*parser.Node, 1);
+    top[0] = func_node;
+    const prog = try buildTestProgram(a, top);
+
+    // Build the "bitfield" module's DeclTable with fake_bitfield_fn(x: any): void
+    const bitfield_ptr = try alloc.create(declarations.DeclTable);
+    bitfield_ptr.* = declarations.DeclTable.init(alloc);
+    defer {
+        bitfield_ptr.deinit();
+        alloc.destroy(bitfield_ptr);
+    }
+    const params = try alloc.alloc(declarations.ParamSig, 1);
+    params[0] = .{ .name = "x", .type_ = RT{ .named = "any" } };
+    const dummy_param_node = try a.create(parser.Node);
+    dummy_param_node.* = .{ .int_literal = "0" };
+    const param_nodes = try a.alloc(*parser.Node, 1);
+    param_nodes[0] = dummy_param_node;
+    const ret_node = try a.create(parser.Node);
+    ret_node.* = .{ .type_named = "void" };
+    try bitfield_ptr.funcs.put("fake_bitfield_fn", .{
+        .name = "fake_bitfield_fn",
+        .params = params,
+        .param_nodes = param_nodes,
+        .return_type = RT{ .primitive = .void },
+        .return_type_node = ret_node,
+        .context = .normal,
+        .is_pub = true,
+        .is_instance = false,
+    });
+
+    // Build an empty root DeclTable (current module has no top-level funcs here).
+    var root_decl = declarations.DeclTable.init(alloc);
+    defer root_decl.deinit();
+
+    // Wire up all_decls so the resolver can look up the "bitfield" module.
+    var all_decls = std.StringHashMap(*declarations.DeclTable).init(alloc);
+    defer all_decls.deinit();
+    try all_decls.put("bitfield", bitfield_ptr);
+
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    const ctx = sema.SemanticContext{
+        .allocator = alloc,
+        .reporter = &reporter,
+        .decls = &root_decl,
+        .locs = null,
+        .file_offsets = &.{},
+        .all_decls = &all_decls,
+    };
+    var resolver = TypeResolver.init(&ctx);
+    defer resolver.deinit();
+    try resolver.resolve(prog);
+    // @tuple inside anytype arg (via field_expr callee) must be accepted — no errors expected
+    try std.testing.expect(!reporter.hasErrors());
+}

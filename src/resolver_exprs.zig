@@ -184,11 +184,23 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
             // an `any` param and set `in_anytype_arg` accordingly.
             // `any` is how zig_module.zig maps `comptime x: anytype` in the generated
             // .orh interface; RT{ .named = "any" } is how classifyNamed represents it.
-            // We only check plain-identifier callees — field_expr callees are looked up
-            // later in this branch; falling back to null is safe since @tuple will then error.
             const callee_sig: ?declarations.FuncSig = blk: {
                 if (c.callee.* == .identifier) {
                     if (self.ctx.decls.funcs.get(c.callee.identifier)) |sig| break :blk sig;
+                }
+                if (c.callee.* == .field_expr) {
+                    const fe = c.callee.field_expr;
+                    if (fe.object.* == .identifier) {
+                        const obj_id = fe.object.identifier;
+                        // Module-qualified call: module.func(args).
+                        // Look in the named module's decl table first, then current module.
+                        if (self.ctx.all_decls) |ad| {
+                            if (ad.get(obj_id)) |mod_decls| {
+                                if (mod_decls.funcs.get(fe.field)) |sig| break :blk sig;
+                            }
+                        }
+                        if (self.ctx.decls.funcs.get(fe.field)) |sig| break :blk sig;
+                    }
                 }
                 break :blk null;
             };

@@ -197,6 +197,21 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                         if (self.ctx.all_decls) |ad| {
                             if (ad.get(obj_id)) |mod_decls| {
                                 if (mod_decls.funcs.get(fe.field)) |sig| break :blk sig;
+                                // Also check generic structs: Bitfield(T, flags: any) pattern.
+                                // Synthesise a FuncSig from the struct's type_params so the
+                                // anytype-arg detection below can set in_anytype_arg correctly.
+                                if (mod_decls.structs.get(fe.field)) |ss| {
+                                    if (ss.type_params.len > 0) break :blk declarations.FuncSig{
+                                        .name = ss.name,
+                                        .params = ss.type_params,
+                                        .param_nodes = &.{},
+                                        .return_type = RT{ .primitive = .@"type" },
+                                        .return_type_node = undefined,
+                                        .context = .normal,
+                                        .is_pub = ss.is_pub,
+                                        .is_instance = false,
+                                    };
+                                }
                             }
                         }
                         if (self.ctx.decls.funcs.get(fe.field)) |sig| break :blk sig;
@@ -249,6 +264,9 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                 if (scope.lookup(name)) |t| {
                     if (t == .func_ptr) {
                         // Function pointer call — OK
+                    } else if (t == .primitive and t.primitive == .@"type") {
+                        // Local type alias used as a constructor (e.g. `const Perms: type = ...`)
+                        return RT{ .named = name };
                     } else if (!self.ctx.decls.funcs.contains(name) and
                         !self.ctx.decls.structs.contains(name) and
                         !self.ctx.decls.enums.contains(name) and

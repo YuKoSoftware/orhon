@@ -32,6 +32,7 @@ pub const ParamSig = struct {
 pub const StructSig = struct {
     name: []const u8,
     fields: []FieldSig,
+    type_params: []ParamSig = &.{}, // generic type params, e.g. (T: type, flags: any)
     conforms_to: []const []const u8 = &.{},
     is_pub: bool,
 };
@@ -125,6 +126,7 @@ pub const DeclTable = struct {
         var struct_it = self.structs.iterator();
         while (struct_it.next()) |entry| {
             self.allocator.free(entry.value_ptr.fields);
+            self.allocator.free(entry.value_ptr.type_params);
         }
         self.structs.deinit();
         // Free owned slices stored in EnumSig values
@@ -330,6 +332,7 @@ pub const DeclCollector = struct {
         const sig = StructSig{
             .name = s.name,
             .fields = try fields.toOwnedSlice(self.allocator),
+            .type_params = try self.resolveParams(s.type_params),
             .conforms_to = s.blueprints,
             .is_pub = s.is_pub,
         };

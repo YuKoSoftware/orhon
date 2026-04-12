@@ -2,6 +2,7 @@ module example
 
 import std::console
 import std::thread
+import std::bitfield
 use std::collections
 
 // ─── Collections ────────────────────────────────────────────────────────────
@@ -195,4 +196,19 @@ test "cast" {
 
 test "split" {
     @assert(split_demo() == 21)
+}
+
+// ─── Comptime Tuple Literal ─────────────────────────────────────────────────
+
+// @tuple(...) is a comptime literal that lowers to a Zig anonymous struct
+// literal. It is only valid as an argument to a Zig-backed function taking
+// an `anytype` parameter — for example, std::bitfield.
+
+test "bitfield via @tuple" {
+    const Perms: type = bitfield.Bitfield(u32, @tuple("Read", "Write", "Execute"))
+    var p: Perms = Perms{}
+    p.set(Perms.get("Read"))
+    @assert(p.has(Perms.get("Read")))
+    p.clear(Perms.get("Read"))
+    @assert(!p.has(Perms.get("Read")))
 }

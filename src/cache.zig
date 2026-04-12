@@ -809,7 +809,6 @@ fn makeTestTable(
         .params = params,
         .param_nodes = &.{},
         .return_type = .{ .primitive = .void },
-        .return_type_node = ret_node,
         .context = .normal,
         .is_pub = is_pub,
         .is_instance = false,
@@ -872,7 +871,6 @@ test "interface hash ignores private" {
             .params = params,
             .param_nodes = &.{},
             .return_type = .{ .primitive = .void },
-            .return_type_node = ret_node,
             .context = .normal,
             .is_pub = false, // private — must not affect the hash
             .is_instance = false,
@@ -907,7 +905,6 @@ test "interface hash changes on public change" {
             .params = params,
             .param_nodes = &.{},
             .return_type = .{ .primitive = .void },
-            .return_type_node = ret_node,
             .context = .normal,
             .is_pub = true, // public — must change the hash
             .is_instance = false,

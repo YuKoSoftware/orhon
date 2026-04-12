@@ -721,14 +721,12 @@ test "borrow checker - lookupStructMethod" {
     // Register struct and struct method
     try decl_table.structs.put("Point", .{ .name = "Point", .fields = &.{}, .is_pub = true });
 
-    var ret_node = parser.Node{ .type_named = "void" };
     const key = try alloc.dupe(u8, "Point.scale");
     try decl_table.struct_methods.put(alloc, key, .{
         .name = "scale",
         .params = &.{},
         .param_nodes = &.{},
         .return_type = .{ .primitive = .void },
-        .return_type_node = &ret_node,
         .context = .normal,
         .is_pub = true,
         .is_instance = false,

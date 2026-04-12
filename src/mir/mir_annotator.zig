@@ -392,7 +392,6 @@ test "resolveCallSig - cross-module lookup" {
         .params = params,
         .param_nodes = param_nodes,
         .return_type = RT{ .primitive = .f32 },
-        .return_type_node = ret_node,
         .context = .normal,
         .is_pub = true,
         .is_instance = false,

@@ -206,7 +206,6 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                                         .params = ss.type_params,
                                         .param_nodes = &.{},
                                         .return_type = RT{ .primitive = .@"type" },
-                                        .return_type_node = undefined,
                                         .context = .normal,
                                         .is_pub = ss.is_pub,
                                         .is_instance = false,

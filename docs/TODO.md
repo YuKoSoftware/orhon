@@ -29,12 +29,6 @@ a whole batch in one pass leaves the touched area cleaner than picking single it
 
 ### Batch A — Free wins `small` (each)
 
-#### `FuncSig.return_type_node` is redundant
-**`src/declarations.zig:18-20`** — `FuncSig` carries both the resolved type and the
-original AST node. The node is re-resolved at codegen time even though `return_type`
-is the authoritative fact. Drop the node; if codegen needs source locations, use a
-side table.
-
 #### `NodeInfo.type_class` is derived state with sync risk
 **`src/mir/mir_types.zig:56-62`** — `type_class` is computed via
 `classifyType(resolved_type)` at every NodeInfo construction. If anyone updates

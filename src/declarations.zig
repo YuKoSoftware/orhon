@@ -17,7 +17,6 @@ pub const FuncSig = struct {
     params: []ParamSig,
     param_nodes: []*parser.Node, // original AST param nodes (for default values)
     return_type: types.ResolvedType,
-    return_type_node: *parser.Node, // original AST node (used by codegen)
     context: parser.FuncContext,
     is_pub: bool,
     is_instance: bool, // true when first param is named "self" (instance method receiver)
@@ -280,7 +279,6 @@ pub const DeclCollector = struct {
             .params = try params.toOwnedSlice(self.allocator),
             .param_nodes = f.params,
             .return_type = return_type,
-            .return_type_node = f.return_type,
             .context = f.context,
             .is_pub = f.is_pub,
             .is_instance = false,
@@ -362,7 +360,6 @@ pub const DeclCollector = struct {
                         .params = try self.resolveParams(f.params),
                         .param_nodes = f.params,
                         .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
-                        .return_type_node = f.return_type,
                         .context = f.context,
                         .is_pub = f.is_pub,
                         .is_instance = is_instance,
@@ -991,15 +988,11 @@ test "declaration collector - hasDecl" {
 
     try std.testing.expect(!table.hasDecl("foo"));
 
-    const ret_node = try alloc.create(parser.Node);
-    defer alloc.destroy(ret_node);
-    ret_node.* = .{ .type_named = "void" };
     try table.funcs.put("foo", .{
         .name = "foo",
         .params = &.{},
         .param_nodes = &.{},
         .return_type = .{ .primitive = .void },
-        .return_type_node = ret_node,
         .context = .normal,
         .is_pub = false,
         .is_instance = false,

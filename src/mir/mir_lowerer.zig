@@ -268,6 +268,7 @@ pub const MirLowerer = struct {
             .array_literal => |a| {
                 mir_node_ptr.children = try self.lowerSlice(a);
             },
+            .tuple_literal => {},
             .version_literal => {},
             .test_decl => |td| {
                 var children = std.ArrayListUnmanaged(*MirNode){};

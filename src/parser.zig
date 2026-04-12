@@ -56,6 +56,7 @@ pub const NodeKind = enum {
     bool_literal,
     null_literal,
     array_literal,
+    tuple_literal,
     version_literal,
     error_literal,
     range_expr,
@@ -117,6 +118,7 @@ pub const Node = union(NodeKind) {
     bool_literal: bool,
     null_literal: void,
     array_literal: []*Node,
+    tuple_literal: TupleLiteral,
     version_literal: [3][]const u8,
     error_literal: []const u8,
     range_expr: BinaryOp,
@@ -466,6 +468,13 @@ pub const FieldExpr = struct {
 pub const CompilerFunc = struct {
     name: []const u8,
     args: []*Node,
+};
+
+pub const TupleLiteral = struct {
+    /// Element expressions. For named form, `names[i]` is the key for `elements[i]`.
+    elements: []*Node,
+    /// null when all elements are positional; non-null (same length as elements) when named.
+    names: ?[][]const u8,
 };
 
 pub const TypeArray = struct {

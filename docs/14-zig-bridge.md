@@ -219,6 +219,30 @@ Local `.c`/`.cpp` files in the same directory as the `.zig` file are auto-detect
 
 ---
 
+## `@tuple(...)` — comptime literal for `anytype` interop
+
+Zig functions that take `comptime x: anytype` expect an anonymous struct literal
+(`.{ "Read", "Write" }`) on the call side. Orhon's `@tuple(...)` produces one.
+
+- Positional: `@tuple(1, 2, 3)` → `.{ 1, 2, 3 }`
+- Named: `@tuple(a: 1, b: 2)` → `.{ .a = 1, .b = 2 }`
+- Empty: `@tuple()` → `.{}`
+
+Positional and named forms cannot mix in a single `@tuple`. Using `@tuple(...)`
+outside an `anytype` argument position is a compile error.
+
+```orhon
+import std::bitfield
+
+test "named flags" {
+    const Perms: type = bitfield.Bitfield(u32, @tuple("Read", "Write", "Execute"))
+    var p: Perms = Perms{}
+    p.set(Perms.get("Read"))
+}
+```
+
+---
+
 ## Standard Library
 
 The stdlib uses the same mechanism. Each stdlib module is a `.zig` file in `src/std/`

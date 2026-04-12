@@ -684,8 +684,8 @@ run_fixture neg_compt_type_arg fail_compt.orh "compt function.*requires compile-
 run_fixture neg_compt_nested fail_compt.orh "compt function.*requires compile-time-known arguments\|compt function.*expects a type argument" "fixture: rejects runtime param in nested compt call"
 
 # @tuple context and mixing
-run_fixture neg_tuple_context fail_tuple_literal.orh "@tuple.*anytype argument" "fixture: rejects @tuple outside call context"
-run_fixture neg_tuple_mixed   fail_tuple_literal.orh "cannot mix positional and named" "fixture: rejects mixed @tuple elements"
+run_fixture neg_tuple_context fail_tuple_literal_stray.orh "@tuple.*anytype argument" "fixture: rejects @tuple outside call context"
+run_fixture neg_tuple_mixed   fail_tuple_literal_mixed.orh "cannot mix positional and named" "fixture: rejects mixed @tuple elements"
 
 # else if → elif
 run_fixture neg_else_if fail_else_if.orh "elif" "fixture: suggests elif instead of else if"

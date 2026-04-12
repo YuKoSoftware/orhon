@@ -1,0 +1,13 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+func main() void {
+    const _x = @tuple(1, 2)
+    stray_use(_x)
+}
+
+func stray_use(x: i32) void {
+    return
+}

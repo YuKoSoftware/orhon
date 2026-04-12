@@ -1,0 +1,11 @@
+module fixture
+
+#version = (1, 0, 0)
+#build   = exe
+
+import std::bitfield
+
+func main() void {
+    const _Flags: type = bitfield.Bitfield(u32, @tuple("Read", count: 2))
+    _ = _Flags
+}

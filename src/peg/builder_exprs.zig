@@ -435,8 +435,17 @@ pub fn buildTupleLiteral(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*
     }
 
     if (has_named and has_positional) {
+        // Surface the error through ctx.syntax_errors so the normal diagnostic
+        // pipeline picks it up, and return a poisoned empty tuple_literal so
+        // building continues rather than aborting with a generic "AST builder
+        // failed" that drops the real message.
         ctx.reportError("cannot mix positional and named elements in @tuple", cap.start_pos);
-        return error.BuildError;
+        elements.deinit(ctx.alloc());
+        names.deinit(ctx.alloc());
+        return ctx.newNode(.{ .tuple_literal = .{
+            .elements = &.{},
+            .names = null,
+        } });
     }
 
     return ctx.newNode(.{ .tuple_literal = .{
@@ -523,7 +532,7 @@ test "buildTupleLiteral - named form produces nodes with names slice" {
     try std.testing.expectEqualStrings("b", tup_node.tuple_literal.names.?[1]);
 }
 
-test "buildTupleLiteral - mixed form returns error" {
+test "buildTupleLiteral - mixed form reports a syntax error" {
     const alloc = std.testing.allocator;
     const peg = @import("../peg.zig");
 
@@ -544,7 +553,18 @@ test "buildTupleLiteral - mixed form returns error" {
     defer engine.deinit();
     const cap = engine.captureProgram() orelse return error.TestFailed;
 
-    // buildAST must return an error for mixed positional+named
-    const result = builder.buildAST(&cap, tokens.items, std.heap.page_allocator);
-    try std.testing.expectError(error.BuildError, result);
+    // The builder now produces a poisoned empty tuple_literal node AND records
+    // a syntax error, instead of returning error.BuildError outright — that way
+    // the normal diagnostic pipeline surfaces the real error message.
+    var result = try builder.buildAST(&cap, tokens.items, std.heap.page_allocator);
+    defer result.ctx.deinit();
+    try std.testing.expect(result.ctx.syntax_errors.items.len > 0);
+    var found = false;
+    for (result.ctx.syntax_errors.items) |e| {
+        if (std.mem.indexOf(u8, e.message, "cannot mix positional and named") != null) {
+            found = true;
+            break;
+        }
+    }
+    try std.testing.expect(found);
 }

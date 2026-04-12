@@ -178,6 +178,7 @@ const rule_dispatch = std.StaticStringMap(BuilderFn).initComptime(.{
     .{ "compiler_func", exprs_impl.buildCompilerFunc },
     .{ "error_literal", exprs_impl.buildErrorLiteral },
     .{ "array_literal", exprs_impl.buildArrayLiteral },
+    .{ "tuple_literal", exprs_impl.buildTupleLiteral },
     .{ "grouped_expr", exprs_impl.buildGroupedExpr },
     .{ "tuple_type_literal", types_impl.buildTupleTypeLiteral },
     .{ "version_literal", exprs_impl.buildVersionLiteral },

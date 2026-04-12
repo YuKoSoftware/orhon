@@ -379,3 +379,172 @@ pub fn buildPostfixExpr(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
 
     return expr;
 }
+
+// ============================================================
+// TUPLE LITERAL BUILDER
+// ============================================================
+
+pub fn buildTupleLiteral(ctx: *BuildContext, cap: *const CaptureNode) anyerror!*Node {
+    // tuple_literal <- '@' 'tuple' '(' _ (tuple_element (_ ',' _ tuple_element)* (_ ',')?)? _ ')'
+    // tuple_element <- IDENTIFIER _ ':' _ expr   (choice_index 0 = named)
+    //               /  expr                       (choice_index 1 = positional)
+    var elements = std.ArrayListUnmanaged(*Node){};
+    var names = std.ArrayListUnmanaged([]const u8){};
+    var has_named: bool = false;
+    var has_positional: bool = false;
+
+    for (cap.children) |*child| {
+        if (child.rule) |r| {
+            if (!std.mem.eql(u8, r, "tuple_element")) continue;
+            // Detect named vs positional by checking whether the first token is an
+            // identifier followed by a colon (named), or just an expression (positional).
+            // choice_index 0 = named alternative, choice_index 1+ = positional.
+            const is_named = child.choice_index == 0 and
+                child.start_pos + 1 < child.end_pos and
+                ctx.tokens[child.start_pos].kind == .identifier and
+                ctx.tokens[child.start_pos + 1].kind == .colon;
+
+            if (is_named) {
+                has_named = true;
+                const name_text = ctx.tokens[child.start_pos].text;
+                try names.append(ctx.alloc(), name_text);
+                // The expr child is inside the tuple_element capture
+                if (child.findChild("expr")) |e| {
+                    try elements.append(ctx.alloc(), try builder.buildNode(ctx, e));
+                } else {
+                    // Fallback: collect recursively
+                    var expr_list = std.ArrayListUnmanaged(*Node){};
+                    try builder.collectExprsRecursive(ctx, child, &expr_list);
+                    if (expr_list.items.len > 0) {
+                        try elements.append(ctx.alloc(), expr_list.items[0]);
+                    }
+                }
+            } else {
+                has_positional = true;
+                try names.append(ctx.alloc(), "");
+                if (child.findChild("expr")) |e| {
+                    try elements.append(ctx.alloc(), try builder.buildNode(ctx, e));
+                } else if (child.children.len > 0) {
+                    try elements.append(ctx.alloc(), try builder.buildNode(ctx, &child.children[0]));
+                } else {
+                    // Terminal positional element
+                    try elements.append(ctx.alloc(), try builder.buildTokenNode(ctx, child));
+                }
+            }
+        }
+    }
+
+    if (has_named and has_positional) {
+        ctx.reportError("cannot mix positional and named elements in @tuple", cap.start_pos);
+        return error.BuildError;
+    }
+
+    return ctx.newNode(.{ .tuple_literal = .{
+        .elements = try elements.toOwnedSlice(ctx.alloc()),
+        .names = if (has_named) try names.toOwnedSlice(ctx.alloc()) else null,
+    } });
+}
+
+// ============================================================
+// TESTS
+// ============================================================
+
+test "buildTupleLiteral - positional form produces nodes with names=null" {
+    const alloc = std.testing.allocator;
+    const peg = @import("../peg.zig");
+
+    var g = try peg.loadGrammar(alloc);
+    defer g.deinit();
+
+    var lex = @import("../lexer.zig").Lexer.init(
+        \\module mymod
+        \\func f() void {
+        \\    const t = @tuple(1, 2, 3)
+        \\}
+        \\
+    );
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var engine = @import("capture.zig").CaptureEngine.init(&g, tokens.items, std.heap.page_allocator);
+    defer engine.deinit();
+    const cap = engine.captureProgram() orelse return error.TestFailed;
+
+    var result = try builder.buildAST(&cap, tokens.items, std.heap.page_allocator);
+    defer result.ctx.deinit();
+
+    const func = result.node.program.top_level[0];
+    try std.testing.expect(func.* == .func_decl);
+    const stmts = func.func_decl.body.block.statements;
+    try std.testing.expect(stmts.len > 0);
+    const decl = stmts[0];
+    try std.testing.expect(decl.* == .var_decl);
+    const tup_node = decl.var_decl.value;
+    try std.testing.expect(tup_node.* == .tuple_literal);
+    try std.testing.expectEqual(@as(usize, 3), tup_node.tuple_literal.elements.len);
+    try std.testing.expect(tup_node.tuple_literal.names == null);
+}
+
+test "buildTupleLiteral - named form produces nodes with names slice" {
+    const alloc = std.testing.allocator;
+    const peg = @import("../peg.zig");
+
+    var g = try peg.loadGrammar(alloc);
+    defer g.deinit();
+
+    var lex = @import("../lexer.zig").Lexer.init(
+        \\module mymod
+        \\func f() void {
+        \\    const t = @tuple(a: 1, b: 2)
+        \\}
+        \\
+    );
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var engine = @import("capture.zig").CaptureEngine.init(&g, tokens.items, std.heap.page_allocator);
+    defer engine.deinit();
+    const cap = engine.captureProgram() orelse return error.TestFailed;
+
+    var result = try builder.buildAST(&cap, tokens.items, std.heap.page_allocator);
+    defer result.ctx.deinit();
+
+    const func = result.node.program.top_level[0];
+    try std.testing.expect(func.* == .func_decl);
+    const stmts = func.func_decl.body.block.statements;
+    try std.testing.expect(stmts.len > 0);
+    const decl = stmts[0];
+    try std.testing.expect(decl.* == .var_decl);
+    const tup_node = decl.var_decl.value;
+    try std.testing.expect(tup_node.* == .tuple_literal);
+    try std.testing.expectEqual(@as(usize, 2), tup_node.tuple_literal.elements.len);
+    try std.testing.expect(tup_node.tuple_literal.names != null);
+    try std.testing.expectEqualStrings("a", tup_node.tuple_literal.names.?[0]);
+    try std.testing.expectEqualStrings("b", tup_node.tuple_literal.names.?[1]);
+}
+
+test "buildTupleLiteral - mixed form returns error" {
+    const alloc = std.testing.allocator;
+    const peg = @import("../peg.zig");
+
+    var g = try peg.loadGrammar(alloc);
+    defer g.deinit();
+
+    var lex = @import("../lexer.zig").Lexer.init(
+        \\module mymod
+        \\func f() void {
+        \\    const t = @tuple(1, a: 2)
+        \\}
+        \\
+    );
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var engine = @import("capture.zig").CaptureEngine.init(&g, tokens.items, std.heap.page_allocator);
+    defer engine.deinit();
+    const cap = engine.captureProgram() orelse return error.TestFailed;
+
+    // buildAST must return an error for mixed positional+named
+    const result = builder.buildAST(&cap, tokens.items, std.heap.page_allocator);
+    try std.testing.expectError(error.BuildError, result);
+}

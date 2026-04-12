@@ -349,30 +349,12 @@ pub const CodeGen = struct {
             // Re-export each pub declaration from the included module
             if (self.all_decls) |ad| {
                 if (ad.get(imp.path)) |dt| {
-                    var func_iter = dt.funcs.iterator();
-                    while (func_iter.next()) |entry| {
-                        if (entry.value_ptr.is_pub)
-                            try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
-                    }
-                    var struct_iter = dt.structs.iterator();
-                    while (struct_iter.next()) |entry| {
-                        if (entry.value_ptr.is_pub)
-                            try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
-                    }
-                    var enum_iter = dt.enums.iterator();
-                    while (enum_iter.next()) |entry| {
-                        if (entry.value_ptr.is_pub)
-                            try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
-                    }
-                    var var_iter = dt.vars.iterator();
-                    while (var_iter.next()) |entry| {
-                        if (entry.value_ptr.is_pub)
-                            try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
-                    }
-                    var bp_iter = dt.blueprints.iterator();
-                    while (bp_iter.next()) |entry| {
-                        if (entry.value_ptr.is_pub)
-                            try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
+                    inline for (.{ "funcs", "structs", "enums", "vars", "blueprints" }) |field_name| {
+                        var iter = @field(dt, field_name).iterator();
+                        while (iter.next()) |entry| {
+                            if (entry.value_ptr.is_pub)
+                                try self.emitLineFmt("const {s} = {s}.{s};", .{ entry.key_ptr.*, hidden, entry.key_ptr.* });
+                        }
                     }
                 }
             }

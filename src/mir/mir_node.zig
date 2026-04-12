@@ -216,6 +216,7 @@ pub const MirKind = enum {
     interpolation,
     compiler_fn,
     array_lit,
+    tuple_lit,
     version_lit,
     // Types — passthrough (codegen reads ast.* via typeToZig)
     type_expr,

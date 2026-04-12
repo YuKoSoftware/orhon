@@ -268,7 +268,12 @@ pub const MirLowerer = struct {
             .array_literal => |a| {
                 mir_node_ptr.children = try self.lowerSlice(a);
             },
-            .tuple_literal => {},
+            .tuple_literal => |tl| {
+                // Store the optional field names on the MirNode. Children are lowered
+                // by the default recursion path and become the tuple elements.
+                mir_node_ptr.arg_names = tl.names;
+                mir_node_ptr.children = try self.lowerSlice(tl.elements);
+            },
             .version_literal => {},
             .test_decl => |td| {
                 var children = std.ArrayListUnmanaged(*MirNode){};
@@ -696,6 +701,7 @@ fn astToMirKind(node: *parser.Node) MirKind {
         .interpolated_string => .interpolation,
         .compiler_func => .compiler_fn,
         .array_literal => .array_lit,
+        .tuple_literal => .tuple_lit,
         .version_literal => .passthrough,
         .type_slice, .type_array, .type_ptr, .type_union,
         .type_tuple_named, .type_func, .type_generic,

@@ -11,5 +11,6 @@ pub const LiteralKind = @import("mir_node.zig").LiteralKind;
 pub const IfNarrowing = @import("mir_node.zig").IfNarrowing;
 pub const MirNode = @import("mir_node.zig").MirNode;
 pub const UnionRegistry = @import("mir_registry.zig").UnionRegistry;
+pub const union_sort = @import("union_sort.zig");
 pub const MirAnnotator = @import("mir_annotator.zig").MirAnnotator;
 pub const MirLowerer = @import("mir_lowerer.zig").MirLowerer;

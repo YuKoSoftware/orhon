@@ -44,8 +44,11 @@ pub const CodeGen = struct {
     // Track the captured error variable name per scope for `.Error` → `@errorName()`
     // MIR annotation table — Phase 1+2 typed annotation pass
     node_map: ?*const mir.NodeMap = null,
-    union_registry: ?*const mir.UnionRegistry = null,
+    union_registry: ?*mir.UnionRegistry = null,
     needs_unions_import: bool = false,
+    /// Module currently being emitted — used to attribute arity registrations
+    /// to the right module for incremental cache replay.
+    current_module_name: []const u8 = "",
     var_types: ?*const std.StringHashMapUnmanaged(mir.NodeInfo) = null,
     // MIR tree — Phase 3 lowered tree (available for incremental migration)
     mir_root: ?*mir.MirNode = null,
@@ -108,6 +111,34 @@ pub const CodeGen = struct {
             if (m.resolved_type == .union_type) return m.resolved_type.union_type;
         }
         return null;
+    }
+
+    /// Look up the positional tag (e.g. "0", "1") of `type_name` within the
+    /// arbitrary union's canonical sort order. Returns null when the union
+    /// type is unknown or the type name is not a member; callers fall back
+    /// to the raw type name in that case.
+    pub fn arbitraryUnionTag(_: *CodeGen, union_resolved: RT, type_name: []const u8) ?[]const u8 {
+        if (union_resolved != .union_type) return null;
+        const max_arity = 32;
+        var buf: [max_arity][]const u8 = undefined;
+        var n: usize = 0;
+        for (union_resolved.union_type) |mem| {
+            const name = mem.name();
+            if (std.mem.eql(u8, name, "Error") or std.mem.eql(u8, name, "null")) continue;
+            if (n >= max_arity) return null;
+            buf[n] = name;
+            n += 1;
+        }
+        mir.union_sort.sortMemberNames(buf[0..n]);
+        const idx = mir.union_sort.positionalIndex(buf[0..n], type_name) orelse return null;
+        const pool = [_][]const u8{
+            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+            "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
+            "20", "21", "22", "23", "24", "25", "26", "27", "28", "29",
+            "30", "31",
+        };
+        if (idx >= pool.len) return null;
+        return pool[idx];
     }
 
     /// When this module is a pure Zig-backed module, emit a re-export for the
@@ -572,44 +603,44 @@ pub const CodeGen = struct {
         return try self.allocTypeStr("{s}", .{buf.items});
     }
 
-    /// Build a canonical `_unions.OrhonUnion_*` reference for a set of union member AST nodes.
-    /// Sets `needs_unions_import = true` as a side effect.
+    /// Build a `_unions.OrhonUnionN(T0, T1, ...)` generic instantiation for a
+    /// set of union member AST nodes. Members are sorted canonically by Orhon
+    /// name so positional tags agree with the annotator and match-arm emitter.
+    /// Sets `needs_unions_import = true` and registers the arity with the
+    /// shared registry as a side effect.
     fn canonicalUnionRef(self: *CodeGen, members: []const *parser.Node) ![]const u8 {
-        // Collect member names, sort, build canonical name
-        var names = std.ArrayListUnmanaged([]const u8){};
-        defer names.deinit(self.allocator);
+        const Pair = struct { name: []const u8, zig: []const u8 };
+        var pairs = std.ArrayListUnmanaged(Pair){};
+        defer pairs.deinit(self.allocator);
         for (members) |m| {
             const name = if (m.* == .type_named) m.type_named else try self.typeToZig(m);
-            try names.append(self.allocator, name);
+            const zig = try self.typeToZig(m);
+            try pairs.append(self.allocator, .{ .name = name, .zig = zig });
         }
-        std.mem.sort([]const u8, names.items, {}, struct {
-            fn lt(_: void, a: []const u8, b: []const u8) bool {
-                return std.mem.order(u8, a, b) == .lt;
+
+        // Canonical sort by member name (matches union_sort and the annotator)
+        std.mem.sort(Pair, pairs.items, {}, struct {
+            fn lt(_: void, a: Pair, b: Pair) bool {
+                return std.mem.order(u8, a.name, b.name) == .lt;
             }
         }.lt);
 
+        const arity = pairs.items.len;
+
+        // Register arity with the shared registry so codegen_unions emits
+        // enough factories. Safe to skip if the registry is unavailable.
+        if (self.union_registry) |reg| {
+            try reg.registerArity(self.current_module_name, arity);
+        }
+
         var buf = std.ArrayListUnmanaged(u8){};
         defer buf.deinit(self.allocator);
-        try buf.appendSlice(self.allocator, "_unions.OrhonUnion");
-        for (names.items) |name| {
-            try buf.append(self.allocator, '_');
-            // Include module name for user types (matches registry naming)
-            if (!types.isPrimitiveName(name)) {
-                if (self.union_registry) |reg| {
-                    // Search registry entries for this type's module
-                    for (reg.entries.items) |entry| {
-                        for (entry.module_types) |mt| {
-                            if (std.mem.eql(u8, mt.type_name, name)) {
-                                try buf.appendSlice(self.allocator, mt.module_name);
-                                try buf.append(self.allocator, '_');
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            try buf.appendSlice(self.allocator, name);
+        try buf.writer(self.allocator).print("_unions.OrhonUnion{d}(", .{arity});
+        for (pairs.items, 0..) |p, i| {
+            if (i > 0) try buf.appendSlice(self.allocator, ", ");
+            try buf.appendSlice(self.allocator, p.zig);
         }
+        try buf.append(self.allocator, ')');
 
         self.needs_unions_import = true;
         return try self.allocTypeStr("{s}", .{buf.items});

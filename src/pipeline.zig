@@ -283,35 +283,15 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     var union_registry = mir.UnionRegistry.init(allocator);
     defer union_registry.deinit();
 
-    // Load cached union entries for incremental builds
+    // Load cached union arities for incremental builds
     var cached_unions = try cache.loadUnions(allocator);
     defer {
-        for (cached_unions.items) |u| {
-            allocator.free(u.module);
-            allocator.free(u.name);
-            for (u.members) |m| allocator.free(m);
-            allocator.free(u.members);
-            for (u.module_types) |mt| {
-                allocator.free(mt.type_name);
-                allocator.free(mt.module_name);
-            }
-            allocator.free(u.module_types);
-        }
+        for (cached_unions.items) |u| allocator.free(u.module);
         cached_unions.deinit(allocator);
     }
     var all_union_entries: std.ArrayListUnmanaged(cache.CachedUnionEntry) = .{};
     defer {
-        for (all_union_entries.items) |u| {
-            allocator.free(u.module);
-            allocator.free(u.name);
-            for (u.members) |m| allocator.free(m);
-            allocator.free(u.members);
-            for (u.module_types) |mt| {
-                allocator.free(mt.type_name);
-                allocator.free(mt.module_name);
-            }
-            allocator.free(u.module_types);
-        }
+        for (all_union_entries.items) |u| allocator.free(u.module);
         all_union_entries.deinit(allocator);
     }
 
@@ -412,21 +392,13 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 }
             }
 
-            // Restore cached union entries for this skipped module
+            // Restore cached union arity for this skipped module
             for (cached_unions.items) |u| {
                 if (std.mem.eql(u8, u.module, mod_name)) {
-                    // Convert ModuleTypePair to mir ModuleType for restoreEntry
-                    const mt = try allocator.alloc(mir_registry.ModuleType, u.module_types.len);
-                    defer allocator.free(mt);
-                    for (u.module_types, 0..) |pair, i| {
-                        mt[i] = .{ .type_name = pair.type_name, .module_name = pair.module_name };
-                    }
-                    try union_registry.restoreEntry(u.name, u.members, mt);
+                    try union_registry.restoreArity(u.module, u.arity);
                     try all_union_entries.append(allocator, .{
                         .module = try allocator.dupe(u8, u.module),
-                        .name = try allocator.dupe(u8, u.name),
-                        .members = try dupSliceOfSlices(allocator, u.members),
-                        .module_types = try dupModuleTypes(allocator, u.module_types),
+                        .arity = u.arity,
                     });
                 }
             }
@@ -459,28 +431,23 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         }
 
         // ── Passes 5–11: Type Resolution through Zig Code Generation ──
-        const union_count_before = union_registry.entries.items.len;
         _ = try passes.runSemanticAndCodegen(
             allocator, ast, mod_name, decl_collector, &all_module_decls,
             locs_ptr, file_offsets, &module_builds, reporter, cli,
             mod_ptr.is_zig_module, mod_ptr.has_zig_sidecar, &union_registry,
         ) orelse return null;
 
-        // Capture new union entries from this module for caching
-        for (union_registry.entries.items[union_count_before..]) |entry| {
-            var mt_pairs = try allocator.alloc(cache.CachedUnionEntry.ModuleTypePair, entry.module_types.len);
-            for (entry.module_types, 0..) |mt, i| {
-                mt_pairs[i] = .{
-                    .type_name = try allocator.dupe(u8, mt.type_name),
-                    .module_name = try allocator.dupe(u8, mt.module_name),
-                };
-            }
+        // Capture this module's arity contribution for caching. The registry
+        // already records max-per-module via registerArity calls made during
+        // semantic/codegen passes; just read it back.
+        var arity_iter = union_registry.iterator();
+        while (arity_iter.next()) |entry| {
+            if (!std.mem.eql(u8, entry.key_ptr.*, mod_name)) continue;
             try all_union_entries.append(allocator, .{
                 .module = try allocator.dupe(u8, mod_name),
-                .name = try allocator.dupe(u8, entry.name),
-                .members = try dupSliceOfSlices(allocator, entry.members),
-                .module_types = mt_pairs,
+                .arity = entry.value_ptr.*,
             });
+            break;
         }
 
         // Capture new warnings from this module for caching
@@ -509,7 +476,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     }
 
     // Emit shared _unions.zig if any arbitrary unions were registered
-    if (union_registry.entries.items.len > 0) {
+    if (!union_registry.isEmpty()) {
         const unions_content = try codegen_unions.generateUnionsFile(&union_registry, allocator);
         defer allocator.free(unions_content);
         try cache.writeGeneratedZig("_unions", unions_content, allocator);
@@ -565,7 +532,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 }
             }
             // Add _unions shared module for test builds if any arbitrary unions exist
-            if (union_registry.entries.items.len > 0) {
+            if (!union_registry.isEmpty()) {
                 try test_mod_imports.append(allocator, "_unions");
             }
             const passed = try runner.runTests(mod.name, binary_name2, test_mod_imports.items, test_zig_mods.items, test_zig_deps.items);
@@ -681,7 +648,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
                 }
             }
             // Add _unions shared module if any arbitrary unions were registered
-            if (union_registry.entries.items.len > 0) {
+            if (!union_registry.isEmpty()) {
                 try mod_imports.append(allocator, "_unions");
             }
 

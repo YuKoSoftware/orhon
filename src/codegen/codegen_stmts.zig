@@ -83,7 +83,19 @@ fn emitUnwrapBindingNamed(cg: *CodeGen, bind_name: []const u8, source_name: []co
             try cg.emitFmt("const {s} = ({s}.? catch unreachable);", .{ bind_name, source_name });
         },
         .arbitrary_union => {
-            try cg.emitFmt("const {s} = {s}._{s};", .{ bind_name, source_name, narrowed_type });
+            // Resolve narrowed_type's positional tag against the source variable's
+            // union type from var_types; fall back to the type name if unavailable.
+            const resolved_tag = blk: {
+                if (cg.var_types) |vt| {
+                    if (vt.get(source_name)) |info| {
+                        if (cg.arbitraryUnionTag(info.resolved_type, narrowed_type)) |t| {
+                            break :blk t;
+                        }
+                    }
+                }
+                break :blk narrowed_type;
+            };
+            try cg.emitFmt("const {s} = {s}._{s};", .{ bind_name, source_name, resolved_tag });
         },
         else => {
             try cg.emit("// unsupported narrowing");

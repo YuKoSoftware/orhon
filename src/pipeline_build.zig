@@ -52,6 +52,7 @@ pub fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *er
     defer union_registry.deinit();
     var mir_annotator = mir.MirAnnotator.init(alloc, reporter, &decl_collector.table, &type_resolver.type_map, &union_registry);
     defer mir_annotator.deinit();
+    mir_annotator.current_module_name = "testmod";
     try mir_annotator.annotate(ast);
     var mir_lowerer = mir.MirLowerer.init(alloc, &mir_annotator.node_map, &union_registry, &decl_collector.table, &mir_annotator.var_types);
     defer mir_lowerer.deinit();
@@ -62,6 +63,7 @@ pub fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *er
     cg.decls = &decl_collector.table;
     cg.node_map = &mir_annotator.node_map;
     cg.union_registry = &union_registry;
+    cg.current_module_name = "testmod";
     cg.var_types = &mir_annotator.var_types;
     cg.mir_root = mir_root;
     try cg.generate(ast, "testmod");
@@ -160,6 +162,7 @@ test "full pipeline - hello world" {
     defer union_registry2.deinit();
     var mir_annotator = mir.MirAnnotator.init(alloc, &reporter, &decl_collector.table, &type_resolver.type_map, &union_registry2);
     defer mir_annotator.deinit();
+    mir_annotator.current_module_name = "testmod";
     try mir_annotator.annotate(ast);
     try std.testing.expect(!reporter.hasErrors());
     var mir_lowerer = mir.MirLowerer.init(alloc, &mir_annotator.node_map, &union_registry2, &decl_collector.table, &mir_annotator.var_types);
@@ -172,6 +175,7 @@ test "full pipeline - hello world" {
     cg.decls = &decl_collector.table;
     cg.node_map = &mir_annotator.node_map;
     cg.union_registry = &union_registry2;
+    cg.current_module_name = "testmod";
     cg.var_types = &mir_annotator.var_types;
     cg.mir_root = mir_root;
     try cg.generate(ast, "testmod");

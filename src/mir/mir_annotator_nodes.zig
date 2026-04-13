@@ -286,34 +286,18 @@ pub fn annotateDeclCoercions(self: *MirAnnotator, value: *parser.Node, decl_type
 }
 
 /// Register an arbitrary union (filtered for null/Error) in the shared registry.
-/// Members are passed as ResolvedTypes; null and Error are skipped.
+/// Only the arity is recorded; comptime-memoized generic types in _unions.zig
+/// handle structural dedup at the Zig type-system level.
 fn registerUnionMembers(self: *MirAnnotator, members: []const RT) !void {
-    var filtered = std.ArrayListUnmanaged([]const u8){};
-    defer filtered.deinit(self.allocator);
+    var arity: usize = 0;
     for (members) |m| {
         const name = m.name();
         if (!std.mem.eql(u8, name, "Error") and !std.mem.eql(u8, name, "null")) {
-            try filtered.append(self.allocator, name);
+            arity += 1;
         }
     }
-    if (filtered.items.len < 2) return;
-    var module_context: std.StringHashMapUnmanaged([]const u8) = .{};
-    defer module_context.deinit(self.allocator);
-    if (self.all_decls) |all_decls| {
-        var mod_it = all_decls.iterator();
-        while (mod_it.next()) |mod_entry| {
-            const m_name = mod_entry.key_ptr.*;
-            const dtable = mod_entry.value_ptr.*;
-            var s_it = dtable.structs.iterator();
-            while (s_it.next()) |s| try module_context.put(self.allocator, s.key_ptr.*, m_name);
-            var e_it = dtable.enums.iterator();
-            while (e_it.next()) |e| try module_context.put(self.allocator, e.key_ptr.*, m_name);
-            var ty_it = dtable.types.iterator();
-            while (ty_it.next()) |ty| try module_context.put(self.allocator, ty.key_ptr.*, m_name);
-        }
-    }
-    const ctx: ?*const std.StringHashMapUnmanaged([]const u8) = if (module_context.count() > 0) &module_context else null;
-    _ = try self.union_registry.canonicalize(filtered.items, ctx);
+    if (arity < 2) return;
+    try self.union_registry.registerArity(self.current_module_name, arity);
 }
 
 /// Detect coercions for return statements.

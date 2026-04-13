@@ -217,6 +217,7 @@ pub fn runSemanticAndCodegen(
     cg.module_builds = module_builds;
     cg.node_map = &mir_annotator.node_map;
     cg.union_registry = union_registry;
+    cg.current_module_name = mod_name;
     cg.var_types = &mir_annotator.var_types;
     cg.mir_root = mir_root;
     cg.is_zig_module = is_zig_module;

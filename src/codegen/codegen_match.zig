@@ -405,12 +405,28 @@ pub fn generateTypeMatchMir(cg: *CodeGen, m: *mir.MirNode, is_null_union: bool) 
         return;
     }
 
-    // Arbitrary union — keep as switch
+    // Arbitrary union — keep as switch, with positional tag arms computed
+    // against the matched value's canonical sort order.
     const match_var = m.value().name;
     try cg.emit("switch (");
     try cg.generateExprMir(m.value());
     try cg.emit(") {\n");
     cg.indent += 1;
+
+    // Build the canonical sorted member names of the matched value's union.
+    const max_arity = 32;
+    var sorted_buf: [max_arity][]const u8 = undefined;
+    var sorted_len: usize = 0;
+    if (m.value().resolved_type == .union_type) {
+        for (m.value().resolved_type.union_type) |mem| {
+            const n = mem.name();
+            if (std.mem.eql(u8, n, "Error") or std.mem.eql(u8, n, "null")) continue;
+            if (sorted_len >= max_arity) break;
+            sorted_buf[sorted_len] = n;
+            sorted_len += 1;
+        }
+        mir.union_sort.sortMemberNames(sorted_buf[0..sorted_len]);
+    }
 
     for (m.matchArms()) |arm_mir| {
         const pat_m = arm_mir.pattern();
@@ -420,7 +436,11 @@ pub fn generateTypeMatchMir(cg: *CodeGen, m: *mir.MirNode, is_null_union: bool) 
         if (pat_m.kind == .identifier and std.mem.eql(u8, pat_name, "else")) {
             try cg.emit("else");
         } else if (is_arbitrary and pat_m.kind == .identifier) {
-            try cg.emitFmt("._{s}", .{pat_name});
+            if (mir.union_sort.positionalIndex(sorted_buf[0..sorted_len], pat_name)) |idx| {
+                try cg.emitFmt("._{d}", .{idx});
+            } else {
+                try cg.emitFmt("._{s}", .{pat_name});
+            }
         }
 
         const arm_uses = armUsesMatchVar(arm_mir.body(), match_var);

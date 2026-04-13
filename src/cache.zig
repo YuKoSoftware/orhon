@@ -298,23 +298,20 @@ pub fn saveWarnings(warnings: []const CachedWarning) !void {
 // ── Union Cache ────────────────────────────────────────────
 
 pub const UNIONS_FILE = ".orh-cache/unions";
+const UNIONS_SCHEMA_VERSION = "v2";
 
-/// A cached union entry tagged by contributing module.
+/// A cached per-module arity contribution.
+/// The redesigned registry only needs to know how high the global arity goes
+/// and which modules contributed it; comptime-memoized generic types in
+/// _unions.zig handle structural dedup at the Zig type-system level.
 pub const CachedUnionEntry = struct {
     module: []const u8,
-    name: []const u8,
-    members: []const []const u8,
-    /// Non-primitive members with their defining module names.
-    module_types: []const ModuleTypePair,
-
-    pub const ModuleTypePair = struct {
-        type_name: []const u8,
-        module_name: []const u8,
-    };
+    arity: usize,
 };
 
-/// Load cached union entries from .orh-cache/unions
-/// Format per line: module\tname\tmember1,member2\ttype1:mod1,type2:mod2
+/// Load cached union arities from .orh-cache/unions.
+/// Format: first line is "v2", subsequent lines are "module\tarity".
+/// Old (v1) caches and missing files return an empty list.
 pub fn loadUnions(allocator: std.mem.Allocator) !std.ArrayListUnmanaged(CachedUnionEntry) {
     var list: std.ArrayListUnmanaged(CachedUnionEntry) = .{};
     const file = std.fs.cwd().openFile(UNIONS_FILE, .{}) catch |err| {
@@ -327,47 +324,27 @@ pub fn loadUnions(allocator: std.mem.Allocator) !std.ArrayListUnmanaged(CachedUn
     defer allocator.free(content);
 
     var lines = std.mem.splitScalar(u8, content, '\n');
+    const first = lines.next() orelse return list;
+    if (!std.mem.eql(u8, std.mem.trim(u8, first, " \r"), UNIONS_SCHEMA_VERSION)) {
+        // Old schema — treat as empty
+        return list;
+    }
+
     while (lines.next()) |line| {
         if (line.len == 0) continue;
         var parts = std.mem.splitScalar(u8, line, '\t');
         const mod = parts.next() orelse continue;
-        const name = parts.next() orelse continue;
-        const members_str = parts.next() orelse continue;
-        const mt_str = parts.rest();
-
-        // Parse members
-        var members_list = std.ArrayListUnmanaged([]const u8){};
-        var m_it = std.mem.splitScalar(u8, members_str, ',');
-        while (m_it.next()) |m| {
-            if (m.len > 0) try members_list.append(allocator, try allocator.dupe(u8, m));
-        }
-
-        // Parse module_types
-        var mt_list = std.ArrayListUnmanaged(CachedUnionEntry.ModuleTypePair){};
-        if (mt_str.len > 0) {
-            var mt_it = std.mem.splitScalar(u8, mt_str, ',');
-            while (mt_it.next()) |pair| {
-                if (pair.len == 0) continue;
-                if (std.mem.indexOfScalar(u8, pair, ':')) |colon| {
-                    try mt_list.append(allocator, .{
-                        .type_name = try allocator.dupe(u8, pair[0..colon]),
-                        .module_name = try allocator.dupe(u8, pair[colon + 1 ..]),
-                    });
-                }
-            }
-        }
-
+        const arity_str = parts.next() orelse continue;
+        const arity = std.fmt.parseInt(usize, std.mem.trim(u8, arity_str, " \r"), 10) catch continue;
         try list.append(allocator, .{
             .module = try allocator.dupe(u8, mod),
-            .name = try allocator.dupe(u8, name),
-            .members = try members_list.toOwnedSlice(allocator),
-            .module_types = try mt_list.toOwnedSlice(allocator),
+            .arity = arity,
         });
     }
     return list;
 }
 
-/// Save union entries to .orh-cache/unions
+/// Save union arities to .orh-cache/unions in v2 format.
 pub fn saveUnions(unions: []const CachedUnionEntry) !void {
     try ensureGeneratedDir();
     const file = try std.fs.cwd().createFile(UNIONS_FILE, .{});
@@ -377,20 +354,9 @@ pub fn saveUnions(unions: []const CachedUnionEntry) !void {
     var w = file.writer(&buf);
     const writer = &w.interface;
 
+    try writer.print("{s}\n", .{UNIONS_SCHEMA_VERSION});
     for (unions) |entry| {
-        try writer.print("{s}\t{s}\t", .{ entry.module, entry.name });
-        // Members (comma-separated)
-        for (entry.members, 0..) |m, i| {
-            if (i > 0) try writer.writeByte(',');
-            try writer.writeAll(m);
-        }
-        try writer.writeByte('\t');
-        // Module types (type:module pairs, comma-separated)
-        for (entry.module_types, 0..) |mt, i| {
-            if (i > 0) try writer.writeByte(',');
-            try writer.print("{s}:{s}", .{ mt.type_name, mt.module_name });
-        }
-        try writer.writeByte('\n');
+        try writer.print("{s}\t{d}\n", .{ entry.module, entry.arity });
     }
     try writer.flush();
 }
@@ -1041,20 +1007,8 @@ test "union cache round-trip" {
     const alloc = std.testing.allocator;
 
     const entries = [_]CachedUnionEntry{
-        .{
-            .module = "main",
-            .name = "OrhonUnion_i32_str",
-            .members = &.{ "i32", "str" },
-            .module_types = &.{},
-        },
-        .{
-            .module = "shapes",
-            .name = "OrhonUnion_f64_shapes_Point",
-            .members = &.{ "Point", "f64" },
-            .module_types = &.{
-                .{ .type_name = "Point", .module_name = "shapes" },
-            },
-        },
+        .{ .module = "main", .arity = 2 },
+        .{ .module = "shapes", .arity = 4 },
     };
 
     try saveUnions(&entries);
@@ -1062,32 +1016,30 @@ test "union cache round-trip" {
 
     var loaded = try loadUnions(alloc);
     defer {
-        for (loaded.items) |u| {
-            alloc.free(u.module);
-            alloc.free(u.name);
-            for (u.members) |m| alloc.free(m);
-            alloc.free(u.members);
-            for (u.module_types) |mt| {
-                alloc.free(mt.type_name);
-                alloc.free(mt.module_name);
-            }
-            alloc.free(u.module_types);
-        }
+        for (loaded.items) |u| alloc.free(u.module);
         loaded.deinit(alloc);
     }
 
     try std.testing.expectEqual(@as(usize, 2), loaded.items.len);
-
     try std.testing.expectEqualStrings("main", loaded.items[0].module);
-    try std.testing.expectEqualStrings("OrhonUnion_i32_str", loaded.items[0].name);
-    try std.testing.expectEqual(@as(usize, 2), loaded.items[0].members.len);
-    try std.testing.expectEqual(@as(usize, 0), loaded.items[0].module_types.len);
-
+    try std.testing.expectEqual(@as(usize, 2), loaded.items[0].arity);
     try std.testing.expectEqualStrings("shapes", loaded.items[1].module);
-    try std.testing.expectEqualStrings("OrhonUnion_f64_shapes_Point", loaded.items[1].name);
-    try std.testing.expectEqual(@as(usize, 1), loaded.items[1].module_types.len);
-    try std.testing.expectEqualStrings("Point", loaded.items[1].module_types[0].type_name);
-    try std.testing.expectEqualStrings("shapes", loaded.items[1].module_types[0].module_name);
+    try std.testing.expectEqual(@as(usize, 4), loaded.items[1].arity);
+}
+
+test "union cache rejects old schema" {
+    const alloc = std.testing.allocator;
+    try ensureGeneratedDir();
+    {
+        const file = try std.fs.cwd().createFile(UNIONS_FILE, .{});
+        defer file.close();
+        try file.writeAll("main\tOrhonUnion_i32_str\ti32,str\t\n");
+    }
+    defer std.fs.cwd().deleteFile(UNIONS_FILE) catch {};
+
+    var loaded = try loadUnions(alloc);
+    defer loaded.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 0), loaded.items.len);
 }
 
 test "union cache load missing file" {

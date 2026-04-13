@@ -59,16 +59,44 @@ pub fn generateArbitraryUnionWrappedExprMir(cg: *CodeGen, m: *mir.MirNode, membe
     }
 }
 
-/// Infer union tag from MirNode literal_kind.
+/// Infer the positional union tag for a literal MirNode being wrapped into an
+/// arbitrary union. Computes the destination union's canonical sort order
+/// (Error/null filtered) and returns the matching member's positional index
+/// as a borrowed slice into the annotator's static tag pool.
 pub fn inferArbitraryUnionTagMir(m: *const mir.MirNode, members_rt: ?[]const RT) ?[]const u8 {
     const lk = m.literal_kind orelse return null;
-    return switch (lk) {
-        .int => findMemberByKind(members_rt, .int) orelse "i32",
-        .float => findMemberByKind(members_rt, .float) orelse "f32",
-        .string => findMemberByKind(members_rt, .string) orelse "str",
-        .bool_lit => findMemberByKind(members_rt, .bool_) orelse "bool",
-        else => null,
+    const members = members_rt orelse return null;
+
+    const target_name = switch (lk) {
+        .int => findMemberByKind(members_rt, .int) orelse return null,
+        .float => findMemberByKind(members_rt, .float) orelse return null,
+        .string => findMemberByKind(members_rt, .string) orelse return null,
+        .bool_lit => findMemberByKind(members_rt, .bool_) orelse return null,
+        else => return null,
     };
+
+    // Stack-allocated filtered+sorted member list matches the annotator's
+    // static tag pool bound of 32 members.
+    const max_arity = 32;
+    var buf: [max_arity][]const u8 = undefined;
+    var n: usize = 0;
+    for (members) |mem| {
+        const name = mem.name();
+        if (std.mem.eql(u8, name, "Error") or std.mem.eql(u8, name, "null")) continue;
+        if (n >= max_arity) return null;
+        buf[n] = name;
+        n += 1;
+    }
+    mir.union_sort.sortMemberNames(buf[0..n]);
+    const idx = mir.union_sort.positionalIndex(buf[0..n], target_name) orelse return null;
+    const pool = [_][]const u8{
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
+        "20", "21", "22", "23", "24", "25", "26", "27", "28", "29",
+        "30", "31",
+    };
+    if (idx >= pool.len) return null;
+    return pool[idx];
 }
 
 // ============================================================
@@ -254,9 +282,10 @@ fn generateBinaryMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             if (lhs_mir.type_class == .arbitrary_union or
                 val_mir.type_class == .arbitrary_union)
             {
+                const tag = cg.arbitraryUnionTag(val_mir.resolved_type, rhs) orelse rhs;
                 try cg.emit("(");
                 try cg.generateExprMir(val_mir);
-                try cg.emitFmt(" {s} ._{s})", .{ cmp, rhs });
+                try cg.emitFmt(" {s} ._{s})", .{ cmp, tag });
                 return;
             }
             const zig_rhs = types.Primitive.nameToZig(rhs);
@@ -270,9 +299,10 @@ fn generateBinaryMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                 val_mir.type_class == .arbitrary_union)
             {
                 const type_name = rhs_mir.name orelse "";
+                const tag = cg.arbitraryUnionTag(val_mir.resolved_type, type_name) orelse type_name;
                 try cg.emit("(");
                 try cg.generateExprMir(val_mir);
-                try cg.emitFmt(" {s} ._{s})", .{ cmp, type_name });
+                try cg.emitFmt(" {s} ._{s})", .{ cmp, tag });
                 return;
             }
             try cg.emit("(@TypeOf(");
@@ -476,8 +506,9 @@ fn generateFieldAccessMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             try cg.generateExprMir(obj_mir);
             try cg.emit(".?");
         } else if (eff_tc == .arbitrary_union) {
+            const tag = cg.arbitraryUnionTag(obj_mir.resolved_type, field) orelse field;
             try cg.generateExprMir(obj_mir);
-            try cg.emitFmt("._{s}", .{field});
+            try cg.emitFmt("._{s}", .{tag});
         } else {
             try cg.generateExprMir(obj_mir);
             try cg.emitFmt(".{s}", .{field});

@@ -1,269 +1,124 @@
-// mir_registry.zig — Canonical union type deduplication
+// mir_registry.zig — Arbitrary-union arity tracker.
+//
+// The registry no longer holds canonical name strings or per-type module
+// attribution. Comptime-memoized generic types in _unions.zig handle dedup
+// at the Zig type-system level. The registry only needs to know how high
+// the global union arity goes so codegen_unions emits enough factory
+// functions, and which arity each module contributed so incremental builds
+// can replay correctly.
 
 const std = @import("std");
-const mir_types = @import("mir_types.zig");
-const types = @import("../types.zig");
 
-pub const RT = mir_types.RT;
-
-// ── Union Registry ──────────────────────────────────────────
-
-/// Tracks which module defines a user type used in a union.
-pub const ModuleType = struct {
-    type_name: []const u8,
-    module_name: []const u8,
-};
-
-/// Canonical union type deduplication.
-/// Same structural union across functions shares one Zig type name.
-/// Pipeline-level: one instance shared across all modules.
 pub const UnionRegistry = struct {
-    /// Sorted member names → canonical Zig type name
-    entries: std.ArrayListUnmanaged(Entry),
+    /// Per-module arity contributions. A module that uses (i32 | str | f64)
+    /// contributes arity 3. The global max across all modules drives how
+    /// many OrhonUnionN factories codegen_unions emits.
+    module_arities: std.StringHashMapUnmanaged(usize),
     allocator: std.mem.Allocator,
-
-    pub const Entry = struct {
-        members: []const []const u8,
-        name: []const u8,
-        /// Non-primitive members and their defining modules
-        module_types: []const ModuleType,
-    };
 
     pub fn init(allocator: std.mem.Allocator) UnionRegistry {
         return .{
-            .entries = .{},
+            .module_arities = .{},
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *UnionRegistry) void {
-        for (self.entries.items) |entry| {
-            for (entry.members) |m| self.allocator.free(m);
-            self.allocator.free(entry.members);
-            self.allocator.free(entry.name);
-            for (entry.module_types) |mt| {
-                self.allocator.free(mt.type_name);
-                self.allocator.free(mt.module_name);
-            }
-            self.allocator.free(entry.module_types);
-        }
-        self.entries.deinit(self.allocator);
+        var it = self.module_arities.iterator();
+        while (it.next()) |entry| self.allocator.free(entry.key_ptr.*);
+        self.module_arities.deinit(self.allocator);
     }
 
-    /// Restore a cached entry into the registry. Deduplicates against existing entries.
-    pub fn restoreEntry(
-        self: *UnionRegistry,
-        name: []const u8,
-        members: []const []const u8,
-        module_types: []const ModuleType,
-    ) !void {
-        // Check for existing entry with same members (already sorted in cache)
-        for (self.entries.items) |entry| {
-            if (entry.members.len == members.len) {
-                var match = true;
-                for (entry.members, members) |a, b| {
-                    if (!std.mem.eql(u8, a, b)) {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match) return; // already registered
-            }
+    /// Record that `module` uses an arbitrary union of `arity` members.
+    /// Tracks the maximum arity per module (multiple unions in the same
+    /// module: only the largest matters). Arity < 2 is silently ignored.
+    pub fn registerArity(self: *UnionRegistry, module: []const u8, arity: usize) !void {
+        if (arity < 2) return;
+        const result = try self.module_arities.getOrPut(self.allocator, module);
+        if (!result.found_existing) {
+            result.key_ptr.* = try self.allocator.dupe(u8, module);
+            result.value_ptr.* = arity;
+        } else if (arity > result.value_ptr.*) {
+            result.value_ptr.* = arity;
         }
-
-        // Dupe all strings into registry allocator
-        const duped_members = try self.allocator.alloc([]const u8, members.len);
-        for (members, 0..) |m, i| duped_members[i] = try self.allocator.dupe(u8, m);
-
-        const duped_mt = try self.allocator.alloc(ModuleType, module_types.len);
-        for (module_types, 0..) |mt, i| {
-            duped_mt[i] = .{
-                .type_name = try self.allocator.dupe(u8, mt.type_name),
-                .module_name = try self.allocator.dupe(u8, mt.module_name),
-            };
-        }
-
-        try self.entries.append(self.allocator, .{
-            .members = duped_members,
-            .name = try self.allocator.dupe(u8, name),
-            .module_types = duped_mt,
-        });
     }
 
-    /// Get or create a canonical name for a union type.
-    /// `module_context` maps type names to their defining module names.
-    /// Pass null when module context is unavailable (e.g. tests).
-    pub fn canonicalize(
-        self: *UnionRegistry,
-        members: []const []const u8,
-        module_context: ?*const std.StringHashMapUnmanaged([]const u8),
-    ) ![]const u8 {
-        const sorted = try self.allocator.alloc([]const u8, members.len);
-        for (members, 0..) |m, i| sorted[i] = try self.allocator.dupe(u8, m);
-        std.mem.sort([]const u8, sorted, {}, struct {
-            fn lt(_: void, a: []const u8, b: []const u8) bool {
-                return std.mem.order(u8, a, b) == .lt;
-            }
-        }.lt);
+    /// Restore a cached per-module arity (used by the incremental cache replay path).
+    pub fn restoreArity(self: *UnionRegistry, module: []const u8, arity: usize) !void {
+        try self.registerArity(module, arity);
+    }
 
-        // Look for existing entry
-        for (self.entries.items) |entry| {
-            if (entry.members.len == sorted.len) {
-                var match = true;
-                for (entry.members, sorted) |a, b| {
-                    if (!std.mem.eql(u8, a, b)) {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match) {
-                    for (sorted) |s| self.allocator.free(s);
-                    self.allocator.free(sorted);
-                    return entry.name;
-                }
-            }
+    /// Maximum arity across all modules. Returns 0 if no unions registered.
+    pub fn maxArity(self: *const UnionRegistry) usize {
+        var max: usize = 0;
+        var it = self.module_arities.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.* > max) max = entry.value_ptr.*;
         }
+        return max;
+    }
 
-        // Collect module types for non-primitive members
-        var mt_list = std.ArrayListUnmanaged(ModuleType){};
-        if (module_context) |ctx| {
-            for (sorted) |m| {
-                if (!types.isPrimitiveName(m)) {
-                    if (ctx.get(m)) |mod_name| {
-                        try mt_list.append(self.allocator, .{
-                            .type_name = try self.allocator.dupe(u8, m),
-                            .module_name = try self.allocator.dupe(u8, mod_name),
-                        });
-                    }
-                }
-            }
-        }
+    /// Return true if any module registered an arbitrary union.
+    pub fn isEmpty(self: *const UnionRegistry) bool {
+        return self.module_arities.count() == 0;
+    }
 
-        // Build name: "OrhonUnion_i32_str" (primitives) or "OrhonUnion_i32_modname_MyStruct" (user types)
-        var buf = std.ArrayListUnmanaged(u8){};
-        try buf.appendSlice(self.allocator, "OrhonUnion");
-        for (sorted) |m| {
-            try buf.append(self.allocator, '_');
-            // Include module name for user types to avoid collisions
-            if (module_context) |ctx| {
-                if (!types.isPrimitiveName(m)) {
-                    if (ctx.get(m)) |mod_name| {
-                        try buf.appendSlice(self.allocator, mod_name);
-                        try buf.append(self.allocator, '_');
-                    }
-                }
-            }
-            try buf.appendSlice(self.allocator, m);
-        }
-        const name = try self.allocator.dupe(u8, buf.items);
-        buf.deinit(self.allocator);
-
-        try self.entries.append(self.allocator, .{
-            .members = sorted,
-            .name = name,
-            .module_types = try mt_list.toOwnedSlice(self.allocator),
-        });
-        return name;
+    /// Iterator over (module_name, arity) pairs for cache serialization.
+    pub fn iterator(self: *const UnionRegistry) std.StringHashMapUnmanaged(usize).Iterator {
+        return self.module_arities.iterator();
     }
 };
 
 // ── Tests ───────────────────────────────────────────────────
 
-test "union registry - canonicalize" {
+test "registry - register and max arity" {
     const alloc = std.testing.allocator;
     var reg = UnionRegistry.init(alloc);
     defer reg.deinit();
 
-    const name1 = try reg.canonicalize(&.{ "i32", "str" }, null);
-    const name2 = try reg.canonicalize(&.{ "str", "i32" }, null);
+    try reg.registerArity("main", 2);
+    try reg.registerArity("main", 4);
+    try reg.registerArity("shapes", 3);
 
-    // Same structural union → same name
-    try std.testing.expectEqualStrings(name1, name2);
-    try std.testing.expect(std.mem.indexOf(u8, name1, "OrhonUnion") != null);
-    try std.testing.expectEqual(@as(usize, 1), reg.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 4), reg.maxArity());
+    try std.testing.expectEqual(false, reg.isEmpty());
 }
 
-test "union registry - different unions" {
+test "registry - arity 1 ignored" {
     const alloc = std.testing.allocator;
     var reg = UnionRegistry.init(alloc);
     defer reg.deinit();
 
-    const name1 = try reg.canonicalize(&.{ "i32", "str" }, null);
-    const name2 = try reg.canonicalize(&.{ "i32", "f32" }, null);
-
-    try std.testing.expect(!std.mem.eql(u8, name1, name2));
-    try std.testing.expectEqual(@as(usize, 2), reg.entries.items.len);
+    try reg.registerArity("main", 1);
+    try std.testing.expectEqual(true, reg.isEmpty());
+    try std.testing.expectEqual(@as(usize, 0), reg.maxArity());
 }
 
-test "union registry - user types include module name" {
+test "registry - per-module max preserved" {
     const alloc = std.testing.allocator;
     var reg = UnionRegistry.init(alloc);
     defer reg.deinit();
 
-    // Set up module context: MyStruct is defined in module "shapes"
-    var ctx = std.StringHashMapUnmanaged([]const u8){};
-    defer ctx.deinit(alloc);
-    try ctx.put(alloc, "MyStruct", "shapes");
+    try reg.registerArity("a", 5);
+    try reg.registerArity("a", 2);
+    try reg.registerArity("b", 3);
 
-    const name = try reg.canonicalize(&.{ "i32", "MyStruct" }, &ctx);
-
-    // Name should include module name for user type
-    try std.testing.expect(std.mem.indexOf(u8, name, "shapes_MyStruct") != null);
-    try std.testing.expect(std.mem.indexOf(u8, name, "i32") != null);
-
-    // Entry should have module_types for MyStruct
-    try std.testing.expectEqual(@as(usize, 1), reg.entries.items.len);
-    try std.testing.expectEqual(@as(usize, 1), reg.entries.items[0].module_types.len);
-    try std.testing.expectEqualStrings("MyStruct", reg.entries.items[0].module_types[0].type_name);
-    try std.testing.expectEqualStrings("shapes", reg.entries.items[0].module_types[0].module_name);
+    var found_a: usize = 0;
+    var found_b: usize = 0;
+    var it = reg.iterator();
+    while (it.next()) |entry| {
+        if (std.mem.eql(u8, entry.key_ptr.*, "a")) found_a = entry.value_ptr.*;
+        if (std.mem.eql(u8, entry.key_ptr.*, "b")) found_b = entry.value_ptr.*;
+    }
+    try std.testing.expectEqual(@as(usize, 5), found_a);
+    try std.testing.expectEqual(@as(usize, 3), found_b);
 }
 
-test "union registry - same user type from same module deduplicates" {
+test "registry - restoreArity matches registerArity" {
     const alloc = std.testing.allocator;
     var reg = UnionRegistry.init(alloc);
     defer reg.deinit();
 
-    var ctx = std.StringHashMapUnmanaged([]const u8){};
-    defer ctx.deinit(alloc);
-    try ctx.put(alloc, "Point", "geo");
-
-    const name1 = try reg.canonicalize(&.{ "i32", "Point" }, &ctx);
-    const name2 = try reg.canonicalize(&.{ "Point", "i32" }, &ctx);
-
-    try std.testing.expectEqualStrings(name1, name2);
-    try std.testing.expectEqual(@as(usize, 1), reg.entries.items.len);
-}
-
-test "union registry - restoreEntry" {
-    const alloc = std.testing.allocator;
-    var reg = UnionRegistry.init(alloc);
-    defer reg.deinit();
-
-    // Restore an entry
-    try reg.restoreEntry("OrhonUnion_i32_str", &.{ "i32", "str" }, &.{});
-    try std.testing.expectEqual(@as(usize, 1), reg.entries.items.len);
-    try std.testing.expectEqualStrings("OrhonUnion_i32_str", reg.entries.items[0].name);
-
-    // Restore same entry again — deduplicates
-    try reg.restoreEntry("OrhonUnion_i32_str", &.{ "i32", "str" }, &.{});
-    try std.testing.expectEqual(@as(usize, 1), reg.entries.items.len);
-
-    // canonicalize with same members returns the restored name
-    const name = try reg.canonicalize(&.{ "str", "i32" }, null);
-    try std.testing.expectEqualStrings("OrhonUnion_i32_str", name);
-    try std.testing.expectEqual(@as(usize, 1), reg.entries.items.len);
-}
-
-test "union registry - restoreEntry with module types" {
-    const alloc = std.testing.allocator;
-    var reg = UnionRegistry.init(alloc);
-    defer reg.deinit();
-
-    try reg.restoreEntry("OrhonUnion_i32_shapes_Point", &.{ "Point", "i32" }, &.{
-        .{ .type_name = "Point", .module_name = "shapes" },
-    });
-    try std.testing.expectEqual(@as(usize, 1), reg.entries.items.len);
-    try std.testing.expectEqual(@as(usize, 1), reg.entries.items[0].module_types.len);
-    try std.testing.expectEqualStrings("Point", reg.entries.items[0].module_types[0].type_name);
-    try std.testing.expectEqualStrings("shapes", reg.entries.items[0].module_types[0].module_name);
+    try reg.restoreArity("cached", 3);
+    try std.testing.expectEqual(@as(usize, 3), reg.maxArity());
 }

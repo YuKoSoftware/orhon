@@ -19,10 +19,12 @@ same area and benefit from being done together.
 `has_zig_sidecar` checked in eight places, each making the same emit-vs-re-export
 call. Centralize in one `shouldEmitDeclMir(kind, m)` predicate.
 
-#### Duplicated unwrap-binding logic
-**`src/codegen/codegen_stmts.zig:43-92` and `:110-187`** — The unwrap pattern (`.?`
-for null, `catch` for error, `._tag` for union) is implemented twice — once for match
-arms, once for narrowing. Make `emitUnwrapBindingNamed` the single source.
+#### Duplicated unwrap-binding logic (partially done)
+**`src/codegen/codegen_match.zig:548,619`** — The unwrap pattern (`.?` for null,
+`catch` for error, `._tag` for union) still has one inline copy in the match-arm
+codegen path. The `codegen_stmts.zig` / `codegen_exprs.zig` copies were folded into
+the shared `codegen.valueUnwrapForm` helper. Folding the match-arm copy requires
+first untangling its `pre_stmts` / interpolation hoisting context.
 
 ### Batch C — Layering fix `medium`
 
@@ -104,13 +106,6 @@ the statement that uses them. Manual flush at statement boundaries via
 `flushPreStmts`. Either move the hoisting into `MirLowerer` (`temp_var` injection
 already exists for related cases) or rename it into a `InterpolationHoist` named
 type with documented semantics. Possibly intentional architecture.
-
-#### Manual deep-dup helpers
-**`src/pipeline.zig:878-893`** (`dupSliceOfSlices`, `dupModuleTypes`) — Two helpers
-that exist solely to clone sequences of slices/structs. The pattern repeats in
-`cache.zig`. Consolidate into a single utilities module, or — better — make the
-ownership flow not require deep copies in the first place by using arena allocators
-across the boundaries that currently need duping.
 
 #### `codegen_match.zig` may want to split further `medium`
 **`src/codegen/codegen_match.zig` (1041 lines)** — Already well-commented and

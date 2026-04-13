@@ -495,16 +495,10 @@ fn generateFieldAccessMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             }
             break :blk obj_tc;
         };
-        if (eff_tc == .null_error_union) {
-            try cg.emit("(");
+        if (codegen.valueUnwrapForm(eff_tc)) |form| {
+            try cg.emit(form.prefix);
             try cg.generateExprMir(obj_mir);
-            try cg.emit(".? catch unreachable)");
-        } else if (eff_tc == .error_union) {
-            try cg.generateExprMir(obj_mir);
-            try cg.emit(" catch unreachable");
-        } else if (eff_tc == .null_union) {
-            try cg.generateExprMir(obj_mir);
-            try cg.emit(".?");
+            try cg.emit(form.suffix);
         } else if (eff_tc == .arbitrary_union) {
             // Try the obj's MIR resolved_type first, then fall back to var_types
             // (narrowing may have replaced the live type but we still need the

@@ -94,13 +94,21 @@ could genuinely become variant checks are the ~5 in `mir_lowerer.zig` /
 string fields → tagged union" Larger-refactor item below — folding them in isolation
 would be duplicate work. No action on K.Type itself.
 
-#### Interpolation hoisting via ad-hoc `pre_stmts` buffer
-**`src/codegen/codegen.zig:62,258-261`** and **`codegen_match.zig:570-609`** — The
-`pre_stmts` buffer exists solely to hoist interpolation temp-var declarations before
-the statement that uses them. Manual flush at statement boundaries via
-`flushPreStmts`. Either move the hoisting into `MirLowerer` (`temp_var` injection
-already exists for related cases) or rename it into a `InterpolationHoist` named
-type with documented semantics. Possibly intentional architecture.
+#### ~~Interpolation hoisting via ad-hoc `pre_stmts` buffer~~ (verified intentional, 2026-04-13)
+**`src/codegen/codegen.zig:65,306-308`** and **`codegen_match.zig:568-625`** — Reviewed.
+The two options were "move into MirLowerer" or "rename for clarity." Both are wrong:
+- **MirLowerer option** is architecturally mismatched. The hoisted temp is a
+  `std.fmt.allocPrint` call with a Zig format string plus a `defer free`, built by
+  redirecting `cg.output` into `pre_stmts` so the existing `generateExprMir` can
+  walk the child MIR nodes. That machinery is Zig-backend-specific — MirLowerer
+  doesn't know about `allocPrint`, `{s}`/`{}` format specifiers, or `smp_allocator`,
+  and shouldn't. Keeping hoisting in codegen is correct.
+- **Rename option** is cosmetic. `pre_stmts` already has a clear doc comment at
+  `codegen.zig:63-64`, single-purpose use (only written by the interpolation emitter),
+  and only two flush points (`codegen_stmts.zig:31,137`). Renaming to
+  `interpolation_hoist` gains nothing except at the field declaration site.
+
+No action. The architecture is load-bearing.
 
 #### `codegen_match.zig` may want to split further `medium`
 **`src/codegen/codegen_match.zig` (1041 lines)** — Already well-commented and

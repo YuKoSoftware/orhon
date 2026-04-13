@@ -77,6 +77,9 @@ pub const VarSig = struct {
     is_pub: bool,
 };
 
+/// Inner map from method name to its signature, owned per struct.
+pub const StructMethodMap = std.StringHashMapUnmanaged(FuncSig);
+
 /// The declaration table for a module
 pub const DeclTable = struct {
     funcs: std.StringHashMap(FuncSig),
@@ -86,9 +89,10 @@ pub const DeclTable = struct {
     vars: std.StringHashMap(VarSig),
     types: std.StringHashMap([]const u8), // type aliases and compt types
     blueprints: std.StringHashMap(BlueprintSig),
-    /// Bridge struct method signatures keyed by "StructName.method".
-    /// Used by MIR annotator to detect const & param coercions for cross-module calls.
-    struct_methods: std.StringHashMapUnmanaged(FuncSig),
+    /// Bridge struct method signatures: outer map keyed by struct name,
+    /// inner map keyed by method name. Used by MIR annotator to detect
+    /// const & param coercions for cross-module calls.
+    struct_methods: std.StringHashMapUnmanaged(StructMethodMap),
     allocator: std.mem.Allocator,
     type_arena: std.heap.ArenaAllocator, // owns all ResolvedType inner allocations
 
@@ -148,13 +152,34 @@ pub const DeclTable = struct {
             }
             self.blueprints.deinit();
         }
-        // Free struct_methods: keys are allocPrint strings, values have owned param slices
+        // Free struct_methods: outer keys alias AST-owned strings; each inner
+        // map's FuncSig values own a params slice that must be freed.
         var sm_it = self.struct_methods.iterator();
         while (sm_it.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            self.allocator.free(entry.value_ptr.params);
+            var m_it = entry.value_ptr.iterator();
+            while (m_it.next()) |m| self.allocator.free(m.value_ptr.params);
+            entry.value_ptr.deinit(self.allocator);
         }
         self.struct_methods.deinit(self.allocator);
+    }
+
+    /// Look up a struct method by (struct_name, method_name). Returns null if either is absent.
+    pub fn getMethod(self: *const DeclTable, struct_name: []const u8, method_name: []const u8) ?FuncSig {
+        const inner = self.struct_methods.get(struct_name) orelse return null;
+        return inner.get(method_name);
+    }
+
+    /// Register a method signature under a struct. Creates the inner map on first insert.
+    pub fn putMethod(self: *DeclTable, struct_name: []const u8, method_name: []const u8, sig: FuncSig) !void {
+        const gop = try self.struct_methods.getOrPut(self.allocator, struct_name);
+        if (!gop.found_existing) gop.value_ptr.* = .{};
+        try gop.value_ptr.put(self.allocator, method_name, sig);
+    }
+
+    /// Get the inner method map for a struct, for iteration. Returns null when
+    /// the struct has no registered methods.
+    pub fn methodsFor(self: *const DeclTable, struct_name: []const u8) ?StructMethodMap {
+        return self.struct_methods.get(struct_name);
     }
 
     pub fn hasDecl(self: *const DeclTable, name: []const u8) bool {
@@ -364,8 +389,7 @@ pub const DeclCollector = struct {
                         .is_pub = f.is_pub,
                         .is_instance = is_instance,
                     };
-                    const key = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ s.name, f.name });
-                    try self.table.struct_methods.put(self.allocator, key, method_sig);
+                    try self.table.putMethod(s.name, f.name, method_sig);
                 }
             }
         }
@@ -892,7 +916,7 @@ test "declaration collector - struct methods registered" {
     try collector.collect(prog);
 
     try std.testing.expect(!reporter.hasErrors());
-    try std.testing.expect(collector.table.struct_methods.get("Point.getX") != null);
+    try std.testing.expect(collector.table.getMethod("Point", "getX") != null);
 }
 
 test "declaration collector - field name conflicts with type" {

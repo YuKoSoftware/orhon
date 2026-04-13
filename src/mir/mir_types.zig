@@ -53,12 +53,17 @@ pub const Coercion = enum {
 // ── Node Info ───────────────────────────────────────────────
 
 /// Per-AST-node annotation produced by the MIR annotator.
+/// `type_class` is derived from `resolved_type` on demand via `typeClass()`
+/// so updates to `resolved_type` can never leave classification stale.
 pub const NodeInfo = struct {
     resolved_type: RT,
-    type_class: TypeClass,
     coercion: ?Coercion = null,
     coerce_tag: ?[]const u8 = null,
     narrowed_to: ?[]const u8 = null,
+
+    pub fn typeClass(self: NodeInfo) TypeClass {
+        return classifyType(self.resolved_type);
+    }
 };
 
 /// Annotation table: AST node pointer → NodeInfo.

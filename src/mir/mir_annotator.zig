@@ -196,18 +196,14 @@ pub const MirAnnotator = struct {
             if (self.lookupType(c.callee.field_expr.object)) |obj_type| {
                 if (obj_type == .named) {
                     const struct_name = obj_type.named;
-                    // Check current module's struct_methods first ("StructName.method" key).
-                    // This covers struct methods which are not in funcs to avoid name collisions.
-                    const qualified_key = std.fmt.allocPrint(
-                        self.allocator, "{s}.{s}", .{ struct_name, method_name },
-                    ) catch return null;
-                    defer self.allocator.free(qualified_key);
-                    if (self.decls.struct_methods.get(qualified_key)) |sig| return sig;
+                    // Check current module's struct methods first. This covers struct
+                    // methods which are not in funcs to avoid name collisions.
+                    if (self.decls.getMethod(struct_name, method_name)) |sig| return sig;
                     if (self.all_decls) |ad| {
-                        // Also check all modules' struct_methods for cross-module calls.
+                        // Also check all modules' struct methods for cross-module calls.
                         var it = ad.iterator();
                         while (it.next()) |entry| {
-                            if (entry.value_ptr.*.struct_methods.get(qualified_key)) |sig| return sig;
+                            if (entry.value_ptr.*.getMethod(struct_name, method_name)) |sig| return sig;
                         }
                         // Fallback: funcs lookup by method name.
                         var it2 = ad.iterator();
@@ -228,10 +224,7 @@ pub const MirAnnotator = struct {
     }
 
     pub fn recordNode(self: *MirAnnotator, node: *parser.Node, t: RT) !void {
-        try self.node_map.put(self.allocator, node, .{
-            .resolved_type = t,
-            .type_class = classifyType(t),
-        });
+        try self.node_map.put(self.allocator, node, .{ .resolved_type = t });
     }
 };
 
@@ -275,12 +268,12 @@ test "var_types - populated from var_decl" {
     defer annotator.deinit();
 
     // Manually insert a var_types entry to verify the registry works
-    const info = NodeInfo{ .resolved_type = RT{ .primitive = .i32 }, .type_class = .plain };
+    const info = NodeInfo{ .resolved_type = RT{ .primitive = .i32 } };
     try annotator.var_types.put(alloc, "x", info);
     try std.testing.expectEqual(@as(usize, 1), annotator.var_types.count());
 
     const got = annotator.var_types.get("x").?;
-    try std.testing.expectEqual(TypeClass.plain, got.type_class);
+    try std.testing.expectEqual(TypeClass.plain, got.typeClass());
     try std.testing.expectEqualStrings("i32", got.resolved_type.name());
 }
 

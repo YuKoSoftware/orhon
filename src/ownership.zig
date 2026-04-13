@@ -113,21 +113,18 @@ pub const OwnershipChecker = struct {
     /// Returns the FuncSig if found, null otherwise.
     pub fn lookupStructMethod(self: *const OwnershipChecker, scope: *OwnershipScope, obj_name: []const u8, method_name: []const u8) ?declarations.FuncSig {
         const decls = self.ctx.decls;
-        var buf: [256]u8 = undefined;
 
         // Fast path: use the variable's type_name if available
         if (scope.getState(obj_name)) |state| {
             if (state.type_name.len > 0) {
-                const key = std.fmt.bufPrint(&buf, "{s}.{s}", .{ state.type_name, method_name }) catch return null;
-                if (decls.struct_methods.get(key)) |sig| return sig;
+                if (decls.getMethod(state.type_name, method_name)) |sig| return sig;
             }
         }
 
-        // Slow path: iterate all structs (type_name may be empty)
-        var it = decls.structs.iterator();
+        // Slow path: scan all registered struct method tables (type_name may be empty)
+        var it = decls.struct_methods.iterator();
         while (it.next()) |entry| {
-            const key = std.fmt.bufPrint(&buf, "{s}.{s}", .{ entry.key_ptr.*, method_name }) catch continue;
-            if (decls.struct_methods.get(key)) |sig| return sig;
+            if (entry.value_ptr.get(method_name)) |sig| return sig;
         }
         return null;
     }

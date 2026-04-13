@@ -76,7 +76,7 @@ pub fn annotateNode(self: *MirAnnotator, node: *parser.Node) anyerror!void {
                 }
                 break :blk RT.unknown;
             };
-            const info = mir_types.NodeInfo{ .resolved_type = t, .type_class = classifyType(t) };
+            const info = mir_types.NodeInfo{ .resolved_type = t };
             try self.recordNode(node, t);
             try self.var_types.put(self.allocator, v.name, info);
             // Canonicalize arb union types (exclude Error/null — handled as anyerror!/? by codegen)
@@ -254,7 +254,6 @@ pub fn annotateCallCoercions(self: *MirAnnotator, c: parser.CallExpr) !void {
         if (coercion.kind) |kind| {
             try self.node_map.put(self.allocator, arg, .{
                 .resolved_type = arg_type,
-                .type_class = classifyType(arg_type),
                 .coercion = kind,
                 .coerce_tag = coercion.tag,
             });
@@ -271,7 +270,6 @@ pub fn annotateDeclCoercions(self: *MirAnnotator, value: *parser.Node, decl_type
         if (value.* == .null_literal and (decl_tc == .null_union or decl_tc == .null_error_union)) {
             try self.node_map.put(self.allocator, value, .{
                 .resolved_type = .null_type,
-                .type_class = .plain,
                 .coercion = .null_wrap,
             });
         }
@@ -281,7 +279,6 @@ pub fn annotateDeclCoercions(self: *MirAnnotator, value: *parser.Node, decl_type
     if (coercion.kind) |kind| {
         try self.node_map.put(self.allocator, value, .{
             .resolved_type = val_type,
-            .type_class = classifyType(val_type),
             .coercion = kind,
             .coerce_tag = coercion.tag,
         });
@@ -329,7 +326,6 @@ pub fn annotateReturnCoercions(self: *MirAnnotator, value: *parser.Node) !void {
     if (coercion.kind) |kind| {
         try self.node_map.put(self.allocator, value, .{
             .resolved_type = val_type,
-            .type_class = classifyType(val_type),
             .coercion = kind,
             .coerce_tag = coercion.tag,
         });

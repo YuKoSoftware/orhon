@@ -62,7 +62,7 @@ pub const MirLowerer = struct {
     fn lowerNode(self: *MirLowerer, node: *parser.Node) anyerror!*MirNode {
         const info = self.node_map.get(node);
         const resolved = if (info) |i| i.resolved_type else RT.unknown;
-        const tc = if (info) |i| i.type_class else classifyType(resolved);
+        const tc = if (info) |i| i.typeClass() else classifyType(resolved);
         const coercion_val = if (info) |i| i.coercion else null;
         const coerce_tag_val = if (info) |i| i.coerce_tag else null;
 
@@ -493,7 +493,7 @@ pub const MirLowerer = struct {
         // Check if the variable is a union type via MIR annotation
         const info = self.node_map.get(val_node) orelse
             if (self.var_types.get(val_node.identifier)) |vi| vi else return null;
-        const tc = info.type_class;
+        const tc = info.typeClass();
         if (tc != .arbitrary_union and tc != .error_union and tc != .null_union and tc != .null_error_union)
             return null;
         // Get the type name from RHS

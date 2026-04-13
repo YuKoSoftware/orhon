@@ -85,6 +85,13 @@ pub const Reporter = struct {
         try self.report(.{ .message = msg, .loc = loc });
     }
 
+    /// Format and record a warning in one step. Warn-side counterpart to reportFmt.
+    pub fn warnFmt(self: *Reporter, loc: ?SourceLoc, comptime fmt: []const u8, args: anytype) !void {
+        const msg = try std.fmt.allocPrint(self.allocator, fmt, args);
+        defer self.allocator.free(msg);
+        try self.warn(.{ .message = msg, .loc = loc });
+    }
+
     pub fn hasErrors(self: *const Reporter) bool {
         return self.errors.items.len > 0;
     }

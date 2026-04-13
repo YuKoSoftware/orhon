@@ -226,7 +226,8 @@ fn generateBinaryMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                     if (vn.len > 0) {
                         if (cg.var_types) |vt| {
                             if (vt.get(vn)) |info| {
-                                if (info.type_class != .plain) break :blk info.type_class;
+                                const info_tc = info.typeClass();
+                                if (info_tc != .plain) break :blk info_tc;
                             }
                         }
                     }
@@ -426,7 +427,8 @@ fn generateFieldAccessMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             if (on.len > 0) {
                 if (cg.var_types) |vt| {
                     if (vt.get(on)) |info| {
-                        if (info.type_class != .plain) break :blk info.type_class;
+                        const info_tc = info.typeClass();
+                        if (info_tc != .plain) break :blk info_tc;
                     }
                 }
             }
@@ -447,13 +449,14 @@ fn generateFieldAccessMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             if (obj_name.len > 0) {
                 if (cg.var_types) |vt| {
                     if (vt.get(obj_name)) |info| {
-                        if (info.type_class != .plain) break :blk info.type_class;
+                        const info_tc = info.typeClass();
+                        if (info_tc != .plain) break :blk info_tc;
                     }
                 }
                 if (cg.error_narrowed.contains(obj_name) or cg.null_narrowed.contains(obj_name)) {
                     if (cg.var_types) |vt| {
                         if (vt.get(obj_name)) |info| {
-                            if (info.type_class == .null_error_union) break :blk mir.TypeClass.null_error_union;
+                            if (info.typeClass() == .null_error_union) break :blk mir.TypeClass.null_error_union;
                         }
                     }
                     if (cg.error_narrowed.contains(obj_name)) break :blk mir.TypeClass.error_union;

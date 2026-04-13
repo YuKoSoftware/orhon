@@ -131,9 +131,7 @@ pub fn checkUnusedImports(
 
         if (!used) {
             const loc = module.resolveNodeLoc(locs_ptr, file_offsets, imp_node);
-            const msg = try std.fmt.allocPrint(allocator, "unused import: '{s}'", .{ref_name});
-            defer allocator.free(msg);
-            try reporter.warn(.{ .message = msg, .loc = loc });
+            try reporter.warnFmt(loc, "unused import: '{s}'", .{ref_name});
         }
     }
 }

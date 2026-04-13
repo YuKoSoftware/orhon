@@ -27,30 +27,6 @@ Discovered while resolving GAP-005 (2026-04-12). Tracked in tamga's `compiler-ga
 Discovered during a 2026-04-12 codebase audit. Grouped by sequencing batch — finishing
 a whole batch in one pass leaves the touched area cleaner than picking single items.
 
-### Batch A — Free wins `small` (each)
-
-#### `NodeInfo.type_class` is derived state with sync risk
-**`src/mir/mir_types.zig:56-62`** — `type_class` is computed via
-`classifyType(resolved_type)` at every NodeInfo construction. If anyone updates
-`resolved_type` without recomputing, codegen reads stale classification. Make it a
-method, not a field.
-
-#### `struct_methods` string-key concatenation
-**`src/declarations.zig:92`, `src/mir/mir_annotator.zig:199-205`** — `StringHashMap`
-keyed by `"StructName.method"` built via `allocPrint` at every lookup. Replace with
-nested `StringHashMap(StringHashMap(FuncSig))`. Removes per-call string building and
-the silent-failure footgun if format ever drifts.
-
-#### Defer-cleanup boilerplate in `pipeline.zig`
-**`src/pipeline.zig:578-619`** — Seven near-identical defer blocks freeing
-`[][]const u8` collections. One `OwnedSliceList` wrapper type with a single `deinit`
-replaces all of them.
-
-#### `reportFmt()` adoption is incomplete
-**`src/errors.zig:82-86`** — The reporter already provides a fmt-style helper that
-handles allocation and freeing. Most call sites still do manual `allocPrint` +
-`defer free` + `report`. Mechanical batch replacement.
-
 ### Batch B — Coercion + emission tightening `small` (each)
 
 Bundle these with the `_unions` generic factory implementation — they all touch the

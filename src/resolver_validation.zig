@@ -361,11 +361,7 @@ pub fn checkBlueprintConformance(self: *TypeResolver, s: parser.StructDecl, loc:
 
         // Check each required method
         for (bp_sig.methods) |bp_method| {
-            const method_key = try std.fmt.allocPrint(self.ctx.allocator,
-                "{s}.{s}", .{ s.name, bp_method.name });
-            defer self.ctx.allocator.free(method_key);
-
-            const struct_method = self.ctx.decls.struct_methods.get(method_key) orelse {
+            const struct_method = self.ctx.decls.getMethod(s.name, bp_method.name) orelse {
                 try self.ctx.reporter.reportFmt(loc, "struct '{s}' does not implement '{s}' required by blueprint '{s}'",
                     .{ s.name, bp_method.name, bp_name });
                 continue;

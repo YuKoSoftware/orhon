@@ -169,21 +169,13 @@ pub const BorrowChecker = struct {
         }
     }
 
-    /// Look up a struct method by searching struct_methods with all known struct type names.
-    /// Returns the FuncSig if found, null otherwise.
+    /// Look up a struct method by name by scanning every registered struct.
+    /// The object variable's type name is not available here (borrow checker runs
+    /// without type info), so the first struct that has a method with this name wins.
     pub fn lookupStructMethod(self: *BorrowChecker, method_name: []const u8) ?declarations.FuncSig {
-        // Try all struct types — check if "TypeName.method" exists in struct_methods.
-        // The object variable's type name is not available here (borrow checker runs
-        // without type info), so iterate known structs that have this method.
-        var it = self.ctx.decls.structs.iterator();
+        var it = self.ctx.decls.struct_methods.iterator();
         while (it.next()) |entry| {
-            const struct_name = entry.key_ptr.*;
-            const sm_it = self.ctx.decls.struct_methods;
-            var buf: [256]u8 = undefined;
-            const key = std.fmt.bufPrint(&buf, "{s}.{s}", .{ struct_name, method_name }) catch continue;
-            if (sm_it.get(key)) |sig| {
-                return sig;
-            }
+            if (entry.value_ptr.get(method_name)) |sig| return sig;
         }
         return null;
     }
@@ -721,8 +713,7 @@ test "borrow checker - lookupStructMethod" {
     // Register struct and struct method
     try decl_table.structs.put("Point", .{ .name = "Point", .fields = &.{}, .is_pub = true });
 
-    const key = try alloc.dupe(u8, "Point.scale");
-    try decl_table.struct_methods.put(alloc, key, .{
+    try decl_table.putMethod("Point", "scale", .{
         .name = "scale",
         .params = &.{},
         .param_nodes = &.{},

@@ -75,7 +75,7 @@ pub const CodeGen = struct {
 
     /// Get the TypeClass for an AST node from MIR annotations.
     pub fn getTypeClass(self: *const CodeGen, node: *parser.Node) mir.TypeClass {
-        if (self.getNodeInfo(node)) |info| return info.type_class;
+        if (self.getNodeInfo(node)) |info| return info.typeClass();
         return .plain;
     }
 

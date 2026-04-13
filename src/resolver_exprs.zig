@@ -352,31 +352,26 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                         break :blk "";
                     };
                     if (struct_name.len > 0) {
-                        // Build "StructName.method" key and look in struct_methods
-                        const key = try std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ struct_name, fe.field });
-                        defer self.ctx.allocator.free(key);
-                        {
-                            if (self.ctx.decls.struct_methods.get(key)) |sig| {
-                                try validateCallStyle(self, sig, called_on_type, fe.field, struct_name, node);
-                                try validateCallArity(self, sig, c.args.len, !called_on_type, fe.field, node);
-                                return sig.return_type;
-                            }
-                            // Cross-module: check all loaded module decls
-                            if (self.ctx.all_decls) |ad| {
-                                if (ad.get(obj_id)) |mod_decls| {
-                                    if (mod_decls.struct_methods.get(key)) |sig| {
-                                        try validateCallStyle(self, sig, called_on_type, fe.field, struct_name, node);
-                                        try validateCallArity(self, sig, c.args.len, !called_on_type, fe.field, node);
-                                        return sig.return_type;
-                                    }
+                        if (self.ctx.decls.getMethod(struct_name, fe.field)) |sig| {
+                            try validateCallStyle(self, sig, called_on_type, fe.field, struct_name, node);
+                            try validateCallArity(self, sig, c.args.len, !called_on_type, fe.field, node);
+                            return sig.return_type;
+                        }
+                        // Cross-module: check all loaded module decls
+                        if (self.ctx.all_decls) |ad| {
+                            if (ad.get(obj_id)) |mod_decls| {
+                                if (mod_decls.getMethod(struct_name, fe.field)) |sig| {
+                                    try validateCallStyle(self, sig, called_on_type, fe.field, struct_name, node);
+                                    try validateCallArity(self, sig, c.args.len, !called_on_type, fe.field, node);
+                                    return sig.return_type;
                                 }
-                                var it = ad.iterator();
-                                while (it.next()) |entry| {
-                                    if (entry.value_ptr.*.struct_methods.get(key)) |sig| {
-                                        try validateCallStyle(self, sig, called_on_type, fe.field, struct_name, node);
-                                        try validateCallArity(self, sig, c.args.len, !called_on_type, fe.field, node);
-                                        return sig.return_type;
-                                    }
+                            }
+                            var it = ad.iterator();
+                            while (it.next()) |entry| {
+                                if (entry.value_ptr.*.getMethod(struct_name, fe.field)) |sig| {
+                                    try validateCallStyle(self, sig, called_on_type, fe.field, struct_name, node);
+                                    try validateCallArity(self, sig, c.args.len, !called_on_type, fe.field, node);
+                                    return sig.return_type;
                                 }
                             }
                         }
@@ -389,22 +384,18 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                     if (inner.object.* == .identifier) {
                         const type_name = inner.field;
                         const method_name = fe.field;
-                        const key = try std.fmt.allocPrint(self.ctx.allocator, "{s}.{s}", .{ type_name, method_name });
-                        defer self.ctx.allocator.free(key);
-                        {
-                            if (self.ctx.decls.struct_methods.get(key)) |sig| {
-                                try validateCallStyle(self, sig, true, method_name, type_name, node);
-                                try validateCallArity(self, sig, c.args.len, false, fe.field, node);
-                                return sig.return_type;
-                            }
-                            if (self.ctx.all_decls) |ad| {
-                                var it = ad.iterator();
-                                while (it.next()) |entry| {
-                                    if (entry.value_ptr.*.struct_methods.get(key)) |sig| {
-                                        try validateCallStyle(self, sig, true, method_name, type_name, node);
-                                        try validateCallArity(self, sig, c.args.len, false, fe.field, node);
-                                        return sig.return_type;
-                                    }
+                        if (self.ctx.decls.getMethod(type_name, method_name)) |sig| {
+                            try validateCallStyle(self, sig, true, method_name, type_name, node);
+                            try validateCallArity(self, sig, c.args.len, false, fe.field, node);
+                            return sig.return_type;
+                        }
+                        if (self.ctx.all_decls) |ad| {
+                            var it = ad.iterator();
+                            while (it.next()) |entry| {
+                                if (entry.value_ptr.*.getMethod(type_name, method_name)) |sig| {
+                                    try validateCallStyle(self, sig, true, method_name, type_name, node);
+                                    try validateCallArity(self, sig, c.args.len, false, fe.field, node);
+                                    return sig.return_type;
                                 }
                             }
                         }

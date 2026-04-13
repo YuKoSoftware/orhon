@@ -19,6 +19,28 @@ const mir = @import("mir/mir.zig");
 const mir_registry = @import("mir/mir_registry.zig");
 const codegen_unions = @import("codegen/codegen_unions.zig");
 
+/// Owns an ArrayList of duped slices. On deinit, frees every stored slice
+/// (and, when `deep` is true, each element inside them) followed by the list.
+/// Replaces the repeated defer-loops freeing `[][]const T` cleanup storage.
+fn OwnedSliceList(comptime T: type, comptime deep: bool) type {
+    return struct {
+        const Self = @This();
+        items: std.ArrayListUnmanaged([]const T) = .{},
+
+        fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+            for (self.items.items) |s| {
+                if (deep) for (s) |e| alloc.free(e);
+                alloc.free(s);
+            }
+            self.items.deinit(alloc);
+        }
+
+        fn append(self: *Self, alloc: std.mem.Allocator, slice: []const T) !void {
+            try self.items.append(alloc, slice);
+        }
+    };
+}
+
 pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *errors.Reporter) !?[]const u8 {
 
     // Ensure embedded std files exist in .orh-cache/std/
@@ -575,48 +597,22 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     // Collect target descriptors for all root modules — unified path for single and multi-target.
     var multi_targets = std.ArrayListUnmanaged(zig_runner.MultiTarget){};
     defer multi_targets.deinit(allocator);
-    // Temporary storage for lib_imports and link_libs slices
-    var lib_import_lists = std.ArrayListUnmanaged([]const []const u8){};
-    defer {
-        for (lib_import_lists.items) |li| allocator.free(li);
-        lib_import_lists.deinit(allocator);
-    }
-    var link_lib_lists = std.ArrayListUnmanaged([]const []const u8){};
-    defer {
-        for (link_lib_lists.items) |li| allocator.free(li);
-        link_lib_lists.deinit(allocator);
-    }
-    var c_include_lists = std.ArrayListUnmanaged([]const []const u8){};
-    defer {
-        for (c_include_lists.items) |li| allocator.free(li);
-        c_include_lists.deinit(allocator);
-    }
-    var c_source_lists = std.ArrayListUnmanaged([]const []const u8){};
-    defer {
-        for (c_source_lists.items) |li| {
-            for (li) |s| allocator.free(s);
-            allocator.free(li);
-        }
-        c_source_lists.deinit(allocator);
-    }
-    var include_dir_lists = std.ArrayListUnmanaged([]const []const u8){};
-    defer {
-        for (include_dir_lists.items) |li| {
-            for (li) |s| allocator.free(s);
-            allocator.free(li);
-        }
-        include_dir_lists.deinit(allocator);
-    }
-    var mod_import_lists = std.ArrayListUnmanaged([]const []const u8){};
-    defer {
-        for (mod_import_lists.items) |li| allocator.free(li);
-        mod_import_lists.deinit(allocator);
-    }
-    var zig_dep_lists = std.ArrayListUnmanaged([]const zig_runner.ZigDep){};
-    defer {
-        for (zig_dep_lists.items) |s| allocator.free(s);
-        zig_dep_lists.deinit(allocator);
-    }
+    // Temporary storage for per-target slices passed into MultiTarget descriptors.
+    // Shallow lists alias strings owned elsewhere; deep lists own their inner strings.
+    var lib_import_lists: OwnedSliceList([]const u8, false) = .{};
+    defer lib_import_lists.deinit(allocator);
+    var link_lib_lists: OwnedSliceList([]const u8, false) = .{};
+    defer link_lib_lists.deinit(allocator);
+    var c_include_lists: OwnedSliceList([]const u8, false) = .{};
+    defer c_include_lists.deinit(allocator);
+    var c_source_lists: OwnedSliceList([]const u8, true) = .{};
+    defer c_source_lists.deinit(allocator);
+    var include_dir_lists: OwnedSliceList([]const u8, true) = .{};
+    defer include_dir_lists.deinit(allocator);
+    var mod_import_lists: OwnedSliceList([]const u8, false) = .{};
+    defer mod_import_lists.deinit(allocator);
+    var zig_dep_lists: OwnedSliceList(zig_runner.ZigDep, false) = .{};
+    defer zig_dep_lists.deinit(allocator);
 
     var exe_binary_name: ?[]const u8 = null; // tracked for `orhon run`
     errdefer if (exe_binary_name) |n| allocator.free(n);

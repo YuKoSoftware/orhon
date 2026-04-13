@@ -885,6 +885,28 @@ pub fn mirIsVector(m: *const mir.MirNode) bool { return exprs_impl.mirIsVector(m
 /// File-scope mirContainsIdentifier for helper modules (codegen_match.zig calls this recursively).
 pub fn mirContainsIdentifier(m: *mir.MirNode, name: []const u8) bool { return match_impl.mirContainsIdentifier(m, name); }
 
+/// Prefix/suffix pair for wrapping a union-typed expression to yield its
+/// unwrapped value. Callers emit `prefix`, then the expression, then `suffix`.
+///
+/// Only the three "clean" single-operation unwraps live here (null, error,
+/// null_error). `.arbitrary_union` is NOT covered because its suffix is a
+/// runtime-resolved `._<tag>` that depends on caller-side type lookups —
+/// each call site handles that case itself. Returns `null` for type classes
+/// that have no unwrap form (e.g. `.plain`, `.union_type`).
+pub const UnwrapForm = struct {
+    prefix: []const u8,
+    suffix: []const u8,
+};
+
+pub fn valueUnwrapForm(tc: mir.TypeClass) ?UnwrapForm {
+    return switch (tc) {
+        .null_union => .{ .prefix = "", .suffix = ".?" },
+        .error_union => .{ .prefix = "", .suffix = " catch unreachable" },
+        .null_error_union => .{ .prefix = "(", .suffix = ".? catch unreachable)" },
+        else => null,
+    };
+}
+
 test "codegen - type to zig" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);

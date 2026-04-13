@@ -110,6 +110,23 @@ pub const CodeGen = struct {
         return null;
     }
 
+    /// When this module is a pure Zig-backed module, emit a re-export for the
+    /// given declaration and signal the caller to stop. Caller returns early on true.
+    pub fn reExportIfZigModule(self: *CodeGen, name: []const u8, is_pub: bool) !bool {
+        if (!self.is_zig_module) return false;
+        try self.generateZigReExport(name, is_pub);
+        return true;
+    }
+
+    /// When this module has a Zig sidecar, emit a re-export for the given
+    /// declaration and signal the caller to stop. Used for body-less decls
+    /// that live in the sidecar. Caller returns early on true.
+    pub fn reExportIfSidecar(self: *CodeGen, name: []const u8, is_pub: bool) !bool {
+        if (!self.has_zig_sidecar) return false;
+        try self.generateZigReExport(name, is_pub);
+        return true;
+    }
+
     /// Name-based union member lookup via MIR var_types (fallback).
     pub fn getVarUnionMembers(self: *const CodeGen, name: []const u8) ?[]const RT {
         if (self.var_types) |vt| {

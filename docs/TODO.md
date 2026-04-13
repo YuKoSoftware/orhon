@@ -110,12 +110,18 @@ The two options were "move into MirLowerer" or "rename for clarity." Both are wr
 
 No action. The architecture is load-bearing.
 
-#### `codegen_match.zig` may want to split further `medium`
-**`src/codegen/codegen_match.zig` (1041 lines)** — Already well-commented and
-function-split, but handles plain match, type match, string match, range patterns,
-guarded match, interpolation, and compiler functions in one file. Could split into
-`codegen_match_patterns.zig` (range/guard/string/plain) and a `codegen_match_compt.zig`
-satellite. Low priority — the file is well-structured as-is.
+#### ~~`codegen_match.zig` may want to split further~~ (verified, not actionable alone, 2026-04-13)
+**`src/codegen/codegen_match.zig` (1061 lines)** — Reviewed. The file is still
+well-commented, function-boundaries are clean, and size growth since the audit is
+trivial (~20 lines). Won't split as a standalone task.
+
+The real finding: the file's name says "match" but ~300 lines of it handle arithmetic
+compiler intrinsics (`@overflow`, `@wrapping`, `@saturating`, `@type`, introspection)
+that have nothing to do with pattern matching. If this file ever needs other
+structural work, the cleanest extraction is a `codegen_compt.zig` satellite holding
+`generateCompilerFuncMir`, `emitIntrospectionType`, and the overflow/wrapping/
+saturating helpers — NOT the `codegen_match_compt.zig` name the audit proposed,
+which buries the mismatch.
 
 ---
 

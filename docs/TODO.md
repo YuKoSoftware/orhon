@@ -14,12 +14,6 @@ a whole batch in one pass leaves the touched area cleaner than picking single it
 Bundle these with the `_unions` generic factory implementation — they all touch the
 same area and benefit from being done together.
 
-#### `CoercionResult` should be a tagged union
-**`src/mir/mir_annotator.zig:157-160`** — Currently
-`{ kind: ?Coercion, tag: ?[]const u8 }` where `tag` is only meaningful for one kind.
-Replace with `union(enum) { none, simple: Coercion, wrap_union: struct { ... } }`.
-Forces exhaustive handling, makes the invariant load-bearing in the type system.
-
 #### Sidecar-emission decision scattered across 8 sites
 **`src/codegen/codegen_decls.zig` (multiple) + `codegen.zig:391`** — `is_zig_module` /
 `has_zig_sidecar` checked in eight places, each making the same emit-vs-re-export

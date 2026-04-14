@@ -81,8 +81,10 @@ fn emitUnwrapBindingNamed(cg: *CodeGen, bind_name: []const u8, source_name: []co
                 try cg.emitFmt("const {s} = {s}._{d};", .{ bind_name, source_name, tag });
             } else {
                 // Defensive fallback — lowerer should always stamp positional_tag
-                // for arbitrary_union narrowing. Emit raw type name as a safety valve.
-                try cg.emitFmt("const {s} = {s}.{s};", .{ bind_name, source_name, narrow.type_name });
+                // for arbitrary_union narrowing. Preserve the old behavior exactly:
+                // emit `._<raw_type_name>` matching what the prior
+                // arbitraryUnionTag fallback produced.
+                try cg.emitFmt("const {s} = {s}._{s};", .{ bind_name, source_name, narrow.type_name });
             }
         },
         else => {
@@ -119,7 +121,7 @@ fn emitStatementsWithNarrowing(cg: *CodeGen, stmts: []*mir.MirNode) anyerror!voi
         try cg.emitIndent();
         try cg.generateStatementMir(child);
         try cg.emit("\n");
-        // Post-if narrowing: if this if_stmt has early exit and post_type,
+        // Post-if narrowing: if this if_stmt has early exit and post_branch,
         // emit a binding for the narrowed variable and substitute in remaining siblings.
         if (child.kind == .if_stmt) {
             if (child.narrowing) |narrowing| {

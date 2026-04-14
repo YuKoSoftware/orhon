@@ -190,6 +190,37 @@ pub const MirLowerer = struct {
                 try children.append(self.allocator, try self.lowerNode(b.left));
                 try children.append(self.allocator, try self.lowerNode(b.right));
                 mir_node_ptr.children = try children.toOwnedSlice(self.allocator);
+                // Stamp union_tag for type-compare (eq/ne) against a union-member
+                // type name on an arbitrary_union operand. Pre-resolves the tag
+                // once so codegen can read it without walking var_types at emit time.
+                if (b.op == .eq or b.op == .ne) {
+                    if (mir_node_ptr.children.len >= 1) {
+                        const lhs_mir = mir_node_ptr.children[0];
+                        const rhs_name: ?[]const u8 = switch (b.right.*) {
+                            .identifier => |n| n,
+                            .field_expr => |fe| fe.field,
+                            else => null,
+                        };
+                        if (rhs_name) |rname| {
+                            // Case 1: direct arbitrary-union operand (lhs is the union value)
+                            if (self.resolveSourceUnionRT(lhs_mir)) |rt| {
+                                mir_node_ptr.union_tag = mir_types.positionalTagOf(rt, rname);
+                            }
+                            // Case 2: @type(x) == T desugared form (x is T inside if condition)
+                            // lhs_mir is compiler_fn "@type" whose first child is the union value.
+                            if (mir_node_ptr.union_tag == null and
+                                lhs_mir.kind == .compiler_fn and
+                                std.mem.eql(u8, lhs_mir.name orelse "", K.Type.TYPE) and
+                                lhs_mir.children.len > 0)
+                            {
+                                const val_mir = lhs_mir.children[0];
+                                if (self.resolveSourceUnionRT(val_mir)) |rt| {
+                                    mir_node_ptr.union_tag = mir_types.positionalTagOf(rt, rname);
+                                }
+                            }
+                        }
+                    }
+                }
             },
             .unary_expr => |u| {
                 var children = std.ArrayListUnmanaged(*MirNode){};
@@ -206,6 +237,14 @@ pub const MirLowerer = struct {
                 var children = std.ArrayListUnmanaged(*MirNode){};
                 try children.append(self.allocator, try self.lowerNode(f.object));
                 mir_node_ptr.children = try children.toOwnedSlice(self.allocator);
+                // Stamp union_tag if the obj's effective type is an arbitrary union.
+                // Uses the pre-narrowing RT so narrowing doesn't hide the union identity.
+                if (mir_node_ptr.children.len > 0) {
+                    const obj_mir = mir_node_ptr.children[0];
+                    if (self.resolveSourceUnionRT(obj_mir)) |rt| {
+                        mir_node_ptr.union_tag = mir_types.positionalTagOf(rt, f.field);
+                    }
+                }
             },
             .index_expr => |i| {
                 var children = std.ArrayListUnmanaged(*MirNode){};
@@ -483,6 +522,19 @@ pub const MirLowerer = struct {
             .post_type = if (has_early_exit) (if (is_eq) remaining else type_name) else null,
             .type_class = tc,
         };
+    }
+
+    /// Return the best-available union RT for `obj_mir`. Prefers the MirNode's
+    /// own resolved_type. If that's not a union (e.g. because narrowing replaced
+    /// it with the narrowed member type), falls back to `var_types` lookup by
+    /// identifier name. Returns null if no union RT can be found.
+    fn resolveSourceUnionRT(self: *const MirLowerer, obj_mir: *MirNode) ?RT {
+        if (obj_mir.resolved_type == .union_type) return obj_mir.resolved_type;
+        if (obj_mir.kind != .identifier) return null;
+        const name = obj_mir.name orelse return null;
+        const info = self.var_types.get(name) orelse return null;
+        if (info.resolved_type == .union_type) return info.resolved_type;
+        return null;
     }
 
     fn remainingUnionType(members_rt: ?[]const RT, excluded: []const u8) ?[]const u8 {

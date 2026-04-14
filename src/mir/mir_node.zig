@@ -87,6 +87,11 @@ pub const MirNode = struct {
     /// so codegen doesn't need to walk mutable `type_ctx` state to resolve literal
     /// operand types to a concrete Zig type.
     overflow_type: ?*parser.Node = null,
+    /// Pre-computed positional tag (0..31) for `.field_access` and `.binary`
+    /// nodes whose operand is an arbitrary-union member lookup. Stamped by
+    /// MirLowerer once at lowering time so codegen doesn't re-resolve names
+    /// against the union RT on every emission.
+    union_tag: ?u8 = null,
 
     // ── Child accessors ─────────────────────────────────────
     // Named access into children[] so codegen doesn't use raw indices.

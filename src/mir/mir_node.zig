@@ -250,12 +250,35 @@ pub const MirKind = enum {
     passthrough,
 };
 
+/// Distinguishes sentinel narrowing (Error, null) from regular type narrowing.
+/// Replaces K.Type.ERROR / K.Type.NULL string compares in codegen emission.
+pub const NarrowKind = enum {
+    plain, // regular type name
+    error_sentinel, // "Error"
+    null_sentinel, // "null"
+};
+
+/// One branch of a type narrowing (then, else, or post-if).
+/// Carries the type name plus pre-computed positional tag and sentinel kind
+/// so codegen can emit without re-walking union members or re-comparing
+/// sentinel strings.
+pub const NarrowBranch = struct {
+    /// Retained for diagnostics and non-union fallback paths.
+    type_name: []const u8,
+    /// Pre-computed positional tag (0..31) when the source is an arbitrary_union.
+    /// Null when the narrowed type isn't a member, or when the source is a
+    /// null_union / error_union / null_error_union (non-arbitrary unions).
+    positional_tag: ?u8 = null,
+    /// Sentinel classification — replaces runtime string compare against K.Type.
+    kind: NarrowKind = .plain,
+};
+
 /// Pre-computed type narrowing for if_stmt with `is` checks.
 pub const IfNarrowing = struct {
     var_name: []const u8,
-    then_type: ?[]const u8 = null,
-    else_type: ?[]const u8 = null,
-    post_type: ?[]const u8 = null, // after if, if then-block has early exit
+    then_branch: ?NarrowBranch = null,
+    else_branch: ?NarrowBranch = null,
+    post_branch: ?NarrowBranch = null, // after if, if then-block has early exit
     type_class: TypeClass = .plain, // union category for codegen unwrap expression
 };
 

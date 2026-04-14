@@ -7,7 +7,6 @@ const codegen = @import("codegen.zig");
 const parser = @import("../parser.zig");
 const mir = @import("../mir/mir.zig");
 const match_impl = @import("codegen_match.zig");
-const K = @import("../constants.zig");
 
 const CodeGen = codegen.CodeGen;
 
@@ -17,12 +16,12 @@ const CodeGen = codegen.CodeGen;
 
 /// Emit a block with an arm-top narrowing binding.
 /// Generates: `{ const _is_val = <unwrap>; <body> }` with match_var_subst active.
-fn emitNarrowedBlock(cg: *CodeGen, block: *mir.MirNode, var_name: []const u8, narrowed_type: []const u8, type_class: mir.TypeClass) anyerror!void {
+fn emitNarrowedBlock(cg: *CodeGen, block: *mir.MirNode, var_name: []const u8, narrow: mir.NarrowBranch, type_class: mir.TypeClass) anyerror!void {
     try cg.emit("{\n");
     cg.indent += 1;
     // Emit the arm-top binding
     try cg.emitIndent();
-    try emitUnwrapBinding(cg, var_name, narrowed_type, type_class);
+    try emitUnwrapBinding(cg, var_name, narrow, type_class);
     try cg.emit("\n");
     // Generate body with substitution active
     const prev = cg.match_var_subst;
@@ -40,14 +39,14 @@ fn emitNarrowedBlock(cg: *CodeGen, block: *mir.MirNode, var_name: []const u8, na
 }
 
 /// Emit `const _is_val = <unwrap_expr>;` using the variable name as both binding and source.
-fn emitUnwrapBinding(cg: *CodeGen, var_name: []const u8, narrowed_type: []const u8, type_class: mir.TypeClass) anyerror!void {
-    return emitUnwrapBindingNamed(cg, "_is_val", var_name, narrowed_type, type_class);
+fn emitUnwrapBinding(cg: *CodeGen, var_name: []const u8, narrow: mir.NarrowBranch, type_class: mir.TypeClass) anyerror!void {
+    return emitUnwrapBindingNamed(cg, "_is_val", var_name, narrow, type_class);
 }
 
 /// Emit `const <bind_name> = <unwrap_expr>;` based on the union type_class and narrowed type.
-fn emitUnwrapBindingNamed(cg: *CodeGen, bind_name: []const u8, source_name: []const u8, narrowed_type: []const u8, type_class: mir.TypeClass) anyerror!void {
-    const is_error = std.mem.eql(u8, narrowed_type, K.Type.ERROR);
-    const is_null = std.mem.eql(u8, narrowed_type, K.Type.NULL);
+fn emitUnwrapBindingNamed(cg: *CodeGen, bind_name: []const u8, source_name: []const u8, narrow: mir.NarrowBranch, type_class: mir.TypeClass) anyerror!void {
+    const is_error = narrow.kind == .error_sentinel;
+    const is_null = narrow.kind == .null_sentinel;
 
     if (is_null) {
         // Null narrowing — no useful value to bind
@@ -78,31 +77,13 @@ fn emitUnwrapBindingNamed(cg: *CodeGen, bind_name: []const u8, source_name: []co
     }
     switch (type_class) {
         .arbitrary_union => {
-            // Resolve narrowed_type's positional tag against the source variable's
-            // union type. var_types covers locals; current_func_mir.params covers
-            // function parameters. Fall back to the type name as a last resort.
-            const resolved_tag = blk: {
-                if (cg.var_types) |vt| {
-                    if (vt.get(source_name)) |info| {
-                        if (cg.arbitraryUnionTag(info.resolved_type, narrowed_type)) |t| {
-                            break :blk t;
-                        }
-                    }
-                }
-                if (cg.current_func_mir) |fm| {
-                    for (fm.params()) |p| {
-                        if (p.name) |pname| {
-                            if (std.mem.eql(u8, pname, source_name)) {
-                                if (cg.arbitraryUnionTag(p.resolved_type, narrowed_type)) |t| {
-                                    break :blk t;
-                                }
-                            }
-                        }
-                    }
-                }
-                break :blk narrowed_type;
-            };
-            try cg.emitFmt("const {s} = {s}._{s};", .{ bind_name, source_name, resolved_tag });
+            if (narrow.positional_tag) |tag| {
+                try cg.emitFmt("const {s} = {s}._{d};", .{ bind_name, source_name, tag });
+            } else {
+                // Defensive fallback — lowerer should always stamp positional_tag
+                // for arbitrary_union narrowing. Emit raw type name as a safety valve.
+                try cg.emitFmt("const {s} = {s}.{s};", .{ bind_name, source_name, narrow.type_name });
+            }
         },
         else => {
             try cg.emit("// unsupported narrowing");
@@ -142,7 +123,7 @@ fn emitStatementsWithNarrowing(cg: *CodeGen, stmts: []*mir.MirNode) anyerror!voi
         // emit a binding for the narrowed variable and substitute in remaining siblings.
         if (child.kind == .if_stmt) {
             if (child.narrowing) |narrowing| {
-                if (narrowing.post_type) |pt| {
+                if (narrowing.post_branch) |pb| {
                     const var_name = narrowing.var_name;
                     // Skip if variable is already fully unwrapped (.plain) from a prior narrowing
                     if (cg.match_var_subst) |subst| {
@@ -175,20 +156,20 @@ fn emitStatementsWithNarrowing(cg: *CodeGen, stmts: []*mir.MirNode) anyerror!voi
                         const already_subst = !std.mem.eql(u8, source_name, var_name);
                         const eff_tc = blk: {
                             if (narrowing.type_class == .null_error_union and !already_subst) {
-                                if (narrowing.then_type) |tt| {
-                                    if (std.mem.eql(u8, tt, K.Type.NULL)) break :blk mir.TypeClass.null_union;
+                                if (narrowing.then_branch) |tb| {
+                                    if (tb.kind == .null_sentinel) break :blk mir.TypeClass.null_union;
                                     // Error-first on null_error_union → full unwrap
-                                    if (std.mem.eql(u8, tt, K.Type.ERROR)) break :blk mir.TypeClass.null_error_union;
+                                    if (tb.kind == .error_sentinel) break :blk mir.TypeClass.null_error_union;
                                 }
                             }
-                            if (narrowing.then_type) |tt| {
-                                if (std.mem.eql(u8, tt, K.Type.NULL)) break :blk mir.TypeClass.null_union;
-                                if (std.mem.eql(u8, tt, K.Type.ERROR)) break :blk mir.TypeClass.error_union;
+                            if (narrowing.then_branch) |tb| {
+                                if (tb.kind == .null_sentinel) break :blk mir.TypeClass.null_union;
+                                if (tb.kind == .error_sentinel) break :blk mir.TypeClass.error_union;
                             }
                             break :blk narrowing.type_class;
                         };
                         try cg.emitIndent();
-                        try emitUnwrapBindingNamed(cg, bind_name, source_name, pt, eff_tc);
+                        try emitUnwrapBindingNamed(cg, bind_name, source_name, pb, eff_tc);
                         try cg.emit("\n");
                         const prev = cg.match_var_subst;
                         // If we did a full unwrap (null_error_union), the remaining type
@@ -281,9 +262,9 @@ pub fn generateStatementMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                 // Then-block with narrowing
                 if (m.children.len > 1) {
                     const then_m = m.thenBlock();
-                    if (narrowing.then_type) |tt| {
+                    if (narrowing.then_branch) |tb| {
                         if (match_impl.mirContainsIdentifier(then_m, vn)) {
-                            try emitNarrowedBlock(cg, then_m, vn, tt, tc);
+                            try emitNarrowedBlock(cg, then_m, vn, tb, tc);
                         } else {
                             try cg.generateBlockMir(then_m);
                         }
@@ -296,9 +277,9 @@ pub fn generateStatementMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                     try cg.emit(" else ");
                     if (else_m.kind == .if_stmt) {
                         try cg.generateStatementMir(else_m);
-                    } else if (narrowing.else_type) |et| {
+                    } else if (narrowing.else_branch) |eb| {
                         if (match_impl.mirContainsIdentifier(else_m, vn)) {
-                            try emitNarrowedBlock(cg, else_m, vn, et, tc);
+                            try emitNarrowedBlock(cg, else_m, vn, eb, tc);
                         } else {
                             try cg.generateBlockMir(else_m);
                         }

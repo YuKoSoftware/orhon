@@ -516,11 +516,15 @@ pub const MirLowerer = struct {
         const members_rt = if (info.resolved_type == .union_type) info.resolved_type.union_type else null;
         const remaining = remainingUnionType(members_rt, type_name);
         const has_early_exit = blockHasEarlyExit(then_block);
+        const source_rt = info.resolved_type;
+        const then_name: ?[]const u8 = if (is_eq) type_name else remaining;
+        const else_name: ?[]const u8 = if (is_eq) remaining else type_name;
+        const post_name: ?[]const u8 = if (has_early_exit) (if (is_eq) remaining else type_name) else null;
         return .{
             .var_name = val_node.identifier,
-            .then_type = if (is_eq) type_name else remaining,
-            .else_type = if (is_eq) remaining else type_name,
-            .post_type = if (has_early_exit) (if (is_eq) remaining else type_name) else null,
+            .then_branch = buildNarrowBranch(source_rt, then_name),
+            .else_branch = buildNarrowBranch(source_rt, else_name),
+            .post_branch = buildNarrowBranch(source_rt, post_name),
             .type_class = tc,
         };
     }
@@ -536,6 +540,25 @@ pub const MirLowerer = struct {
         const info = self.var_types.get(name) orelse return null;
         if (info.resolved_type == .union_type) return info.resolved_type;
         return null;
+    }
+
+    /// Construct a NarrowBranch from a type name, pre-computing the positional
+    /// tag (if the source is an arbitrary union and the name is a member) and
+    /// the sentinel kind (Error / null).
+    fn buildNarrowBranch(source_rt: RT, name_opt: ?[]const u8) ?mir_node.NarrowBranch {
+        const name = name_opt orelse return null;
+        const kind: mir_node.NarrowKind = if (mir_types.isErrorTypeName(name))
+            .error_sentinel
+        else if (mir_types.isNullTypeName(name))
+            .null_sentinel
+        else
+            .plain;
+        const tag = mir_types.positionalTagOf(source_rt, name);
+        return .{
+            .type_name = name,
+            .positional_tag = tag,
+            .kind = kind,
+        };
     }
 
     fn remainingUnionType(members_rt: ?[]const RT, excluded: []const u8) ?[]const u8 {

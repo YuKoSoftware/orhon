@@ -499,7 +499,7 @@ fn generateFieldAccessMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             } else {
                 // Fallback: lowerer couldn't resolve the union RT. Preserve the
                 // old codegen behavior by emitting `._<raw_field>` — matches what
-                // the prior `arbitraryUnionTag` fallback path produced when its
+                // the prior arbitrary-union tag fallback path produced when its
                 // lookup failed.
                 try cg.generateExprMir(obj_mir);
                 try cg.emitFmt("._{s}", .{field});

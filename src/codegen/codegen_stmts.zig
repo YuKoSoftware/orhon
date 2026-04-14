@@ -83,7 +83,7 @@ fn emitUnwrapBindingNamed(cg: *CodeGen, bind_name: []const u8, source_name: []co
                 // Defensive fallback — lowerer should always stamp positional_tag
                 // for arbitrary_union narrowing. Preserve the old behavior exactly:
                 // emit `._<raw_type_name>` matching what the prior
-                // arbitraryUnionTag fallback produced.
+                // arbitrary-union tag fallback produced.
                 try cg.emitFmt("const {s} = {s}._{s};", .{ bind_name, source_name, narrow.type_name });
             }
         },

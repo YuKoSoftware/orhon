@@ -580,14 +580,10 @@ pub fn generateCoercedExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
         .null_wrap, .error_wrap => {
             try cg.generateExprMir(m);
         },
-        .arbitrary_union_wrap => {
-            if (m.coerce_tag) |tag| {
-                try cg.emitFmt(".{{ ._{s} = ", .{tag});
-                try cg.generateExprMir(m);
-                try cg.emit(" }");
-            } else {
-                try cg.generateExprMir(m);
-            }
+        .arbitrary_union_wrap => |tag| {
+            try cg.emitFmt(".{{ ._{d} = ", .{tag});
+            try cg.generateExprMir(m);
+            try cg.emit(" }");
         },
         .optional_unwrap => {
             // Native ?T: unwrap → .?

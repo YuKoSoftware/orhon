@@ -65,7 +65,6 @@ pub const MirLowerer = struct {
         const resolved = if (info) |i| i.resolved_type else RT.unknown;
         const tc = if (info) |i| i.typeClass() else classifyType(resolved);
         const coercion_val = if (info) |i| i.coercion else null;
-        const coerce_tag_val = if (info) |i| i.coerce_tag else null;
 
         const kind = astToMirKind(node);
 
@@ -75,7 +74,6 @@ pub const MirLowerer = struct {
             .resolved_type = resolved,
             .type_class = tc,
             .coercion = coercion_val,
-            .coerce_tag = coerce_tag_val,
             .kind = kind,
             .children = &.{},
         };

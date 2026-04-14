@@ -257,10 +257,9 @@ pub fn annotateCallCoercions(self: *MirAnnotator, c: parser.CallExpr) !void {
                 .resolved_type = arg_type,
                 .coercion = kind,
             }),
-            .wrap_union => |w| try self.node_map.put(self.allocator, arg, .{
+            .wrap_union => |tag| try self.node_map.put(self.allocator, arg, .{
                 .resolved_type = arg_type,
-                .coercion = .arbitrary_union_wrap,
-                .coerce_tag = w.tag,
+                .coercion = .{ .arbitrary_union_wrap = tag },
             }),
         }
     }
@@ -287,10 +286,9 @@ pub fn annotateDeclCoercions(self: *MirAnnotator, value: *parser.Node, decl_type
             .resolved_type = val_type,
             .coercion = kind,
         }),
-        .wrap_union => |w| try self.node_map.put(self.allocator, value, .{
+        .wrap_union => |tag| try self.node_map.put(self.allocator, value, .{
             .resolved_type = val_type,
-            .coercion = .arbitrary_union_wrap,
-            .coerce_tag = w.tag,
+            .coercion = .{ .arbitrary_union_wrap = tag },
         }),
     }
 }
@@ -323,10 +321,9 @@ pub fn annotateReturnCoercions(self: *MirAnnotator, value: *parser.Node) !void {
             .resolved_type = val_type,
             .coercion = kind,
         }),
-        .wrap_union => |w| try self.node_map.put(self.allocator, value, .{
+        .wrap_union => |tag| try self.node_map.put(self.allocator, value, .{
             .resolved_type = val_type,
-            .coercion = .arbitrary_union_wrap,
-            .coerce_tag = w.tag,
+            .coercion = .{ .arbitrary_union_wrap = tag },
         }),
     }
 }

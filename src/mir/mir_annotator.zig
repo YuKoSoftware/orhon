@@ -156,20 +156,20 @@ pub const MirAnnotator = struct {
             if (src == .primitive and src.primitive == .numeric_literal) {
                 for (dst.union_type) |member| {
                     if (member == .primitive and member.primitive.isInteger()) {
-                        const tag = positionalUnionTag(member.name(), dst.union_type) orelse return .none;
-                        return .{ .wrap_union = .{ .tag = tag } };
+                        const tag = mir_types.positionalTagOf(dst, member.name()) orelse return .none;
+                        return .{ .wrap_union = tag };
                     }
                 }
             } else if (src == .primitive and src.primitive == .float_literal) {
                 for (dst.union_type) |member| {
                     if (member == .primitive and member.primitive.isFloat()) {
-                        const tag = positionalUnionTag(member.name(), dst.union_type) orelse return .none;
-                        return .{ .wrap_union = .{ .tag = tag } };
+                        const tag = mir_types.positionalTagOf(dst, member.name()) orelse return .none;
+                        return .{ .wrap_union = tag };
                     }
                 }
             }
-            const tag = positionalUnionTag(src.name(), dst.union_type) orelse return .none;
-            return .{ .wrap_union = .{ .tag = tag } };
+            const tag = mir_types.positionalTagOf(dst, src.name()) orelse return .none;
+            return .{ .wrap_union = tag };
         }
         // Null union → plain (optional unwrap)
         if (src.unionContainsNull() and !dst.unionContainsNull())
@@ -197,12 +197,12 @@ pub const MirAnnotator = struct {
         /// No coercion needed — types match or coercion is impossible.
         none,
         /// A plain coercion kind with no extra metadata.
-        /// Covers: implicit_int, null_wrap, error_wrap, optional_unwrap,
+        /// Covers: null_wrap, error_wrap, optional_unwrap,
         /// value_to_const_ref, array_to_slice.
         simple: Coercion,
-        /// Arbitrary union wrap — carries the positional tag string
-        /// (borrowed slice into positional_tag_pool, program lifetime).
-        wrap_union: struct { tag: []const u8 },
+        /// Arbitrary union wrap — carries the positional tag (0..31)
+        /// into the destination union's canonical sort order.
+        wrap_union: u8,
     };
 
     /// Look up a FuncSig for a call expression's callee.
@@ -365,7 +365,7 @@ test "detectCoercion - arbitrary_union_wrap" {
     // Sorted canonically: i32, str → i32 is position 0.
     const members = &[_]RT{ RT{ .primitive = .i32 }, RT{ .primitive = .string } };
     const r1 = MirAnnotator.detectCoercion(RT{ .primitive = .i32 }, RT{ .union_type = members });
-    try std.testing.expectEqualStrings("0", r1.wrap_union.tag);
+    try std.testing.expectEqual(@as(u8, 0), r1.wrap_union);
 
     // union_type → union_type → no coercion
     const r2 = MirAnnotator.detectCoercion(RT{ .union_type = members }, RT{ .union_type = members });
@@ -507,7 +507,7 @@ test "detectCoercion - numeric literal to arbitrary union" {
     const src = RT{ .primitive = .numeric_literal };
     const dst = RT{ .union_type = members };
     const result = MirAnnotator.detectCoercion(src, dst);
-    try std.testing.expectEqualStrings("0", result.wrap_union.tag);
+    try std.testing.expectEqual(@as(u8, 0), result.wrap_union);
 }
 
 test "detectCoercion - float literal to arbitrary union" {
@@ -516,7 +516,7 @@ test "detectCoercion - float literal to arbitrary union" {
     const src = RT{ .primitive = .float_literal };
     const dst = RT{ .union_type = members };
     const result = MirAnnotator.detectCoercion(src, dst);
-    try std.testing.expectEqualStrings("0", result.wrap_union.tag);
+    try std.testing.expectEqual(@as(u8, 0), result.wrap_union);
 }
 
 test "detectCoercion - null literal to null-containing union no wrap" {

@@ -250,7 +250,7 @@ pub fn generateStatementMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                         .null_wrap, .error_wrap => {
                             try cg.generateExprMir(val_m);
                         },
-                        .arbitrary_union_wrap => {
+                        .arbitrary_union_wrap => |_| {
                             try cg.generateArbitraryUnionWrappedExprMir(val_m, cg.funcReturnMembers());
                         },
                         .array_to_slice, .value_to_const_ref => {
@@ -422,7 +422,7 @@ pub fn generateStmtDeclMir(cg: *CodeGen, m: *mir.MirNode, decl_keyword: []const 
     if (m.type_annotation) |t| {
         // array_to_slice emits &source which gives *const [N]T — only coerces to []const T.
         // For mutable slices, users should use arr[0..len] which produces []T directly.
-        if (val_m.coercion != null and val_m.coercion.? == .array_to_slice and t.* == .type_slice) {
+        if (val_m.coercion != null and std.meta.activeTag(val_m.coercion.?) == .array_to_slice and t.* == .type_slice) {
             const inner = try cg.typeToZig(t.type_slice);
             try cg.emitFmt(": []const {s}", .{inner});
         } else {
@@ -453,7 +453,7 @@ pub fn generateStmtDeclMir(cg: *CodeGen, m: *mir.MirNode, decl_keyword: []const 
                 try cg.emit(".?");
             },
             else => {
-                // null_wrap, error_wrap — Zig handles natively
+                // null_wrap, error_wrap, arbitrary_union_wrap — Zig handles natively
                 try cg.generateExprMir(val_m);
             },
         }

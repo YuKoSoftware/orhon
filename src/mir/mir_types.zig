@@ -43,13 +43,15 @@ pub fn classifyType(t: RT) TypeClass {
 // ── Coercion ────────────────────────────────────────────────
 
 /// An explicit coercion that codegen should emit.
-pub const Coercion = enum {
+pub const Coercion = union(enum) {
     array_to_slice,
     null_wrap,
     error_wrap,
-    arbitrary_union_wrap,
+    /// Positional tag (0..31) into the destination union's canonical sort order.
+    arbitrary_union_wrap: u8,
     optional_unwrap,
-    value_to_const_ref, // T → const& T for const& parameters
+    /// T → const& T for const& parameters.
+    value_to_const_ref,
 };
 
 // ── Node Info ───────────────────────────────────────────────
@@ -60,7 +62,6 @@ pub const Coercion = enum {
 pub const NodeInfo = struct {
     resolved_type: RT,
     coercion: ?Coercion = null,
-    coerce_tag: ?[]const u8 = null,
 
     pub fn typeClass(self: NodeInfo) TypeClass {
         return classifyType(self.resolved_type);

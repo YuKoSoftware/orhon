@@ -486,8 +486,8 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     try comp_cache.saveHashes();
     try comp_cache.saveDeps();
     try comp_cache.saveInterfaceHashes();
-    try cache.saveWarnings(all_warnings.items);
-    try cache.saveUnions(all_union_entries.items);
+    try cache.saveWarnings(all_warnings.items, allocator);
+    try cache.saveUnions(all_union_entries.items, allocator);
 
     if (cli.command == .@"test") {
         var runner = zig_runner.ZigRunner.init(allocator, reporter, cli.verbose) catch |err| {

@@ -446,32 +446,20 @@ pub fn generateStmtDeclMir(cg: *CodeGen, m: *mir.MirNode, decl_keyword: []const 
         } else switch (c) {
             .array_to_slice, .value_to_const_ref => {
                 try cg.emit("&");
-                const prev_ctx = cg.type_ctx;
-                cg.type_ctx = m.type_annotation;
                 try cg.generateExprMir(val_m);
-                cg.type_ctx = prev_ctx;
             },
             .optional_unwrap => {
-                const prev_ctx = cg.type_ctx;
-                cg.type_ctx = m.type_annotation;
                 try cg.generateExprMir(val_m);
-                cg.type_ctx = prev_ctx;
                 try cg.emit(".?");
             },
             else => {
                 // null_wrap, error_wrap — Zig handles natively
-                const prev_ctx = cg.type_ctx;
-                cg.type_ctx = m.type_annotation;
                 try cg.generateExprMir(val_m);
-                cg.type_ctx = prev_ctx;
             },
         }
     } else {
         // No coercion — emit value directly
-        const prev_ctx = cg.type_ctx;
-        cg.type_ctx = m.type_annotation;
         try cg.generateExprMir(val_m);
-        cg.type_ctx = prev_ctx;
     }
     try cg.emitFmt("; _ = &{s};", .{var_name});
 }

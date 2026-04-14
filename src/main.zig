@@ -14,6 +14,95 @@ pub const CliArgs = _cli.CliArgs;
 pub const Command = _cli.Command;
 pub const BuildTarget = _cli.BuildTarget;
 
+/// Pre-pipeline command handler signature. Handlers for commands that return
+/// without invoking the compile pipeline (init, fmt, lsp, help, ...) all match
+/// this shape so the dispatch table below can be a plain data array.
+const PreHandler = *const fn (allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void;
+
+fn handleInit(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    _init.initProject(allocator, cli.project_name, cli.init_in_place) catch |err| {
+        std.debug.print("error: failed to create project: {}\n", .{err});
+        std.process.exit(1);
+    };
+}
+
+fn handleAddToPath(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    _ = cli;
+    _commands.addToPath(allocator) catch |err| {
+        std.debug.print("error: failed to add orhon to PATH: {}\n", .{err});
+        std.process.exit(1);
+    };
+}
+
+fn handleFmt(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    const formatter = @import("formatter.zig");
+    try formatter.formatProject(allocator, cli.source_dir, cli.line_length);
+}
+
+fn handleGendoc(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    try _commands.runGendoc(allocator, cli);
+}
+
+fn handleLsp(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    _ = cli;
+    const lsp = @import("lsp/lsp.zig");
+    try lsp.serve(allocator);
+}
+
+fn handleWhich(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    _ = allocator;
+    _ = cli;
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path = std.fs.selfExePath(&buf) catch {
+        std.debug.print("error: could not resolve executable path\n", .{});
+        std.process.exit(1);
+    };
+    const stdout_file = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
+    var buf2: [4096]u8 = undefined;
+    var w = stdout_file.writer(&buf2);
+    const writer = &w.interface;
+    writer.writeAll(path) catch {};
+    writer.writeAll("\n") catch {};
+    writer.flush() catch {};
+}
+
+fn handleAnalysis(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    try _commands.runAnalysis(allocator, cli);
+}
+
+fn handleDebug(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    try _commands.runDebug(allocator, cli);
+}
+
+fn handleHelp(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    _ = allocator;
+    _ = cli;
+    _cli.printHelp();
+}
+
+fn handleVersion(allocator: std.mem.Allocator, cli: *_cli.CliArgs) anyerror!void {
+    _ = allocator;
+    _ = cli;
+    std.debug.print("orhon {s}\n", .{build_options.version});
+}
+
+/// Pre-pipeline dispatch table. Commands listed here return before the compile
+/// pipeline runs. Adding a new pre-pipeline command is a one-line data change.
+/// Commands NOT in this table (`build`, `run`, `test`) fall through to the
+/// pipeline below.
+const pre_pipeline_dispatch = [_]struct { cmd: Command, handler: PreHandler }{
+    .{ .cmd = .init, .handler = handleInit },
+    .{ .cmd = .addtopath, .handler = handleAddToPath },
+    .{ .cmd = .fmt, .handler = handleFmt },
+    .{ .cmd = .gendoc, .handler = handleGendoc },
+    .{ .cmd = .lsp, .handler = handleLsp },
+    .{ .cmd = .which, .handler = handleWhich },
+    .{ .cmd = .analysis, .handler = handleAnalysis },
+    .{ .cmd = .debug, .handler = handleDebug },
+    .{ .cmd = .help, .handler = handleHelp },
+    .{ .cmd = .version, .handler = handleVersion },
+};
+
 pub fn main() !void {
     var da = std.heap.DebugAllocator(.{}){};
     defer _ = da.deinit();
@@ -22,74 +111,11 @@ pub fn main() !void {
     var cli = try _cli.parseArgs(allocator);
     defer cli.deinit();
 
-    // Handle init and addtopath before setting up the full pipeline
-    if (cli.command == .init) {
-        _init.initProject(allocator, cli.project_name, cli.init_in_place) catch |err| {
-            std.debug.print("error: failed to create project: {}\n", .{err});
-            std.process.exit(1);
-        };
-        return;
-    }
-
-    if (cli.command == .addtopath) {
-        _commands.addToPath(allocator) catch |err| {
-            std.debug.print("error: failed to add orhon to PATH: {}\n", .{err});
-            std.process.exit(1);
-        };
-        return;
-    }
-
-    if (cli.command == .fmt) {
-        const formatter = @import("formatter.zig");
-        try formatter.formatProject(allocator, cli.source_dir, cli.line_length);
-        return;
-    }
-
-    if (cli.command == .gendoc) {
-        try _commands.runGendoc(allocator, &cli);
-        return;
-    }
-
-    if (cli.command == .lsp) {
-        const lsp = @import("lsp/lsp.zig");
-        try lsp.serve(allocator);
-        return;
-    }
-
-    if (cli.command == .which) {
-        var buf: [std.fs.max_path_bytes]u8 = undefined;
-        const path = std.fs.selfExePath(&buf) catch {
-            std.debug.print("error: could not resolve executable path\n", .{});
-            std.process.exit(1);
-        };
-        const stdout_file = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
-        var buf2: [4096]u8 = undefined;
-        var w = stdout_file.writer(&buf2);
-        const writer = &w.interface;
-        writer.writeAll(path) catch {};
-        writer.writeAll("\n") catch {};
-        writer.flush() catch {};
-        return;
-    }
-
-    if (cli.command == .analysis) {
-        try _commands.runAnalysis(allocator, &cli);
-        return;
-    }
-
-    if (cli.command == .debug) {
-        try _commands.runDebug(allocator, &cli);
-        return;
-    }
-
-    if (cli.command == .help) {
-        _cli.printHelp();
-        return;
-    }
-
-    if (cli.command == .version) {
-        std.debug.print("orhon {s}\n", .{build_options.version});
-        return;
+    for (pre_pipeline_dispatch) |entry| {
+        if (entry.cmd == cli.command) {
+            try entry.handler(allocator, &cli);
+            return;
+        }
     }
 
     const mode: errors.BuildMode = if (cli.optimize == .fast or cli.optimize == .small)

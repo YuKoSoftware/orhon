@@ -17,6 +17,7 @@ const MirNode = mir_node.MirNode;
 const MirKind = mir_node.MirKind;
 const LiteralKind = mir_node.LiteralKind;
 const IfNarrowing = mir_node.IfNarrowing;
+const ResolvedKind = mir_node.ResolvedKind;
 const UnionRegistry = mir_registry.UnionRegistry;
 
 // ── MIR Lowerer ─────────────────────────────────────────────
@@ -80,7 +81,7 @@ pub const MirLowerer = struct {
         };
 
         // Populate self-contained data fields from AST
-        populateData(mir_node_ptr, node);
+        populateData(mir_node_ptr, node, self.decls);
 
         // Lower children based on AST node kind
         switch (node.*) {
@@ -122,8 +123,13 @@ pub const MirLowerer = struct {
             },
             .var_decl => |v| {
                 var children = std.ArrayListUnmanaged(*MirNode){};
-                try children.append(self.allocator, try self.lowerNode(v.value));
+                const value_mir = try self.lowerNode(v.value);
+                try children.append(self.allocator, value_mir);
                 mir_node_ptr.children = try children.toOwnedSlice(self.allocator);
+                // Propagate the var decl's type annotation down to any @overflow
+                // binary operand beneath the value expression. Lets overflow codegen
+                // resolve literal operand types without reading mutable type_ctx state.
+                if (v.type_annotation) |ta| stampOverflowType(value_mir, ta);
             },
             .return_stmt => |r| {
                 if (r.value) |val| {
@@ -545,9 +551,37 @@ pub const MirLowerer = struct {
     }
 };
 
+/// Recursively walk a MIR subtree and stamp `overflow_type` on any binary node
+/// that is the operand of a `@overflow(...)` compiler function call. The stamp
+/// lets codegen resolve literal operand types (which typeOf sees as
+/// `comptime_int`) to the enclosing declaration's explicit type.
+fn stampOverflowType(node: *MirNode, type_ann: *parser.Node) void {
+    if (node.kind == .compiler_fn) {
+        if (node.name) |name| {
+            if (std.mem.eql(u8, name, "overflow") and node.children.len > 0) {
+                node.children[0].overflow_type = type_ann;
+            }
+        }
+    }
+    for (node.children) |child| stampOverflowType(child, type_ann);
+}
+
+/// Resolve an identifier name against the DeclTable into a ResolvedKind.
+/// Returns null when the name is neither an enum type nor an enum variant.
+fn lookupResolvedKind(name: []const u8, decls: *const declarations.DeclTable) ?ResolvedKind {
+    if (decls.enums.contains(name)) return .enum_type_name;
+    var it = decls.enums.iterator();
+    while (it.next()) |entry| {
+        for (entry.value_ptr.variants) |v| {
+            if (std.mem.eql(u8, v, name)) return .enum_variant;
+        }
+    }
+    return null;
+}
+
 /// Populate the self-contained data fields from the AST node.
 /// Called once during lowering — these fields never change after.
-fn populateData(m: *MirNode, node: *parser.Node) void {
+fn populateData(m: *MirNode, node: *parser.Node, decls: *const declarations.DeclTable) void {
     switch (node.*) {
         .func_decl => |f| {
             m.name = f.name;
@@ -597,6 +631,10 @@ fn populateData(m: *MirNode, node: *parser.Node) void {
         },
         .identifier => |name| {
             m.name = name;
+            m.resolved_kind = lookupResolvedKind(name, decls);
+        },
+        .type_named => |name| {
+            if (decls.enums.contains(name)) m.resolved_kind = .enum_type_name;
         },
         .binary_expr => |b| {
             m.op = b.op;

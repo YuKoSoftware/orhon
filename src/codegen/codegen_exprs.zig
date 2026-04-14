@@ -536,7 +536,7 @@ fn generateIdentifierMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             return;
         }
     }
-    if (cg.isEnumVariant(name)) {
+    if (m.resolved_kind == .enum_variant) {
         try cg.emitFmt(".{s}", .{name});
     } else if (cg.generic_struct_name) |gsn| {
         if (std.mem.eql(u8, name, gsn)) {

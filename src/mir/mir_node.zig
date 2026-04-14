@@ -82,6 +82,14 @@ pub const MirNode = struct {
     names: ?[][]const u8 = null,
     /// Interpolated string parts (literal + expr interleaved).
     interp_parts: ?[]parser.InterpolatedPart = null,
+    /// Identifier/type-expr name resolution stamped by MirLowerer from DeclTable.
+    /// Lets codegen emit enum-aware output without querying declarations at emit time.
+    resolved_kind: ?ResolvedKind = null,
+    /// Expected operand type for `@overflow(a OP b)`. Stamped by MirLowerer onto
+    /// the binary child when the enclosing var_decl has an explicit type annotation,
+    /// so codegen doesn't need to walk mutable `type_ctx` state to resolve literal
+    /// operand types to a concrete Zig type.
+    overflow_type: ?*parser.Node = null,
 
     // ── Child accessors ─────────────────────────────────────
     // Named access into children[] so codegen doesn't use raw indices.
@@ -168,6 +176,15 @@ pub const MirNode = struct {
         if (self.children.len == 3) return self.children[1];
         return null;
     }
+};
+
+/// Identifier/type-expr name resolution produced by MirLowerer from DeclTable.
+/// Used so codegen doesn't need to query declarations at emit time.
+pub const ResolvedKind = enum {
+    /// Name matches an enum variant in some declared enum.
+    enum_variant,
+    /// Name matches a declared enum type.
+    enum_type_name,
 };
 
 /// Disambiguates the 6 literal types collapsed into MirKind.literal.

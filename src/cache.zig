@@ -16,6 +16,76 @@ pub const WARNINGS_FILE = ".orh-cache/warnings";
 pub const INTERFACES_FILE = ".orh-cache/interfaces";
 pub const ZIG_MODULES_DIR = ".orh-cache/zig_modules";
 
+/// Schema version for every cache file. Bumped when the on-disk layout of any
+/// cache record changes in a way that old files can't be parsed. A mismatched
+/// version is treated as an empty cache (forces a clean rebuild) rather than
+/// a hard error — upgrading orhon should never fail because of stale caches.
+const CACHE_SCHEMA_VERSION: u32 = 1;
+
+// ── ZON cache schemas ──────────────────────────────────────
+// All five cache files share the same shape: a version field plus an entries
+// array. ZON handles escaping automatically so module names containing spaces,
+// tabs, or other separator characters no longer corrupt the cache.
+
+const HashEntryZon = struct { path: []const u8, hash: u64 };
+const HashesCacheZon = struct { version: u32, entries: []const HashEntryZon };
+
+const DepsEntryZon = struct { module: []const u8, deps: []const []const u8 };
+const DepsCacheZon = struct { version: u32, entries: []const DepsEntryZon };
+
+const InterfaceEntryZon = struct { module: []const u8, hash: u64 };
+const InterfacesCacheZon = struct { version: u32, entries: []const InterfaceEntryZon };
+
+const WarningEntryZon = struct {
+    module: []const u8,
+    file: []const u8,
+    line: usize,
+    message: []const u8,
+};
+const WarningsCacheZon = struct { version: u32, entries: []const WarningEntryZon };
+
+const UnionEntryZon = struct { module: []const u8, arity: usize };
+const UnionsCacheZon = struct { version: u32, entries: []const UnionEntryZon };
+
+/// Read a ZON cache file into the schema type. Returns null for missing files,
+/// parse errors, or version mismatches — all three mean "no usable cache."
+/// Caller owns the returned value and must free via `std.zon.parse.free`.
+fn readZonCache(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    path: []const u8,
+) !?T {
+    const content = std.fs.cwd().readFileAllocOptions(
+        allocator,
+        path,
+        1024 * 1024,
+        null,
+        .@"1",
+        0,
+    ) catch |err| {
+        if (err == error.FileNotFound) return null;
+        return err;
+    };
+    defer allocator.free(content);
+    const parsed = std.zon.parse.fromSlice(T, allocator, content, null, .{}) catch return null;
+    if (@hasField(T, "version") and parsed.version != CACHE_SCHEMA_VERSION) {
+        std.zon.parse.free(allocator, parsed);
+        return null;
+    }
+    return parsed;
+}
+
+/// Serialize a value to a ZON cache file at `path`.
+fn writeZonCache(path: []const u8, value: anytype) !void {
+    try ensureGeneratedDir();
+    const file = try std.fs.cwd().createFile(path, .{});
+    defer file.close();
+    var buf: [8192]u8 = undefined;
+    var w = file.writer(&buf);
+    try std.zon.stringify.serialize(value, .{}, &w.interface);
+    try w.interface.flush();
+}
+
 /// The cache state
 pub const Cache = struct {
     hashes: std.StringHashMap(u64),
@@ -58,102 +128,60 @@ pub const Cache = struct {
         self.interface_hashes.deinit();
     }
 
-    /// Load content hashes from .orh-cache/hashes
+    /// Load content hashes from .orh-cache/hashes (ZON format).
     pub fn loadHashes(self: *Cache) !void {
-        const file = std.fs.cwd().openFile(HASHES_FILE, .{}) catch |err| {
-            if (err == error.FileNotFound) return; // fresh build
-            return err;
-        };
-        defer file.close();
-
-        const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
-        defer self.allocator.free(content);
-
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            if (line.len == 0) continue;
-            // Format: "path hash"
-            var parts = std.mem.splitScalar(u8, line, ' ');
-            const path = parts.next() orelse continue;
-            const hash_str = parts.next() orelse continue;
-            const hash_val = std.fmt.parseInt(u64, hash_str, 10) catch continue;
-            const path_copy = try self.allocator.dupe(u8, path);
-            try self.hashes.put(path_copy, hash_val);
+        const parsed = (try readZonCache(HashesCacheZon, self.allocator, HASHES_FILE)) orelse return;
+        defer std.zon.parse.free(self.allocator, parsed);
+        for (parsed.entries) |e| {
+            const path_copy = try self.allocator.dupe(u8, e.path);
+            try self.hashes.put(path_copy, e.hash);
         }
     }
 
-    /// Save content hashes to .orh-cache/hashes
+    /// Save content hashes to .orh-cache/hashes (ZON format).
     pub fn saveHashes(self: *Cache) !void {
-        try ensureGeneratedDir();
-        const file = try std.fs.cwd().createFile(HASHES_FILE, .{});
-        defer file.close();
-
-        var buf: [4096]u8 = undefined;
-        var w = file.writer(&buf);
-        const writer = &w.interface;
-
+        var entries = try std.ArrayListUnmanaged(HashEntryZon).initCapacity(self.allocator, self.hashes.count());
+        defer entries.deinit(self.allocator);
         var it = self.hashes.iterator();
         while (it.next()) |entry| {
-            try writer.print("{s} {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+            entries.appendAssumeCapacity(.{ .path = entry.key_ptr.*, .hash = entry.value_ptr.* });
         }
-        try writer.flush();
+        try writeZonCache(HASHES_FILE, HashesCacheZon{
+            .version = CACHE_SCHEMA_VERSION,
+            .entries = entries.items,
+        });
     }
 
-    /// Load dependency graph from .orh-cache/deps.graph
+    /// Load dependency graph from .orh-cache/deps.graph (ZON format).
     pub fn loadDeps(self: *Cache) !void {
-        const file = std.fs.cwd().openFile(DEPS_FILE, .{}) catch |err| {
-            if (err == error.FileNotFound) return;
-            return err;
-        };
-        defer file.close();
-
-        const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
-        defer self.allocator.free(content);
-
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            if (line.len == 0) continue;
-            // Format: "module → dep1, dep2, dep3"
-            var parts = std.mem.splitSequence(u8, line, " → ");
-            const mod_name = parts.next() orelse continue;
-            const deps_str = parts.next() orelse continue;
-
-            const mod_copy = try self.allocator.dupe(u8, mod_name);
+        const parsed = (try readZonCache(DepsCacheZon, self.allocator, DEPS_FILE)) orelse return;
+        defer std.zon.parse.free(self.allocator, parsed);
+        for (parsed.entries) |e| {
+            const mod_copy = try self.allocator.dupe(u8, e.module);
             var dep_list: std.ArrayListUnmanaged([]const u8) = .{};
-
-            if (deps_str.len > 0) {
-                var dep_parts = std.mem.splitSequence(u8, deps_str, ", ");
-                while (dep_parts.next()) |dep| {
-                    if (dep.len > 0) {
-                        try dep_list.append(self.allocator, try self.allocator.dupe(u8, dep));
-                    }
-                }
+            try dep_list.ensureTotalCapacity(self.allocator, e.deps.len);
+            for (e.deps) |dep| {
+                dep_list.appendAssumeCapacity(try self.allocator.dupe(u8, dep));
             }
-
             try self.deps.put(mod_copy, dep_list);
         }
     }
 
-    /// Save dependency graph to .orh-cache/deps.graph
+    /// Save dependency graph to .orh-cache/deps.graph (ZON format).
     pub fn saveDeps(self: *Cache) !void {
-        try ensureGeneratedDir();
-        const file = try std.fs.cwd().createFile(DEPS_FILE, .{});
-        defer file.close();
-
-        var buf: [4096]u8 = undefined;
-        var w = file.writer(&buf);
-        const writer = &w.interface;
-
+        var entries = try std.ArrayListUnmanaged(DepsEntryZon).initCapacity(self.allocator, self.deps.count());
+        defer entries.deinit(self.allocator);
         var it = self.deps.iterator();
         while (it.next()) |entry| {
-            try writer.print("{s} →", .{entry.key_ptr.*});
-            for (entry.value_ptr.items, 0..) |dep, i| {
-                if (i == 0) try writer.print(" {s}", .{dep})
-                else try writer.print(", {s}", .{dep});
-            }
-            try writer.print("\n", .{});
+            entries.appendAssumeCapacity(.{
+                .module = entry.key_ptr.*,
+                .deps = entry.value_ptr.items,
+            });
         }
-        try writer.flush();
+        try writeZonCache(DEPS_FILE, DepsCacheZon{
+            .version = CACHE_SCHEMA_VERSION,
+            .entries = entries.items,
+        });
     }
 
     /// Check if a file has changed since last build (compares semantic hash)
@@ -197,44 +225,28 @@ pub const Cache = struct {
     }
 
     /// Load interface hashes from .orh-cache/interfaces
+    /// Load interface hashes from .orh-cache/interfaces (ZON format).
     pub fn loadInterfaceHashes(self: *Cache) !void {
-        const file = std.fs.cwd().openFile(INTERFACES_FILE, .{}) catch |err| {
-            if (err == error.FileNotFound) return; // fresh build
-            return err;
-        };
-        defer file.close();
-
-        const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
-        defer self.allocator.free(content);
-
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            if (line.len == 0) continue;
-            // Format: "module_name hash"
-            var parts = std.mem.splitScalar(u8, line, ' ');
-            const mod_name = parts.next() orelse continue;
-            const hash_str = parts.next() orelse continue;
-            const hash_val = std.fmt.parseInt(u64, hash_str, 10) catch continue;
-            const name_copy = try self.allocator.dupe(u8, mod_name);
-            try self.interface_hashes.put(name_copy, hash_val);
+        const parsed = (try readZonCache(InterfacesCacheZon, self.allocator, INTERFACES_FILE)) orelse return;
+        defer std.zon.parse.free(self.allocator, parsed);
+        for (parsed.entries) |e| {
+            const name_copy = try self.allocator.dupe(u8, e.module);
+            try self.interface_hashes.put(name_copy, e.hash);
         }
     }
 
-    /// Save interface hashes to .orh-cache/interfaces
+    /// Save interface hashes to .orh-cache/interfaces (ZON format).
     pub fn saveInterfaceHashes(self: *Cache) !void {
-        try ensureGeneratedDir();
-        const file = try std.fs.cwd().createFile(INTERFACES_FILE, .{});
-        defer file.close();
-
-        var buf: [4096]u8 = undefined;
-        var w = file.writer(&buf);
-        const writer = &w.interface;
-
+        var entries = try std.ArrayListUnmanaged(InterfaceEntryZon).initCapacity(self.allocator, self.interface_hashes.count());
+        defer entries.deinit(self.allocator);
         var it = self.interface_hashes.iterator();
         while (it.next()) |entry| {
-            try writer.print("{s} {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+            entries.appendAssumeCapacity(.{ .module = entry.key_ptr.*, .hash = entry.value_ptr.* });
         }
-        try writer.flush();
+        try writeZonCache(INTERFACES_FILE, InterfacesCacheZon{
+            .version = CACHE_SCHEMA_VERSION,
+            .entries = entries.items,
+        });
     }
 
 };
@@ -247,58 +259,44 @@ pub const CachedWarning = struct {
     message: []const u8,
 };
 
-/// Load cached warnings from .orh-cache/warnings
+/// Load cached warnings from .orh-cache/warnings (ZON format).
 pub fn loadWarnings(allocator: std.mem.Allocator) !std.ArrayListUnmanaged(CachedWarning) {
     var list: std.ArrayListUnmanaged(CachedWarning) = .{};
-    const file = std.fs.cwd().openFile(WARNINGS_FILE, .{}) catch |err| {
-        if (err == error.FileNotFound) return list;
-        return err;
-    };
-    defer file.close();
-
-    const content = try file.readToEndAlloc(allocator, 1024 * 1024);
-    defer allocator.free(content);
-
-    var lines = std.mem.splitScalar(u8, content, '\n');
-    while (lines.next()) |line| {
-        if (line.len == 0) continue;
-        // Format: "module\tfile\tline\tmessage"
-        var parts = std.mem.splitScalar(u8, line, '\t');
-        const mod = parts.next() orelse continue;
-        const src_file = parts.next() orelse continue;
-        const line_str = parts.next() orelse continue;
-        const msg = parts.next() orelse continue;
-        const line_num = std.fmt.parseInt(usize, line_str, 10) catch continue;
-        try list.append(allocator, .{
-            .module = try allocator.dupe(u8, mod),
-            .file = try allocator.dupe(u8, src_file),
-            .line = line_num,
-            .message = try allocator.dupe(u8, msg),
+    const parsed = (try readZonCache(WarningsCacheZon, allocator, WARNINGS_FILE)) orelse return list;
+    defer std.zon.parse.free(allocator, parsed);
+    try list.ensureTotalCapacity(allocator, parsed.entries.len);
+    for (parsed.entries) |e| {
+        list.appendAssumeCapacity(.{
+            .module = try allocator.dupe(u8, e.module),
+            .file = try allocator.dupe(u8, e.file),
+            .line = e.line,
+            .message = try allocator.dupe(u8, e.message),
         });
     }
     return list;
 }
 
-/// Save warnings to .orh-cache/warnings
-pub fn saveWarnings(warnings: []const CachedWarning) !void {
-    try ensureGeneratedDir();
-    const file = try std.fs.cwd().createFile(WARNINGS_FILE, .{});
-    defer file.close();
-
-    var buf: [8192]u8 = undefined;
-    var w = file.writer(&buf);
-    const writer = &w.interface;
-
+/// Save warnings to .orh-cache/warnings (ZON format).
+pub fn saveWarnings(warnings: []const CachedWarning, allocator: std.mem.Allocator) !void {
+    var entries_buf = try std.ArrayListUnmanaged(WarningEntryZon).initCapacity(allocator, warnings.len);
+    defer entries_buf.deinit(allocator);
     for (warnings) |warn| {
-        try writer.print("{s}\t{s}\t{d}\t{s}\n", .{ warn.module, warn.file, warn.line, warn.message });
+        entries_buf.appendAssumeCapacity(.{
+            .module = warn.module,
+            .file = warn.file,
+            .line = warn.line,
+            .message = warn.message,
+        });
     }
-    try writer.flush();
+    try writeZonCache(WARNINGS_FILE, WarningsCacheZon{
+        .version = CACHE_SCHEMA_VERSION,
+        .entries = entries_buf.items,
+    });
 }
 
 // ── Union Cache ────────────────────────────────────────────
 
 pub const UNIONS_FILE = ".orh-cache/unions";
-const UNIONS_SCHEMA_VERSION = "v2";
 
 /// A cached per-module arity contribution.
 /// The redesigned registry only needs to know how high the global arity goes
@@ -309,56 +307,33 @@ pub const CachedUnionEntry = struct {
     arity: usize,
 };
 
-/// Load cached union arities from .orh-cache/unions.
-/// Format: first line is "v2", subsequent lines are "module\tarity".
-/// Old (v1) caches and missing files return an empty list.
+/// Load cached union arities from .orh-cache/unions (ZON format).
+/// Returns an empty list for missing files or version mismatches.
 pub fn loadUnions(allocator: std.mem.Allocator) !std.ArrayListUnmanaged(CachedUnionEntry) {
     var list: std.ArrayListUnmanaged(CachedUnionEntry) = .{};
-    const file = std.fs.cwd().openFile(UNIONS_FILE, .{}) catch |err| {
-        if (err == error.FileNotFound) return list;
-        return err;
-    };
-    defer file.close();
-
-    const content = try file.readToEndAlloc(allocator, 1024 * 1024);
-    defer allocator.free(content);
-
-    var lines = std.mem.splitScalar(u8, content, '\n');
-    const first = lines.next() orelse return list;
-    if (!std.mem.eql(u8, std.mem.trim(u8, first, " \r"), UNIONS_SCHEMA_VERSION)) {
-        // Old schema — treat as empty
-        return list;
-    }
-
-    while (lines.next()) |line| {
-        if (line.len == 0) continue;
-        var parts = std.mem.splitScalar(u8, line, '\t');
-        const mod = parts.next() orelse continue;
-        const arity_str = parts.next() orelse continue;
-        const arity = std.fmt.parseInt(usize, std.mem.trim(u8, arity_str, " \r"), 10) catch continue;
-        try list.append(allocator, .{
-            .module = try allocator.dupe(u8, mod),
-            .arity = arity,
+    const parsed = (try readZonCache(UnionsCacheZon, allocator, UNIONS_FILE)) orelse return list;
+    defer std.zon.parse.free(allocator, parsed);
+    try list.ensureTotalCapacity(allocator, parsed.entries.len);
+    for (parsed.entries) |e| {
+        list.appendAssumeCapacity(.{
+            .module = try allocator.dupe(u8, e.module),
+            .arity = e.arity,
         });
     }
     return list;
 }
 
-/// Save union arities to .orh-cache/unions in v2 format.
-pub fn saveUnions(unions: []const CachedUnionEntry) !void {
-    try ensureGeneratedDir();
-    const file = try std.fs.cwd().createFile(UNIONS_FILE, .{});
-    defer file.close();
-
-    var buf: [8192]u8 = undefined;
-    var w = file.writer(&buf);
-    const writer = &w.interface;
-
-    try writer.print("{s}\n", .{UNIONS_SCHEMA_VERSION});
+/// Save union arities to .orh-cache/unions (ZON format).
+pub fn saveUnions(unions: []const CachedUnionEntry, allocator: std.mem.Allocator) !void {
+    var entries_buf = try std.ArrayListUnmanaged(UnionEntryZon).initCapacity(allocator, unions.len);
+    defer entries_buf.deinit(allocator);
     for (unions) |entry| {
-        try writer.print("{s}\t{d}\n", .{ entry.module, entry.arity });
+        entries_buf.appendAssumeCapacity(.{ .module = entry.module, .arity = entry.arity });
     }
-    try writer.flush();
+    try writeZonCache(UNIONS_FILE, UnionsCacheZon{
+        .version = CACHE_SCHEMA_VERSION,
+        .entries = entries_buf.items,
+    });
 }
 
 /// Compute a semantic hash of Orhon source by hashing the token stream.
@@ -876,51 +851,23 @@ test "interface hash changes on public change" {
 
 test "interface hashes load save roundtrip" {
     const alloc = std.testing.allocator;
-    const tmp_interfaces = "/tmp/orhon_test_interfaces";
+
+    try ensureGeneratedDir();
+    defer std.fs.cwd().deleteFile(INTERFACES_FILE) catch {};
 
     var cache1 = Cache.init(alloc);
     defer cache1.deinit();
 
-    // Insert two module interface hashes
     const k1 = try alloc.dupe(u8, "collections");
     try cache1.interface_hashes.put(k1, 12345678901234);
     const k2 = try alloc.dupe(u8, "str");
     try cache1.interface_hashes.put(k2, 98765432109876);
 
-    // Save to temp file by temporarily overriding via direct file write
-    {
-        const file = try std.fs.cwd().createFile(tmp_interfaces, .{});
-        defer file.close();
-        var buf: [1024]u8 = undefined;
-        var w = file.writer(&buf);
-        const writer = &w.interface;
-        var it = cache1.interface_hashes.iterator();
-        while (it.next()) |entry| {
-            try writer.print("{s} {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
-        }
-        try writer.flush();
-    }
-    defer std.fs.cwd().deleteFile(tmp_interfaces) catch {};
+    try cache1.saveInterfaceHashes();
 
-    // Load into a fresh cache by reading the temp file directly
     var cache2 = Cache.init(alloc);
     defer cache2.deinit();
-    {
-        const file = std.fs.cwd().openFile(tmp_interfaces, .{}) catch unreachable;
-        defer file.close();
-        const content = try file.readToEndAlloc(alloc, 1024 * 1024);
-        defer alloc.free(content);
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            if (line.len == 0) continue;
-            var parts = std.mem.splitScalar(u8, line, ' ');
-            const mod_name = parts.next() orelse continue;
-            const hash_str = parts.next() orelse continue;
-            const hash_val = std.fmt.parseInt(u64, hash_str, 10) catch continue;
-            const name_copy = try alloc.dupe(u8, mod_name);
-            try cache2.interface_hashes.put(name_copy, hash_val);
-        }
-    }
+    try cache2.loadInterfaceHashes();
 
     try std.testing.expectEqual(@as(?u64, 12345678901234), cache2.interface_hashes.get("collections"));
     try std.testing.expectEqual(@as(?u64, 98765432109876), cache2.interface_hashes.get("str"));
@@ -1002,7 +949,7 @@ test "union cache round-trip" {
         .{ .module = "shapes", .arity = 4 },
     };
 
-    try saveUnions(&entries);
+    try saveUnions(&entries, alloc);
     defer std.fs.cwd().deleteFile(UNIONS_FILE) catch {};
 
     var loaded = try loadUnions(alloc);
@@ -1024,6 +971,7 @@ test "union cache rejects old schema" {
     {
         const file = try std.fs.cwd().createFile(UNIONS_FILE, .{});
         defer file.close();
+        // Legacy tab-delimited v1/v2 format — invalid ZON, should yield empty cache.
         try file.writeAll("main\tOrhonUnion_i32_str\ti32,str\t\n");
     }
     defer std.fs.cwd().deleteFile(UNIONS_FILE) catch {};

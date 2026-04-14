@@ -6,43 +6,6 @@ Actionable items for the current development phase. Deferred and future work is 
 
 ## Architectural Cleanup
 
-Discovered during a 2026-04-12 codebase audit. Grouped by sequencing batch — finishing
-a whole batch in one pass leaves the touched area cleaner than picking single items.
-
-### Batch B — Coercion + emission tightening `small` (each)
-
-#### Duplicated unwrap-binding logic (partially done)
-**`src/codegen/codegen_match.zig:548,619`** — The unwrap pattern (`.?` for null,
-`catch` for error, `._tag` for union) still has one inline copy in the match-arm
-codegen path. The `codegen_stmts.zig` / `codegen_exprs.zig` copies were folded into
-the shared `codegen.valueUnwrapForm` helper. Folding the match-arm copy requires
-first untangling its `pre_stmts` / interpolation hoisting context.
-
-### Batch C — Layering fix `medium`
-
-Highest architectural payoff: turns codegen into the mechanical lowering layer it
-claims to be. Both findings should land together.
-
-#### Codegen does name resolution it shouldn't
-**`src/codegen/codegen.zig:182-203, 323-332`** (`isEnumVariant`, `isEnumTypeName`,
-`isErrorConstant`) — Three methods on `CodeGen` query `self.decls` at emit time to
-classify identifiers. The MIR annotator should set `resolved_kind` on every
-identifier; codegen should only read MIR fields.
-
-#### `@overflow` operand types resolved by codegen guessing
-**`src/codegen/codegen_match.zig:864-909`** — When `@overflow` operands are literals,
-`@TypeOf` gives `comptime_int`, so codegen falls back to walking `cg.type_ctx`. This
-is type inference happening during emit. The annotator should compute and store the
-effective operand types; codegen reads them.
-
-### Standalone — Cache format `medium`
-
-#### Cache serialization is hand-rolled, unversioned, fragile
-**`src/cache.zig:72-134, 250-280, 318-368`** — Tab/comma/newline parsing with no
-escaping and no schema version. A module name with a tab silently corrupts the cache.
-Migrate to ZON (preferred — already used for `.zon` configs) or `std.json`. Unifies
-all five cache files behind one structured format.
-
 ### Larger refactors — Discuss before doing `large`
 
 These need brainstorming first; they're design-loaded, not mechanical.
@@ -56,6 +19,10 @@ tagged unions that need them. `CoercionResult` was converted to a tagged union i
 prior pass; the broader cleanup pushes that same shape into `MirNode` itself so the
 readers in `mir_annotator_nodes.zig` can stop flattening the variant back out.
 
+Blocks folding the remaining `arbitraryUnionTag` lookup in `codegen_exprs.zig` —
+the last codegen→decls query — and the ~5 `K.Type` string comparisons in the
+narrowing path (`mir_lowerer.zig` / `codegen_stmts.zig`).
+
 #### `DeclTable`'s seven parallel StringHashMaps
 **`src/declarations.zig:83-92`** — `funcs`, `structs`, `enums`, `handles`, `vars`,
 `types`, `blueprints` — adding a new declaration kind requires touching 7 places.
@@ -68,11 +35,6 @@ code reads naturally as `decls.structs.get(name)`; the unified form is
 pipeline already labels these as separate passes (4 and 5). Extract declaration
 collection into a `resolver_decls.zig` hub aligned with the pass boundary.
 
-#### `main.zig` command dispatch is a long if-chain
-**`src/main.zig:25-93`** — 11 sequential `if (cli.command == .X)` blocks. Table-driven
-dispatch via a `[_]struct{ cmd, handler }` array makes adding a command a one-line
-data change. Low risk because it's at the entry point.
-
 #### Implicit dependency tracking via interface-hash diffing
 **`src/pipeline.zig:336-365`** — The recompilation decision walks `mod_resolver.modules`,
 `comp_cache.deps`, and per-file hash maps to derive a graph that's never made explicit.
@@ -80,48 +42,13 @@ Building an actual `BuildGraph` data structure once and topologically sorting it
 centralize the logic and unblock future parallel builds. Only worth doing if parallelism
 is on the roadmap.
 
-### Lower-confidence findings — Verify before acting
-
-The audit flagged these but flagged them as "may be by design" or "low confidence."
-Read the call sites first; some may turn out to be intentional.
-
-#### ~~`K.Type` constants compared via string equality~~ (verified intentional, 2026-04-13)
-**~50 occurrences** reviewed. Most are load-bearing string work: AST `type_named` field
-comparisons (pre-resolution), constructed AST/MIR nodes, user-written identifier
-comparisons in match patterns, and builtin-name whitelist lookups. The only sites that
-could genuinely become variant checks are the ~5 in `mir_lowerer.zig` /
-`codegen_stmts.zig` narrowing path, and those are downstream of the "MirNode optional
-string fields → tagged union" Larger-refactor item below — folding them in isolation
-would be duplicate work. No action on K.Type itself.
-
-#### ~~Interpolation hoisting via ad-hoc `pre_stmts` buffer~~ (verified intentional, 2026-04-13)
-**`src/codegen/codegen.zig:65,306-308`** and **`codegen_match.zig:568-625`** — Reviewed.
-The two options were "move into MirLowerer" or "rename for clarity." Both are wrong:
-- **MirLowerer option** is architecturally mismatched. The hoisted temp is a
-  `std.fmt.allocPrint` call with a Zig format string plus a `defer free`, built by
-  redirecting `cg.output` into `pre_stmts` so the existing `generateExprMir` can
-  walk the child MIR nodes. That machinery is Zig-backend-specific — MirLowerer
-  doesn't know about `allocPrint`, `{s}`/`{}` format specifiers, or `smp_allocator`,
-  and shouldn't. Keeping hoisting in codegen is correct.
-- **Rename option** is cosmetic. `pre_stmts` already has a clear doc comment at
-  `codegen.zig:63-64`, single-purpose use (only written by the interpolation emitter),
-  and only two flush points (`codegen_stmts.zig:31,137`). Renaming to
-  `interpolation_hoist` gains nothing except at the field declaration site.
-
-No action. The architecture is load-bearing.
-
-#### ~~`codegen_match.zig` may want to split further~~ (verified, not actionable alone, 2026-04-13)
-**`src/codegen/codegen_match.zig` (1061 lines)** — Reviewed. The file is still
-well-commented, function-boundaries are clean, and size growth since the audit is
-trivial (~20 lines). Won't split as a standalone task.
-
-The real finding: the file's name says "match" but ~300 lines of it handle arithmetic
-compiler intrinsics (`@overflow`, `@wrapping`, `@saturating`, `@type`, introspection)
-that have nothing to do with pattern matching. If this file ever needs other
-structural work, the cleanest extraction is a `codegen_compt.zig` satellite holding
-`generateCompilerFuncMir`, `emitIntrospectionType`, and the overflow/wrapping/
-saturating helpers — NOT the `codegen_match_compt.zig` name the audit proposed,
-which buries the mismatch.
+#### `codegen_match.zig` hosts unrelated compiler-intrinsic codegen
+**`src/codegen/codegen_match.zig`** — ~300 lines handle arithmetic compiler intrinsics
+(`@overflow`, `@wrap`, `@sat`, `@type`, introspection helpers) that have nothing to
+do with pattern matching. Not worth splitting in isolation, but if this file ever
+needs structural work, the clean extraction is a `codegen_compt.zig` satellite
+holding `generateCompilerFuncMir`, `emitIntrospectionType`, and the
+overflow/wrap/sat helpers.
 
 ---
 
@@ -144,12 +71,6 @@ limited completion context.
 ---
 
 ## Testing
-
-### Incremental cache skip verification `medium`
-
-`test/05_compile.sh` only checks that rebuild succeeds and hashes file exists.
-It does not verify that unchanged modules are actually skipped. Add a test that
-builds twice without changes and verifies generated `.zig` timestamps are unchanged.
 
 ### Property-based pipeline testing `medium`
 

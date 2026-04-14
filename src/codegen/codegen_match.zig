@@ -231,11 +231,9 @@ pub fn generateMatchMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             var is_enum_switch = false;
             for (m.matchArms()) |arm_mir| {
                 const pat_m = arm_mir.pattern();
-                if (pat_m.kind == .identifier) {
-                    if (cg.isEnumVariant(pat_m.name orelse "")) {
-                        is_enum_switch = true;
-                        break;
-                    }
+                if (pat_m.kind == .identifier and pat_m.resolved_kind == .enum_variant) {
+                    is_enum_switch = true;
+                    break;
                 }
             }
             if (!is_enum_switch) {
@@ -680,7 +678,7 @@ pub fn generateCompilerFuncMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             if (args.len >= 2) {
                 const target_type = try cg.typeToZig(args[0].ast); // type trees are structural — typeToZig walks AST
                 const target_is_float = target_type.len > 0 and target_type[0] == 'f';
-                const target_is_enum = cg.isEnumTypeName(args[0].ast); // type trees are structural — isEnumTypeName reads AST
+                const target_is_enum = args[0].resolved_kind == .enum_type_name;
                 // Detect float source from literal kind OR resolved type
                 const source_is_float = args[1].literal_kind == .float or
                     (args[1].resolved_type == .primitive and args[1].resolved_type.primitive.isFloat());
@@ -879,14 +877,13 @@ pub fn generateSaturatingExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
 //   if (_ov[1] != 0) break :blk @as(anyerror!@TypeOf(a), error.overflow)
 //   else break :blk @as(anyerror!@TypeOf(a), _ov[0]); })
 // When operands are literals, @TypeOf gives comptime_int which Zig rejects.
-// Use the concrete type from the enclosing decl's type_ctx if available.
+// MirLowerer stamps the enclosing var_decl's type annotation onto the binary
+// operand via `overflow_type`; codegen reads it from the MIR node.
 
-fn resolveOverflowTypeStr(cg: *CodeGen, left_is_literal: bool) anyerror!?[]const u8 {
-    if (left_is_literal) {
-        if (cg.type_ctx) |ctx| {
-            if (codegen.extractValueType(ctx)) |vt| return try cg.typeToZig(vt);
-        }
-    }
+fn resolveOverflowTypeStr(cg: *CodeGen, m: *mir.MirNode, left_is_literal: bool) anyerror!?[]const u8 {
+    if (!left_is_literal) return null;
+    const ann = m.overflow_type orelse return null;
+    if (codegen.extractValueType(ann)) |vt| return try cg.typeToZig(vt);
     return null;
 }
 
@@ -900,7 +897,7 @@ pub fn generateOverflowExprMir(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
     if (m.kind == .binary) {
         if (mapOverflowBuiltin(m.op orelse .assign)) |builtin| {
             const left_is_literal = m.lhs().literal_kind == .int or m.lhs().literal_kind == .float;
-            const type_str = try resolveOverflowTypeStr(cg, left_is_literal);
+            const type_str = try resolveOverflowTypeStr(cg, m, left_is_literal);
 
             try cg.emit("(blk: { const _ov = ");
             try cg.emitFmt("{s}(", .{builtin});

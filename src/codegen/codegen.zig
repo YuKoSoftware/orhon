@@ -30,7 +30,6 @@ pub const CodeGen = struct {
     destruct_counter: usize, // unique index for destructuring temp vars
     module_name: []const u8, // current module name — used for zig module re-exports
     reassigned_vars: std.StringHashMapUnmanaged(void), // vars assigned after declaration in current func
-    type_ctx: ?*parser.Node, // expected type from enclosing decl (for overflow codegen)
     locs: ?*const parser.LocMap, // AST node → source location (set by main.zig)
     generic_struct_name: ?[]const u8, // inside a generic struct — name to replace with @This()
     in_struct: bool, // inside any struct (generic or not) — Self maps to @This()
@@ -207,7 +206,6 @@ pub const CodeGen = struct {
             .destruct_counter = 0,
             .module_name = "",
             .reassigned_vars = .{},
-            .type_ctx = null,
             .generic_struct_name = null,
             .in_struct = false,
             .all_decls = null,
@@ -224,30 +222,6 @@ pub const CodeGen = struct {
     /// Source location from MirNode — convenience wrapper over nodeLoc.
     pub fn nodeLocMir(self: *const CodeGen, m: *const mir.MirNode) ?errors.SourceLoc {
         return self.nodeLoc(m.ast);
-    }
-
-    /// Check if a name is an enum variant in any declared enum
-    pub fn isEnumVariant(self: *const CodeGen, name: []const u8) bool {
-        const decls = self.decls orelse return false;
-        var it = decls.enums.iterator();
-        while (it.next()) |entry| {
-            for (entry.value_ptr.variants) |v| {
-                if (std.mem.eql(u8, v, name)) return true;
-            }
-        }
-        return false;
-    }
-
-    /// Check if an AST node refers to a declared enum type name.
-    /// Used by cast() codegen to decide between @intCast and @enumFromInt.
-    pub fn isEnumTypeName(self: *const CodeGen, node: *parser.Node) bool {
-        const decls = self.decls orelse return false;
-        const name = switch (node.*) {
-            .type_named => |n| n,
-            .identifier => |n| n,
-            else => return false,
-        };
-        return decls.enums.contains(name);
     }
 
     pub fn deinit(self: *CodeGen) void {
@@ -366,18 +340,6 @@ pub const CodeGen = struct {
 
     /// Infer union tag from MirNode literal_kind.
     pub fn inferArbitraryUnionTagMir(m: *const mir.MirNode, members_rt: ?[]const RT) ?[]const u8 { return exprs_impl.inferArbitraryUnionTagMir(m, members_rt); }
-
-    /// Check if an identifier is a declared Error constant
-    pub fn isErrorConstant(self: *const CodeGen, name: []const u8) bool {
-        if (self.decls) |decls| {
-            if (decls.vars.get(name)) |v| {
-                if (v.type_) |t| {
-                    return t == .err;
-                }
-            }
-        }
-        return false;
-    }
 
     pub fn generateImport(self: *CodeGen, node: *parser.Node) anyerror!void {
         if (node.* != .import_decl) return;

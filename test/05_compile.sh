@@ -127,4 +127,54 @@ else fail "rebuild succeeds" "$OUTPUT"; fi
 if [ -f .orh-cache/hashes ]; then pass "cache hashes exist"
 else fail "cache hashes exist"; fi
 
+# Verify unchanged modules are actually skipped by the incremental cache:
+# capture mtimes of generated .zig files, rebuild with no changes, confirm unchanged.
+BUILDPROJ_MTIME_BEFORE=$(stat -c '%Y' .orh-cache/generated/buildproj.zig 2>/dev/null || echo "0")
+EXAMPLE_MTIME_BEFORE=$(stat -c '%Y' .orh-cache/generated/example.zig 2>/dev/null || echo "0")
+
+# Sleep 1s so any regeneration would be visible in 1s-granularity mtimes.
+sleep 1
+"$ORHON" build >/dev/null 2>&1 || true
+
+BUILDPROJ_MTIME_AFTER=$(stat -c '%Y' .orh-cache/generated/buildproj.zig 2>/dev/null || echo "0")
+EXAMPLE_MTIME_AFTER=$(stat -c '%Y' .orh-cache/generated/example.zig 2>/dev/null || echo "0")
+
+if [ "$BUILDPROJ_MTIME_BEFORE" = "$BUILDPROJ_MTIME_AFTER" ]; then
+    pass "skips codegen for unchanged buildproj module"
+else
+    fail "skips codegen for unchanged buildproj module" \
+        "buildproj.zig mtime changed from $BUILDPROJ_MTIME_BEFORE to $BUILDPROJ_MTIME_AFTER"
+fi
+
+if [ "$EXAMPLE_MTIME_BEFORE" = "$EXAMPLE_MTIME_AFTER" ]; then
+    pass "skips codegen for unchanged example module"
+else
+    fail "skips codegen for unchanged example module" \
+        "example.zig mtime changed from $EXAMPLE_MTIME_BEFORE to $EXAMPLE_MTIME_AFTER"
+fi
+
+# The incremental cache is hashed over lexed semantic tokens (comments and
+# whitespace are skipped), so only a real source change should invalidate.
+# Modify the greeting string so the hash actually changes.
+sed -i 's/hello orhon !/hello cache test/' src/buildproj.orh
+sleep 1
+"$ORHON" build >/dev/null 2>&1 || true
+
+BUILDPROJ_MTIME_TOUCHED=$(stat -c '%Y' .orh-cache/generated/buildproj.zig 2>/dev/null || echo "0")
+EXAMPLE_MTIME_AFTER_TOUCH=$(stat -c '%Y' .orh-cache/generated/example.zig 2>/dev/null || echo "0")
+
+if [ "$BUILDPROJ_MTIME_TOUCHED" != "$BUILDPROJ_MTIME_AFTER" ]; then
+    pass "regenerates touched buildproj module"
+else
+    fail "regenerates touched buildproj module" \
+        "buildproj.zig mtime unchanged after source touch"
+fi
+
+if [ "$EXAMPLE_MTIME_AFTER_TOUCH" = "$EXAMPLE_MTIME_AFTER" ]; then
+    pass "still skips unchanged example module after sibling touch"
+else
+    fail "still skips unchanged example module after sibling touch" \
+        "example.zig mtime changed from $EXAMPLE_MTIME_AFTER to $EXAMPLE_MTIME_AFTER_TOUCH"
+fi
+
 report_results

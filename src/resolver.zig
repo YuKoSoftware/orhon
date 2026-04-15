@@ -340,7 +340,7 @@ pub const TypeResolver = struct {
                 }
                 // Type-check default value against declared type
                 if (f.default_value) |dv| {
-                    const field_type = try types.resolveTypeNode(self.ctx.decls.typeAllocator(), f.type_annotation);
+                    const field_type = try self.resolveTypeAnnotationInScope(f.type_annotation, scope);
                     const val_type = try self.resolveExpr(dv, scope);
                     try self.checkAssignCompat(field_type, val_type, node);
                 }
@@ -709,26 +709,10 @@ pub fn inferCaptureType(iterable: *parser.Node, iter_type: RT) RT {
     return RT.inferred;
 }
 
-/// Check if a resolved type looks like a generic type parameter (e.g. T, V, Key).
-/// Heuristic: named type starting with uppercase, length <= 4.
-pub fn isTypeParam(t: RT) bool {
-    // A type param is a .named type that isn't a known primitive and looks like a param name.
-    // Type params defined via T: type get stored as .primitive = "type" in scope,
-    // but field types referencing T resolve as .named = "T" since T isn't a declared struct.
-    if (t != .named) return false;
-    const n = t.named;
-    // Single uppercase letter or short uppercase name — likely a type param
-    if (n.len == 0) return false;
-    if (n[0] >= 'A' and n[0] <= 'Z' and n.len <= 4) return true;
-    return false;
-}
-
 pub fn typesCompatible(a: RT, b: RT) bool {
     const a_name = a.name();
     const b_name = b.name();
     if (a_name.len > 0 and b_name.len > 0 and std.mem.eql(u8, a_name, b_name)) return true;
-    // Unresolved type params are compatible with anything — resolved at compile time by Zig
-    if (isTypeParam(a) or isTypeParam(b)) return true;
     // Numeric literals are compatible with any integer type
     if (a == .primitive and a.primitive == .numeric_literal and
         b == .primitive and b.primitive.isInteger()) return true;
@@ -1402,9 +1386,18 @@ test "typesCompatible - func_ptr always compatible" {
     try std.testing.expect(typesCompatible(RT{ .primitive = .i32 }, fp));
 }
 
-test "typesCompatible - type param compatible with anything" {
-    try std.testing.expect(typesCompatible(RT{ .named = "T" }, RT{ .primitive = .i32 }));
-    try std.testing.expect(typesCompatible(RT{ .primitive = .string }, RT{ .named = "V" }));
+test "typesCompatible - short-uppercase user struct names are NOT silently compatible (CB3 regression)" {
+    // CB3: names like Node, Vec3, Iter, Cell, List, Pair are user struct types.
+    // They must NOT be compatible with unrelated types — the old heuristic (len<=4 + uppercase)
+    // falsely classified them as generic type parameters, disabling type checking.
+    try std.testing.expect(!typesCompatible(RT{ .named = "Node" }, RT{ .primitive = .i32 }));
+    try std.testing.expect(!typesCompatible(RT{ .named = "Vec3" }, RT{ .primitive = .string }));
+    try std.testing.expect(!typesCompatible(RT{ .named = "Iter" }, RT{ .primitive = .bool }));
+    try std.testing.expect(!typesCompatible(RT{ .named = "Cell" }, RT{ .primitive = .f32 }));
+    try std.testing.expect(!typesCompatible(RT{ .named = "List" }, RT{ .primitive = .i64 }));
+    try std.testing.expect(!typesCompatible(RT{ .named = "Pair" }, RT{ .primitive = .u8 }));
+    // Same named type is still compatible with itself
+    try std.testing.expect(typesCompatible(RT{ .named = "Node" }, RT{ .named = "Node" }));
 }
 
 test "typesMatchWithSubstitution - blueprint name maps to struct name" {
@@ -1457,18 +1450,6 @@ test "inferCaptureType - slice produces element type" {
     var dummy = parser.Node{ .int_literal = "0" };
     const result = inferCaptureType(&dummy, RT{ .slice = inner });
     try std.testing.expectEqual(types.Primitive.i32, result.primitive);
-}
-
-test "isTypeParam - single uppercase letter" {
-    try std.testing.expect(isTypeParam(RT{ .named = "T" }));
-    try std.testing.expect(isTypeParam(RT{ .named = "V" }));
-    try std.testing.expect(isTypeParam(RT{ .named = "Key" }));
-}
-
-test "isTypeParam - rejects non-type-params" {
-    try std.testing.expect(!isTypeParam(RT{ .named = "point" })); // lowercase
-    try std.testing.expect(!isTypeParam(RT{ .named = "Player" })); // too long
-    try std.testing.expect(!isTypeParam(RT{ .primitive = .i32 })); // not named
 }
 
 test "isLiteralCompatible" {

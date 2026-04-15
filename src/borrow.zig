@@ -9,6 +9,7 @@ const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
+const types = @import("types.zig");
 const checks_impl = @import("borrow_checks.zig");
 
 /// A borrow record — tracks active borrows
@@ -169,15 +170,45 @@ pub const BorrowChecker = struct {
         }
     }
 
-    /// Look up a struct method by name by scanning every registered struct.
-    /// The object variable's type name is not available here (borrow checker runs
-    /// without type info), so the first struct that has a method with this name wins.
-    pub fn lookupStructMethod(self: *BorrowChecker, method_name: []const u8) ?declarations.FuncSig {
+    /// Look up a struct method given the call's receiver node.
+    ///
+    /// Preferred path: read the receiver's ResolvedType from `ctx.type_map` (populated
+    /// by pass 5), extract the owning struct name, and call `decls.getMethod(name, ...)`.
+    /// This picks the correct per-struct signature so `self` mutability is accurate.
+    ///
+    /// Fallback path (object_node == null, or receiver type unknown / not a named struct):
+    /// scan every registered struct method table and return the first match. This keeps
+    /// older/partial call sites working but is the ambiguous path that caused CB1.
+    pub fn lookupStructMethod(
+        self: *BorrowChecker,
+        object_node: ?*parser.Node,
+        method_name: []const u8,
+    ) ?declarations.FuncSig {
+        if (object_node) |obj| {
+            if (self.ctx.type_map) |tm| {
+                if (tm.get(obj)) |rt| {
+                    if (receiverStructName(rt)) |sname| {
+                        if (self.ctx.decls.getMethod(sname, method_name)) |sig| return sig;
+                    }
+                }
+            }
+        }
         var it = self.ctx.decls.struct_methods.iterator();
         while (it.next()) |entry| {
             if (entry.value_ptr.get(method_name)) |sig| return sig;
         }
         return null;
+    }
+
+    /// Extract the owning struct name from a receiver ResolvedType. Unwraps borrow
+    /// references (`const& T`, `mut& T`) and matches both `.named` and `.generic` forms.
+    fn receiverStructName(rt: types.ResolvedType) ?[]const u8 {
+        return switch (rt) {
+            .named => |n| n,
+            .generic => |g| g.name,
+            .ptr => |p| receiverStructName(p.elem.*),
+            else => null,
+        };
     }
 
     /// Drop all borrows at or deeper than the given depth (scope exit)
@@ -727,13 +758,78 @@ test "borrow checker - lookupStructMethod" {
     var checker = BorrowChecker.init(alloc, &ctx);
     defer checker.deinit();
 
-    // Found
-    const sig = checker.lookupStructMethod("scale");
+    // Found (fallback scan path — no receiver node)
+    const sig = checker.lookupStructMethod(null, "scale");
     try std.testing.expect(sig != null);
     try std.testing.expectEqualStrings("scale", sig.?.name);
 
     // Not found
-    try std.testing.expect(checker.lookupStructMethod("nonexistent") == null);
+    try std.testing.expect(checker.lookupStructMethod(null, "nonexistent") == null);
+}
+
+// CB1 regression — two structs with same-named method, different `self` mutability.
+// The pre-fix behavior scanned all struct_method tables and returned whichever came
+// first; after the fix, receiver type from `ctx.type_map` selects the correct signature.
+test "borrow checker - lookupStructMethod resolves by receiver type (CB1)" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+
+    // Two distinct param_nodes — param_nodes[0] drives isMutableBorrowType checks
+    // in the borrow checker. We don't need realistic param shapes for this test, just
+    // two signatures that differ in a discriminable way (return type).
+    try decl_table.structs.put("Writer", .{ .name = "Writer", .fields = &.{}, .is_pub = true });
+    try decl_table.putMethod("Writer", "op", .{
+        .name = "op_writer",
+        .params = &.{},
+        .param_nodes = &.{},
+        .return_type = .{ .primitive = .void },
+        .context = .normal,
+        .is_pub = true,
+        .is_instance = true,
+    });
+
+    try decl_table.structs.put("Reader", .{ .name = "Reader", .fields = &.{}, .is_pub = true });
+    try decl_table.putMethod("Reader", "op", .{
+        .name = "op_reader",
+        .params = &.{},
+        .param_nodes = &.{},
+        .return_type = .{ .primitive = .i32 },
+        .context = .normal,
+        .is_pub = true,
+        .is_instance = true,
+    });
+
+    // Build a type_map with a receiver identifier node resolved to `.named = "Reader"`.
+    var type_map = std.AutoHashMapUnmanaged(*parser.Node, types.ResolvedType){};
+    defer type_map.deinit(alloc);
+
+    var reader_obj = parser.Node{ .identifier = "r" };
+    try type_map.put(alloc, &reader_obj, .{ .named = "Reader" });
+
+    var ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    ctx.type_map = &type_map;
+
+    var checker = BorrowChecker.init(alloc, &ctx);
+    defer checker.deinit();
+
+    // With receiver type "Reader", must select Reader.op — not Writer.op (which
+    // the naive scan might return first depending on hashmap order).
+    const sig = checker.lookupStructMethod(&reader_obj, "op");
+    try std.testing.expect(sig != null);
+    try std.testing.expectEqualStrings("op_reader", sig.?.name);
+    try std.testing.expect(sig.?.return_type == .primitive);
+    try std.testing.expect(sig.?.return_type.primitive == .i32);
+
+    // Also verify ptr-wrapped receiver types (const& Reader) unwrap correctly.
+    var reader_elem: types.ResolvedType = .{ .named = "Reader" };
+    var reader_ref_obj = parser.Node{ .identifier = "rr" };
+    try type_map.put(alloc, &reader_ref_obj, .{ .ptr = .{ .kind = .const_ref, .elem = &reader_elem } });
+    const sig2 = checker.lookupStructMethod(&reader_ref_obj, "op");
+    try std.testing.expect(sig2 != null);
+    try std.testing.expectEqualStrings("op_reader", sig2.?.name);
 }
 
 test "borrow checker - removeLastBorrow" {

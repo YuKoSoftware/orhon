@@ -154,7 +154,7 @@ pub fn runSemanticAndCodegen(
     union_registry: *mir.UnionRegistry,
 ) !?[]const u8 {
     // ── Shared context for type resolution + validation passes 5–9 ──
-    const sema_ctx = sema.SemanticContext{
+    var sema_ctx = sema.SemanticContext{
         .allocator = allocator,
         .reporter = reporter,
         .decls = &decl_collector.table,
@@ -169,6 +169,11 @@ pub fn runSemanticAndCodegen(
 
     try type_resolver.resolve(ast);
     if (reporter.hasErrors()) return null;
+
+    // Expose the resolver's type_map so downstream passes (borrow, propagation)
+    // can look up receiver types and other node-level type info. CB1: borrow
+    // checker method resolution needs this to pick the correct `self` mutability.
+    sema_ctx.type_map = &type_resolver.type_map;
 
     // ── Pass 6: Ownership Analysis ─────────────────────────
     var ownership_checker = ownership.OwnershipChecker.init(allocator, &sema_ctx);

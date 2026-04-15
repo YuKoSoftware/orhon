@@ -6,6 +6,7 @@ const parser = @import("parser.zig");
 const declarations = @import("declarations.zig");
 const errors = @import("errors.zig");
 const module = @import("module.zig");
+const types = @import("types.zig");
 
 /// Shared context built after declaration collection (pass 4).
 /// Used by type resolution (pass 5) and validation passes 6–8; extended by MIR (pass 9) and codegen (pass 11).
@@ -17,6 +18,9 @@ pub const SemanticContext = struct {
     file_offsets: []const module.FileOffset,
     /// All module DeclTables — for cross-module qualified generic type validation.
     all_decls: ?*const std.StringHashMap(*declarations.DeclTable) = null,
+    /// Node-to-ResolvedType map produced by pass 5. Set after the type resolver runs
+    /// so later passes (borrow, propagation) can look up receiver types by AST node.
+    type_map: ?*const std.AutoHashMapUnmanaged(*parser.Node, types.ResolvedType) = null,
 
     /// Resolve an AST node to its original source location.
     pub fn nodeLoc(self: *const SemanticContext, node: *parser.Node) ?errors.SourceLoc {

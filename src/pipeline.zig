@@ -326,7 +326,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
         // Compute this module's current interface hash (after pass 4, before skip decision).
         // Stored here so it is available whether or not we recompile.
-        const current_iface_hash = cache.hashInterface(&decl_collector.table);
+        const current_iface_hash = try cache.hashInterface(allocator, &decl_collector.table);
 
         // Check if module needs recompilation (passes 5–12).
         // Interface-aware logic:

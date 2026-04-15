@@ -255,8 +255,19 @@ pub const PropagationChecker = struct {
 
             .block => try self.checkNode(node, scope),
 
-
-            else => {},
+            else => {
+                // Expression used as a statement (e.g. bare function call from `expr_or_assignment`).
+                // Check for unsafe unwraps in sub-expressions, then check if the expression
+                // itself returns a union — if so, the return value is immediately discarded
+                // with no name and no way to handle it.
+                try self.checkExprForUnsafeUnwrap(node, scope);
+                if (try self.exprReturnsUnion(node)) |is_error| {
+                    const kind = if (is_error) K.Type.ERROR else K.Type.NULL;
+                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                        "discarded {s} union return value — assign to a variable and use if/match to handle",
+                        .{kind});
+                }
+            },
         }
     }
 

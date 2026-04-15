@@ -363,6 +363,7 @@ run_fixture neg_borrow fail_borrow.orh "reference type not allowed in variable d
 run_fixture neg_prop fail_propagation.orh "unhandled.*union" "fixture: catches unhandled error union"
 run_fixture neg_unwrap fail_propagation.orh "unsafe unwrap" "fixture: catches unsafe union unwrap"
 run_fixture neg_prop_errfunc fail_propagation_in_error_func.orh "unhandled.*union" "fixture: rejects unhandled union in error-returning function"
+run_fixture neg_prop_discard fail_propagation_discarded.orh "discarded.*union" "fixture: rejects bare call with discarded union return"
 run_fixture neg_callnonfunc fail_types.orh "not callable" "fixture: rejects calling non-function"
 run_fixture neg_indexbool fail_types.orh "cannot index" "fixture: rejects indexing non-indexable"
 run_fixture neg_matcharm fail_types.orh "not a member" "fixture: rejects invalid match arm type"

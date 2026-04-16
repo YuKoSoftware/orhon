@@ -18,6 +18,7 @@ const errors = @import("errors.zig");
 const cache = @import("cache.zig");
 const builtins = @import("builtins.zig");
 const peg = @import("peg.zig");
+const ast_conv = @import("ast_conv.zig");
 
 /// Full pipeline test helper: source → lex → parse → declarations → resolve → MIR → codegen → Zig.
 /// Returns owned output slice — caller must free.
@@ -46,7 +47,12 @@ pub fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *er
     };
     var type_resolver = resolver.TypeResolver.init(&sema_ctx);
     defer type_resolver.deinit();
-    try type_resolver.resolve(ast);
+    // Convert AST to AstStore for index-based resolver (Phase A)
+    var conv = ast_conv.ConvContext.init(alloc);
+    defer conv.deinit();
+    const ast_root = try ast_conv.convertNode(&conv, ast);
+    type_resolver.reverse_map = &conv.reverse_map;
+    try type_resolver.resolve(&conv.store, ast_root);
     // MIR annotation + lowering
     var union_registry = mir.UnionRegistry.init(alloc);
     defer union_registry.deinit();
@@ -138,7 +144,12 @@ test "full pipeline - hello world" {
     // Type resolution
     var type_resolver = resolver.TypeResolver.init(&sema_ctx);
     defer type_resolver.deinit();
-    try type_resolver.resolve(ast);
+    // Convert AST to AstStore for index-based resolver (Phase A)
+    var conv = ast_conv.ConvContext.init(alloc);
+    defer conv.deinit();
+    const ast_root = try ast_conv.convertNode(&conv, ast);
+    type_resolver.reverse_map = &conv.reverse_map;
+    try type_resolver.resolve(&conv.store, ast_root);
     try std.testing.expect(!reporter.hasErrors());
 
     // Ownership check

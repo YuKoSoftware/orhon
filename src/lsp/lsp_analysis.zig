@@ -13,6 +13,7 @@ const propagation = @import("../propagation.zig");
 const sema = @import("../sema.zig");
 const errors = @import("../errors.zig");
 const cache = @import("../cache.zig");
+const ast_conv = @import("../ast_conv.zig");
 const types = @import("../types.zig");
 
 const SymbolInfo = lsp_types.SymbolInfo;
@@ -219,8 +220,15 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         };
 
         // Pass 5: Type Resolution (uses scratch arena)
+        // Convert AST to AstStore for index-based resolver (Phase A)
+        var conv = ast_conv.ConvContext.init(a);
+        defer conv.deinit();
+        const ast_root = ast_conv.convertNode(&conv, ast) catch {
+            continue;
+        };
         var tr = resolver.TypeResolver.init(&sema_ctx);
-        tr.resolve(ast) catch {};
+        tr.reverse_map = &conv.reverse_map;
+        tr.resolve(&conv.store, ast_root) catch {};
 
         // Extract symbols from DeclTable + AST locations (even if type resolution had errors).
         // Symbol strings are allocated with the long-lived allocator so they outlive the arena.

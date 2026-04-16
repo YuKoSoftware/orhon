@@ -17,6 +17,8 @@ const errors = @import("errors.zig");
 const cache = @import("cache.zig");
 const constants = @import("constants.zig");
 const _cli = @import("cli.zig");
+const ast_conv = @import("ast_conv.zig");
+const ast_store_mod = @import("ast_store.zig");
 
 /// Result of compiling a single module through passes 4–11.
 pub const CompileResult = struct {
@@ -153,6 +155,14 @@ pub fn runSemanticAndCodegen(
     has_zig_sidecar: bool,
     union_registry: *mir.UnionRegistry,
 ) !?[]const u8 {
+    // ── Convert AST to AstStore for index-based traversal (Phase A) ──
+    var conv = ast_conv.ConvContext.init(allocator);
+    defer conv.deinit();
+    const ast_root = ast_conv.convertNode(&conv, ast) catch {
+        try reporter.report(.{ .message = "internal: AST conversion failed" });
+        return null;
+    };
+
     // ── Shared context for type resolution + validation passes 5–9 ──
     var sema_ctx = sema.SemanticContext{
         .allocator = allocator,
@@ -161,13 +171,16 @@ pub fn runSemanticAndCodegen(
         .locs = locs_ptr,
         .file_offsets = file_offsets,
         .all_decls = all_module_decls,
+        .ast = &conv.store,
+        .reverse_map = &conv.reverse_map,
     };
 
     // ── Pass 5: Type Resolution ────────────────────────────
     var type_resolver = resolver.TypeResolver.init(&sema_ctx);
     defer type_resolver.deinit();
+    type_resolver.reverse_map = &conv.reverse_map;
 
-    try type_resolver.resolve(ast);
+    try type_resolver.resolve(&conv.store, ast_root);
     if (reporter.hasErrors()) return null;
 
     // Expose the resolver's type_map so downstream passes (borrow, propagation)

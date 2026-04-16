@@ -112,7 +112,15 @@ pub const CaptureEngine = struct {
             .optional => |inner| self.evalOptional(inner, pos, children),
             .not => |inner| self.evalNot(inner, pos),
             .ahead => |inner| self.evalAhead(inner, pos),
+            .any_token => self.matchAnyToken(pos),
         };
+    }
+
+    /// Match any single non-EOF token (PEG `.`)
+    fn matchAnyToken(self: *CaptureEngine, pos: usize) ?usize {
+        if (pos >= self.tokens.len) return null;
+        if (self.tokens[pos].kind == .eof) return null;
+        return pos + 1;
     }
 
     fn matchToken(self: *CaptureEngine, expected: TokenKind, pos: usize) ?usize {

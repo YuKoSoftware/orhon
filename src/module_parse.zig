@@ -201,6 +201,11 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
                 .loc = .{ .file = resolved.file, .line = resolved.line, .col = err.col },
             });
         }
+        // Free the syntax_errors list — arena + locs were moved to mod above,
+        // but syntax_errors.items lives on the child allocator and must be freed
+        // separately to avoid a leak on every file that triggers error recovery.
+        var syn_errs = build_result.ctx.syntax_errors;
+        syn_errs.deinit(alloc);
 
         // Extract imports — scan scoped ones from std/ or global/
         // Capture stable values before the import loop — getOrPut during

@@ -19,7 +19,7 @@ const BuildContext = builder.BuildContext;
 // ============================================================
 
 pub fn buildBlock(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
-    // block <- '{' _ statement* _ '}'
+    // block <- '{' _ (statement / stmt_error_skip)* _ '}'
     var stmts = std.ArrayListUnmanaged(*Node){};
     for (cap.children) |*child| {
         if (child.rule) |r| {
@@ -32,6 +32,34 @@ pub fn buildBlock(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
                         try stmts.append(ctx.alloc(), try builder.buildNode(ctx, sc));
                     }
                 }
+            } else if (std.mem.eql(u8, r, "stmt_error_skip")) {
+                // Statement-level error recovery: report a targeted message when
+                // common mistake patterns are detected, else a generic one.
+                const start = child.start_pos;
+                const tok = if (start < ctx.tokens.len) ctx.tokens[start] else null;
+                if (tok) |t| {
+                    const next_kind: ?TokenKind = if (start + 1 < ctx.tokens.len)
+                        ctx.tokens[start + 1].kind
+                    else
+                        null;
+                    const msg = if (t.kind == .kw_else and next_kind == .kw_if)
+                        // } else if(...) — use elif instead
+                        try std.fmt.allocPrint(ctx.alloc(), "'else if' is not valid \u{2014} use 'elif' for chained conditions", .{})
+                    else if ((t.kind == .kw_if or t.kind == .kw_while or t.kind == .kw_for) and
+                        (next_kind == .identifier or next_kind == .int_literal or
+                         next_kind == .kw_true or next_kind == .kw_false))
+                        // if/while/for without leading '(' around condition
+                        try std.fmt.allocPrint(ctx.alloc(),
+                            "missing '(' after '{s}' \u{2014} conditions require parentheses: {s}(...)", .{
+                            t.text, t.text,
+                        })
+                    else if (t.kind == .kw_var and next_kind == .ampersand)
+                        try std.fmt.allocPrint(ctx.alloc(), "var &T is not valid \u{2014} use mut& T for mutable references", .{})
+                    else
+                        try std.fmt.allocPrint(ctx.alloc(), "unexpected '{s}'", .{t.text});
+                    ctx.reportError(msg, start);
+                }
+                // Don't add to AST — skipped tokens are discarded
             }
             // Skip _ rules at block level
         }

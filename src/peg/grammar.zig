@@ -45,6 +45,9 @@ pub const Expr = union(enum) {
 
     /// Positive lookahead — succeed if inner matches, consume nothing (PEG `&`)
     ahead: *const Expr,
+
+    /// Match any single non-EOF token (PEG `.`)
+    any_token: void,
 };
 
 /// A named grammar rule
@@ -325,6 +328,12 @@ const GrammarParser = struct {
 
             // lowercase name = rule reference
             return Expr{ .rule_ref = ident };
+        }
+
+        // '.' — any-token wildcard (PEG `.`): matches any single non-EOF token
+        if (c == '.') {
+            self.pos += 1;
+            return Expr{ .any_token = {} };
         }
 
         // '[' character class — these are lexer-level definitions, skip

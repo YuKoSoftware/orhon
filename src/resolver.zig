@@ -42,7 +42,9 @@ pub const TypeResolver = struct {
     /// AstStore for index-based traversal (Phase A).
     store: *const AstStore = undefined,
     /// Reverse map from AstNodeIndex back to *parser.Node for bridge calls.
-    reverse_map: ?*const std.AutoHashMap(AstNodeIndex, *const parser.Node) = null,
+    /// Reads from self.ctx.reverse_map — the separate field is kept for
+    /// convenience but must always equal ctx.reverse_map.
+    reverse_map: ?*const std.AutoHashMap(AstNodeIndex, *parser.Node) = null,
     loop_depth: u32 = 0, // track nesting depth for break/continue validation
     in_is_condition: bool = false, // true while resolving a simple `is` check in if/elif condition
     type_decl_depth: u32 = 0, // track nesting depth for Self validation (structs and enums)
@@ -71,16 +73,17 @@ pub const TypeResolver = struct {
     }
 
     /// Look up the original *parser.Node for a given AstNodeIndex.
-    /// Returns null if reverse_map is not set or the index is not found.
-    pub fn reverseNode(self: *const TypeResolver, idx: AstNodeIndex) ?*const parser.Node {
-        const rm = self.reverse_map orelse return null;
+    /// Prefers ctx.reverse_map (set by the pipeline) over the local reverse_map
+    /// field (used by tests and LSP). Returns null if neither is set or the
+    /// index is not found.
+    pub fn reverseNode(self: *const TypeResolver, idx: AstNodeIndex) ?*parser.Node {
+        const rm = self.ctx.reverse_map orelse self.reverse_map orelse return null;
         return rm.get(idx);
     }
 
-    /// Reverse-lookup that returns a mutable pointer (for type_map keys and nodeLoc).
+    /// Alias kept for call-site compatibility; identical to reverseNode.
     pub fn reverseNodeMut(self: *const TypeResolver, idx: AstNodeIndex) ?*parser.Node {
-        if (self.reverseNode(idx)) |n| return @constCast(n);
-        return null;
+        return self.reverseNode(idx);
     }
 
     /// Get source location for an AstNodeIndex via reverse_map bridge.
@@ -755,10 +758,13 @@ pub const TypeResolver = struct {
     }
 
     pub fn validateMatchArm(self: *TypeResolver, pattern_name: []const u8, match_type: RT, arm_idx: AstNodeIndex) !void {
-        // Bridge: pass *parser.Node to validation (unmigrated in this commit)
-        if (self.reverseNodeMut(arm_idx)) |n| {
-            return validation_impl.validateMatchArm(self, pattern_name, match_type, n);
-        }
+        // Bridge: pass *parser.Node to validation (unmigrated in this commit).
+        // Assert the index must be in the reverse_map — a missing entry is a bug,
+        // not a recoverable condition (silent no-op would skip type checking).
+        const n = self.reverseNodeMut(arm_idx) orelse {
+            std.debug.panic("validateMatchArm: reverse_map missing AstNodeIndex {}", .{@intFromEnum(arm_idx)});
+        };
+        return validation_impl.validateMatchArm(self, pattern_name, match_type, n);
     }
 
     pub fn validateType(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope) anyerror!void {
@@ -768,10 +774,13 @@ pub const TypeResolver = struct {
     }
 
     pub fn checkAssignCompat(self: *TypeResolver, expected: RT, actual: RT, idx: AstNodeIndex) !void {
-        // Bridge: pass *parser.Node to validation
-        if (self.reverseNodeMut(idx)) |n| {
-            return validation_impl.checkAssignCompat(self, expected, actual, n);
-        }
+        // Bridge: pass *parser.Node to validation.
+        // Assert the index must be in the reverse_map — a missing entry is a bug,
+        // not a recoverable condition (silent no-op would skip type checking).
+        const n = self.reverseNodeMut(idx) orelse {
+            std.debug.panic("checkAssignCompat: reverse_map missing AstNodeIndex {}", .{@intFromEnum(idx)});
+        };
+        return validation_impl.checkAssignCompat(self, expected, actual, n);
     }
 
     /// Returns true if `name` is a variant of any declared enum.

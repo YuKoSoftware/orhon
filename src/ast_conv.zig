@@ -23,13 +23,13 @@ pub const ConvContext = struct {
     /// Maps AstNodeIndex back to the original *parser.Node.
     /// Populated during convertNode so that migrated passes can
     /// fall back to pointer-based interfaces (type_map, nodeLoc, etc.).
-    reverse_map: std.AutoHashMap(AstNodeIndex, *const parser.Node),
+    reverse_map: std.AutoHashMap(AstNodeIndex, *parser.Node),
 
     pub fn init(allocator: std.mem.Allocator) ConvContext {
         return .{
             .allocator = allocator,
             .store = AstStore.init(),
-            .reverse_map = std.AutoHashMap(AstNodeIndex, *const parser.Node).init(allocator),
+            .reverse_map = std.AutoHashMap(AstNodeIndex, *parser.Node).init(allocator),
         };
     }
 
@@ -96,7 +96,10 @@ const span_none: SourceSpanIndex = .none;
 pub fn convertNode(ctx: *ConvContext, node: *const Node) anyerror!AstNodeIndex {
     const idx = try convertNodeInner(ctx, node);
     if (idx != .none) {
-        try ctx.reverse_map.put(idx, node);
+        // The AST lives in an arena — the memory is mutable even though the
+        // parameter is const. Store as *parser.Node so the reverse_map does not
+        // require @constCast at every lookup site.
+        try ctx.reverse_map.put(idx, @constCast(node));
     }
     return idx;
 }

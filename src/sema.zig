@@ -25,7 +25,7 @@ pub const SemanticContext = struct {
     /// AstStore produced by ast_conv — available after Phase A migration.
     ast: ?*const ast_store_mod.AstStore = null,
     /// Reverse map from AstNodeIndex back to *parser.Node for bridge code.
-    reverse_map: ?*const std.AutoHashMap(ast_store_mod.AstNodeIndex, *const parser.Node) = null,
+    reverse_map: ?*const std.AutoHashMap(ast_store_mod.AstNodeIndex, *parser.Node) = null,
 
     /// Resolve an AST node to its original source location.
     pub fn nodeLoc(self: *const SemanticContext, node: *parser.Node) ?errors.SourceLoc {

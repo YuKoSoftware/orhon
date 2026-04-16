@@ -178,7 +178,7 @@ pub fn runSemanticAndCodegen(
     // ── Pass 5: Type Resolution ────────────────────────────
     var type_resolver = resolver.TypeResolver.init(&sema_ctx);
     defer type_resolver.deinit();
-    type_resolver.reverse_map = &conv.reverse_map;
+    // reverse_map is read from sema_ctx.reverse_map inside TypeResolver.reverseNode();
 
     try type_resolver.resolve(&conv.store, ast_root);
     if (reporter.hasErrors()) return null;

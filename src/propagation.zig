@@ -11,6 +11,10 @@ const types = @import("types.zig");
 const module = @import("module.zig");
 const sema = @import("sema.zig");
 const scope_mod = @import("scope.zig");
+const ast_store_mod = @import("ast_store.zig");
+const ast_typed = @import("ast_typed.zig");
+pub const AstNodeIndex = ast_store_mod.AstNodeIndex;
+const AstStore = ast_store_mod.AstStore;
 
 /// A tracked union variable — needs handling before scope exit
 pub const UnionVar = struct {
@@ -72,6 +76,8 @@ pub const PropagationScope = struct {
 pub const PropagationChecker = struct {
     ctx: *const sema.SemanticContext,
     allocator: std.mem.Allocator,
+    /// AstStore for index-based traversal (Phase A). Set by the pipeline before check() is called.
+    store: *const AstStore = undefined,
 
     pub fn init(allocator: std.mem.Allocator, ctx: *const sema.SemanticContext) PropagationChecker {
         return .{
@@ -80,10 +86,22 @@ pub const PropagationChecker = struct {
         };
     }
 
-    pub fn check(self: *PropagationChecker, ast: *parser.Node) !void {
-        if (ast.* != .program) return;
-        for (ast.program.top_level) |node| {
-            try self.checkTopLevel(node);
+    /// Look up the original *parser.Node for a given AstNodeIndex via the bridge map.
+    pub fn reverseNode(self: *const PropagationChecker, idx: AstNodeIndex) ?*parser.Node {
+        const rm = self.ctx.reverse_map orelse return null;
+        return rm.get(idx);
+    }
+
+    /// Entry point: walk top-level declarations from the AstStore root.
+    pub fn check(self: *PropagationChecker, store: *const AstStore, root: AstNodeIndex) !void {
+        _ = store; // stored in self.store by the pipeline
+        const prog = ast_typed.Program.unpack(self.store, root);
+        const top_level = self.store.extra_data.items[prog.top_level_start..prog.top_level_end];
+        for (top_level) |tl_u32| {
+            const tl_idx: AstNodeIndex = @enumFromInt(tl_u32);
+            if (self.reverseNode(tl_idx)) |node| {
+                try self.checkTopLevel(node);
+            }
         }
     }
 

@@ -211,7 +211,8 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         }
 
         // Shared context for passes 5-8 — uses scratch arena allocator
-        const sema_ctx = sema.SemanticContext{
+        // Note: .ast and .reverse_map are set after conv is populated below.
+        var sema_ctx = sema.SemanticContext{
             .allocator = a,
             .reporter = &reporter,
             .decls = &dc.table,
@@ -226,8 +227,9 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         const ast_root = ast_conv.convertNode(&conv, ast) catch {
             continue;
         };
+        sema_ctx.ast = &conv.store;
+        sema_ctx.reverse_map = &conv.reverse_map;
         var tr = resolver.TypeResolver.init(&sema_ctx);
-        tr.reverse_map = &conv.reverse_map;
         tr.resolve(&conv.store, ast_root) catch {};
 
         // Extract symbols from DeclTable + AST locations (even if type resolution had errors).
@@ -248,7 +250,8 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
 
         // Pass 8: Error Propagation (uses scratch arena)
         var prop_checker = propagation.PropagationChecker.init(a, &sema_ctx);
-        prop_checker.check(ast) catch {};
+        prop_checker.store = &conv.store;
+        prop_checker.check(&conv.store, ast_root) catch {};
     }
 
     // Diagnostics and symbols are allocated with the long-lived allocator so they

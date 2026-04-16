@@ -201,7 +201,8 @@ pub fn runSemanticAndCodegen(
 
     // ── Pass 8: Error Propagation ──────────────────────────
     var prop_checker = propagation.PropagationChecker.init(allocator, &sema_ctx);
-    try prop_checker.check(ast);
+    prop_checker.store = &conv.store;
+    try prop_checker.check(&conv.store, ast_root);
     if (reporter.hasErrors()) return null;
 
     // ── Pass 9: MIR Annotation ──────────────────────────────

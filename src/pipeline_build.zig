@@ -133,7 +133,7 @@ test "full pipeline - hello world" {
     try std.testing.expect(!reporter.hasErrors());
 
     // Shared context for type resolution + validation passes
-    const sema_ctx = sema.SemanticContext{
+    var sema_ctx = sema.SemanticContext{
         .allocator = alloc,
         .reporter = &reporter,
         .decls = &decl_collector.table,
@@ -148,7 +148,8 @@ test "full pipeline - hello world" {
     var conv = ast_conv.ConvContext.init(alloc);
     defer conv.deinit();
     const ast_root = try ast_conv.convertNode(&conv, ast);
-    type_resolver.reverse_map = &conv.reverse_map;
+    sema_ctx.ast = &conv.store;
+    sema_ctx.reverse_map = &conv.reverse_map;
     try type_resolver.resolve(&conv.store, ast_root);
     try std.testing.expect(!reporter.hasErrors());
 
@@ -165,7 +166,8 @@ test "full pipeline - hello world" {
 
     // Propagation
     var prop_checker = propagation.PropagationChecker.init(alloc, &sema_ctx);
-    try prop_checker.check(ast);
+    prop_checker.store = &conv.store;
+    try prop_checker.check(&conv.store, ast_root);
     try std.testing.expect(!reporter.hasErrors());
 
     // MIR annotation + lowering

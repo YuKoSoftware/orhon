@@ -88,8 +88,7 @@ pub const TypeResolver = struct {
 
     /// Get source location for an AstNodeIndex via reverse_map bridge.
     pub fn nodeLocFromIdx(self: *const TypeResolver, idx: AstNodeIndex) ?errors.SourceLoc {
-        if (self.reverseNodeMut(idx)) |n| return self.ctx.nodeLoc(n);
-        return null;
+        return self.ctx.nodeLocFromIdx(idx);
     }
 
     /// Store a resolved type in the type_map, keyed by the original *parser.Node.

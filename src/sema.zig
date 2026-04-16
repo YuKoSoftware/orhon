@@ -32,6 +32,14 @@ pub const SemanticContext = struct {
         return module.resolveNodeLoc(self.locs, self.file_offsets, node);
     }
 
+    /// Resolve a source location for an AstNodeIndex via the bridge reverse_map.
+    /// Returns null if the reverse_map is absent or the index is not mapped.
+    pub fn nodeLocFromIdx(self: *const SemanticContext, idx: ast_store_mod.AstNodeIndex) ?errors.SourceLoc {
+        const rm = self.reverse_map orelse return null;
+        const node = rm.get(idx) orelse return null;
+        return self.nodeLoc(node);
+    }
+
     /// Create a minimal context for unit tests.
     pub fn initForTest(allocator: std.mem.Allocator, reporter: *errors.Reporter, decls: *declarations.DeclTable) SemanticContext {
         return .{

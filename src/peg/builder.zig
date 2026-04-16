@@ -15,6 +15,9 @@ const Token = lexer.Token;
 const TokenKind = lexer.TokenKind;
 const LocMap = parser.LocMap;
 
+const ast_conv = @import("../ast_conv.zig");
+const ast_store_mod = @import("../ast_store.zig");
+
 const decls_impl = @import("builder_decls.zig");
 const stmts_impl = @import("builder_stmts.zig");
 const exprs_impl = @import("builder_exprs.zig");
@@ -111,6 +114,18 @@ pub const BuildResult = struct {
     ctx: BuildContext,
 };
 
+pub const DualBuildResult = struct {
+    node: *Node,
+    ctx: BuildContext,
+    ast_store: ast_store_mod.AstStore,
+    ast_root: ast_store_mod.AstNodeIndex,
+
+    pub fn deinit(self: *DualBuildResult, allocator: std.mem.Allocator) void {
+        self.ctx.deinit();
+        self.ast_store.deinit(allocator);
+    }
+};
+
 /// Build an AST from a capture tree.
 pub fn buildAST(cap: *const CaptureNode, tokens: []const Token, allocator: std.mem.Allocator) !BuildResult {
     var ctx = BuildContext.init(tokens, allocator);
@@ -123,6 +138,21 @@ pub fn buildASTWithArena(cap: *const CaptureNode, tokens: []const Token, arena: 
     var ctx = BuildContext.initWithArena(tokens, arena, allocator);
     const node = try buildNode(&ctx, cap);
     return .{ .node = node, .ctx = ctx };
+}
+
+/// Build AST + AstStore simultaneously. Returns both the pointer-based tree
+/// and its index-based equivalent for parity checking during Phase A.
+pub fn buildASTWithStore(cap: *const CaptureNode, tokens: []const Token, allocator: std.mem.Allocator) !DualBuildResult {
+    const result = try buildAST(cap, tokens, allocator);
+    var conv = ast_conv.ConvContext.init(allocator);
+    errdefer conv.deinit();
+    const root_idx = try ast_conv.convertNode(&conv, result.node);
+    return .{
+        .node = result.node,
+        .ctx = result.ctx,
+        .ast_store = conv.store,
+        .ast_root = root_idx,
+    };
 }
 
 // ============================================================

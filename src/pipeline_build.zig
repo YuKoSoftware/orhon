@@ -60,10 +60,12 @@ pub fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *er
     var mir_annotator = mir.MirAnnotator.init(alloc, reporter, &decl_collector.table, &type_resolver.type_map, &union_registry);
     defer mir_annotator.deinit();
     mir_annotator.current_module_name = "testmod";
-    try mir_annotator.annotate(ast);
+    mir_annotator.reverse_map = &conv.reverse_map;
+    try mir_annotator.annotate(&conv.store, ast_root);
     var mir_lowerer = mir.MirLowerer.init(alloc, &mir_annotator.node_map, &union_registry, &decl_collector.table, &mir_annotator.var_types);
     defer mir_lowerer.deinit();
-    const mir_root = try mir_lowerer.lower(ast);
+    mir_lowerer.reverse_map = &conv.reverse_map;
+    const mir_root = try mir_lowerer.lower(&conv.store, ast_root);
     // Codegen with full MIR context
     var cg = codegen.CodeGen.init(alloc, reporter, true);
     defer cg.deinit();
@@ -176,11 +178,13 @@ test "full pipeline - hello world" {
     var mir_annotator = mir.MirAnnotator.init(alloc, &reporter, &decl_collector.table, &type_resolver.type_map, &union_registry2);
     defer mir_annotator.deinit();
     mir_annotator.current_module_name = "testmod";
-    try mir_annotator.annotate(ast);
+    mir_annotator.reverse_map = &conv.reverse_map;
+    try mir_annotator.annotate(&conv.store, ast_root);
     try std.testing.expect(!reporter.hasErrors());
     var mir_lowerer = mir.MirLowerer.init(alloc, &mir_annotator.node_map, &union_registry2, &decl_collector.table, &mir_annotator.var_types);
     defer mir_lowerer.deinit();
-    const mir_root = try mir_lowerer.lower(ast);
+    mir_lowerer.reverse_map = &conv.reverse_map;
+    const mir_root = try mir_lowerer.lower(&conv.store, ast_root);
 
     // Codegen
     var cg = codegen.CodeGen.init(alloc, &reporter, true);

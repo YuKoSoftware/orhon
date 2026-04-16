@@ -9,6 +9,10 @@ const K = @import("../constants.zig");
 const mir_types = @import("mir_types.zig");
 const mir_registry = @import("mir_registry.zig");
 const nodes_impl = @import("mir_annotator_nodes.zig");
+const ast_store_mod = @import("../ast_store.zig");
+const ast_typed = @import("../ast_typed.zig");
+pub const AstNodeIndex = ast_store_mod.AstNodeIndex;
+const AstStore = ast_store_mod.AstStore;
 
 const RT = mir_types.RT;
 const TypeClass = mir_types.TypeClass;
@@ -37,6 +41,10 @@ pub const MirAnnotator = struct {
     /// Module currently being annotated — attached to union arity records so
     /// incremental cache replay can restore per-module contributions.
     current_module_name: []const u8 = "",
+    /// AstStore for index-based traversal (Phase A). Set by annotate().
+    store: *const AstStore = undefined,
+    /// Reverse map from AstNodeIndex → *parser.Node for bridge code. Set by annotate().
+    reverse_map: ?*const std.AutoHashMap(AstNodeIndex, *parser.Node) = null,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -62,9 +70,16 @@ pub const MirAnnotator = struct {
     }
 
     /// Annotate the entire program AST.
-    pub fn annotate(self: *MirAnnotator, ast: *parser.Node) !void {
-        if (ast.* != .program) return;
-        for (ast.program.top_level) |node| {
+    pub fn annotate(self: *MirAnnotator, store: *const AstStore, root: AstNodeIndex) !void {
+        self.store = store;
+        const prog = ast_typed.Program.unpack(self.store, root);
+        const top_level = self.store.extra_data.items[prog.top_level_start..prog.top_level_end];
+        for (top_level) |tl_u32| {
+            const tl_idx: AstNodeIndex = @enumFromInt(tl_u32);
+            const node = self.reverse_map.?.get(tl_idx) orelse std.debug.panic(
+                "MirAnnotator.annotate: reverse_map missing AstNodeIndex {}",
+                .{@intFromEnum(tl_idx)},
+            );
             try self.annotateNode(node);
         }
     }

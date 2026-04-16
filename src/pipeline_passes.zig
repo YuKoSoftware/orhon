@@ -210,7 +210,8 @@ pub fn runSemanticAndCodegen(
     mir_annotator.all_decls = all_module_decls;
     mir_annotator.current_module_name = mod_name;
 
-    try mir_annotator.annotate(ast);
+    mir_annotator.reverse_map = &conv.reverse_map;
+    try mir_annotator.annotate(&conv.store, ast_root);
     if (reporter.hasErrors()) return null;
 
     // ── Pass 10: MIR Tree Lowering ────────────────────────
@@ -222,7 +223,8 @@ pub fn runSemanticAndCodegen(
         &mir_annotator.var_types,
     );
     defer mir_lowerer.deinit();
-    const mir_root = try mir_lowerer.lower(ast);
+    mir_lowerer.reverse_map = &conv.reverse_map;
+    const mir_root = try mir_lowerer.lower(&conv.store, ast_root);
 
     // ── Pass 11: Zig Code Generation ───────────────────────
     const is_debug = cli.optimize == .debug;

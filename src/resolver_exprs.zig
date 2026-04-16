@@ -7,13 +7,28 @@ const parser = @import("parser.zig");
 const types = @import("types.zig");
 const builtins = @import("builtins.zig");
 const errors = @import("errors.zig");
+const ast_store_mod = @import("ast_store.zig");
+const ast_typed = @import("ast_typed.zig");
 
+const AstNodeIndex = ast_store_mod.AstNodeIndex;
 const TypeResolver = resolver_mod.TypeResolver;
 const Scope = resolver_mod.Scope;
 const RT = types.ResolvedType;
 
-/// Resolve an expression and return its ResolvedType
-pub fn resolveExpr(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!RT {
+/// Resolve an expression and return its ResolvedType.
+/// Accepts AstNodeIndex; bridges to *parser.Node for existing logic.
+pub fn resolveExpr(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope) anyerror!RT {
+    // Bridge: get the original *parser.Node for the existing switch-based resolution
+    const node = self.reverseNodeMut(idx) orelse return RT.unknown;
+    const result = try resolveExprInner(self, node, scope);
+    // Store in type_map keyed on the *parser.Node (for downstream passes)
+    try self.type_map.put(self.ctx.allocator, node, result);
+    return result;
+}
+
+/// Internal: resolve an expression from *parser.Node + store in type_map.
+/// Used for recursive calls within resolveExprInner that still have *parser.Node.
+fn resolveExprNode(self: *TypeResolver, node: *parser.Node, scope: *Scope) anyerror!RT {
     const result = try resolveExprInner(self, node, scope);
     try self.type_map.put(self.ctx.allocator, node, result);
     return result;
@@ -28,7 +43,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
             // Resolve inner expressions so they appear in type_map
             for (interp.parts) |part| {
                 switch (part) {
-                    .expr => |expr_node| _ = try resolveExpr(self, expr_node, scope),
+                    .expr => |expr_node| _ = try resolveExprNode(self, expr_node, scope),
                     .literal => {},
                 }
             }
@@ -113,8 +128,8 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
         },
 
         .binary_expr => |b| {
-            const left = try resolveExpr(self, b.left, scope);
-            const right = try resolveExpr(self, b.right, scope);
+            const left = try resolveExprNode(self, b.left, scope);
+            const right = try resolveExprNode(self, b.right, scope);
             const l_is_str = left == .primitive and left.primitive == .string;
             const r_is_str = right == .primitive and right.primitive == .string;
             // Reject == and != on str — use string.equals() instead
@@ -165,7 +180,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
         },
 
         .unary_expr => |u| {
-            const operand_type = try resolveExpr(self, u.operand, scope);
+            const operand_type = try resolveExprNode(self, u.operand, scope);
             if (u.op == .negate) {
                 if (operand_type == .primitive and operand_type.primitive.isUnsigned()) {
                     try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
@@ -174,11 +189,11 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
             }
             return operand_type;
         },
-        .mut_borrow_expr => |b| try resolveExpr(self, b, scope),
-        .const_borrow_expr => |b| try resolveExpr(self, b, scope),
+        .mut_borrow_expr => |b| try resolveExprNode(self, b, scope),
+        .const_borrow_expr => |b| try resolveExprNode(self, b, scope),
 
         .call_expr => |c| {
-            const callee_type = try resolveExpr(self, c.callee, scope);
+            const callee_type = try resolveExprNode(self, c.callee, scope);
 
             // Look up the callee's FuncSig so we can identify which arg slots into
             // an `any` param and set `in_anytype_arg` accordingly.
@@ -235,7 +250,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                         }
                     }
                 }
-                const at = try resolveExpr(self, arg, scope);
+                const at = try resolveExprNode(self, arg, scope);
                 if (idx < 16) arg_types_buf[idx] = at;
             }
             // Check args against function signature — reject []u8 → String
@@ -420,7 +435,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
         },
 
         .field_expr => |f| {
-            const obj_type = try resolveExpr(self, f.object, scope);
+            const obj_type = try resolveExprNode(self, f.object, scope);
             // .value on (Error | T) or (null | T) unwraps to the inner type.
             // This lets the resolver track variables assigned via `var x = result.value`.
             if (std.mem.eql(u8, f.field, "value")) {
@@ -438,8 +453,8 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
         },
 
         .index_expr => |i| {
-            const obj_type = try resolveExpr(self, i.object, scope);
-            _ = try resolveExpr(self, i.index, scope);
+            const obj_type = try resolveExprNode(self, i.object, scope);
+            _ = try resolveExprNode(self, i.index, scope);
             // Reject indexing non-indexable types (bool, void, etc.)
             if (obj_type == .primitive) {
                 const tn = obj_type.primitive;
@@ -451,16 +466,16 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
         },
 
         .slice_expr => |s| {
-            _ = try resolveExpr(self, s.object, scope);
-            _ = try resolveExpr(self, s.low, scope);
-            _ = try resolveExpr(self, s.high, scope);
+            _ = try resolveExprNode(self, s.object, scope);
+            _ = try resolveExprNode(self, s.low, scope);
+            _ = try resolveExprNode(self, s.high, scope);
             return RT.inferred;
         },
 
         .compiler_func => |cf| {
             var first_arg_type: RT = RT.unknown;
             for (cf.args, 0..) |arg, idx| {
-                const t = try resolveExpr(self, arg, scope);
+                const t = try resolveExprNode(self, arg, scope);
                 if (idx == 0) first_arg_type = t;
             }
             const loc = self.ctx.nodeLoc(node);
@@ -546,7 +561,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
         .tuple_literal => |tl| {
             // Resolve each element so ordinary type errors inside still fire.
             for (tl.elements) |el| {
-                _ = try resolveExpr(self, el, scope);
+                _ = try resolveExprNode(self, el, scope);
             }
             // Context check: @tuple is only legal while resolving an arg to an
             // `anytype` parameter of a Zig-backed function. The call-expr resolver
@@ -565,7 +580,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
             // Resolve element types; infer array type from first element
             var elem_type: RT = RT.inferred;
             for (elems) |elem| {
-                const t = try resolveExpr(self, elem, scope);
+                const t = try resolveExprNode(self, elem, scope);
                 if (elem_type == .inferred) {
                     elem_type = t;
                 } else if (t != .inferred and t != .unknown and elem_type != .unknown and
@@ -603,8 +618,8 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
         },
 
         .range_expr => |r| {
-            _ = try resolveExpr(self, r.left, scope);
-            _ = try resolveExpr(self, r.right, scope);
+            _ = try resolveExprNode(self, r.left, scope);
+            _ = try resolveExprNode(self, r.right, scope);
             return RT.inferred;
         },
 

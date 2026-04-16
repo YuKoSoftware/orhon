@@ -13,6 +13,7 @@ const propagation = @import("../propagation.zig");
 const sema = @import("../sema.zig");
 const errors = @import("../errors.zig");
 const cache = @import("../cache.zig");
+const ast_conv = @import("../ast_conv.zig");
 const types = @import("../types.zig");
 
 const SymbolInfo = lsp_types.SymbolInfo;
@@ -198,11 +199,18 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         const source_file: []const u8 = if (mod_ptr.files.len > 0) mod_ptr.files[0] else "";
         const errors_before = reporter.errors.items.len;
 
+        // Convert AST to AstStore for index-based passes (Phase A)
+        var conv = ast_conv.ConvContext.init(a);
+        defer conv.deinit();
+        const ast_root = ast_conv.convertNode(&conv, ast) catch {
+            continue;
+        };
+
         // Pass 4: Declarations (uses scratch arena; symbol strings use long-lived allocator)
         var dc = declarations.DeclCollector.init(a, &reporter);
         dc.locs = locs_ptr;
         dc.file_offsets = file_offsets;
-        dc.collect(ast) catch {};
+        dc.collect(&conv.store, ast_root, &conv.reverse_map) catch {};
         if (reporter.errors.items.len > errors_before) {
             // Still extract what symbols we can from partial declarations
             extractSymbols(allocator, &all_symbols, &dc.table, ast, locs_ptr, source_file, project_root, mod_name) catch {};
@@ -210,17 +218,17 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         }
 
         // Shared context for passes 5-8 — uses scratch arena allocator
-        const sema_ctx = sema.SemanticContext{
+        var sema_ctx = sema.SemanticContext{
             .allocator = a,
             .reporter = &reporter,
             .decls = &dc.table,
             .locs = locs_ptr,
             .file_offsets = file_offsets,
+            .ast = &conv.store,
+            .reverse_map = &conv.reverse_map,
         };
-
-        // Pass 5: Type Resolution (uses scratch arena)
         var tr = resolver.TypeResolver.init(&sema_ctx);
-        tr.resolve(ast) catch {};
+        tr.resolve(&conv.store, ast_root) catch {};
 
         // Extract symbols from DeclTable + AST locations (even if type resolution had errors).
         // Symbol strings are allocated with the long-lived allocator so they outlive the arena.
@@ -240,7 +248,7 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
 
         // Pass 8: Error Propagation (uses scratch arena)
         var prop_checker = propagation.PropagationChecker.init(a, &sema_ctx);
-        prop_checker.check(ast) catch {};
+        prop_checker.check(&conv.store, ast_root) catch {};
     }
 
     // Diagnostics and symbols are allocated with the long-lived allocator so they

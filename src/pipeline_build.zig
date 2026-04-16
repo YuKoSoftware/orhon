@@ -18,6 +18,7 @@ const errors = @import("errors.zig");
 const cache = @import("cache.zig");
 const builtins = @import("builtins.zig");
 const peg = @import("peg.zig");
+const ast_conv = @import("ast_conv.zig");
 
 /// Full pipeline test helper: source → lex → parse → declarations → resolve → MIR → codegen → Zig.
 /// Returns owned output slice — caller must free.
@@ -35,28 +36,36 @@ pub fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *er
     const ast = build_result.node;
     var decl_collector = declarations.DeclCollector.init(alloc, reporter);
     defer decl_collector.deinit();
-    try decl_collector.collect(ast);
+    // Convert AST to AstStore for index-based passes (Phase A)
+    var conv = ast_conv.ConvContext.init(alloc);
+    defer conv.deinit();
+    const ast_root = try ast_conv.convertNode(&conv, ast);
+    try decl_collector.collect(&conv.store, ast_root, &conv.reverse_map);
     // Type resolution
-    const sema_ctx = sema.SemanticContext{
+    var sema_ctx = sema.SemanticContext{
         .allocator = alloc,
         .reporter = reporter,
         .decls = &decl_collector.table,
         .locs = null,
         .file_offsets = &.{},
+        .ast = &conv.store,
+        .reverse_map = &conv.reverse_map,
     };
     var type_resolver = resolver.TypeResolver.init(&sema_ctx);
     defer type_resolver.deinit();
-    try type_resolver.resolve(ast);
+    try type_resolver.resolve(&conv.store, ast_root);
     // MIR annotation + lowering
     var union_registry = mir.UnionRegistry.init(alloc);
     defer union_registry.deinit();
     var mir_annotator = mir.MirAnnotator.init(alloc, reporter, &decl_collector.table, &type_resolver.type_map, &union_registry);
     defer mir_annotator.deinit();
     mir_annotator.current_module_name = "testmod";
-    try mir_annotator.annotate(ast);
+    mir_annotator.reverse_map = &conv.reverse_map;
+    try mir_annotator.annotate(&conv.store, ast_root);
     var mir_lowerer = mir.MirLowerer.init(alloc, &mir_annotator.node_map, &union_registry, &decl_collector.table, &mir_annotator.var_types);
     defer mir_lowerer.deinit();
-    const mir_root = try mir_lowerer.lower(ast);
+    mir_lowerer.reverse_map = &conv.reverse_map;
+    const mir_root = try mir_lowerer.lower(&conv.store, ast_root);
     // Codegen with full MIR context
     var cg = codegen.CodeGen.init(alloc, reporter, true);
     defer cg.deinit();
@@ -123,22 +132,28 @@ test "full pipeline - hello world" {
     // Declaration pass
     var decl_collector = declarations.DeclCollector.init(alloc, &reporter);
     defer decl_collector.deinit();
-    try decl_collector.collect(ast);
+    // Convert AST to AstStore for index-based passes (Phase A)
+    var conv = ast_conv.ConvContext.init(alloc);
+    defer conv.deinit();
+    const ast_root = try ast_conv.convertNode(&conv, ast);
+    try decl_collector.collect(&conv.store, ast_root, &conv.reverse_map);
     try std.testing.expect(!reporter.hasErrors());
 
     // Shared context for type resolution + validation passes
-    const sema_ctx = sema.SemanticContext{
+    var sema_ctx = sema.SemanticContext{
         .allocator = alloc,
         .reporter = &reporter,
         .decls = &decl_collector.table,
         .locs = null,
         .file_offsets = &.{},
+        .ast = &conv.store,
+        .reverse_map = &conv.reverse_map,
     };
 
     // Type resolution
     var type_resolver = resolver.TypeResolver.init(&sema_ctx);
     defer type_resolver.deinit();
-    try type_resolver.resolve(ast);
+    try type_resolver.resolve(&conv.store, ast_root);
     try std.testing.expect(!reporter.hasErrors());
 
     // Ownership check
@@ -154,7 +169,7 @@ test "full pipeline - hello world" {
 
     // Propagation
     var prop_checker = propagation.PropagationChecker.init(alloc, &sema_ctx);
-    try prop_checker.check(ast);
+    try prop_checker.check(&conv.store, ast_root);
     try std.testing.expect(!reporter.hasErrors());
 
     // MIR annotation + lowering
@@ -163,11 +178,13 @@ test "full pipeline - hello world" {
     var mir_annotator = mir.MirAnnotator.init(alloc, &reporter, &decl_collector.table, &type_resolver.type_map, &union_registry2);
     defer mir_annotator.deinit();
     mir_annotator.current_module_name = "testmod";
-    try mir_annotator.annotate(ast);
+    mir_annotator.reverse_map = &conv.reverse_map;
+    try mir_annotator.annotate(&conv.store, ast_root);
     try std.testing.expect(!reporter.hasErrors());
     var mir_lowerer = mir.MirLowerer.init(alloc, &mir_annotator.node_map, &union_registry2, &decl_collector.table, &mir_annotator.var_types);
     defer mir_lowerer.deinit();
-    const mir_root = try mir_lowerer.lower(ast);
+    mir_lowerer.reverse_map = &conv.reverse_map;
+    const mir_root = try mir_lowerer.lower(&conv.store, ast_root);
 
     // Codegen
     var cg = codegen.CodeGen.init(alloc, &reporter, true);

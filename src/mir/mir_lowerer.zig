@@ -7,6 +7,9 @@ const K = @import("../constants.zig");
 const mir_types = @import("mir_types.zig");
 const mir_node = @import("mir_node.zig");
 const mir_registry = @import("mir_registry.zig");
+const ast_store_mod = @import("../ast_store.zig");
+pub const AstNodeIndex = ast_store_mod.AstNodeIndex;
+const AstStore = ast_store_mod.AstStore;
 
 const RT = mir_types.RT;
 const NodeInfo = mir_types.NodeInfo;
@@ -32,6 +35,8 @@ pub const MirLowerer = struct {
     decls: *const declarations.DeclTable,
     var_types: *const std.StringHashMapUnmanaged(NodeInfo),
     interp_counter: u32 = 0,
+    store: *const AstStore = undefined,
+    reverse_map: ?*const std.AutoHashMap(AstNodeIndex, *parser.Node) = null,
 
     pub fn init(
         backing: std.mem.Allocator,
@@ -55,9 +60,14 @@ pub const MirLowerer = struct {
     }
 
     /// Lower the entire program AST into a MirNode tree.
-    pub fn lower(self: *MirLowerer, ast: *parser.Node) !*MirNode {
+    pub fn lower(self: *MirLowerer, store: *const AstStore, root: AstNodeIndex) !*MirNode {
+        self.store = store;
         self.allocator = self.arena.allocator();
-        return self.lowerNode(ast);
+        const program_node = self.reverse_map.?.get(root) orelse std.debug.panic(
+            "MirLowerer.lower: reverse_map missing root AstNodeIndex {}",
+            .{@intFromEnum(root)},
+        );
+        return self.lowerNode(program_node);
     }
 
     fn lowerNode(self: *MirLowerer, node: *parser.Node) anyerror!*MirNode {

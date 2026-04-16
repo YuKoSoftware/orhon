@@ -10,6 +10,10 @@ const builtins = @import("builtins.zig");
 const types = @import("types.zig");
 const K = @import("constants.zig");
 const cache = @import("cache.zig");
+const ast_store_mod = @import("ast_store.zig");
+const ast_typed = @import("ast_typed.zig");
+pub const AstNodeIndex = ast_store_mod.AstNodeIndex;
+const AstStore = ast_store_mod.AstStore;
 
 /// A function signature
 pub const FuncSig = struct {
@@ -205,6 +209,7 @@ pub const DeclCollector = struct {
     allocator: std.mem.Allocator,
     locs: ?*const parser.LocMap,
     file_offsets: []const module.FileOffset,
+    store: *const AstStore = undefined,
 
     pub fn init(allocator: std.mem.Allocator, reporter: *errors.Reporter) DeclCollector {
         return .{
@@ -225,10 +230,21 @@ pub const DeclCollector = struct {
     }
 
     /// Collect all declarations from a parsed AST
-    pub fn collect(self: *DeclCollector, ast: *parser.Node) !void {
-        if (ast.* != .program) return;
-
-        for (ast.program.top_level) |node| {
+    pub fn collect(
+        self: *DeclCollector,
+        store: *const AstStore,
+        root: AstNodeIndex,
+        reverse_map: *const std.AutoHashMap(AstNodeIndex, *parser.Node),
+    ) !void {
+        self.store = store;
+        const prog = ast_typed.Program.unpack(self.store, root);
+        const top_level = self.store.extra_data.items[prog.top_level_start..prog.top_level_end];
+        for (top_level) |tl_u32| {
+            const tl_idx: AstNodeIndex = @enumFromInt(tl_u32);
+            const node = reverse_map.get(tl_idx) orelse std.debug.panic(
+                "DeclCollector.collect: reverse_map missing AstNodeIndex {}",
+                .{@intFromEnum(tl_idx)},
+            );
             try self.collectTopLevel(node);
         }
     }
@@ -525,6 +541,15 @@ pub const DeclCollector = struct {
 
 };
 
+/// Test helper: convert prog node and run collect via the new AstStore-based API.
+fn testCollect(collector: *DeclCollector, prog: *parser.Node) !void {
+    const ast_conv_mod = @import("ast_conv.zig");
+    var conv = ast_conv_mod.ConvContext.init(collector.allocator);
+    defer conv.deinit();
+    const root = try ast_conv_mod.convertNode(&conv, prog);
+    try collector.collect(&conv.store, root, &conv.reverse_map);
+}
+
 test "declaration collector - func" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
@@ -541,12 +566,14 @@ test "declaration collector - func" {
     const ret_type = try a.create(parser.Node);
     ret_type.* = .{ .type_named = "void" };
 
+    const empty_body = try a.create(parser.Node);
+    empty_body.* = .{ .block = .{ .statements = &.{} } };
     const func_node = try a.create(parser.Node);
     func_node.* = .{ .func_decl = .{
         .name = "myFunc",
         .params = &.{},
         .return_type = ret_type,
-        .body = undefined,
+        .body = empty_body,
         .context = .normal,
         .is_pub = true,
     }};
@@ -565,7 +592,7 @@ test "declaration collector - func" {
         .top_level = top_level,
     }};
 
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(collector.table.funcs.contains("myFunc"));
 }
@@ -615,7 +642,7 @@ test "declaration collector - struct" {
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
 
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(collector.table.structs.contains("Point"));
 }
@@ -658,7 +685,7 @@ test "declaration collector - duplicate func error" {
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
 
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
     // second "foo" should trigger a duplicate error
     try std.testing.expect(reporter.hasErrors());
 }
@@ -696,7 +723,7 @@ test "declaration collector - enum" {
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
 
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(collector.table.enums.contains("Color"));
 }
@@ -713,12 +740,14 @@ test "declaration collector - pub func is registered" {
     const ret_type = try a.create(parser.Node);
     ret_type.* = .{ .type_named = "void" };
 
+    const empty_body = try a.create(parser.Node);
+    empty_body.* = .{ .block = .{ .statements = &.{} } };
     const func_node = try a.create(parser.Node);
     func_node.* = .{ .func_decl = .{
         .name = "print",
         .params = &.{},
         .return_type = ret_type,
-        .body = undefined,
+        .body = empty_body,
         .context = .normal,
         .is_pub = true,
     }};
@@ -736,7 +765,7 @@ test "declaration collector - pub func is registered" {
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
 
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(collector.table.funcs.contains("print"));
 }
@@ -787,12 +816,14 @@ test "declaration collector - blueprint" {
 
     const ret = try a.create(parser.Node);
     ret.* = .{ .type_named = "bool" };
+    const empty_body = try a.create(parser.Node);
+    empty_body.* = .{ .block = .{ .statements = &.{} } };
     const method = try a.create(parser.Node);
     method.* = .{ .func_decl = .{
         .name = "equals",
         .params = params,
         .return_type = ret,
-        .body = undefined,
+        .body = empty_body,
         .context = .normal,
         .is_pub = true,
     } };
@@ -811,7 +842,7 @@ test "declaration collector - blueprint" {
 
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
 
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(collector.table.blueprints.contains("Eq"));
@@ -853,7 +884,7 @@ test "declaration collector - type alias goes to types map" {
 
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
 
     try std.testing.expect(!reporter.hasErrors());
     // Should be in types map, NOT vars map
@@ -872,12 +903,14 @@ test "declaration collector - struct methods registered" {
 
     const ret = try a.create(parser.Node);
     ret.* = .{ .type_named = "i32" };
+    const empty_body = try a.create(parser.Node);
+    empty_body.* = .{ .block = .{ .statements = &.{} } };
     const method = try a.create(parser.Node);
     method.* = .{ .func_decl = .{
         .name = "getX",
         .params = &.{},
         .return_type = ret,
-        .body = undefined,
+        .body = empty_body,
         .context = .normal,
         .is_pub = true,
     } };
@@ -913,7 +946,7 @@ test "declaration collector - struct methods registered" {
 
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
 
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(collector.table.getMethod("Point", "getX") != null);
@@ -957,7 +990,7 @@ test "declaration collector - field name conflicts with type" {
 
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
 
     try std.testing.expect(reporter.hasErrors());
 }
@@ -1000,7 +1033,7 @@ test "declaration collector - duplicate field name" {
 
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
 
     try std.testing.expect(reporter.hasErrors());
 }
@@ -1065,7 +1098,7 @@ test "declaration collector - rejects var in struct" {
 
     var collector = DeclCollector.init(alloc, &reporter);
     defer collector.deinit();
-    try collector.collect(prog);
+    try testCollect(&collector, prog);
 
     try std.testing.expect(reporter.hasErrors());
 }

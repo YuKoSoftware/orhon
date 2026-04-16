@@ -36,22 +36,23 @@ pub fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *er
     const ast = build_result.node;
     var decl_collector = declarations.DeclCollector.init(alloc, reporter);
     defer decl_collector.deinit();
-    try decl_collector.collect(ast);
+    // Convert AST to AstStore for index-based passes (Phase A)
+    var conv = ast_conv.ConvContext.init(alloc);
+    defer conv.deinit();
+    const ast_root = try ast_conv.convertNode(&conv, ast);
+    try decl_collector.collect(&conv.store, ast_root, &conv.reverse_map);
     // Type resolution
-    const sema_ctx = sema.SemanticContext{
+    var sema_ctx = sema.SemanticContext{
         .allocator = alloc,
         .reporter = reporter,
         .decls = &decl_collector.table,
         .locs = null,
         .file_offsets = &.{},
+        .ast = &conv.store,
+        .reverse_map = &conv.reverse_map,
     };
     var type_resolver = resolver.TypeResolver.init(&sema_ctx);
     defer type_resolver.deinit();
-    // Convert AST to AstStore for index-based resolver (Phase A)
-    var conv = ast_conv.ConvContext.init(alloc);
-    defer conv.deinit();
-    const ast_root = try ast_conv.convertNode(&conv, ast);
-    type_resolver.reverse_map = &conv.reverse_map;
     try type_resolver.resolve(&conv.store, ast_root);
     // MIR annotation + lowering
     var union_registry = mir.UnionRegistry.init(alloc);
@@ -129,7 +130,11 @@ test "full pipeline - hello world" {
     // Declaration pass
     var decl_collector = declarations.DeclCollector.init(alloc, &reporter);
     defer decl_collector.deinit();
-    try decl_collector.collect(ast);
+    // Convert AST to AstStore for index-based passes (Phase A)
+    var conv = ast_conv.ConvContext.init(alloc);
+    defer conv.deinit();
+    const ast_root = try ast_conv.convertNode(&conv, ast);
+    try decl_collector.collect(&conv.store, ast_root, &conv.reverse_map);
     try std.testing.expect(!reporter.hasErrors());
 
     // Shared context for type resolution + validation passes
@@ -139,17 +144,13 @@ test "full pipeline - hello world" {
         .decls = &decl_collector.table,
         .locs = null,
         .file_offsets = &.{},
+        .ast = &conv.store,
+        .reverse_map = &conv.reverse_map,
     };
 
     // Type resolution
     var type_resolver = resolver.TypeResolver.init(&sema_ctx);
     defer type_resolver.deinit();
-    // Convert AST to AstStore for index-based resolver (Phase A)
-    var conv = ast_conv.ConvContext.init(alloc);
-    defer conv.deinit();
-    const ast_root = try ast_conv.convertNode(&conv, ast);
-    sema_ctx.ast = &conv.store;
-    sema_ctx.reverse_map = &conv.reverse_map;
     try type_resolver.resolve(&conv.store, ast_root);
     try std.testing.expect(!reporter.hasErrors());
 

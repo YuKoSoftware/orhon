@@ -199,11 +199,18 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         const source_file: []const u8 = if (mod_ptr.files.len > 0) mod_ptr.files[0] else "";
         const errors_before = reporter.errors.items.len;
 
+        // Convert AST to AstStore for index-based passes (Phase A)
+        var conv = ast_conv.ConvContext.init(a);
+        defer conv.deinit();
+        const ast_root = ast_conv.convertNode(&conv, ast) catch {
+            continue;
+        };
+
         // Pass 4: Declarations (uses scratch arena; symbol strings use long-lived allocator)
         var dc = declarations.DeclCollector.init(a, &reporter);
         dc.locs = locs_ptr;
         dc.file_offsets = file_offsets;
-        dc.collect(ast) catch {};
+        dc.collect(&conv.store, ast_root, &conv.reverse_map) catch {};
         if (reporter.errors.items.len > errors_before) {
             // Still extract what symbols we can from partial declarations
             extractSymbols(allocator, &all_symbols, &dc.table, ast, locs_ptr, source_file, project_root, mod_name) catch {};
@@ -211,24 +218,15 @@ pub fn runAnalysis(allocator: std.mem.Allocator, project_root: []const u8) !Anal
         }
 
         // Shared context for passes 5-8 — uses scratch arena allocator
-        // Note: .ast and .reverse_map are set after conv is populated below.
         var sema_ctx = sema.SemanticContext{
             .allocator = a,
             .reporter = &reporter,
             .decls = &dc.table,
             .locs = locs_ptr,
             .file_offsets = file_offsets,
+            .ast = &conv.store,
+            .reverse_map = &conv.reverse_map,
         };
-
-        // Pass 5: Type Resolution (uses scratch arena)
-        // Convert AST to AstStore for index-based resolver (Phase A)
-        var conv = ast_conv.ConvContext.init(a);
-        defer conv.deinit();
-        const ast_root = ast_conv.convertNode(&conv, ast) catch {
-            continue;
-        };
-        sema_ctx.ast = &conv.store;
-        sema_ctx.reverse_map = &conv.reverse_map;
         var tr = resolver.TypeResolver.init(&sema_ctx);
         tr.resolve(&conv.store, ast_root) catch {};
 

@@ -13,6 +13,7 @@ const _interface = @import("interface.zig");
 const _commands = @import("commands.zig");
 const build_helpers = @import("pipeline_build.zig");
 const passes = @import("pipeline_passes.zig");
+const ast_conv = @import("ast_conv.zig");
 const zig_module = @import("zig_module.zig");
 const constants = @import("constants.zig");
 const mir = @import("mir/mir.zig");
@@ -313,7 +314,13 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         decl_collector.locs = locs_ptr;
         decl_collector.file_offsets = file_offsets;
 
-        try decl_collector.collect(ast);
+        var decl_conv = ast_conv.ConvContext.init(allocator);
+        defer decl_conv.deinit();
+        const decl_ast_root = ast_conv.convertNode(&decl_conv, ast) catch {
+            try reporter.report(.{ .message = "internal: AST conversion failed (pass 4)" });
+            return null;
+        };
+        try decl_collector.collect(&decl_conv.store, decl_ast_root, &decl_conv.reverse_map);
         if (reporter.hasErrors()) return null;
         try all_module_decls.put(mod_name, &decl_collector.table);
 

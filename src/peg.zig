@@ -421,6 +421,100 @@ test "peg - validate std/linear.orh" {
     try std.testing.expect(valid);
 }
 
+test "peg - error recovery: malformed func_decl does not abort parse" {
+    // CB6: first PEG mismatch should not abort the pipeline.
+    // A malformed func_decl (missing comma between params) is followed by a
+    // valid func_decl.  captureProgram must succeed and the second declaration
+    // must appear in the resulting AST.
+    const alloc = std.testing.allocator;
+
+    var lex = lexer.Lexer.init(
+        \\module foo
+        \\
+        \\func bad(a: i32 b: i32) i32 {
+        \\    return a
+        \\}
+        \\
+        \\func good(x: i32) i32 {
+        \\    return x
+        \\}
+        \\
+    );
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var g = try loadGrammar(alloc);
+    defer g.deinit();
+
+    var engine = CaptureEngine.init(&g, tokens.items, std.heap.page_allocator);
+    defer engine.deinit();
+
+    // Must NOT return null — error recovery should kick in
+    const cap = engine.captureProgram();
+    try std.testing.expect(cap != null);
+
+    // Build AST — the builder should surface a syntax error for the bad decl
+    const result = try buildAST(&cap.?, tokens.items, alloc);
+    var ctx = result.ctx;
+    defer ctx.deinit();
+
+    // At least one syntax error from the skipped bad declaration
+    try std.testing.expect(ctx.syntax_errors.items.len >= 1);
+
+    // The valid func_decl must still be in the AST
+    const prog = result.node.program;
+    var found_good = false;
+    for (prog.top_level) |decl| {
+        if (decl.* == .func_decl and std.mem.eql(u8, decl.func_decl.name, "good")) {
+            found_good = true;
+        }
+    }
+    try std.testing.expect(found_good);
+}
+
+test "peg - error recovery: bad statement in block does not abort parse" {
+    // CB6: a malformed statement inside a func body is skipped;
+    // subsequent statements in the same block are still captured.
+    const alloc = std.testing.allocator;
+
+    var lex = lexer.Lexer.init(
+        \\module foo
+        \\
+        \\func demo() void {
+        \\    if x > 0 {
+        \\        return void
+        \\    }
+        \\    return void
+        \\}
+        \\
+    );
+    var tokens = try lex.tokenize(alloc);
+    defer tokens.deinit(alloc);
+
+    var g = try loadGrammar(alloc);
+    defer g.deinit();
+
+    var engine = CaptureEngine.init(&g, tokens.items, std.heap.page_allocator);
+    defer engine.deinit();
+
+    // Must NOT return null
+    const cap = engine.captureProgram();
+    try std.testing.expect(cap != null);
+
+    const result = try buildAST(&cap.?, tokens.items, alloc);
+    var ctx = result.ctx;
+    defer ctx.deinit();
+
+    // At least one syntax error for the bad if statement
+    try std.testing.expect(ctx.syntax_errors.items.len >= 1);
+
+    // The `return void` statement after the broken `if` must still be captured —
+    // this verifies forward progress (recovery resumed parsing, not just non-abort).
+    const func = result.node.program.top_level[0];
+    try std.testing.expect(func.* == .func_decl);
+    try std.testing.expect(func.func_decl.body.block.statements.len >= 1);
+}
+
 test "fuzz parser" {
     try std.testing.fuzz({}, struct {
         fn run(_: void, input: []const u8) !void {

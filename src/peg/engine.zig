@@ -183,7 +183,15 @@ pub const Engine = struct {
             .optional => |inner| self.evalOptional(inner, pos),
             .not => |inner| self.evalNot(inner, pos),
             .ahead => |inner| self.evalAhead(inner, pos),
+            .any_token => self.matchAnyToken(pos),
         };
+    }
+
+    /// Match any single non-EOF token (PEG `.`)
+    fn matchAnyToken(self: *Engine, pos: usize) ?MatchResult {
+        if (pos >= self.tokens.len) return null;
+        if (self.tokens[pos].kind == .eof) return null;
+        return MatchResult{ .end_pos = pos + 1 };
     }
 
     /// Match a single token by kind
@@ -484,6 +492,68 @@ test "engine - kindDisplayName" {
     try std.testing.expectEqualStrings("end of file", kindDisplayName(.eof));
     try std.testing.expectEqualStrings("integer literal", kindDisplayName(.int_literal));
     try std.testing.expectEqualStrings("identifier", kindDisplayName(.identifier));
+}
+
+test "engine - any_token advances past any non-EOF token" {
+    const alloc = std.testing.allocator;
+    const grammar_mod2 = @import("grammar.zig");
+
+    // '.' in grammar should consume any single non-EOF token
+    const src = "skip\n    <- .\n";
+    var g = try grammar_mod2.parseGrammar(src, alloc);
+    defer g.deinit();
+
+    const tokens = [_]Token{
+        .{ .kind = .kw_func, .text = "func", .line = 1, .col = 1 },
+        .{ .kind = .eof, .text = "", .line = 1, .col = 5 },
+    };
+
+    var engine = Engine.init(&g, &tokens, alloc);
+    defer engine.deinit();
+
+    const result = engine.matchRule("skip", 0);
+    try std.testing.expect(result != null);
+    try std.testing.expectEqual(@as(usize, 1), result.?.end_pos);
+}
+
+test "engine - any_token does not match EOF" {
+    const alloc = std.testing.allocator;
+    const grammar_mod2 = @import("grammar.zig");
+
+    const src = "skip\n    <- .\n";
+    var g = try grammar_mod2.parseGrammar(src, alloc);
+    defer g.deinit();
+
+    const tokens = [_]Token{
+        .{ .kind = .eof, .text = "", .line = 1, .col = 1 },
+    };
+
+    var engine = Engine.init(&g, &tokens, alloc);
+    defer engine.deinit();
+
+    const result = engine.matchRule("skip", 0);
+    try std.testing.expect(result == null);
+}
+
+test "engine - any_token in not_eof pattern skips any token" {
+    const alloc = std.testing.allocator;
+    const grammar_mod2 = @import("grammar.zig");
+
+    // error_skip-like pattern: (!EOF .)+ skips all non-EOF tokens
+    const src = "skip_all\n    <- (!EOF .)+ EOF\n";
+    var g = try grammar_mod2.parseGrammar(src, alloc);
+    defer g.deinit();
+
+    const tokens = [_]Token{
+        .{ .kind = .kw_func, .text = "func", .line = 1, .col = 1 },
+        .{ .kind = .identifier, .text = "foo", .line = 1, .col = 6 },
+        .{ .kind = .eof, .text = "", .line = 1, .col = 9 },
+    };
+
+    var engine = Engine.init(&g, &tokens, alloc);
+    defer engine.deinit();
+
+    try std.testing.expect(engine.matchAll("skip_all"));
 }
 
 test "engine - positive lookahead" {

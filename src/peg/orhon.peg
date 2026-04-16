@@ -31,10 +31,13 @@
 program
     <- _ module_decl (_ (doc_block / metadata / import_decl / top_level / error_skip))* _ EOF
 
-# Error recovery: skip tokens until the next top-level declaration keyword or EOF.
-# This allows the parser to continue past syntax errors and report multiple errors.
+# Top-level error recovery: consume the current token unconditionally (even if it is a
+# top_level_start keyword that started a malformed declaration), then keep skipping
+# tokens until the next top-level sync point or EOF.
+# The leading '.' ensures we always advance by at least one token so the '(*)'
+# loop can never stall.
 error_skip
-    <- (!top_level_start !EOF .)+
+    <- . (!top_level_start !EOF .)*
 
 # Token lookahead for top-level declaration starts (used by error_skip to resync)
 top_level_start
@@ -203,7 +206,14 @@ test_decl
 # ============================================================
 
 block
-    <- '{' _ statement* _ '}'  {label: "block"}
+    <- '{' _ (statement / stmt_error_skip)* _ '}'  {label: "block"}
+
+# Statement-level error recovery: skip tokens to the end of the current line
+# (or until '}' / EOF).  TERM consumes the terminator so the next iteration
+# starts cleanly.  The '+' on the leading group ensures we consume at least
+# one token, preventing infinite loops.
+stmt_error_skip
+    <- (!NL !'}' !EOF .)+ TERM
 
 statement
     <- _ (var_decl

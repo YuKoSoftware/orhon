@@ -760,3 +760,19 @@ test "MirBuilder B7: error_literal emits MirKind.literal kind=5" {
     try std.testing.expectEqual(MirKind.literal, ms.getNode(m).tag);
     try std.testing.expectEqual(@as(u32, 5), mir_typed.Literal.unpack(&ms, m).kind);
 }
+
+test "MirBuilder B7: identifier emits MirKind.identifier" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const si = try as_.strings.intern(allocator, "myVar");
+    const idx = try ast_typed.Identifier.pack(&as_, allocator, .none, .{ .name = si });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.identifier, ms.getNode(m).tag);
+    const rec = mir_typed.Identifier.unpack(&ms, m);
+    // resolved_kind = 0 (stub until DeclTable API confirmed at B8).
+    try std.testing.expectEqual(@as(u32, 0), rec.resolved_kind);
+}

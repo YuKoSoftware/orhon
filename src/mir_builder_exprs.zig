@@ -42,6 +42,7 @@ pub fn lowerExpr(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
         .bool_literal    => lowerBoolLiteral(b, idx),
         .null_literal    => lowerNullLiteral(b, idx),
         .error_literal   => lowerErrorLiteral(b, idx),
+        .identifier      => lowerIdentifier(b, idx),
         else => mir_typed.Passthrough.pack(b.store, b.allocator, idx, .none, .plain, .{}),
     };
 }
@@ -97,4 +98,21 @@ fn lowerErrorLiteral(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     return mir_typed.Literal.pack(b.store, b.allocator, idx, .none, .plain, .{
         .text = name, .kind = 5, .bool_val = 0,
     });
+}
+
+// ── Identifier ────────────────────────────────────────────────────────────────
+
+fn lowerIdentifier(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.Identifier.unpack(b.ast, idx);
+    const name = try internStr(b, ast_rec.name);
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Identifier.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .name = name, .resolved_kind = resolveIdentifierKind(b, idx),
+    });
+}
+
+/// Returns 0=plain, 1=enum_variant, 2=enum_type_name.
+/// Stubbed to 0 — DeclTable API not yet verified. Fill in at B8.
+fn resolveIdentifierKind(_: *const MirBuilder, _: AstNodeIndex) u32 {
+    return 0;
 }

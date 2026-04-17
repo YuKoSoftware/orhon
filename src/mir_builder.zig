@@ -776,3 +776,34 @@ test "MirBuilder B7: identifier emits MirKind.identifier" {
     // resolved_kind = 0 (stub until DeclTable API confirmed at B8).
     try std.testing.expectEqual(@as(u32, 0), rec.resolved_kind);
 }
+
+test "MirBuilder B7: binary_expr emits MirKind.binary with lhs and rhs" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const lhs = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const rhs = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const idx = try ast_typed.BinaryExpr.pack(&as_, allocator, .none, .{ .op = 0, .lhs = lhs, .rhs = rhs });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.binary, ms.getNode(m).tag);
+    const rec = mir_typed.Binary.unpack(&ms, m);
+    try std.testing.expect(rec.lhs != .none);
+    try std.testing.expect(rec.rhs != .none);
+}
+
+test "MirBuilder B7: range_expr emits MirKind.binary" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const lhs = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const rhs = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const idx = try ast_typed.RangeExpr.pack(&as_, allocator, .none, .{ .op = 0, .lhs = lhs, .rhs = rhs });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.binary, ms.getNode(m).tag);
+}

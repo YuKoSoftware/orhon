@@ -43,6 +43,8 @@ pub fn lowerExpr(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
         .null_literal    => lowerNullLiteral(b, idx),
         .error_literal   => lowerErrorLiteral(b, idx),
         .identifier      => lowerIdentifier(b, idx),
+        .binary_expr     => lowerBinary(b, idx),
+        .range_expr      => lowerRange(b, idx),
         else => mir_typed.Passthrough.pack(b.store, b.allocator, idx, .none, .plain, .{}),
     };
 }
@@ -114,4 +116,26 @@ fn lowerIdentifier(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
 /// Stub: returns 0 until DeclTable API verified at B8.
 fn resolveIdentifierKind(_: *const MirBuilder, _: AstNodeIndex) u32 {
     return 0;
+}
+
+// ── Binary / range ────────────────────────────────────────────────────────────
+
+fn lowerBinary(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.BinaryExpr.unpack(b.ast, idx);
+    const lhs = try b.lowerNode(ast_rec.lhs);
+    const rhs = try b.lowerNode(ast_rec.rhs);
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Binary.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .op = ast_rec.op, .lhs = lhs, .rhs = rhs,
+    });
+}
+
+fn lowerRange(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.RangeExpr.unpack(b.ast, idx);
+    const lhs = try b.lowerNode(ast_rec.lhs);
+    const rhs = try b.lowerNode(ast_rec.rhs);
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Binary.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .op = ast_rec.op, .lhs = lhs, .rhs = rhs,
+    });
 }

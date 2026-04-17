@@ -39,6 +39,8 @@ pub const Scope = scope_mod.ScopeBase(RT);
 pub const TypeResolver = struct {
     ctx: *const sema.SemanticContext,
     type_map: std.AutoHashMapUnmanaged(*parser.Node, RT),
+    /// Parallel AstNodeIndex-keyed type map — consumed by MirBuilder (B5+).
+    ast_type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT),
     /// AstStore for index-based traversal (Phase A).
     store: *const AstStore = undefined,
     /// Reverse map from AstNodeIndex back to *parser.Node for bridge calls.
@@ -63,11 +65,13 @@ pub const TypeResolver = struct {
         return .{
             .ctx = ctx,
             .type_map = .{},
+            .ast_type_map = .{},
         };
     }
 
     pub fn deinit(self: *TypeResolver) void {
         self.type_map.deinit(self.ctx.allocator);
+        self.ast_type_map.deinit(self.ctx.allocator);
         self.included_modules.deinit(self.ctx.allocator);
         self.param_names.deinit(self.ctx.allocator);
     }
@@ -91,9 +95,11 @@ pub const TypeResolver = struct {
         return self.ctx.nodeLocFromIdx(idx);
     }
 
-    /// Store a resolved type in the type_map, keyed by the original *parser.Node.
+    /// Store a resolved type in both type_maps: pointer-keyed (for MirAnnotator)
+    /// and index-keyed (for MirBuilder, B5+).
     pub fn putTypeMap(self: *TypeResolver, idx: AstNodeIndex, rt: RT) !void {
         if (self.reverseNodeMut(idx)) |n| try self.type_map.put(self.ctx.allocator, n, rt);
+        try self.ast_type_map.put(self.ctx.allocator, idx, rt);
     }
 
     /// Get the *parser.Node for calling unmigrated APIs (types.resolveTypeNode).

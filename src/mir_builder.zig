@@ -13,6 +13,7 @@ const mir_store_mod = @import("mir_store.zig");
 const mir_typed = @import("mir_typed.zig");
 const type_store_mod = @import("type_store.zig");
 const decls_impl = @import("mir_builder_decls.zig");
+const stmts_impl = @import("mir_builder_stmts.zig");
 
 const AstNodeIndex = ast_store_mod.AstNodeIndex;
 const AstStore = ast_store_mod.AstStore;
@@ -116,6 +117,18 @@ pub const MirBuilder = struct {
             .destruct_decl,
             .import_decl,
             => decls_impl.lowerDecl(self, idx),
+            .block,
+            .return_stmt,
+            .if_stmt,
+            .while_stmt,
+            .for_stmt,
+            .defer_stmt,
+            .match_stmt,
+            .match_arm,
+            .assignment,
+            .break_stmt,
+            .continue_stmt,
+            => stmts_impl.lowerStmt(self, idx),
             else => mir_typed.Passthrough.pack(
                 self.store,
                 self.allocator,
@@ -389,4 +402,265 @@ test "MirBuilder B5: destruct_decl emits MirKind.destruct" {
 
     const mir_idx = try builder.lowerNode(dest_idx);
     try std.testing.expectEqual(MirKind.destruct, mir_store.getNode(mir_idx).tag);
+}
+
+// ── B6: Statements cluster tests ────────────────────────────────────────────
+
+test "MirBuilder B6: break_stmt emits MirKind.break_stmt" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const brk = try ast_typed.BreakStmt.pack(&ast_store, allocator, .none, .{});
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(brk);
+    try std.testing.expectEqual(MirKind.break_stmt, mir_store.getNode(mir_idx).tag);
+}
+
+test "MirBuilder B6: continue_stmt emits MirKind.continue_stmt" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const cont = try ast_typed.ContinueStmt.pack(&ast_store, allocator, .none, .{});
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(cont);
+    try std.testing.expectEqual(MirKind.continue_stmt, mir_store.getNode(mir_idx).tag);
+}
+
+test "MirBuilder B6: return_stmt emits MirKind.return_stmt with lowered value" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const val = try ast_typed.NullLiteral.pack(&ast_store, allocator, .none, .{});
+    const ret = try ast_typed.ReturnStmt.pack(&ast_store, allocator, .none, .{ .value = val });
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(ret);
+    try std.testing.expectEqual(MirKind.return_stmt, mir_store.getNode(mir_idx).tag);
+}
+
+test "MirBuilder B6: defer_stmt emits MirKind.defer_stmt" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const body = try ast_typed.Block.pack(&ast_store, allocator, .none, &.{});
+    const dfr = try ast_typed.DeferStmt.pack(&ast_store, allocator, .none, .{ .body = body });
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(dfr);
+    try std.testing.expectEqual(MirKind.defer_stmt, mir_store.getNode(mir_idx).tag);
+}
+
+test "MirBuilder B6: block emits MirKind.block and lowers child stmts" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const s1 = try ast_typed.BreakStmt.pack(&ast_store, allocator, .none, .{});
+    const s2 = try ast_typed.ContinueStmt.pack(&ast_store, allocator, .none, .{});
+    const blk = try ast_typed.Block.pack(&ast_store, allocator, .none, &.{ s1, s2 });
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(blk);
+    try std.testing.expectEqual(MirKind.block, mir_store.getNode(mir_idx).tag);
+    const stmts = mir_typed.Block.getStmts(&mir_store, mir_idx);
+    try std.testing.expectEqual(@as(usize, 2), stmts.len);
+    try std.testing.expectEqual(MirKind.break_stmt, mir_store.getNode(stmts[0]).tag);
+    try std.testing.expectEqual(MirKind.continue_stmt, mir_store.getNode(stmts[1]).tag);
+}
+
+test "MirBuilder B6: if_stmt emits MirKind.if_stmt" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const cond = try ast_typed.NullLiteral.pack(&ast_store, allocator, .none, .{});
+    const then_b = try ast_typed.Block.pack(&ast_store, allocator, .none, &.{});
+    const if_idx = try ast_typed.IfStmt.pack(&ast_store, allocator, .none, .{
+        .condition = cond, .then_block = then_b, .else_block = .none,
+    });
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(if_idx);
+    try std.testing.expectEqual(MirKind.if_stmt, mir_store.getNode(mir_idx).tag);
+    const rec = mir_typed.IfStmt.unpack(&mir_store, mir_idx);
+    try std.testing.expect(rec.condition != .none);
+    try std.testing.expect(rec.then_block != .none);
+}
+
+test "MirBuilder B6: while_stmt emits MirKind.while_stmt" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const cond = try ast_typed.NullLiteral.pack(&ast_store, allocator, .none, .{});
+    const body = try ast_typed.Block.pack(&ast_store, allocator, .none, &.{});
+    const whl = try ast_typed.WhileStmt.pack(&ast_store, allocator, .none, .{
+        .condition = cond, .body = body, .continue_expr = .none,
+    });
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(whl);
+    try std.testing.expectEqual(MirKind.while_stmt, mir_store.getNode(mir_idx).tag);
+    const rec = mir_typed.WhileStmt.unpack(&mir_store, mir_idx);
+    try std.testing.expect(rec.condition != .none);
+    try std.testing.expect(rec.body != .none);
+}
+
+test "MirBuilder B6: for_stmt emits MirKind.for_stmt" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const body = try ast_typed.Block.pack(&ast_store, allocator, .none, &.{});
+    const for_idx = try ast_typed.ForStmt.pack(&ast_store, allocator, .none, .{
+        .body = body,
+        .iterables_start = 0, .iterables_end = 0,
+        .captures_start = 0, .captures_end = 0,
+        .flags = 0,
+    });
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(for_idx);
+    try std.testing.expectEqual(MirKind.for_stmt, mir_store.getNode(mir_idx).tag);
+    const rec = mir_typed.ForStmt.unpack(&mir_store, mir_idx);
+    try std.testing.expect(rec.body != .none);
+}
+
+test "MirBuilder B6: match_stmt emits MirKind.match_stmt" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const val = try ast_typed.NullLiteral.pack(&ast_store, allocator, .none, .{});
+    const match_idx = try ast_typed.MatchStmt.pack(&ast_store, allocator, .none, .{
+        .value = val, .arms_start = 0, .arms_end = 0,
+    });
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(match_idx);
+    try std.testing.expectEqual(MirKind.match_stmt, mir_store.getNode(mir_idx).tag);
+    const rec = mir_typed.MatchStmt.unpack(&mir_store, mir_idx);
+    try std.testing.expect(rec.value != .none);
+}
+
+test "MirBuilder B6: match_arm emits MirKind.match_arm" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const pat = try ast_typed.NullLiteral.pack(&ast_store, allocator, .none, .{});
+    const body = try ast_typed.Block.pack(&ast_store, allocator, .none, &.{});
+    const arm = try ast_typed.MatchArm.pack(&ast_store, allocator, .none, .{
+        .pattern = pat, .guard = .none, .body = body,
+    });
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(arm);
+    try std.testing.expectEqual(MirKind.match_arm, mir_store.getNode(mir_idx).tag);
+    const rec = mir_typed.MatchArm.unpack(&mir_store, mir_idx);
+    try std.testing.expect(rec.pattern != .none);
+    try std.testing.expect(rec.body != .none);
+}
+
+test "MirBuilder B6: assignment emits MirKind.assignment" {
+    const allocator = std.testing.allocator;
+    var mir_store = MirStore.init();
+    defer mir_store.deinit(allocator);
+    var ast_store = AstStore.init();
+    defer ast_store.deinit(allocator);
+    var type_map: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{};
+    defer type_map.deinit(allocator);
+    var union_registry = UnionRegistry.init(allocator);
+    defer union_registry.deinit();
+
+    const lhs_si = try ast_store.strings.intern(allocator, "x");
+    const lhs = try ast_typed.Identifier.pack(&ast_store, allocator, .none, .{ .name = lhs_si });
+    const rhs = try ast_typed.NullLiteral.pack(&ast_store, allocator, .none, .{});
+    const asgn = try ast_typed.Assignment.pack(&ast_store, allocator, .none, .{
+        .op = 0, .lhs = lhs, .rhs = rhs,
+    });
+    var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
+    defer builder.deinit();
+
+    const mir_idx = try builder.lowerNode(asgn);
+    try std.testing.expectEqual(MirKind.assignment, mir_store.getNode(mir_idx).tag);
+    const rec = mir_typed.Assignment.unpack(&mir_store, mir_idx);
+    try std.testing.expect(rec.lhs != .none);
+    try std.testing.expect(rec.rhs != .none);
 }

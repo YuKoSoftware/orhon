@@ -66,9 +66,9 @@ Full rebuild of parser/AST and MIR storage from pointer-based trees to index-bas
 - [x] **B1** Land `TypeStore` with `TypeId` interning + tests — `src/type_store.zig`; 8 tests covering round-trip, dedup, named/primitive/special/slice/generic; 361/361 testall green
 - [x] **B2** Scaffold `MirStore` types, helpers, no population — `src/mir_store.zig`; `MirNodeIndex`, `MirExtraIndex`, `MirEntry`, `MirData`, `MirStore` with `TypeStore`+`StringPool`; 7 tests; 361/361 green
 - [x] **B3** Create `mir_typed.zig` — typed wrapper per `MirKind` with pack/unpack round-trip tests — all 32 MirKind variants covered; 12 tests one per data shape; 361/361 green
-- [ ] **B4** `MirBuilder` skeleton with fusion + internal phase separation (`classifyNode`, `inferCoercion`, `lowerNode`), emits `passthrough` only
-- [ ] **B5** Populate declarations cluster
-- [ ] **B6** Populate statements cluster
+- [x] **B4** `MirBuilder` skeleton with fusion + internal phase separation (`classifyNode`, `inferCoercion`, `lowerNode`), emits `passthrough` only
+- [x] **B5** Populate declarations cluster
+- [x] **B6** Populate statements cluster
 - [ ] **B7** Populate expressions cluster
 - [ ] **B8** Populate types + members + injected
 - [ ] **B9** Delete parity harness — `MirBuilder` is the sole producer

@@ -172,16 +172,16 @@ test "MirBuilder: passthrough for non-declaration node" {
     var union_registry = UnionRegistry.init(allocator);
     defer union_registry.deinit();
 
-    // Pack a leaf node that falls through to passthrough.
-    const null_idx = try ast_typed.NullLiteral.pack(&ast_store, allocator, .none, .{});
+    // Pack a node that falls through to passthrough (null_literal now emits MirKind.literal).
+    const tu_idx = try ast_typed.TypeUnion.pack(&ast_store, allocator, .none, &.{});
 
     var builder = testBuilder(allocator, &ast_store, &mir_store, &type_map, &union_registry);
     defer builder.deinit();
 
-    const mir_idx = try builder.build(null_idx);
+    const mir_idx = try builder.build(tu_idx);
     try std.testing.expect(mir_idx != .none);
     try std.testing.expectEqual(MirKind.passthrough, mir_store.getNode(mir_idx).tag);
-    try std.testing.expectEqual(null_idx, mir_store.getNode(mir_idx).span);
+    try std.testing.expectEqual(tu_idx, mir_store.getNode(mir_idx).span);
 }
 
 test "MirBuilder: two build calls produce distinct indices" {
@@ -673,4 +673,90 @@ test "MirBuilder B6: assignment emits MirKind.assignment" {
     const rec = mir_typed.Assignment.unpack(&mir_store, mir_idx);
     try std.testing.expect(rec.lhs != .none);
     try std.testing.expect(rec.rhs != .none);
+}
+
+// ── B7: Expressions cluster tests ───────────────────────────────────────────
+
+test "MirBuilder B7: int_literal emits MirKind.literal kind=0" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const si = try as_.strings.intern(allocator, "42");
+    const idx = try ast_typed.IntLiteral.pack(&as_, allocator, .none, .{ .text = si });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.literal, ms.getNode(m).tag);
+    try std.testing.expectEqual(@as(u32, 0), mir_typed.Literal.unpack(&ms, m).kind);
+}
+
+test "MirBuilder B7: float_literal emits MirKind.literal kind=1" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const si = try as_.strings.intern(allocator, "3.14");
+    const idx = try ast_typed.FloatLiteral.pack(&as_, allocator, .none, .{ .text = si });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.literal, ms.getNode(m).tag);
+    try std.testing.expectEqual(@as(u32, 1), mir_typed.Literal.unpack(&ms, m).kind);
+}
+
+test "MirBuilder B7: string_literal emits MirKind.literal kind=2" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const si = try as_.strings.intern(allocator, "hello");
+    const idx = try ast_typed.StringLiteral.pack(&as_, allocator, .none, .{ .text = si });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.literal, ms.getNode(m).tag);
+    try std.testing.expectEqual(@as(u32, 2), mir_typed.Literal.unpack(&ms, m).kind);
+}
+
+test "MirBuilder B7: bool_literal emits MirKind.literal kind=3 with bool_val" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const idx = try ast_typed.BoolLiteral.pack(&as_, allocator, .none, .{ .value = true });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.literal, ms.getNode(m).tag);
+    const rec = mir_typed.Literal.unpack(&ms, m);
+    try std.testing.expectEqual(@as(u32, 3), rec.kind);
+    try std.testing.expectEqual(@as(u32, 1), rec.bool_val);
+}
+
+test "MirBuilder B7: null_literal emits MirKind.literal kind=4" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const idx = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.literal, ms.getNode(m).tag);
+    try std.testing.expectEqual(@as(u32, 4), mir_typed.Literal.unpack(&ms, m).kind);
+}
+
+test "MirBuilder B7: error_literal emits MirKind.literal kind=5" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const si = try as_.strings.intern(allocator, "NotFound");
+    const idx = try ast_typed.ErrorLiteral.pack(&as_, allocator, .none, .{ .name = si });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.literal, ms.getNode(m).tag);
+    try std.testing.expectEqual(@as(u32, 5), mir_typed.Literal.unpack(&ms, m).kind);
 }

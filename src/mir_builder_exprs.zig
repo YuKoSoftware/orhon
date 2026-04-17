@@ -36,6 +36,65 @@ fn internStr(b: *MirBuilder, ast_si: StringIndex) !StringIndex {
 /// Called by MirBuilder.lowerNode for all expression-kind AstNodes.
 pub fn lowerExpr(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     return switch (b.ast.getNode(idx).tag) {
+        .int_literal     => lowerIntLiteral(b, idx),
+        .float_literal   => lowerFloatLiteral(b, idx),
+        .string_literal  => lowerStringLiteral(b, idx),
+        .bool_literal    => lowerBoolLiteral(b, idx),
+        .null_literal    => lowerNullLiteral(b, idx),
+        .error_literal   => lowerErrorLiteral(b, idx),
         else => mir_typed.Passthrough.pack(b.store, b.allocator, idx, .none, .plain, .{}),
     };
+}
+
+// ── Leaf literal lowerers ────────────────────────────────────────────────────
+
+fn lowerIntLiteral(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.IntLiteral.unpack(b.ast, idx);
+    const text = try internStr(b, ast_rec.text);
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Literal.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .text = text, .kind = 0, .bool_val = 0,
+    });
+}
+
+fn lowerFloatLiteral(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.FloatLiteral.unpack(b.ast, idx);
+    const text = try internStr(b, ast_rec.text);
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Literal.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .text = text, .kind = 1, .bool_val = 0,
+    });
+}
+
+fn lowerStringLiteral(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.StringLiteral.unpack(b.ast, idx);
+    const text = try internStr(b, ast_rec.text);
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Literal.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .text = text, .kind = 2, .bool_val = 0,
+    });
+}
+
+fn lowerBoolLiteral(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.BoolLiteral.unpack(b.ast, idx);
+    const empty_si = try b.store.strings.intern(b.allocator, "");
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Literal.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .text = empty_si, .kind = 3, .bool_val = if (ast_rec.value) @as(u32, 1) else 0,
+    });
+}
+
+fn lowerNullLiteral(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const empty_si = try b.store.strings.intern(b.allocator, "");
+    return mir_typed.Literal.pack(b.store, b.allocator, idx, .none, .plain, .{
+        .text = empty_si, .kind = 4, .bool_val = 0,
+    });
+}
+
+fn lowerErrorLiteral(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.ErrorLiteral.unpack(b.ast, idx);
+    const name = try internStr(b, ast_rec.name);
+    return mir_typed.Literal.pack(b.store, b.allocator, idx, .none, .plain, .{
+        .text = name, .kind = 5, .bool_val = 0,
+    });
 }

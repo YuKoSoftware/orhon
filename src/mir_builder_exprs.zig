@@ -49,6 +49,7 @@ pub fn lowerExpr(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
         .mut_borrow_expr   => lowerMutBorrow(b, idx),
         .const_borrow_expr => lowerConstBorrow(b, idx),
         .call_expr       => lowerCall(b, idx),
+        .field_expr      => lowerFieldAccess(b, idx),
         else => mir_typed.Passthrough.pack(b.store, b.allocator, idx, .none, .plain, .{}),
     };
 }
@@ -172,6 +173,47 @@ fn lowerConstBorrow(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
 }
 
 // ── Call ─────────────────────────────────────────────────────────────────────
+
+// ── Field access ──────────────────────────────────────────────────────────────
+
+/// Resolve the "source union RT" for an AST expression node.
+/// Primary path: check type_map — if the expression's RT is .union_type, return it.
+/// Fallback (BR2): if the identifier's type was narrowed, recover the original union
+/// from var_types. This handles the case where type narrowing replaced the union type
+/// on the identifier node with a specific member type.
+fn resolveSourceUnionRT(b: *const MirBuilder, ast_idx: AstNodeIndex) ?RT {
+    if (b.type_map.get(ast_idx)) |rt| {
+        if (rt == .union_type) return rt;
+    }
+    if (b.ast.getNode(ast_idx).tag != .identifier) return null;
+    const rec = ast_typed.Identifier.unpack(b.ast, ast_idx);
+    const name = b.ast.strings.get(rec.name);
+    const tid = b.var_types.get(name) orelse return null;
+    if (tid == .none) return null;
+    const fallback_rt = b.store.types.get(tid);
+    if (fallback_rt == .union_type) return fallback_rt;
+    return null;
+}
+
+fn lowerFieldAccess(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.FieldExpr.unpack(b.ast, idx);
+    const object = try b.lowerNode(ast_rec.object);
+    const field = try internStr(b, ast_rec.field);
+    const field_str = b.ast.strings.get(ast_rec.field);
+
+    // Encoding: 0 = no tag, positional_tag + 1 = has tag (BR2).
+    const union_tag: u32 = blk: {
+        if (resolveSourceUnionRT(b, ast_rec.object)) |rt| {
+            if (mir_types.positionalTagOf(rt, field_str)) |tag| break :blk @as(u32, tag) + 1;
+        }
+        break :blk 0;
+    };
+
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.FieldAccess.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .field = field, .object = object, .union_tag = union_tag,
+    });
+}
 
 fn lowerCall(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const ast_rec = ast_typed.CallExpr.unpack(b.ast, idx);

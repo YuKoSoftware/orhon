@@ -877,3 +877,41 @@ test "MirBuilder B7: call_expr lowers callee and args" {
     try std.testing.expect(rec.callee != .none);
     try std.testing.expect(rec.args_end - rec.args_start == 2);
 }
+
+test "MirBuilder B7: field_expr emits MirKind.field_access, stamps union_tag via var_types" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+
+    // Build: x.str where x has union type [str | i32].
+    // Intern the identifier "x" and field "str".
+    const x_si = try as_.strings.intern(allocator, "x");
+    const obj_idx = try ast_typed.Identifier.pack(&as_, allocator, .none, .{ .name = x_si });
+    const field_si = try as_.strings.intern(allocator, "str");
+    const idx = try ast_typed.FieldExpr.pack(&as_, allocator, .none, .{ .field = field_si, .object = obj_idx });
+
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur);
+    defer b.deinit();
+
+    // Build a union RT [str | i32] and intern it into the MIR type store.
+    // positionalTagOf filters Error/null and sorts canonically: i32 @ 0, str @ 1.
+    const union_members = &[_]RT{
+        RT{ .primitive = .string },
+        RT{ .primitive = .i32 },
+    };
+    const union_rt = RT{ .union_type = union_members };
+    const tid = try ms.types.intern(allocator, union_rt);
+
+    // Register the union TypeId in var_types under the key "x".
+    // Key must be a slice valid for the duration of the test (here a string literal suffices).
+    try b.var_types.put(allocator, "x", tid);
+
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.field_access, ms.getNode(m).tag);
+    const rec = mir_typed.FieldAccess.unpack(&ms, m);
+    // Sorted canonical order: i32 @ 0, str @ 1.
+    // union_tag = positional_tag + 1 = 1 + 1 = 2.
+    try std.testing.expect(rec.union_tag > 0);
+}

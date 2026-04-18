@@ -109,17 +109,24 @@ pub const MirBuilder = struct {
         return .{ .type_class = .plain, .rt = .unknown };
     }
 
-    fn inferCoercion(self: *MirBuilder, idx: AstNodeIndex, ty: TypeId) ?Coercion {
-        _ = self;
-        _ = idx;
-        _ = ty;
-        return null;
+    pub fn inferCoercion(self: *MirBuilder, idx: AstNodeIndex, dst_type_id: TypeId) ?Coercion {
+        if (dst_type_id == .none) return null;
+        const src_rt = self.type_map.get(idx) orelse return null;
+        const dst_rt = self.store.types.get(dst_type_id);
+        return detectCoercion(src_rt, dst_rt);
+    }
+
+    pub fn stampCoercion(self: *MirBuilder, idx: MirNodeIndex, c: ?Coercion) void {
+        if (c) |coercion| {
+            const raw = @intFromEnum(idx);
+            self.store.nodes.items(.coercion_kind)[raw] =
+                mir_store_mod.coercionToKind(coercion);
+        }
     }
 
     pub fn lowerNode(self: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
         const kind = self.ast.getNode(idx).tag;
         const cls = self.classifyNode(idx);
-        _ = self.inferCoercion(idx, .none);
         return switch (kind) {
             .func_decl,
             .struct_decl,
@@ -168,6 +175,65 @@ pub const MirBuilder = struct {
         };
     }
 };
+
+// ---------------------------------------------------------------------------
+// Coercion helpers — free functions so satellites can call them
+// ---------------------------------------------------------------------------
+
+/// Determine if a value of type `src` needs coercion to fit `dst`.
+/// Mirrors MirAnnotator.detectCoercion using the same logic.
+pub fn detectCoercion(src: RT, dst: RT) ?Coercion {
+    if (src == .unknown or src == .inferred or dst == .unknown or dst == .inferred)
+        return null;
+    if (src == .array and dst == .slice)
+        return .array_to_slice;
+    if (dst.unionContainsNull() and !src.unionContainsNull() and src != .null_type)
+        return .null_wrap;
+    if (dst.unionContainsError() and !src.unionContainsError() and src != .err)
+        return .error_wrap;
+    if (dst == .union_type and src != .union_type) {
+        if (src == .null_type) {
+            for (dst.union_type) |member| {
+                if (member == .null_type) return null;
+            }
+        }
+        if (src == .err and dst.unionContainsError()) return null;
+        if (src == .primitive and src.primitive == .numeric_literal) {
+            for (dst.union_type) |member| {
+                if (member == .primitive and member.primitive.isInteger()) {
+                    const tag = mir_types.positionalTagOf(dst, member.name()) orelse return null;
+                    return .{ .arbitrary_union_wrap = tag };
+                }
+            }
+        }
+        if (src == .primitive and src.primitive == .float_literal) {
+            for (dst.union_type) |member| {
+                if (member == .primitive and member.primitive.isFloat()) {
+                    const tag = mir_types.positionalTagOf(dst, member.name()) orelse return null;
+                    return .{ .arbitrary_union_wrap = tag };
+                }
+            }
+        }
+        const tag = mir_types.positionalTagOf(dst, src.name()) orelse return null;
+        return .{ .arbitrary_union_wrap = tag };
+    }
+    if (src.unionContainsNull() and !dst.unionContainsNull())
+        return .optional_unwrap;
+    if (dst == .ptr and dst.ptr.kind == .const_ref) {
+        if (typesMatchForCoercion(src, dst.ptr.elem.*))
+            return .value_to_const_ref;
+    }
+    return null;
+}
+
+fn typesMatchForCoercion(a: RT, b: RT) bool {
+    if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+    return switch (a) {
+        .primitive => |p| p == b.primitive,
+        .named => |n| std.mem.eql(u8, n, b.named),
+        else => false,
+    };
+}
 
 // ---------------------------------------------------------------------------
 // Tests

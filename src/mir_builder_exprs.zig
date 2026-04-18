@@ -31,6 +31,24 @@ fn internStr(b: *MirBuilder, ast_si: StringIndex) !StringIndex {
     return b.store.strings.intern(b.allocator, b.ast.strings.get(ast_si));
 }
 
+/// Resolve a FuncSig for a call expression's callee (simplified port from MirAnnotator).
+/// Only handles direct identifier and field_expr callee forms.
+fn resolveCallSig(b: *const MirBuilder, call_idx: AstNodeIndex) ?@import("declarations.zig").FuncSig {
+    const ast_rec = ast_typed.CallExpr.unpack(b.ast, call_idx);
+    const callee_tag = b.ast.getNode(ast_rec.callee).tag;
+    if (callee_tag == .identifier) {
+        const rec = ast_typed.Identifier.unpack(b.ast, ast_rec.callee);
+        const name = b.ast.strings.get(rec.name);
+        return b.decls.funcs.get(name);
+    }
+    if (callee_tag == .field_expr) {
+        const rec = ast_typed.FieldExpr.unpack(b.ast, ast_rec.callee);
+        const field = b.ast.strings.get(rec.field);
+        return b.decls.funcs.get(field);
+    }
+    return null;
+}
+
 // ── Public dispatch ──────────────────────────────────────────────────────────
 
 /// Called by MirBuilder.lowerNode for all expression-kind AstNodes.
@@ -232,9 +250,25 @@ fn lowerCall(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const arg_count = ast_rec.args_end - ast_rec.args_start;
     var arg_nodes = try std.ArrayListUnmanaged(MirNodeIndex).initCapacity(b.allocator, arg_count);
     defer arg_nodes.deinit(b.allocator);
+    var arg_ast_indices = try std.ArrayListUnmanaged(AstNodeIndex).initCapacity(b.allocator, arg_count);
+    defer arg_ast_indices.deinit(b.allocator);
     for (b.ast.extra_data.items[ast_rec.args_start..ast_rec.args_end]) |au32| {
-        try arg_nodes.append(b.allocator, try b.lowerNode(@enumFromInt(au32)));
+        const arg_ast: AstNodeIndex = @enumFromInt(au32);
+        try arg_ast_indices.append(b.allocator, arg_ast);
+        try arg_nodes.append(b.allocator, try b.lowerNode(arg_ast));
     }
+
+    // Stamp coercion on each arg against the function signature's param types.
+    const sig_opt = resolveCallSig(b, idx);
+    if (sig_opt) |sig| {
+        for (arg_nodes.items, 0..) |arg_mir, i| {
+            if (i < sig.params.len) {
+                const param_type_id = try internRT(b, sig.params[i].type_);
+                b.stampCoercion(arg_mir, b.inferCoercion(arg_ast_indices.items[i], param_type_id));
+            }
+        }
+    }
+
     const args_start: u32 = @intCast(b.store.extra_data.items.len);
     for (arg_nodes.items) |m| try b.store.extra_data.append(b.allocator, @intFromEnum(m));
     const args_end: u32 = @intCast(b.store.extra_data.items.len);

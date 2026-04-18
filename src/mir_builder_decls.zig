@@ -180,6 +180,7 @@ fn lowerVarDecl(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
 
     // Lower value expression.
     const value = try b.lowerNode(ast_rec.value);
+    b.stampCoercion(value, b.inferCoercion(ast_rec.value, tid));
 
     // Track variable type for later union-tag resolution (BR2).
     // Key is borrowed from b.ast.strings; lifetime tied to AstStore.

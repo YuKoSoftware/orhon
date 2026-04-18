@@ -8,11 +8,19 @@ const mir_builder_mod = @import("mir_builder.zig");
 const ast_typed = @import("ast_typed.zig");
 const mir_typed = @import("mir_typed.zig");
 const string_pool = @import("string_pool.zig");
+const declarations = @import("declarations.zig");
 
 const MirBuilder = mir_builder_mod.MirBuilder;
 const AstNodeIndex = @import("ast_store.zig").AstNodeIndex;
 const MirNodeIndex = @import("mir_store.zig").MirNodeIndex;
+const TypeId = @import("type_store.zig").TypeId;
+const RT = @import("types.zig").ResolvedType;
 const StringIndex = string_pool.StringIndex;
+
+fn internRT(b: *MirBuilder, rt: RT) !TypeId {
+    if (rt == .unknown or rt == .inferred) return .none;
+    return b.store.types.intern(b.allocator, rt);
+}
 
 // ── Public dispatch ──────────────────────────────────────────────────────────
 
@@ -50,6 +58,14 @@ fn lowerBlock(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
 fn lowerReturnStmt(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const ast_rec = ast_typed.ReturnStmt.unpack(b.ast, idx);
     const value = if (ast_rec.value != .none) try b.lowerNode(ast_rec.value) else .none;
+    if (ast_rec.value != .none) {
+        if (b.current_func_name) |fname| {
+            if (b.decls.funcs.get(fname)) |sig| {
+                const ret_type_id = try internRT(b, sig.return_type);
+                b.stampCoercion(value, b.inferCoercion(ast_rec.value, ret_type_id));
+            }
+        }
+    }
     return mir_typed.ReturnStmt.pack(b.store, b.allocator, idx, .none, .plain, .{ .value = value });
 }
 
@@ -150,6 +166,10 @@ fn lowerAssignment(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const ast_rec = ast_typed.Assignment.unpack(b.ast, idx);
     const lhs = try b.lowerNode(ast_rec.lhs);
     const rhs = try b.lowerNode(ast_rec.rhs);
+    if (b.type_map.get(ast_rec.lhs)) |lhs_rt| {
+        const lhs_type_id = try internRT(b, lhs_rt);
+        b.stampCoercion(rhs, b.inferCoercion(ast_rec.rhs, lhs_type_id));
+    }
     return mir_typed.Assignment.pack(b.store, b.allocator, idx, .none, .plain, .{
         .op = ast_rec.op,
         .lhs = lhs,

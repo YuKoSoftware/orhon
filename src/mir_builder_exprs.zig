@@ -48,6 +48,7 @@ pub fn lowerExpr(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
         .unary_expr        => lowerUnary(b, idx),
         .mut_borrow_expr   => lowerMutBorrow(b, idx),
         .const_borrow_expr => lowerConstBorrow(b, idx),
+        .call_expr       => lowerCall(b, idx),
         else => mir_typed.Passthrough.pack(b.store, b.allocator, idx, .none, .plain, .{}),
     };
 }
@@ -167,5 +168,41 @@ fn lowerConstBorrow(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const operand = try b.lowerNode(ast_rec.child);
     return mir_typed.Borrow.pack(b.store, b.allocator, idx, .none, .plain, .{
         .kind = 0, .operand = operand,
+    });
+}
+
+// ── Call ─────────────────────────────────────────────────────────────────────
+
+fn lowerCall(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.CallExpr.unpack(b.ast, idx);
+
+    // Lower callee first; it may append to store.extra_data.
+    const callee = try b.lowerNode(ast_rec.callee);
+
+    // Lower args → MirNodeIndex values in store.extra_data.
+    // Capture args_start AFTER lowering callee (which may have added extras).
+    const args_start: u32 = @intCast(b.store.extra_data.items.len);
+    const arg_count = ast_rec.args_end - ast_rec.args_start;
+    for (b.ast.extra_data.items[ast_rec.args_start..ast_rec.args_end]) |au32| {
+        const arg_mir = try b.lowerNode(@enumFromInt(au32));
+        try b.store.extra_data.append(b.allocator, @intFromEnum(arg_mir));
+    }
+    const args_end: u32 = @intCast(b.store.extra_data.items.len);
+
+    // Re-intern named-arg StringIndex values (0 = no named args).
+    const arg_names_start: u32 = @intCast(b.store.extra_data.items.len);
+    if (ast_rec.arg_names_start != 0 and arg_count > 0) {
+        for (b.ast.extra_data.items[ast_rec.arg_names_start .. ast_rec.arg_names_start + arg_count]) |si_u32| {
+            const mir_si = try internStr(b, @enumFromInt(si_u32));
+            try b.store.extra_data.append(b.allocator, @intFromEnum(mir_si));
+        }
+    }
+
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Call.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .callee = callee,
+        .args_start = args_start,
+        .args_end = args_end,
+        .arg_names_start = if (ast_rec.arg_names_start != 0 and arg_count > 0) arg_names_start else 0,
     });
 }

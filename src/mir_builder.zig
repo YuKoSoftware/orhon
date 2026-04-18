@@ -849,3 +849,32 @@ test "MirBuilder B7: const_borrow_expr emits MirKind.borrow kind=0" {
     try std.testing.expectEqual(MirKind.borrow, ms.getNode(m).tag);
     try std.testing.expectEqual(@as(u32, 0), mir_typed.Borrow.unpack(&ms, m).kind);
 }
+
+test "MirBuilder B7: call_expr lowers callee and args" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+
+    // Build: callee(arg1, arg2) with no named args.
+    const callee = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const arg1   = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const arg2   = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    // Store arg AstNodeIndex values in ast extra_data.
+    const args_start: u32 = @intCast(as_.extra_data.items.len);
+    try as_.extra_data.append(allocator, @intFromEnum(arg1));
+    try as_.extra_data.append(allocator, @intFromEnum(arg2));
+    const args_end: u32 = @intCast(as_.extra_data.items.len);
+    const idx = try ast_typed.CallExpr.pack(&as_, allocator, .none, .{
+        .callee = callee, .args_start = args_start, .args_end = args_end, .arg_names_start = 0,
+    });
+
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.call, ms.getNode(m).tag);
+    const rec = mir_typed.Call.unpack(&ms, m);
+    try std.testing.expect(rec.callee != .none);
+    // args_start < args_end indicates args range was populated.
+    try std.testing.expect(rec.args_end > rec.args_start);
+}

@@ -16,6 +16,9 @@ const decls_impl = @import("codegen_decls.zig");
 const stmts_impl = @import("codegen_stmts.zig");
 const exprs_impl = @import("codegen_exprs.zig");
 const match_impl = @import("codegen_match.zig");
+const mir_store_mod = @import("../mir_store.zig");
+const type_store_mod = @import("../type_store.zig");
+const ast_store_mod = @import("../ast_store.zig");
 
 /// The Zig code generator
 pub const CodeGen = struct {
@@ -51,6 +54,13 @@ pub const CodeGen = struct {
     var_types: ?*const std.StringHashMapUnmanaged(mir.NodeInfo) = null,
     // MIR tree — Phase 3 lowered tree (available for incremental migration)
     mir_root: ?*mir.MirNode = null,
+    // ── MirStore-based fields (Phase C) ─────────────────────────
+    mir_store: ?*const mir_store_mod.MirStore = null,
+    mir_root_idx: mir_store_mod.MirNodeIndex = .none,
+    mir_type_store: ?*const type_store_mod.TypeStore = null,
+    mir_builder_var_types: ?*const std.StringHashMapUnmanaged(type_store_mod.TypeId) = null,
+    /// AstNodeIndex → MirNodeIndex reverse map built from MirStore in generate().
+    span_to_mir: std.AutoHashMapUnmanaged(ast_store_mod.AstNodeIndex, mir_store_mod.MirNodeIndex) = .{},
     // Zig-backed module — all declarations are re-exported from {name}_zig
     is_zig_module: bool = false,
     // Mixed module — user .orh + .zig sidecar; body-less decls re-exported from {name}_zig
@@ -205,6 +215,7 @@ pub const CodeGen = struct {
         self.null_narrowed.deinit(self.allocator);
         self.pre_stmts.deinit(self.allocator);
         self.emitted_names.deinit(self.allocator);
+        self.span_to_mir.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -261,10 +272,29 @@ pub const CodeGen = struct {
         try self.emit("\n");
     }
 
+    /// Look up the MirNodeIndex for an AstNodeIndex span. Returns .none if not found.
+    pub fn getMirNodeForSpan(self: *const CodeGen, span: ast_store_mod.AstNodeIndex) mir_store_mod.MirNodeIndex {
+        return self.span_to_mir.get(span) orelse .none;
+    }
+
     /// Generate Zig source from a program AST
     pub fn generate(self: *CodeGen, ast: *parser.Node, module_name: []const u8) !void {
         if (ast.* != .program) return;
         self.module_name = module_name;
+
+        // Build AstNodeIndex → MirNodeIndex reverse map from MirStore.
+        if (self.mir_store) |store| {
+            const n = store.nodes.len;
+            try self.span_to_mir.ensureTotalCapacity(self.allocator, @intCast(n));
+            var i: u32 = 1; // skip sentinel at index 0
+            while (i < n) : (i += 1) {
+                const idx: mir_store_mod.MirNodeIndex = @enumFromInt(i);
+                const entry = store.getNode(idx);
+                if (entry.span != .none) {
+                    self.span_to_mir.putAssumeCapacityNoClobber(entry.span, idx);
+                }
+            }
+        }
 
         // File header — only Zig std, no runtime libraries
         try self.emitFmt("// generated from module {s} — do not edit\n", .{module_name});

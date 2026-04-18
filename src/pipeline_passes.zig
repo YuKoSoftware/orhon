@@ -223,7 +223,7 @@ pub fn runSemanticAndCodegen(
     );
     defer mir_builder.deinit();
     mir_builder.current_module_name = mod_name;
-    _ = try mir_builder.build(ast_root);
+    const mir_root_idx_val = try mir_builder.build(ast_root);
     if (reporter.hasErrors()) return null;
 
     // ── Pass 9 (compat): MIR Annotation ──────────────────────────────────
@@ -264,6 +264,10 @@ pub fn runSemanticAndCodegen(
     cg.mir_root = mir_root;
     cg.is_zig_module = is_zig_module;
     cg.has_zig_sidecar = has_zig_sidecar;
+    cg.mir_store = &mir_store;
+    cg.mir_root_idx = mir_root_idx_val;
+    cg.mir_type_store = &mir_store.types;
+    cg.mir_builder_var_types = &mir_builder.var_types;
 
     try cg.generate(ast, mod_name);
     if (reporter.hasErrors()) return null;

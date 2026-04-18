@@ -875,6 +875,5 @@ test "MirBuilder B7: call_expr lowers callee and args" {
     try std.testing.expectEqual(MirKind.call, ms.getNode(m).tag);
     const rec = mir_typed.Call.unpack(&ms, m);
     try std.testing.expect(rec.callee != .none);
-    // args_start < args_end indicates args range was populated.
-    try std.testing.expect(rec.args_end > rec.args_start);
+    try std.testing.expect(rec.args_end - rec.args_start == 2);
 }

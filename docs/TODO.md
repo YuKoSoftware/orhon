@@ -69,7 +69,7 @@ Full rebuild of parser/AST and MIR storage from pointer-based trees to index-bas
 - [x] **B4** `MirBuilder` skeleton with fusion + internal phase separation (`classifyNode`, `inferCoercion`, `lowerNode`), emits `passthrough` only
 - [x] **B5** Populate declarations cluster
 - [x] **B6** Populate statements cluster
-- [ ] **B7** Populate expressions cluster
+- [x] **B7** Populate expressions cluster
 - [ ] **B8** Populate types + members + injected
 - [ ] **B9** Delete parity harness — `MirBuilder` is the sole producer
 - [ ] **B10** Delete `MirAnnotator`, `MirAnnotator_nodes`, `MirLowerer`, old `MirNode`, `NodeMap`

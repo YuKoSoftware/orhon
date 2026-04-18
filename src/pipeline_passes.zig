@@ -19,6 +19,8 @@ const constants = @import("constants.zig");
 const _cli = @import("cli.zig");
 const ast_conv = @import("ast_conv.zig");
 const ast_store_mod = @import("ast_store.zig");
+const mir_store_mod = @import("mir_store.zig");
+const mir_builder_mod = @import("mir_builder.zig");
 
 /// Result of compiling a single module through passes 4–11.
 pub const CompileResult = struct {
@@ -204,7 +206,27 @@ pub fn runSemanticAndCodegen(
     try prop_checker.check(&conv.store, ast_root);
     if (reporter.hasErrors()) return null;
 
-    // ── Pass 9: MIR Annotation ──────────────────────────────
+    // ── Pass 9 (new): MIR Builder — fused annotation + lowering into MirStore ──
+    // MirBuilder is now the authoritative MIR producer (B9). The old
+    // MirAnnotator + MirLowerer below remain as codegen compatibility shims
+    // until Phase C migrates codegen to read MirStore directly (B10).
+    var mir_store = mir_store_mod.MirStore.init();
+    defer mir_store.deinit(allocator);
+    var mir_builder = mir_builder_mod.MirBuilder.init(
+        allocator,
+        reporter,
+        &decl_collector.table,
+        &type_resolver.ast_type_map,
+        &conv.store,
+        &mir_store,
+        union_registry,
+    );
+    defer mir_builder.deinit();
+    mir_builder.current_module_name = mod_name;
+    _ = try mir_builder.build(ast_root);
+    if (reporter.hasErrors()) return null;
+
+    // ── Pass 9 (compat): MIR Annotation ──────────────────────────────────
     var mir_annotator = mir.MirAnnotator.init(allocator, reporter, &decl_collector.table, &type_resolver.type_map, union_registry);
     defer mir_annotator.deinit();
     mir_annotator.all_decls = all_module_decls;
@@ -214,7 +236,7 @@ pub fn runSemanticAndCodegen(
     try mir_annotator.annotate(&conv.store, ast_root);
     if (reporter.hasErrors()) return null;
 
-    // ── Pass 10: MIR Tree Lowering ────────────────────────
+    // ── Pass 10 (compat): MIR Tree Lowering ──────────────────
     var mir_lowerer = mir.MirLowerer.init(
         allocator,
         &mir_annotator.node_map,
@@ -226,7 +248,7 @@ pub fn runSemanticAndCodegen(
     mir_lowerer.reverse_map = &conv.reverse_map;
     const mir_root = try mir_lowerer.lower(&conv.store, ast_root);
 
-    // ── Pass 11: Zig Code Generation ───────────────────────
+    // ── Pass 11 (compat): Zig Code Generation ─────────────────
     const is_debug = cli.optimize == .debug;
     var cg = codegen.CodeGen.init(allocator, reporter, is_debug);
     defer cg.deinit();

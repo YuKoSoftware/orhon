@@ -915,3 +915,39 @@ test "MirBuilder B7: field_expr emits MirKind.field_access, stamps union_tag via
     // union_tag = positional_tag + 1 = 1 + 1 = 2.
     try std.testing.expect(rec.union_tag > 0);
 }
+
+test "MirBuilder B7: index_expr emits MirKind.index" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const obj = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const idx_node = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const idx = try ast_typed.IndexExpr.pack(&as_, allocator, .none, .{ .object = obj, .index = idx_node });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.index, ms.getNode(m).tag);
+    const rec = mir_typed.Index.unpack(&ms, m);
+    try std.testing.expect(rec.object != .none);
+    try std.testing.expect(rec.index != .none);
+}
+
+test "MirBuilder B7: slice_expr emits MirKind.slice" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const obj = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const lo  = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const hi  = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const idx = try ast_typed.SliceExpr.pack(&as_, allocator, .none, .{ .object = obj, .low = lo, .high = hi });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.slice, ms.getNode(m).tag);
+    const rec = mir_typed.Slice.unpack(&ms, m);
+    try std.testing.expect(rec.object != .none);
+    try std.testing.expect(rec.low != .none);
+    try std.testing.expect(rec.high != .none);
+}

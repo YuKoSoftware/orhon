@@ -50,6 +50,8 @@ pub fn lowerExpr(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
         .const_borrow_expr => lowerConstBorrow(b, idx),
         .call_expr       => lowerCall(b, idx),
         .field_expr      => lowerFieldAccess(b, idx),
+        .index_expr      => lowerIndex(b, idx),
+        .slice_expr      => lowerSlice(b, idx),
         else => mir_typed.Passthrough.pack(b.store, b.allocator, idx, .none, .plain, .{}),
     };
 }
@@ -247,5 +249,28 @@ fn lowerCall(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
         .args_start = args_start,
         .args_end = args_end,
         .arg_names_start = if (ast_rec.arg_names_start != 0 and arg_count > 0) arg_names_start else 0,
+    });
+}
+
+// ── Index / slice ─────────────────────────────────────────────────────────────
+
+fn lowerIndex(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.IndexExpr.unpack(b.ast, idx);
+    const object = try b.lowerNode(ast_rec.object);
+    const index  = try b.lowerNode(ast_rec.index);
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Index.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .object = object, .index = index,
+    });
+}
+
+fn lowerSlice(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.SliceExpr.unpack(b.ast, idx);
+    const object = try b.lowerNode(ast_rec.object);
+    const low    = try b.lowerNode(ast_rec.low);
+    const high   = try b.lowerNode(ast_rec.high);
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Slice.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .object = object, .low = low, .high = high,
     });
 }

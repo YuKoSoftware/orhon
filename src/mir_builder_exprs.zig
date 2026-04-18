@@ -45,6 +45,9 @@ pub fn lowerExpr(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
         .identifier      => lowerIdentifier(b, idx),
         .binary_expr     => lowerBinary(b, idx),
         .range_expr      => lowerRange(b, idx),
+        .unary_expr        => lowerUnary(b, idx),
+        .mut_borrow_expr   => lowerMutBorrow(b, idx),
+        .const_borrow_expr => lowerConstBorrow(b, idx),
         else => mir_typed.Passthrough.pack(b.store, b.allocator, idx, .none, .plain, .{}),
     };
 }
@@ -137,5 +140,32 @@ fn lowerRange(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const rt = b.type_map.get(idx) orelse .unknown;
     return mir_typed.Binary.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
         .op = ast_rec.op, .lhs = lhs, .rhs = rhs,
+    });
+}
+
+// ── Unary / borrow ────────────────────────────────────────────────────────────
+
+fn lowerUnary(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.UnaryExpr.unpack(b.ast, idx);
+    const operand = try b.lowerNode(ast_rec.operand);
+    const rt = b.type_map.get(idx) orelse .unknown;
+    return mir_typed.Unary.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
+        .op = ast_rec.op, .operand = operand,
+    });
+}
+
+fn lowerMutBorrow(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.MutBorrowExpr.unpack(b.ast, idx);
+    const operand = try b.lowerNode(ast_rec.child);
+    return mir_typed.Borrow.pack(b.store, b.allocator, idx, .none, .plain, .{
+        .kind = 1, .operand = operand,
+    });
+}
+
+fn lowerConstBorrow(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.ConstBorrowExpr.unpack(b.ast, idx);
+    const operand = try b.lowerNode(ast_rec.child);
+    return mir_typed.Borrow.pack(b.store, b.allocator, idx, .none, .plain, .{
+        .kind = 0, .operand = operand,
     });
 }

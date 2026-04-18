@@ -807,3 +807,45 @@ test "MirBuilder B7: range_expr emits MirKind.binary" {
     const m = try b.lowerNode(idx);
     try std.testing.expectEqual(MirKind.binary, ms.getNode(m).tag);
 }
+
+test "MirBuilder B7: unary_expr emits MirKind.unary" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const operand = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const idx = try ast_typed.UnaryExpr.pack(&as_, allocator, .none, .{ .op = 0, .operand = operand });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.unary, ms.getNode(m).tag);
+    try std.testing.expect(mir_typed.Unary.unpack(&ms, m).operand != .none);
+}
+
+test "MirBuilder B7: mut_borrow_expr emits MirKind.borrow kind=1" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const child = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const idx = try ast_typed.MutBorrowExpr.pack(&as_, allocator, .none, .{ .child = child });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.borrow, ms.getNode(m).tag);
+    try std.testing.expectEqual(@as(u32, 1), mir_typed.Borrow.unpack(&ms, m).kind);
+}
+
+test "MirBuilder B7: const_borrow_expr emits MirKind.borrow kind=0" {
+    const allocator = std.testing.allocator;
+    var ms = MirStore.init(); defer ms.deinit(allocator);
+    var as_ = AstStore.init(); defer as_.deinit(allocator);
+    var tm: std.AutoHashMapUnmanaged(AstNodeIndex, RT) = .{}; defer tm.deinit(allocator);
+    var ur = UnionRegistry.init(allocator); defer ur.deinit();
+    const child = try ast_typed.NullLiteral.pack(&as_, allocator, .none, .{});
+    const idx = try ast_typed.ConstBorrowExpr.pack(&as_, allocator, .none, .{ .child = child });
+    var b = testBuilder(allocator, &as_, &ms, &tm, &ur); defer b.deinit();
+    const m = try b.lowerNode(idx);
+    try std.testing.expectEqual(MirKind.borrow, ms.getNode(m).tag);
+    try std.testing.expectEqual(@as(u32, 0), mir_typed.Borrow.unpack(&ms, m).kind);
+}

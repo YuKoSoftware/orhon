@@ -175,18 +175,19 @@ fn lowerConstBorrow(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
 
 fn lowerCall(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const ast_rec = ast_typed.CallExpr.unpack(b.ast, idx);
-
-    // Lower callee first; it may append to store.extra_data.
     const callee = try b.lowerNode(ast_rec.callee);
 
-    // Lower args → MirNodeIndex values in store.extra_data.
-    // Capture args_start AFTER lowering callee (which may have added extras).
-    const args_start: u32 = @intCast(b.store.extra_data.items.len);
+    // Collect lowered args into a temp buffer before appending to store.extra_data.
+    // Child lowering (via appendExtra) also writes to store.extra_data, so we must
+    // lower all args first, then append their MirNodeIndex values contiguously.
     const arg_count = ast_rec.args_end - ast_rec.args_start;
+    var arg_nodes = try std.ArrayListUnmanaged(MirNodeIndex).initCapacity(b.allocator, arg_count);
+    defer arg_nodes.deinit(b.allocator);
     for (b.ast.extra_data.items[ast_rec.args_start..ast_rec.args_end]) |au32| {
-        const arg_mir = try b.lowerNode(@enumFromInt(au32));
-        try b.store.extra_data.append(b.allocator, @intFromEnum(arg_mir));
+        try arg_nodes.append(b.allocator, try b.lowerNode(@enumFromInt(au32)));
     }
+    const args_start: u32 = @intCast(b.store.extra_data.items.len);
+    for (arg_nodes.items) |m| try b.store.extra_data.append(b.allocator, @intFromEnum(m));
     const args_end: u32 = @intCast(b.store.extra_data.items.len);
 
     // Re-intern named-arg StringIndex values (0 = no named args).

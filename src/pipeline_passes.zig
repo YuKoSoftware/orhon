@@ -268,6 +268,7 @@ pub fn runSemanticAndCodegen(
     cg.mir_root_idx = mir_root_idx_val;
     cg.mir_type_store = &mir_store.types;
     cg.mir_builder_var_types = &mir_builder.var_types;
+    cg.ast_reverse_map = &conv.reverse_map;
 
     try cg.generate(ast, mod_name);
     if (reporter.hasErrors()) return null;

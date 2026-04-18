@@ -61,6 +61,12 @@ pub const CodeGen = struct {
     mir_builder_var_types: ?*const std.StringHashMapUnmanaged(type_store_mod.TypeId) = null,
     /// AstNodeIndex → MirNodeIndex reverse map built from MirStore in generate().
     span_to_mir: std.AutoHashMapUnmanaged(ast_store_mod.AstNodeIndex, mir_store_mod.MirNodeIndex) = .{},
+    /// AstNodeIndex → *parser.Node bridge from ast_conv.ConvContext.reverse_map.
+    /// Needed for typeToZig calls when type annotations are stored as AstNodeIndex in MirStore.
+    ast_reverse_map: ?*const std.AutoHashMap(ast_store_mod.AstNodeIndex, *parser.Node) = null,
+    /// *parser.Node → AstNodeIndex inverse map (built from ast_reverse_map at start of generate()).
+    /// Enables bridge: old *mir.MirNode.ast → AstNodeIndex → MirStore lookup.
+    parser_to_ast_idx: std.AutoHashMapUnmanaged(*parser.Node, ast_store_mod.AstNodeIndex) = .{},
     // Zig-backed module — all declarations are re-exported from {name}_zig
     is_zig_module: bool = false,
     // Mixed module — user .orh + .zig sidecar; body-less decls re-exported from {name}_zig
@@ -216,6 +222,7 @@ pub const CodeGen = struct {
         self.pre_stmts.deinit(self.allocator);
         self.emitted_names.deinit(self.allocator);
         self.span_to_mir.deinit(self.allocator);
+        self.parser_to_ast_idx.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -277,6 +284,28 @@ pub const CodeGen = struct {
         return self.span_to_mir.get(span) orelse .none;
     }
 
+    /// Bridge AstNodeIndex → *parser.Node via ast_reverse_map. Returns null if not wired or not found.
+    pub fn getAstNode(self: *const CodeGen, idx: ast_store_mod.AstNodeIndex) ?*parser.Node {
+        if (self.ast_reverse_map) |rm| return rm.get(idx);
+        return null;
+    }
+
+    /// Bridge *parser.Node → MirNodeIndex via parser_to_ast_idx + span_to_mir.
+    /// Returns .none if the node has no corresponding MirStore entry.
+    pub fn getMirIdxForParserNode(self: *const CodeGen, node: *parser.Node) mir_store_mod.MirNodeIndex {
+        const ast_idx = self.parser_to_ast_idx.get(node) orelse return .none;
+        return self.span_to_mir.get(ast_idx) orelse .none;
+    }
+
+    /// Bridge *parser.Node → MirEntry via parser_to_ast_idx + span_to_mir + MirStore.
+    /// Returns null if not found. Prefer MirStore data over old MirNode fields when non-null.
+    pub fn getMirEntryForParserNode(self: *const CodeGen, node: *parser.Node) ?mir_store_mod.MirEntry {
+        const store = self.mir_store orelse return null;
+        const idx = self.getMirIdxForParserNode(node);
+        if (idx == .none) return null;
+        return store.getNode(idx);
+    }
+
     /// Generate Zig source from a program AST
     pub fn generate(self: *CodeGen, ast: *parser.Node, module_name: []const u8) !void {
         if (ast.* != .program) return;
@@ -293,6 +322,17 @@ pub const CodeGen = struct {
                 if (entry.span != .none) {
                     self.span_to_mir.putAssumeCapacityNoClobber(entry.span, idx);
                 }
+            }
+        }
+
+        // Build *parser.Node → AstNodeIndex inverse map from ast_reverse_map.
+        // Enables bridge: old MirNode.ast (*parser.Node) → AstNodeIndex → MirStore lookup.
+        if (self.ast_reverse_map) |rm| {
+            self.parser_to_ast_idx.clearRetainingCapacity();
+            try self.parser_to_ast_idx.ensureTotalCapacity(self.allocator, @intCast(rm.count()));
+            var it = rm.iterator();
+            while (it.next()) |entry| {
+                self.parser_to_ast_idx.putAssumeCapacity(entry.value_ptr.*, entry.key_ptr.*);
             }
         }
 

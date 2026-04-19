@@ -86,16 +86,18 @@ pub const MirBuilder = struct {
     }
 
     pub fn build(self: *MirBuilder, root: AstNodeIndex) !MirNodeIndex {
-        // Program root: iterate all top-level declarations so MirStore is fully populated.
-        // Returns a passthrough for the program node itself; the root index is not
-        // used for iteration — callers query MirStore via span_to_mir.
+        // Program root: lower all top-level declarations and return them packed as a
+        // Block so codegen can iterate via mir_typed.Block.getStmts(store, mir_root_idx).
         const kind = self.ast.getNode(root).tag;
         if (kind == .program) {
             const rec = ast_typed.Program.unpack(self.ast, root);
+            var top_level = std.ArrayListUnmanaged(MirNodeIndex){};
+            defer top_level.deinit(self.allocator);
             for (self.ast.extra_data.items[rec.top_level_start..rec.top_level_end]) |idx_u32| {
-                _ = try self.lowerNode(@enumFromInt(idx_u32));
+                const m = try self.lowerNode(@enumFromInt(idx_u32));
+                try top_level.append(self.allocator, m);
             }
-            return mir_typed.Passthrough.pack(self.store, self.allocator, root, .none, .plain, .{});
+            return mir_typed.Block.pack(self.store, self.allocator, root, .none, .plain, top_level.items);
         }
         return self.lowerNode(root);
     }

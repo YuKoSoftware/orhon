@@ -17,6 +17,7 @@ const stmts_impl = @import("codegen_stmts.zig");
 const exprs_impl = @import("codegen_exprs.zig");
 const match_impl = @import("codegen_match.zig");
 const mir_store_mod = @import("../mir_store.zig");
+const mir_typed = @import("../mir_typed.zig");
 const type_store_mod = @import("../type_store.zig");
 const ast_store_mod = @import("../ast_store.zig");
 
@@ -358,11 +359,37 @@ pub const CodeGen = struct {
 
         try self.emit("\n");
 
-        // Generate top-level declarations from MIR tree
+        // Generate top-level declarations.
+        // C-phase bridge: prefer MirStore ordering; look up old *MirNode per entry via span.
         const root = self.mir_root orelse return error.CompileError;
-        for (root.children) |m| {
-            try self.generateTopLevelMir(m);
-            try self.emit("\n");
+        if (self.mir_store) |store| {
+            // Build a temporary span→old-MirNode lookup for top-level decls only.
+            var span_to_old = std.AutoHashMapUnmanaged(ast_store_mod.AstNodeIndex, *mir.MirNode){};
+            defer span_to_old.deinit(self.allocator);
+            for (root.children) |m| {
+                if (self.parser_to_ast_idx.get(m.ast)) |ast_idx| {
+                    try span_to_old.put(self.allocator, ast_idx, m);
+                }
+            }
+            if (self.mir_root_idx != .none) {
+                for (mir_typed.Block.getStmts(store, self.mir_root_idx)) |idx| {
+                    const entry = store.getNode(idx);
+                    if (span_to_old.get(entry.span)) |m| {
+                        try self.generateTopLevelMir(m);
+                        try self.emit("\n");
+                    }
+                }
+            } else {
+                for (root.children) |m| {
+                    try self.generateTopLevelMir(m);
+                    try self.emit("\n");
+                }
+            }
+        } else {
+            for (root.children) |m| {
+                try self.generateTopLevelMir(m);
+                try self.emit("\n");
+            }
         }
 
         // Insert _unions import if any arbitrary unions were used in this module

@@ -128,7 +128,9 @@ pub fn inferArbitraryUnionTagMir(m: *const mir.MirNode, members_rt: ?[]const RT)
 // ============================================================
 
 /// Returns true if idx is a real MirStore entry (not .none, not synthetic).
-/// Synthetic indices start at 0x80000001 and are NOT valid MirStore slots.
+/// Synthetic indices start at 0x80000001; real store indices are dense from 1.
+/// Invariant: store.nodes.len stays well below 0x80000000 — any translation
+/// unit large enough to break this will fail long before reaching codegen.
 inline fn isMirStoreIdx(store: *const MirStore, idx: MirNodeIndex) bool {
     if (idx == .none) return false;
     const raw: u32 = @intFromEnum(idx);
@@ -522,12 +524,11 @@ fn generateBinaryMir(cg: *CodeGen, store: *const MirStore, idx: MirNodeIndex) an
         }
     }
 
-    // Vector operand detection for arithmetic — use bridge for resolved_type
+    // Vector/float detection bridges to old MirNode. If lhs has no old-tree entry,
+    // both default to false (integer semantics). Task 5 must replace with TypeClass/type_id.
     const lhs_is_vec = if (cg.getOldMirNode(rec.lhs)) |lm| mirIsVector(lm) else false;
     const rhs_is_vec = if (cg.getOldMirNode(rec.rhs)) |rm| mirIsVector(rm) else false;
     const any_vec = lhs_is_vec or rhs_is_vec;
-
-    // Float op detection: use type_class or bridge resolved_type
     const is_float_op = blk: {
         if (cg.getOldMirNode(rec.lhs)) |lm| {
             break :blk lm.resolved_type == .primitive and lm.resolved_type.primitive.isFloat();
@@ -1428,7 +1429,8 @@ pub fn generateForMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
                     try emitForIterMir(cg, store, @enumFromInt(iter_u32));
                 }
                 try cg.emit(") |_orhon_entry");
-                // Extra captures beyond struct fields — use bridge for resolved_type
+                // Bridge: resolved_type is not in MirStore — falls back to null (positional access)
+                // for pure-MirStore nodes. Task 5 must wire type_id into resolveStructFieldNames.
                 const field_names = if (cg.getOldMirNode(first_iter)) |fm|
                     resolveStructFieldNames(fm.resolved_type, cg.decls)
                 else

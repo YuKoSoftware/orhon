@@ -588,8 +588,10 @@ pub const CodeGen = struct {
     pub fn generateCoercedExprMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return exprs_impl.generateCoercedExprMir(self, idx); }
 
     pub fn mirIsString(m: *const mir.MirNode) bool { return exprs_impl.mirIsString(m); }
+    pub fn mirIsStringFromStore(store: *const mir_store_mod.MirStore, idx: mir_store_mod.MirNodeIndex) bool { return exprs_impl.mirIsStringFromStore(store, idx); }
 
     pub fn mirIsVector(m: *const mir.MirNode) bool { return exprs_impl.mirIsVector(m); }
+    // mirIsVector has no MirStore variant: TypeClass has no .vector value; bridge via getOldMirNode
 
     pub fn generateContinueExprMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return exprs_impl.generateContinueExprMir(self, idx); }
 
@@ -951,8 +953,11 @@ pub fn isTypeAlias(type_annotation: ?*parser.Node) bool { return decls_impl.isTy
 
 /// File-scope mirIsString for helper modules (codegen_match.zig needs this without importing exprs directly).
 pub fn mirIsString(m: *const mir.MirNode) bool { return exprs_impl.mirIsString(m); }
+/// File-scope mirIsStringFromStore — MirStore path for new callers.
+pub fn mirIsStringFromStore(store: *const mir_store_mod.MirStore, idx: mir_store_mod.MirNodeIndex) bool { return exprs_impl.mirIsStringFromStore(store, idx); }
 
 /// File-scope mirIsVector for helper modules.
+/// No MirStore variant: TypeClass has no .vector value — bridge via getOldMirNode in callers.
 pub fn mirIsVector(m: *const mir.MirNode) bool { return exprs_impl.mirIsVector(m); }
 
 /// File-scope mirContainsIdentifier for helper modules (new MirStore-based path).

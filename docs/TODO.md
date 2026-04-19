@@ -116,6 +116,8 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 - [x] **C7** Phase C merge — 361/361 green, committed 2026-04-19 (v0.51.8)
 > - `m.union_tag` on Binary nodes → MirStore Binary has no union_tag; must compute from var_types at call site
 
+> **⬅ RESUME HERE: D1** — Phase B complete (v0.52.0, 2026-04-19, 361/361 green). Start Phase D cleanup.
+
 ### Phase D — Cleanup `0.5 week`
 
 - [ ] **D1** `AstStore` pretty-printer + debug dump

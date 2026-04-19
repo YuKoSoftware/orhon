@@ -168,7 +168,15 @@ fn emitStatementsWithNarrowing(cg: *CodeGen, stmts: []*mir.MirNode) anyerror!voi
     for (stmts, 0..) |child, idx| {
         try cg.flushPreStmts();
         try cg.emitIndent();
-        try generateStatementMir(cg, cg.mirIdx(child));
+        // Injected nodes (temp_var, injected_defer) share AST pointers with their
+        // interpolation expression counterpart, so mirIdx() would return the MirStore
+        // index of the interpolation expr rather than the injected node.  Bypass the
+        // MirStore dispatch and call the old-path implementation directly.
+        if (child.kind == .temp_var or child.kind == .injected_defer) {
+            try generateStatementMirImpl(cg, child);
+        } else {
+            try generateStatementMir(cg, cg.mirIdx(child));
+        }
         try cg.emit("\n");
         // Post-if narrowing: if this if_stmt has early exit and post_branch,
         // emit a binding for the narrowed variable and substitute in remaining siblings.

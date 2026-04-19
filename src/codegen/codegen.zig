@@ -599,7 +599,7 @@ pub const CodeGen = struct {
 
     pub fn generateDestructMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return exprs_impl.generateDestructMir(self, idx); }
 
-    pub fn mirContainsIdentifier(m: *mir.MirNode, name: []const u8) bool { return match_impl.mirContainsIdentifier(m, name); }
+    pub fn mirContainsIdentifier(store: *const mir_store_mod.MirStore, idx: mir_store_mod.MirNodeIndex, name: []const u8) bool { return match_impl.mirContainsIdentifier(store, idx, name); }
 
     pub fn hasGuardedArm(arms: []*mir.MirNode) bool { return match_impl.hasGuardedArm(arms); }
 
@@ -955,8 +955,8 @@ pub fn mirIsString(m: *const mir.MirNode) bool { return exprs_impl.mirIsString(m
 /// File-scope mirIsVector for helper modules.
 pub fn mirIsVector(m: *const mir.MirNode) bool { return exprs_impl.mirIsVector(m); }
 
-/// File-scope mirContainsIdentifier for helper modules (codegen_match.zig calls this recursively).
-pub fn mirContainsIdentifier(m: *mir.MirNode, name: []const u8) bool { return match_impl.mirContainsIdentifier(m, name); }
+/// File-scope mirContainsIdentifier for helper modules (new MirStore-based path).
+pub fn mirContainsIdentifier(store: *const mir_store_mod.MirStore, idx: mir_store_mod.MirNodeIndex, name: []const u8) bool { return match_impl.mirContainsIdentifier(store, idx, name); }
 
 /// Prefix/suffix pair for wrapping a union-typed expression to yield its
 /// unwrapped value. Callers emit `prefix`, then the expression, then `suffix`.

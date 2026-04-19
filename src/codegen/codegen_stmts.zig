@@ -189,10 +189,20 @@ fn emitStatementsWithNarrowing(cg: *CodeGen, stmts: []*mir.MirNode) anyerror!voi
                     // Check if any subsequent sibling references the variable
                     const remaining = stmts[idx + 1 ..];
                     var any_uses = false;
-                    for (remaining) |sib| {
-                        if (match_impl.mirContainsIdentifier(sib, var_name)) {
-                            any_uses = true;
-                            break;
+                    if (cg.mir_store) |_store| {
+                        for (remaining) |sib| {
+                            if (match_impl.mirContainsIdentifier(_store, cg.mirIdx(sib), var_name)) {
+                                any_uses = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        // Old path: no MirStore, fall back to old MirNode recursive scan
+                        for (remaining) |sib| {
+                            if (match_impl.mirContainsIdentifierOld(sib, var_name)) {
+                                any_uses = true;
+                                break;
+                            }
                         }
                     }
                     if (any_uses) {
@@ -332,8 +342,8 @@ pub fn generateStatementMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
                     // Then-block with narrowing
                     if (rec.then_block != .none) {
                         if (narrowing.then_branch) |tb| {
-                            if (cg.getOldMirNode(rec.then_block)) |then_m| {
-                                if (match_impl.mirContainsIdentifier(then_m, vn)) {
+                            if (match_impl.mirContainsIdentifier(store, rec.then_block, vn)) {
+                                if (cg.getOldMirNode(rec.then_block)) |then_m| {
                                     try emitNarrowedBlock(cg, then_m, vn, tb, tc);
                                 } else {
                                     try cg.generateBlockMir(rec.then_block);
@@ -351,8 +361,8 @@ pub fn generateStatementMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
                         if (store.getNode(rec.else_block).tag == .if_stmt) {
                             try generateStatementMir(cg, rec.else_block);
                         } else if (narrowing.else_branch) |eb| {
-                            if (cg.getOldMirNode(rec.else_block)) |else_m| {
-                                if (match_impl.mirContainsIdentifier(else_m, vn)) {
+                            if (match_impl.mirContainsIdentifier(store, rec.else_block, vn)) {
+                                if (cg.getOldMirNode(rec.else_block)) |else_m| {
                                     try emitNarrowedBlock(cg, else_m, vn, eb, tc);
                                 } else {
                                     try cg.generateBlockMir(rec.else_block);
@@ -587,11 +597,13 @@ fn generateStatementMirImpl(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
             if (readNarrowingFromStore(cg, m.ast) orelse m.narrowing) |narrowing| {
                 const tc = narrowing.type_class;
                 const vn = narrowing.var_name;
+                const old_store = cg.mir_store;
                 // Then-block with narrowing
                 if (m.children.len > 1) {
                     const then_m = m.thenBlock();
                     if (narrowing.then_branch) |tb| {
-                        if (match_impl.mirContainsIdentifier(then_m, vn)) {
+                        const then_uses = if (old_store) |s| match_impl.mirContainsIdentifier(s, cg.mirIdx(then_m), vn) else false;
+                        if (then_uses) {
                             try emitNarrowedBlock(cg, then_m, vn, tb, tc);
                         } else {
                             try cg.generateBlockMir(cg.mirIdx(then_m));
@@ -606,7 +618,8 @@ fn generateStatementMirImpl(cg: *CodeGen, m: *mir.MirNode) anyerror!void {
                     if (else_m.kind == .if_stmt) {
                         try generateStatementMirImpl(cg, else_m);
                     } else if (narrowing.else_branch) |eb| {
-                        if (match_impl.mirContainsIdentifier(else_m, vn)) {
+                        const else_uses = if (old_store) |s| match_impl.mirContainsIdentifier(s, cg.mirIdx(else_m), vn) else false;
+                        if (else_uses) {
                             try emitNarrowedBlock(cg, else_m, vn, eb, tc);
                         } else {
                             try cg.generateBlockMir(cg.mirIdx(else_m));

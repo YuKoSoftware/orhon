@@ -13,14 +13,65 @@ const types = @import("../types.zig");
 const RT = types.ResolvedType;
 const builtins = @import("../builtins.zig");
 const mir_store_mod = @import("../mir_store.zig");
+const mir_typed = @import("../mir_typed.zig");
 
 const CodeGen = codegen.CodeGen;
 const MirNodeIndex = mir_store_mod.MirNodeIndex;
+const MirStore = mir_store_mod.MirStore;
 
-pub fn mirContainsIdentifier(m: *mir.MirNode, name: []const u8) bool {
+/// Old *MirNode-based implementation — kept for arm-iteration paths (arm loop is interleaved,
+/// not a flat MirNodeIndex list) and for existing tests.
+pub fn mirContainsIdentifierOld(m: *mir.MirNode, name: []const u8) bool {
     if (m.kind == .identifier and std.mem.eql(u8, m.name orelse "", name)) return true;
     for (m.children) |child| {
-        if (mirContainsIdentifier(child, name)) return true;
+        if (mirContainsIdentifierOld(child, name)) return true;
+    }
+    return false;
+}
+
+/// MirStore-based implementation — used by new callers that already have MirNodeIndex.
+pub fn mirContainsIdentifier(store: *const MirStore, idx: MirNodeIndex, name: []const u8) bool {
+    if (idx == .none) return false;
+    const entry = store.getNode(idx);
+    if (entry.tag == .identifier) {
+        const rec = mir_typed.Identifier.unpack(store, idx);
+        return std.mem.eql(u8, store.strings.get(rec.name), name);
+    }
+    switch (entry.tag) {
+        .block => {
+            for (mir_typed.Block.getStmts(store, idx)) |s|
+                if (mirContainsIdentifier(store, s, name)) return true;
+        },
+        .binary => {
+            const rec = mir_typed.Binary.unpack(store, idx);
+            if (mirContainsIdentifier(store, rec.lhs, name)) return true;
+            if (mirContainsIdentifier(store, rec.rhs, name)) return true;
+        },
+        .call => {
+            const rec = mir_typed.Call.unpack(store, idx);
+            if (mirContainsIdentifier(store, rec.callee, name)) return true;
+            for (store.extra_data.items[rec.args_start..rec.args_end]) |u|
+                if (mirContainsIdentifier(store, @enumFromInt(u), name)) return true;
+        },
+        .field_access => {
+            const rec = mir_typed.FieldAccess.unpack(store, idx);
+            if (mirContainsIdentifier(store, rec.object, name)) return true;
+        },
+        .if_stmt => {
+            const rec = mir_typed.IfStmt.unpack(store, idx);
+            if (mirContainsIdentifier(store, rec.condition, name)) return true;
+            if (rec.then_block != .none) if (mirContainsIdentifier(store, rec.then_block, name)) return true;
+            if (rec.else_block != .none) if (mirContainsIdentifier(store, rec.else_block, name)) return true;
+        },
+        .var_decl => {
+            const rec = mir_typed.VarDecl.unpack(store, idx);
+            if (rec.value != .none) if (mirContainsIdentifier(store, rec.value, name)) return true;
+        },
+        .unary => {
+            const rec = mir_typed.Unary.unpack(store, idx);
+            if (mirContainsIdentifier(store, rec.operand, name)) return true;
+        },
+        else => {},
     }
     return false;
 }
@@ -28,7 +79,7 @@ pub fn mirContainsIdentifier(m: *mir.MirNode, name: []const u8) bool {
 /// Check if the match arm body references the match variable.
 fn armUsesMatchVar(body: *mir.MirNode, match_var: ?[]const u8) bool {
     const mv = match_var orelse return false;
-    return mirContainsIdentifier(body, mv);
+    return mirContainsIdentifierOld(body, mv);
 }
 
 /// Generate a match arm body with variable name substitution.
@@ -113,7 +164,7 @@ pub fn generateGuardedMatchMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
             // If the body doesn't reference the variable, suppress with _ = x to
             // avoid "unused local constant" from Zig. If the body does reference it,
             // suppress the "pointless discard" by omitting _ = x.
-            const body_uses_var = mirContainsIdentifier(arm_mir.body(), pat_name);
+            const body_uses_var = mirContainsIdentifierOld(arm_mir.body(), pat_name);
             if (body_uses_var) {
                 try cg.emitFmt("const {s} = _m;\n", .{pat_name});
             } else {
@@ -1040,15 +1091,15 @@ test "mapOverflowBuiltin" {
 
 test "mirContainsIdentifier" {
     var leaf = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .identifier, .children = &.{}, .name = "x" };
-    try std.testing.expect(mirContainsIdentifier(&leaf, "x"));
-    try std.testing.expect(!mirContainsIdentifier(&leaf, "y"));
+    try std.testing.expect(mirContainsIdentifierOld(&leaf, "x"));
+    try std.testing.expect(!mirContainsIdentifierOld(&leaf, "y"));
 
     // Nested: parent with child containing "y"
     var child = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .identifier, .children = &.{}, .name = "y" };
     var children = [_]*mir.MirNode{&child};
     var parent = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .binary, .children = &children, .name = null };
-    try std.testing.expect(mirContainsIdentifier(&parent, "y"));
-    try std.testing.expect(!mirContainsIdentifier(&parent, "z"));
+    try std.testing.expect(mirContainsIdentifierOld(&parent, "y"));
+    try std.testing.expect(!mirContainsIdentifierOld(&parent, "z"));
 }
 
 test "hasGuardedArm" {

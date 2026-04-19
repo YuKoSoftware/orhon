@@ -14,7 +14,6 @@ const RT = types.ResolvedType;
 const builtins = @import("../builtins.zig");
 const mir_store_mod = @import("../mir_store.zig");
 const mir_typed = @import("../mir_typed.zig");
-const exprs_impl = @import("codegen_exprs.zig");
 
 const CodeGen = codegen.CodeGen;
 const MirNodeIndex = mir_store_mod.MirNodeIndex;
@@ -760,7 +759,7 @@ pub fn generateInterpolatedStringMirFromStore(cg: *CodeGen, store: *const MirSto
         } else {
             // Expression part — payload is MirNodeIndex
             const expr_idx: MirNodeIndex = @enumFromInt(payload);
-            if (exprs_impl.mirIsStringFromStore(store, expr_idx)) {
+            if (CodeGen.mirIsStringFromStore(store, expr_idx)) {
                 try cg.pre_stmts.appendSlice(cg.allocator, "{s}");
             } else {
                 try cg.pre_stmts.appendSlice(cg.allocator, "{}");

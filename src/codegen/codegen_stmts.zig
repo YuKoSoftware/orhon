@@ -57,6 +57,41 @@ fn readNarrowingFromStore(cg: *const CodeGen, if_ast: *parser.Node) ?mir.IfNarro
     };
 }
 
+/// Read IfNarrowing directly from a MirNodeIndex — avoids the old MirNode bridge round-trip.
+/// Used by emitStatementsWithNarrowing which already has MirNodeIndex.
+/// String slices borrow from cg.mir_store.strings — valid during generate().
+fn readNarrowingFromStoreIdx(cg: *const CodeGen, idx: MirNodeIndex) ?mir.IfNarrowing {
+    const store = cg.mir_store orelse return null;
+    if (idx == .none) return null;
+    const raw: u32 = @intFromEnum(idx);
+    if (raw >= store.nodes.len) return null;
+    const entry = store.getNode(idx);
+    if (entry.tag != .if_stmt) return null;
+    const rec = mir_typed.IfStmt.unpack(store, idx);
+    if (rec.narrowing_extra == .none) return null;
+    const nr = store.extraData(mir_typed.IfNarrowingExtra, rec.narrowing_extra);
+    const tc: mir.TypeClass = @enumFromInt(nr.type_class);
+    return .{
+        .var_name = store.strings.get(nr.var_name),
+        .type_class = tc,
+        .then_branch = if (nr.has_then != 0) .{
+            .type_name = store.strings.get(nr.then_type_name),
+            .positional_tag = if (nr.then_positional_tag == 0xFFFF_FFFF) null else @intCast(nr.then_positional_tag),
+            .kind = @enumFromInt(nr.then_kind),
+        } else null,
+        .else_branch = if (nr.has_else != 0) .{
+            .type_name = store.strings.get(nr.else_type_name),
+            .positional_tag = if (nr.else_positional_tag == 0xFFFF_FFFF) null else @intCast(nr.else_positional_tag),
+            .kind = @enumFromInt(nr.else_kind),
+        } else null,
+        .post_branch = if (nr.has_post != 0) .{
+            .type_name = store.strings.get(nr.post_type_name),
+            .positional_tag = if (nr.post_positional_tag == 0xFFFF_FFFF) null else @intCast(nr.post_positional_tag),
+            .kind = @enumFromInt(nr.post_kind),
+        } else null,
+    };
+}
+
 // ============================================================
 // BLOCKS AND STATEMENTS
 // ============================================================
@@ -188,10 +223,7 @@ fn emitStatementsWithNarrowing(cg: *CodeGen, stmts: []const MirNodeIndex) anyerr
         // Post-if narrowing: if this if_stmt has early exit and post_branch,
         // emit a binding for the narrowed variable and substitute in remaining siblings.
         if (store.getNode(child_idx).tag == .if_stmt) {
-            const narrowing_opt: ?mir.IfNarrowing = if (cg.getOldMirNode(child_idx)) |m|
-                readNarrowingFromStore(cg, m.ast) orelse m.narrowing
-            else
-                null;
+            const narrowing_opt: ?mir.IfNarrowing = readNarrowingFromStoreIdx(cg, child_idx);
             if (narrowing_opt) |narrowing| {
                 if (narrowing.post_branch) |pb| {
                     const var_name = narrowing.var_name;

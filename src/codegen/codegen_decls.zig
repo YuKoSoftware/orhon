@@ -550,7 +550,9 @@ fn emitStructBodyFromStore(cg: *CodeGen, store: *const MirStore, member_extras: 
             .func => {
                 const prev = cg.current_func_mir;
                 // current_func_mir still expects old *mir.MirNode; bridge via getOldMirNode.
-                // TODO Task 5: replace with current_func_idx.
+                // If getOldMirNode returns null (no old-tree entry), current_func_mir retains
+                // the outer struct's value — stale but non-crashing for this migration phase.
+                // TODO Task 5: replace with current_func_idx field.
                 if (cg.getOldMirNode(child_idx)) |old_m| cg.current_func_mir = old_m;
                 defer cg.current_func_mir = prev;
                 try cg.generateFuncMir(child_idx);
@@ -862,17 +864,3 @@ fn isSidecarStructOld(m: *mir.MirNode) bool {
     return true;
 }
 
-/// Check if a struct from MirStore is a sidecar struct — all its methods are body-less.
-/// MirStore version — used by generateStructMirFromStore.
-fn isSidecarStructFromStore(store: *const MirStore, rec: mir_typed.StructDef.Record) bool {
-    const member_extras = store.extra_data.items[rec.members_start..rec.members_end];
-    if (member_extras.len == 0) return true;
-    for (member_extras) |mu32| {
-        const child_idx: MirNodeIndex = @enumFromInt(mu32);
-        if (store.getNode(child_idx).tag == .func) {
-            const func_rec = mir_typed.Func.unpack(store, child_idx);
-            if (mir_typed.Block.getStmts(store, func_rec.body).len > 0) return false;
-        }
-    }
-    return true;
-}

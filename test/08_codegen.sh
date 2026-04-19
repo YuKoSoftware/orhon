@@ -84,15 +84,15 @@ else fail "bare call discards return value"; fi
 # ── Interpolation error propagation ─────────────────────────────
 
 # Verify codegen.zig emits safe error propagation for interpolation allocPrint calls.
-# generateInterpolatedStringMir and generateInterpolatedStringMirInline must use
-# 'catch |err| return err' instead of 'catch unreachable'.
+# generateInterpolatedStringMirFromStore must use 'catch |err| return err' instead
+# of 'catch unreachable' (consolidated into one function after B10 MirStore migration).
 
 CODEGEN_SRC="$REPO_DIR/src/codegen/codegen.zig"
 CODEGEN_MATCH="$REPO_DIR/src/codegen/codegen_match.zig"
 
 # MIR interpolation functions are in codegen_match.zig
 INTERP_SAFE_COUNT=$(grep -c 'catch |err| return err' "$CODEGEN_MATCH" 2>/dev/null || echo 0)
-if [ "$INTERP_SAFE_COUNT" -ge 2 ]; then
+if [ "$INTERP_SAFE_COUNT" -ge 1 ]; then
     pass "interpolation propagates OOM (no catch unreachable)"
 else
     fail "interpolation propagates OOM (no catch unreachable)"

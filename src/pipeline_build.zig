@@ -82,7 +82,6 @@ pub fn codegenSource(alloc: std.mem.Allocator, source: []const u8, reporter: *er
     cg.mir_store = &mir_store;
     cg.mir_root_idx = mir_root_idx;
     cg.mir_type_store = &mir_store.types;
-    cg.mir_builder_var_types = &mir_builder.var_types;
     cg.ast_reverse_map = &conv.reverse_map;
     try cg.generate(ast, "testmod");
     return try alloc.dupe(u8, cg.getOutput());
@@ -207,7 +206,6 @@ test "full pipeline - hello world" {
     cg.mir_store = &mir_store2;
     cg.mir_root_idx = mir_root_idx2;
     cg.mir_type_store = &mir_store2.types;
-    cg.mir_builder_var_types = &mir_builder2.var_types;
     cg.ast_reverse_map = &conv.reverse_map;
     try cg.generate(ast, "testmod");
     try std.testing.expect(!reporter.hasErrors());

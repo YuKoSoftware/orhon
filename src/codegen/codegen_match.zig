@@ -19,16 +19,6 @@ const CodeGen = codegen.CodeGen;
 const MirNodeIndex = mir_store_mod.MirNodeIndex;
 const MirStore = mir_store_mod.MirStore;
 
-/// Old *MirNode-based implementation — kept for arm-iteration paths (arm loop is interleaved,
-/// not a flat MirNodeIndex list) and for existing tests.
-pub fn mirContainsIdentifierOld(m: *mir.MirNode, name: []const u8) bool {
-    if (m.kind == .identifier and std.mem.eql(u8, m.name orelse "", name)) return true;
-    for (m.children) |child| {
-        if (mirContainsIdentifierOld(child, name)) return true;
-    }
-    return false;
-}
-
 /// MirStore-based implementation — used by new callers that already have MirNodeIndex.
 pub fn mirContainsIdentifier(store: *const MirStore, idx: MirNodeIndex, name: []const u8) bool {
     if (idx == .none) return false;
@@ -115,14 +105,6 @@ fn generateArmBodyWithSubst(cg: *CodeGen, body: MirNodeIndex, match_var: ?[]cons
     }
     try cg.generateBlockMir(body);
     cg.match_var_subst = prev;
-}
-
-/// Returns true if any arm in the match has a guard expression.
-pub fn hasGuardedArm(arms: []*mir.MirNode) bool {
-    for (arms) |arm_mir| {
-        if (arm_mir.guard() != null) return true;
-    }
-    return false;
 }
 
 /// Guarded match — emits as a scoped if/else chain with a temp variable.
@@ -688,136 +670,6 @@ pub fn generateStringMatchMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
     }
 }
 
-/// MIR-path interpolated string — inline variant used by temp_var statement handler.
-/// Emits allocPrint directly to main output (no hoisting). The temp_var path already
-/// wraps this in `const _orhon_interp_N = ...;` with a sibling injected_defer node,
-/// so no pre_stmts hoisting is needed here.
-pub fn generateInterpolatedStringMirInline(cg: *CodeGen, parts: []const parser.InterpolatedPart, expr_children: []*mir.MirNode) anyerror!void {
-    try cg.emit("std.fmt.allocPrint(std.heap.smp_allocator, \"");
-    var expr_idx: usize = 0;
-    // Build format string
-    for (parts) |part| {
-        switch (part) {
-            .literal => |text| {
-                for (text) |ch| {
-                    switch (ch) {
-                        '{' => try cg.emit("{{"),
-                        '}' => try cg.emit("}}"),
-                        '\\' => try cg.emit("\\"),
-                        else => {
-                            const buf: [1]u8 = .{ch};
-                            try cg.emit(&buf);
-                        },
-                    }
-                }
-            },
-            .expr => {
-                if (expr_idx < expr_children.len and codegen.mirIsString(expr_children[expr_idx])) {
-                    try cg.emit("{s}");
-                } else {
-                    try cg.emit("{}");
-                }
-                expr_idx += 1;
-            },
-        }
-    }
-    try cg.emit("\", .{");
-    // Build args tuple
-    var first = true;
-    for (expr_children) |child| {
-        if (!first) try cg.emit(", ");
-        try cg.generateExprMir(cg.mirIdx(child));
-        first = false;
-    }
-    // Use error propagation only if the enclosing function has an error return type.
-    // Otherwise use unreachable — smp_allocator OOM is extremely rare in practice.
-    const ret_tc = cg.funcReturnTypeClass();
-    if (ret_tc == .error_union or ret_tc == .null_error_union) {
-        try cg.emit("}) catch |err| return err");
-    } else {
-        try cg.emit("}) catch unreachable");
-    }
-}
-
-/// MIR-path interpolated string — uses interp_parts for literals, children for exprs.
-/// Hoists the allocPrint call to a temp variable in pre_stmts, then emits only the
-/// temp var name — paired with defer free to avoid a memory leak.
-pub fn generateInterpolatedStringMir(cg: *CodeGen, parts: []const parser.InterpolatedPart, expr_children: []*mir.MirNode) anyerror!void {
-    const n = cg.interp_count;
-    cg.interp_count += 1;
-
-    // Build indent prefix for hoisted lines
-    var indent_buf: [256]u8 = undefined;
-    var indent_len: usize = 0;
-    var i: usize = 0;
-    while (i < cg.indent and indent_len + 4 <= indent_buf.len) : (i += 1) {
-        @memcpy(indent_buf[indent_len .. indent_len + 4], "    ");
-        indent_len += 4;
-    }
-    const indent_str = indent_buf[0..indent_len];
-
-    var name_buf: [32]u8 = undefined;
-    const var_name = std.fmt.bufPrint(&name_buf, "_interp_{d}", .{n}) catch "_interp";
-    try cg.pre_stmts.appendSlice(cg.allocator, indent_str);
-    try cg.pre_stmts.appendSlice(cg.allocator, "const ");
-    try cg.pre_stmts.appendSlice(cg.allocator, var_name);
-    try cg.pre_stmts.appendSlice(cg.allocator, " = std.fmt.allocPrint(std.heap.smp_allocator, \"");
-
-    // Build format string into pre_stmts
-    var expr_idx: usize = 0;
-    for (parts) |part| {
-        switch (part) {
-            .literal => |text| {
-                for (text) |ch| {
-                    switch (ch) {
-                        '{' => try cg.pre_stmts.appendSlice(cg.allocator, "{{"),
-                        '}' => try cg.pre_stmts.appendSlice(cg.allocator, "}}"),
-                        '\\' => try cg.pre_stmts.appendSlice(cg.allocator, "\\"),
-                        else => try cg.pre_stmts.append(cg.allocator, ch),
-                    }
-                }
-            },
-            .expr => {
-                if (expr_idx < expr_children.len and codegen.mirIsString(expr_children[expr_idx])) {
-                    try cg.pre_stmts.appendSlice(cg.allocator, "{s}");
-                } else {
-                    try cg.pre_stmts.appendSlice(cg.allocator, "{}");
-                }
-                expr_idx += 1;
-            },
-        }
-    }
-    try cg.pre_stmts.appendSlice(cg.allocator, "\", .{");
-
-    // Redirect output to pre_stmts to emit arg expressions
-    const saved_output = cg.output;
-    cg.output = cg.pre_stmts;
-    var first = true;
-    for (expr_children) |child| {
-        if (!first) try cg.emit(", ");
-        try cg.generateExprMir(cg.mirIdx(child));
-        first = false;
-    }
-    cg.pre_stmts = cg.output;
-    cg.output = saved_output;
-
-    // Use error propagation only if the enclosing function has an error return type.
-    const ret_tc2 = cg.funcReturnTypeClass();
-    if (ret_tc2 == .error_union or ret_tc2 == .null_error_union) {
-        try cg.pre_stmts.appendSlice(cg.allocator, "}) catch |err| return err;\n");
-    } else {
-        try cg.pre_stmts.appendSlice(cg.allocator, "}) catch unreachable;\n");
-    }
-    // Append: <indent>defer std.heap.smp_allocator.free(_interp_N);
-    try cg.pre_stmts.appendSlice(cg.allocator, indent_str);
-    try cg.pre_stmts.appendSlice(cg.allocator, "defer std.heap.smp_allocator.free(");
-    try cg.pre_stmts.appendSlice(cg.allocator, var_name);
-    try cg.pre_stmts.appendSlice(cg.allocator, ");\n");
-
-    // Emit just the temp var name as the expression
-    try cg.emit(var_name);
-}
-
 /// MIR-path interpolated string — MirStore variant.
 /// Reads (tag, payload) pairs from extra_data[parts_start..parts_end]:
 ///   tag==0: string literal (payload is StringIndex)
@@ -921,7 +773,10 @@ fn emitIntrospectionType(cg: *CodeGen, store: *const MirStore, arg_idx: MirNodeI
         .identifier => blk: {
             const rec = mir_typed.Identifier.unpack(store, arg_idx);
             const id_name = store.strings.get(rec.name);
-            if (entry.type_id == .none) break :blk false;
+            if (entry.type_id == .none) {
+                // Unknown-type identifier in a compt func — likely a type parameter.
+                break :blk cg.inComptFunc();
+            }
             const rt = store.types.get(entry.type_id);
             break :blk switch (rt) {
                 .named => |n| std.mem.eql(u8, id_name, n),
@@ -930,7 +785,14 @@ fn emitIntrospectionType(cg: *CodeGen, store: *const MirStore, arg_idx: MirNodeI
             };
         },
         else => blk: {
-            if (entry.type_id == .none) break :blk false;
+            if (entry.type_id == .none) {
+                if (entry.tag == .compiler_fn) {
+                    const cf_rec = mir_typed.CompilerFn.unpack(store, arg_idx);
+                    const name = store.strings.get(cf_rec.name);
+                    if (std.mem.eql(u8, name, "fieldType")) break :blk true;
+                }
+                break :blk false;
+            }
             const rt = store.types.get(entry.type_id);
             break :blk rt == .primitive and rt.primitive == .@"type";
         },
@@ -1204,40 +1066,11 @@ pub fn generateOverflowExprMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
 }
 
 /// MIR-path fill default arguments.
+/// Old MirNode tree no longer runs — getOldMirNode always returns null.
 pub fn fillDefaultArgsMir(cg: *CodeGen, callee_idx: MirNodeIndex, actual_arg_count: usize) anyerror!void {
-    const callee_mir = cg.getOldMirNode(callee_idx) orelse return;
-    // Resolve function name from callee MirNode
-    const func_name: []const u8 = if (callee_mir.kind == .identifier)
-        callee_mir.name orelse return
-    else if (callee_mir.kind == .field_access)
-        callee_mir.name orelse return
-    else
-        return;
-
-    // Find the function's MirNode from the MIR root to get param defaults
-    const func_mir = findFuncMir(cg, func_name) orelse return;
-    const mir_params = func_mir.params();
-    if (actual_arg_count >= mir_params.len) return;
-
-    var wrote_any = actual_arg_count > 0;
-    for (mir_params[actual_arg_count..]) |param_m| {
-        if (param_m.defaultChild()) |dv_mir| {
-            if (wrote_any) try cg.emit(", ");
-            try cg.generateExprMir(cg.mirIdx(dv_mir));
-            wrote_any = true;
-        }
-    }
-}
-
-/// Find a function's MirNode by name in the MIR root.
-fn findFuncMir(cg: *CodeGen, func_name: []const u8) ?*mir.MirNode {
-    if (cg.mir_root) |root| {
-        for (root.children) |child| {
-            if (child.kind == .func and child.name != null and
-                std.mem.eql(u8, child.name.?, func_name)) return child;
-        }
-    }
-    return null;
+    _ = cg;
+    _ = callee_idx;
+    _ = actual_arg_count;
 }
 
 // ============================================================
@@ -1306,32 +1139,3 @@ test "mapOverflowBuiltin" {
     try std.testing.expect(mapOverflowBuiltin(.div) == null);
 }
 
-test "mirContainsIdentifier" {
-    var leaf = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .identifier, .children = &.{}, .name = "x" };
-    try std.testing.expect(mirContainsIdentifierOld(&leaf, "x"));
-    try std.testing.expect(!mirContainsIdentifierOld(&leaf, "y"));
-
-    // Nested: parent with child containing "y"
-    var child = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .identifier, .children = &.{}, .name = "y" };
-    var children = [_]*mir.MirNode{&child};
-    var parent = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .binary, .children = &children, .name = null };
-    try std.testing.expect(mirContainsIdentifierOld(&parent, "y"));
-    try std.testing.expect(!mirContainsIdentifierOld(&parent, "z"));
-}
-
-test "hasGuardedArm" {
-    var pat = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .literal, .children = &.{} };
-    var body_node = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .block, .children = &.{} };
-    // No guard (2 children)
-    var children2 = [_]*mir.MirNode{ &pat, &body_node };
-    var arm1 = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .match_arm, .children = &children2 };
-    var arms_no_guard = [_]*mir.MirNode{&arm1};
-    try std.testing.expect(!hasGuardedArm(&arms_no_guard));
-
-    // With guard (3 children)
-    var guard_n = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .binary, .children = &.{} };
-    var children3 = [_]*mir.MirNode{ &pat, &guard_n, &body_node };
-    var arm2 = mir.MirNode{ .ast = undefined, .resolved_type = .unknown, .type_class = .plain, .kind = .match_arm, .children = &children3 };
-    var arms_with_guard = [_]*mir.MirNode{&arm2};
-    try std.testing.expect(hasGuardedArm(&arms_with_guard));
-}

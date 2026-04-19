@@ -3,19 +3,14 @@
 
 pub const TypeClass = @import("mir_types.zig").TypeClass;
 pub const Coercion = @import("mir_types.zig").Coercion;
-pub const NodeInfo = @import("mir_types.zig").NodeInfo;
-pub const NodeMap = @import("mir_types.zig").NodeMap;
 pub const classifyType = @import("mir_types.zig").classifyType;
-pub const MirKind = @import("mir_node.zig").MirKind;
-pub const LiteralKind = @import("mir_node.zig").LiteralKind;
-pub const IfNarrowing = @import("mir_node.zig").IfNarrowing;
-pub const NarrowBranch = @import("mir_node.zig").NarrowBranch;
-pub const NarrowKind = @import("mir_node.zig").NarrowKind;
-pub const MirNode = @import("mir_node.zig").MirNode;
+pub const MirKind = @import("mir_types.zig").MirKind;
+pub const LiteralKind = @import("mir_types.zig").LiteralKind;
+pub const IfNarrowing = @import("mir_types.zig").IfNarrowing;
+pub const NarrowBranch = @import("mir_types.zig").NarrowBranch;
+pub const NarrowKind = @import("mir_types.zig").NarrowKind;
 pub const UnionRegistry = @import("mir_registry.zig").UnionRegistry;
 pub const union_sort = @import("union_sort.zig");
-pub const MirAnnotator = @import("mir_annotator.zig").MirAnnotator;
-pub const MirLowerer = @import("mir_lowerer.zig").MirLowerer;
 pub const TypeId = @import("../type_store.zig").TypeId;
 pub const TypeStore = @import("../type_store.zig").TypeStore;
 pub const MirNodeIndex = @import("../mir_store.zig").MirNodeIndex;

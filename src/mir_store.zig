@@ -9,10 +9,9 @@ const StringIndex = @import("string_pool.zig").StringIndex;
 const AstNodeIndex = @import("ast_store.zig").AstNodeIndex;
 const TypeStore = @import("type_store.zig").TypeStore;
 const TypeId = @import("type_store.zig").TypeId;
-const mir_node = @import("mir/mir_node.zig");
 const mir_types = @import("mir/mir_types.zig");
 
-pub const MirKind = mir_node.MirKind;
+pub const MirKind = mir_types.MirKind;
 pub const TypeClass = mir_types.TypeClass;
 pub const Coercion = mir_types.Coercion;
 

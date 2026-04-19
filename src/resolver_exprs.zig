@@ -21,8 +21,9 @@ pub fn resolveExpr(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope) anyerr
     // Bridge: get the original *parser.Node for the existing switch-based resolution
     const node = self.reverseNodeMut(idx) orelse return RT.unknown;
     const result = try resolveExprInner(self, node, scope);
-    // Store in type_map keyed on the *parser.Node (for downstream passes)
+    // Store in both type_maps: pointer-keyed (old passes) and index-keyed (MirBuilder).
     try self.type_map.put(self.ctx.allocator, node, result);
+    try self.ast_type_map.put(self.ctx.allocator, idx, result);
     return result;
 }
 

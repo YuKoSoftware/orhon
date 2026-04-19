@@ -63,9 +63,11 @@ fn lowerReturnStmt(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const value = if (ast_rec.value != .none) try b.lowerNode(ast_rec.value) else .none;
     if (ast_rec.value != .none) {
         if (b.current_func_name) |fname| {
-            if (b.decls.funcs.get(fname)) |sig| {
-                const ret_type_id = try internRT(b, sig.return_type);
-                b.stampCoercion(value, b.inferCoercion(ast_rec.value, ret_type_id));
+            if (b.decls) |d| {
+                if (d.funcs.get(fname)) |sig| {
+                    const ret_type_id = try internRT(b, sig.return_type);
+                    b.stampCoercion(value, b.inferCoercion(ast_rec.value, ret_type_id));
+                }
             }
         }
     }
@@ -90,9 +92,14 @@ fn lowerWhileStmt(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const ast_rec = ast_typed.WhileStmt.unpack(b.ast, idx);
     const cond = try b.lowerNode(ast_rec.condition);
     const body = try b.lowerNode(ast_rec.body);
+    const continue_expr = if (ast_rec.continue_expr != .none)
+        try b.lowerNode(ast_rec.continue_expr)
+    else
+        MirNodeIndex.none;
     return mir_typed.WhileStmt.pack(b.store, b.allocator, idx, .none, .plain, .{
         .condition = cond,
         .body = body,
+        .continue_expr = continue_expr,
     });
 }
 
@@ -228,8 +235,17 @@ fn remainingUnionTypeName(members_rt: ?[]const RT, excluded: []const u8) ?[]cons
     return remaining;
 }
 
+/// Returns true if every control-flow path in the block ends with an early exit
+/// (return, break, or continue) as a direct statement. Shallow check only.
+fn blockHasEarlyExit(ast: *const @import("ast_store.zig").AstStore, block_idx: AstNodeIndex) bool {
+    const stmts = ast_typed.Block.getStmts(ast, block_idx);
+    if (stmts.len == 0) return false;
+    const last = stmts[stmts.len - 1];
+    const tag = ast.getNode(last).tag;
+    return tag == .return_stmt or tag == .break_stmt or tag == .continue_stmt;
+}
+
 fn extractNarrowing(b: *MirBuilder, cond_idx: AstNodeIndex, then_idx: AstNodeIndex) anyerror!MirExtraIndex {
-    _ = then_idx;
     const cond_node = b.ast.getNode(cond_idx);
     if (cond_node.tag != .binary_expr) return .none;
 
@@ -261,6 +277,16 @@ fn extractNarrowing(b: *MirBuilder, cond_idx: AstNodeIndex, then_idx: AstNodeInd
                 if (rt == .union_type) break :blk rt;
             }
         }
+        // Fallback: look up in current function's parameter list via DeclTable.
+        if (b.decls) |decls| {
+            if (b.current_func_name) |fname| {
+                if (decls.funcs.get(fname)) |sig| {
+                    for (sig.params) |p| {
+                        if (std.mem.eql(u8, p.name, val_name)) break :blk p.type_;
+                    }
+                }
+            }
+        }
         return .none;
     };
     const tc = mir_types.classifyType(source_rt);
@@ -276,8 +302,7 @@ fn extractNarrowing(b: *MirBuilder, cond_idx: AstNodeIndex, then_idx: AstNodeInd
 
     const members_rt = if (source_rt == .union_type) source_rt.union_type else null;
     const remaining = remainingUnionTypeName(members_rt, type_name);
-    // astBlockHasEarlyExit is conservative (false) — post-branch narrowing is Phase D polish
-    const has_early_exit = false;
+    const has_early_exit = if (then_idx != .none) blockHasEarlyExit(b.ast, then_idx) else false;
 
     const then_name: ?[]const u8 = if (is_eq) type_name else remaining;
     const else_name: ?[]const u8 = if (is_eq) remaining else type_name;

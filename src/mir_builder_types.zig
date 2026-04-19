@@ -10,6 +10,7 @@ const mir_builder_mod = @import("mir_builder.zig");
 const mir_typed = @import("mir_typed.zig");
 const mir_types = @import("mir/mir_types.zig");
 const type_store_mod = @import("type_store.zig");
+const ast_typed = @import("ast_typed.zig");
 
 const MirBuilder = mir_builder_mod.MirBuilder;
 const AstNodeIndex = @import("ast_store.zig").AstNodeIndex;
@@ -25,11 +26,33 @@ fn internRT(b: *MirBuilder, rt: RT) !TypeId {
 // ── Type expression ───────────────────────────────────────────────────────────
 
 /// All structural type AST nodes → type_expr.
-/// No children are lowered: codegen reads back through span via typeToZig().
+/// For struct_type (inline anonymous struct in compt func return), emits inline_struct
+/// with members lowered into MirStore so codegen can emit the full struct body.
 pub fn lowerTypeExpr(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    if (b.ast.getNode(idx).tag == .struct_type) {
+        return lowerInlineStructType(b, idx);
+    }
     const rt = b.type_map.get(idx) orelse .unknown;
     const tid = try internRT(b, rt);
     return mir_typed.TypeExpr.pack(b.store, b.allocator, idx, tid, mir_types.classifyType(rt), .{});
+}
+
+fn lowerInlineStructType(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
+    const ast_rec = ast_typed.StructType.unpack(b.ast, idx);
+    var member_indices: std.ArrayListUnmanaged(u32) = .{};
+    defer member_indices.deinit(b.allocator);
+    for (b.ast.extra_data.items[ast_rec.items_start..ast_rec.items_end]) |iu32| {
+        const member_idx: AstNodeIndex = @enumFromInt(iu32);
+        const m = try b.lowerNode(member_idx);
+        try member_indices.append(b.allocator, @intFromEnum(m));
+    }
+    const members_start: u32 = @intCast(b.store.extra_data.items.len);
+    try b.store.extra_data.appendSlice(b.allocator, member_indices.items);
+    const members_end: u32 = @intCast(b.store.extra_data.items.len);
+    return mir_typed.InlineStruct.pack(b.store, b.allocator, idx, .none, .plain, .{
+        .members_start = members_start,
+        .members_end = members_end,
+    });
 }
 
 // ── Injected node helpers ─────────────────────────────────────────────────────

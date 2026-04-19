@@ -292,13 +292,16 @@ pub const IfStmt = struct {
 };
 
 pub const WhileStmt = struct {
-    pub const Record = struct { condition: MirNodeIndex, body: MirNodeIndex };
+    pub const Record = struct { condition: MirNodeIndex, body: MirNodeIndex, continue_expr: MirNodeIndex };
+    const WhileExtra = struct { body: MirNodeIndex, continue_expr: MirNodeIndex };
     pub fn pack(store: *MirStore, allocator: std.mem.Allocator, span: AstNodeIndex, type_id: TypeId, type_class: TypeClass, rec: Record) !MirNodeIndex {
-        return store.appendNode(allocator, .{ .tag = .while_stmt, .type_class = type_class, .span = span, .type_id = type_id, .data = .{ .two_nodes = .{ .lhs = rec.condition, .rhs = rec.body } } });
+        const extra = try store.appendExtra(allocator, WhileExtra{ .body = rec.body, .continue_expr = rec.continue_expr });
+        return store.appendNode(allocator, .{ .tag = .while_stmt, .type_class = type_class, .span = span, .type_id = type_id, .data = .{ .node_and_extra = .{ .node = rec.condition, .extra = extra } } });
     }
     pub fn unpack(store: *const MirStore, idx: MirNodeIndex) Record {
         const entry = store.getNode(idx);
-        return .{ .condition = entry.data.two_nodes.lhs, .body = entry.data.two_nodes.rhs };
+        const extra = store.extraData(WhileExtra, entry.data.node_and_extra.extra);
+        return .{ .condition = entry.data.node_and_extra.node, .body = extra.body, .continue_expr = extra.continue_expr };
     }
 };
 
@@ -424,16 +427,17 @@ pub const Identifier = struct {
 };
 
 pub const Binary = struct {
-    pub const Record = struct { op: u32, lhs: MirNodeIndex, rhs: MirNodeIndex };
-    const BinExtra = struct { op: u32, rhs: MirNodeIndex };
+    /// union_tag: 0 = no arbitrary-union tag; n+1 = positional tag n for `is` comparisons.
+    pub const Record = struct { op: u32, lhs: MirNodeIndex, rhs: MirNodeIndex, union_tag: u32 = 0 };
+    const BinExtra = struct { op: u32, rhs: MirNodeIndex, union_tag: u32 };
     pub fn pack(store: *MirStore, allocator: std.mem.Allocator, span: AstNodeIndex, type_id: TypeId, type_class: TypeClass, rec: Record) !MirNodeIndex {
-        const extra = try store.appendExtra(allocator, BinExtra{ .op = rec.op, .rhs = rec.rhs });
+        const extra = try store.appendExtra(allocator, BinExtra{ .op = rec.op, .rhs = rec.rhs, .union_tag = rec.union_tag });
         return store.appendNode(allocator, .{ .tag = .binary, .type_class = type_class, .span = span, .type_id = type_id, .data = .{ .node_and_extra = .{ .node = rec.lhs, .extra = extra } } });
     }
     pub fn unpack(store: *const MirStore, idx: MirNodeIndex) Record {
         const entry = store.getNode(idx);
         const extra = store.extraData(BinExtra, entry.data.node_and_extra.extra);
-        return .{ .op = extra.op, .lhs = entry.data.node_and_extra.node, .rhs = extra.rhs };
+        return .{ .op = extra.op, .lhs = entry.data.node_and_extra.node, .rhs = extra.rhs, .union_tag = extra.union_tag };
     }
 };
 
@@ -621,6 +625,22 @@ pub const TypeExpr = struct {
     }
 };
 
+/// Inline struct type expression — `return struct { ... }` in a compt func.
+/// members_start..members_end are MirNodeIndex values in extra_data.
+pub const InlineStruct = struct {
+    pub const Record = struct { members_start: u32, members_end: u32 };
+    const InlineStructExtra = struct { members_start: u32, members_end: u32 };
+    pub fn pack(store: *MirStore, allocator: std.mem.Allocator, span: AstNodeIndex, type_id: TypeId, type_class: TypeClass, rec: Record) !MirNodeIndex {
+        const extra = try store.appendExtra(allocator, InlineStructExtra{ .members_start = rec.members_start, .members_end = rec.members_end });
+        return store.appendNode(allocator, .{ .tag = .inline_struct, .type_class = type_class, .span = span, .type_id = type_id, .data = .{ .extra = extra } });
+    }
+    pub fn unpack(store: *const MirStore, idx: MirNodeIndex) Record {
+        const entry = store.getNode(idx);
+        const extra = store.extraData(InlineStructExtra, entry.data.extra);
+        return .{ .members_start = extra.members_start, .members_end = extra.members_end };
+    }
+};
+
 // ---------------------------------------------------------------------------
 // Injected nodes cluster
 // ---------------------------------------------------------------------------
@@ -727,16 +747,17 @@ test "return_stmt round-trip (node shape)" {
     try std.testing.expectEqual(val, rec.value);
 }
 
-test "while_stmt round-trip (two_nodes shape)" {
+test "while_stmt round-trip (node_and_extra shape)" {
     var store = MirStore.init();
     defer store.deinit(std.testing.allocator);
 
     const cond = try BreakStmt.pack(&store, std.testing.allocator, .none, .none, .plain, .{});
     const body = try ContinueStmt.pack(&store, std.testing.allocator, .none, .none, .plain, .{});
-    const idx = try WhileStmt.pack(&store, std.testing.allocator, .none, .none, .plain, .{ .condition = cond, .body = body });
+    const idx = try WhileStmt.pack(&store, std.testing.allocator, .none, .none, .plain, .{ .condition = cond, .body = body, .continue_expr = .none });
     const rec = WhileStmt.unpack(&store, idx);
     try std.testing.expectEqual(cond, rec.condition);
     try std.testing.expectEqual(body, rec.body);
+    try std.testing.expectEqual(MirNodeIndex.none, rec.continue_expr);
 }
 
 test "test_def round-trip (str_and_node shape)" {

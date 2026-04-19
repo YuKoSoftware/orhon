@@ -39,7 +39,7 @@ const ClassifyResult = struct {
 pub const MirBuilder = struct {
     allocator: std.mem.Allocator,
     reporter: *errors.Reporter,
-    decls: *declarations.DeclTable,
+    decls: ?*declarations.DeclTable,
     /// AstNodeIndex-keyed type map produced by the resolver.
     /// Populated starting at B5; empty at B4 (passthrough-only).
     type_map: *const std.AutoHashMapUnmanaged(AstNodeIndex, RT),
@@ -60,7 +60,7 @@ pub const MirBuilder = struct {
     pub fn init(
         allocator: std.mem.Allocator,
         reporter: *errors.Reporter,
-        decls: *declarations.DeclTable,
+        decls: ?*declarations.DeclTable,
         type_map: *const std.AutoHashMapUnmanaged(AstNodeIndex, RT),
         ast: *const AstStore,
         store: *MirStore,
@@ -254,7 +254,7 @@ fn typesMatchForCoercion(a: RT, b: RT) bool {
 // ---------------------------------------------------------------------------
 
 fn testBuilder(allocator: std.mem.Allocator, ast_store: *AstStore, mir_store: *MirStore, type_map: *std.AutoHashMapUnmanaged(AstNodeIndex, RT), union_registry: *UnionRegistry) MirBuilder {
-    return MirBuilder.init(allocator, undefined, undefined, type_map, ast_store, mir_store, union_registry);
+    return MirBuilder.init(allocator, undefined, null, type_map, ast_store, mir_store, union_registry);
 }
 
 test "MirBuilder: passthrough for non-declaration node" {
@@ -667,6 +667,7 @@ test "MirBuilder B6: while_stmt emits MirKind.while_stmt" {
     const rec = mir_typed.WhileStmt.unpack(&mir_store, mir_idx);
     try std.testing.expect(rec.condition != .none);
     try std.testing.expect(rec.body != .none);
+    try std.testing.expectEqual(MirNodeIndex.none, rec.continue_expr);
 }
 
 test "MirBuilder B6: for_stmt emits MirKind.for_stmt" {

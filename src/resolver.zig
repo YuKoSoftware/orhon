@@ -438,6 +438,7 @@ pub const TypeResolver = struct {
                         try self.checkAssignCompat(resolved, val_type, idx);
                     }
                     try scope.define(vname, resolved);
+                    try self.ast_type_map.put(self.ctx.allocator, idx, resolved);
                 }
             },
             .field_decl => {

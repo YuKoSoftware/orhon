@@ -1,7 +1,6 @@
 // mir_types.zig — MIR type definitions and classification
 
 const std = @import("std");
-const parser = @import("../parser.zig");
 const types = @import("../types.zig");
 const union_sort = @import("union_sort.zig");
 const K = @import("../constants.zig");
@@ -54,23 +53,6 @@ pub const Coercion = union(enum) {
     value_to_const_ref,
 };
 
-// ── Node Info ───────────────────────────────────────────────
-
-/// Per-AST-node annotation produced by the MIR annotator.
-/// `type_class` is derived from `resolved_type` on demand via `typeClass()`
-/// so updates to `resolved_type` can never leave classification stale.
-pub const NodeInfo = struct {
-    resolved_type: RT,
-    coercion: ?Coercion = null,
-
-    pub fn typeClass(self: NodeInfo) TypeClass {
-        return classifyType(self.resolved_type);
-    }
-};
-
-/// Annotation table: AST node pointer → NodeInfo.
-pub const NodeMap = std.AutoHashMapUnmanaged(*parser.Node, NodeInfo);
-
 // ── Shared union-tag helpers ────────────────────────────────
 
 /// Whether `name` is the built-in Error sentinel type name.
@@ -110,6 +92,96 @@ pub fn positionalTagOf(union_rt: RT, member_name: []const u8) ?u8 {
     if (idx > 255) return null;
     return @intCast(idx);
 }
+
+// ── MIR node kind enumeration ───────────────────────────────
+
+/// MIR node kinds — grouped from 52 AST kinds.
+pub const MirKind = enum {
+    // Declarations
+    func,
+    struct_def,
+    enum_def,
+    handle_def,
+    var_decl,
+    test_def,
+    destruct,
+    import,
+    // Statements
+    block,
+    return_stmt,
+    if_stmt,
+    while_stmt,
+    for_stmt,
+    defer_stmt,
+    match_stmt,
+    match_arm,
+    assignment,
+    break_stmt,
+    continue_stmt,
+    // Expressions
+    literal, // int, float, string, bool, null, error
+    identifier,
+    binary, // binary_expr, range_expr
+    unary,
+    call,
+    field_access,
+    index,
+    slice,
+    borrow,
+    interpolation,
+    compiler_fn,
+    array_lit,
+    tuple_lit,
+    version_lit,
+    // Types — passthrough (codegen reads ast.* via typeToZig)
+    type_expr,
+    // Inline struct type expression (compt func return struct { ... })
+    inline_struct,
+    // Injected nodes (no AST counterpart)
+    temp_var,
+    injected_defer,
+    // Struct/enum members and function params
+    field_def,
+    param_def,
+    enum_variant_def,
+    // Passthrough for unhandled/structural nodes
+    passthrough,
+};
+
+/// Disambiguates the 6 literal types collapsed into MirKind.literal.
+pub const LiteralKind = enum {
+    int,
+    float,
+    string,
+    bool_lit,
+    null_lit,
+    error_lit,
+};
+
+// ── Type narrowing data ──────────────────────────────────────
+
+/// Distinguishes sentinel narrowing (Error, null) from regular type narrowing.
+pub const NarrowKind = enum {
+    plain, // regular type name
+    error_sentinel, // "Error"
+    null_sentinel, // "null"
+};
+
+/// One branch of a type narrowing (then, else, or post-if).
+pub const NarrowBranch = struct {
+    type_name: []const u8,
+    positional_tag: ?u8 = null,
+    kind: NarrowKind = .plain,
+};
+
+/// Pre-computed type narrowing for if_stmt with `is` checks.
+pub const IfNarrowing = struct {
+    var_name: []const u8,
+    then_branch: ?NarrowBranch = null,
+    else_branch: ?NarrowBranch = null,
+    post_branch: ?NarrowBranch = null,
+    type_class: TypeClass = .plain,
+};
 
 // ── Tests ───────────────────────────────────────────────────
 

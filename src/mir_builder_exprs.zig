@@ -39,12 +39,12 @@ fn resolveCallSig(b: *const MirBuilder, call_idx: AstNodeIndex) ?@import("declar
     if (callee_tag == .identifier) {
         const rec = ast_typed.Identifier.unpack(b.ast, ast_rec.callee);
         const name = b.ast.strings.get(rec.name);
-        return b.decls.funcs.get(name);
+        return if (b.decls) |d| d.funcs.get(name) else null;
     }
     if (callee_tag == .field_expr) {
         const rec = ast_typed.FieldExpr.unpack(b.ast, ast_rec.callee);
         const field = b.ast.strings.get(rec.field);
-        return b.decls.funcs.get(field);
+        return if (b.decls) |d| d.funcs.get(field) else null;
     }
     return null;
 }
@@ -137,14 +137,36 @@ fn lowerErrorLiteral(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
 fn lowerIdentifier(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const ast_rec = ast_typed.Identifier.unpack(b.ast, idx);
     const name = try internStr(b, ast_rec.name);
-    const rt = b.type_map.get(idx) orelse .unknown;
+    const name_str = b.ast.strings.get(ast_rec.name);
+    // type_map first; var_types fallback for locals; decls fallback for named types.
+    const rt = b.type_map.get(idx) orelse blk: {
+        if (b.var_types.get(name_str)) |tid| {
+            if (tid != .none) break :blk b.store.types.get(tid);
+        }
+        if (b.decls) |d| {
+            if (d.structs.contains(name_str) or d.enums.contains(name_str) or d.handles.contains(name_str)) {
+                break :blk RT{ .named = name_str };
+            }
+        }
+        break :blk RT.unknown;
+    };
     return mir_typed.Identifier.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
         .name = name, .resolved_kind = resolveIdentifierKind(b, idx),
     });
 }
 
-/// Stub: returns 0 until DeclTable API verified at B8.
-fn resolveIdentifierKind(_: *const MirBuilder, _: AstNodeIndex) u32 {
+/// Returns 0=plain, 1=enum_variant, 2=enum_type_name for an identifier.
+fn resolveIdentifierKind(b: *const MirBuilder, idx: AstNodeIndex) u32 {
+    const ast_rec = ast_typed.Identifier.unpack(b.ast, idx);
+    const name = b.ast.strings.get(ast_rec.name);
+    const decls = b.decls orelse return 0;
+    if (decls.enums.contains(name)) return 2;
+    var it = decls.enums.valueIterator();
+    while (it.next()) |sig| {
+        for (sig.variants) |v| {
+            if (std.mem.eql(u8, v, name)) return 1;
+        }
+    }
     return 0;
 }
 
@@ -155,8 +177,32 @@ fn lowerBinary(b: *MirBuilder, idx: AstNodeIndex) anyerror!MirNodeIndex {
     const lhs = try b.lowerNode(ast_rec.lhs);
     const rhs = try b.lowerNode(ast_rec.rhs);
     const rt = b.type_map.get(idx) orelse .unknown;
+    // Stamp union_tag for `x is T` expressions (desugared as @type(x) == T).
+    // Needed to emit `val == ._N` for arbitrary-union type checks in codegen.
+    const union_tag = blk: {
+        const op: @import("parser.zig").Operator = @enumFromInt(ast_rec.op);
+        if (op != .eq and op != .ne) break :blk @as(u32, 0);
+        const lhs_node = b.ast.getNode(ast_rec.lhs);
+        if (lhs_node.tag != .compiler_func) break :blk @as(u32, 0);
+        const cf_rec = ast_typed.CompilerFunc.unpack(b.ast, ast_rec.lhs);
+        const cf_name = b.ast.strings.get(cf_rec.name);
+        if (!std.mem.eql(u8, cf_name, "type")) break :blk @as(u32, 0);
+        if (cf_rec.args_end <= cf_rec.args_start) break :blk @as(u32, 0);
+        const arg_idx: AstNodeIndex = @enumFromInt(b.ast.extra_data.items[cf_rec.args_start]);
+        const arg_rt = resolveSourceUnionRT(b, arg_idx) orelse break :blk @as(u32, 0);
+        // Only stamp for arbitrary unions (not Error/null sentinels)
+        const has_error = arg_rt.unionContainsError();
+        const has_null = arg_rt.unionContainsNull();
+        if (has_error or has_null) break :blk @as(u32, 0);
+        // Get rhs type name from identifier
+        const rhs_node = b.ast.getNode(ast_rec.rhs);
+        if (rhs_node.tag != .identifier) break :blk @as(u32, 0);
+        const rhs_name = b.ast.strings.get(rhs_node.data.str);
+        const tag = mir_types.positionalTagOf(arg_rt, rhs_name) orelse break :blk @as(u32, 0);
+        break :blk @as(u32, tag) + 1; // 0 = none, n+1 = tag n
+    };
     return mir_typed.Binary.pack(b.store, b.allocator, idx, try internRT(b, rt), mir_types.classifyType(rt), .{
-        .op = ast_rec.op, .lhs = lhs, .rhs = rhs,
+        .op = ast_rec.op, .lhs = lhs, .rhs = rhs, .union_tag = union_tag,
     });
 }
 

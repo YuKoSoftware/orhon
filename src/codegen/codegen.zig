@@ -46,45 +46,26 @@ pub const CodeGen = struct {
     null_narrowed: std.StringHashMapUnmanaged(void) = .{},
     // Track the captured error variable name per scope for `.Error` → `@errorName()`
     // MIR annotation table — Phase 1+2 typed annotation pass
-    node_map: ?*const mir.NodeMap = null,
     union_registry: ?*mir.UnionRegistry = null,
     needs_unions_import: bool = false,
     /// Module currently being emitted — used to attribute arity registrations
     /// to the right module for incremental cache replay.
     current_module_name: []const u8 = "",
-    var_types: ?*const std.StringHashMapUnmanaged(mir.NodeInfo) = null,
-    // MIR tree — Phase 3 lowered tree (available for incremental migration)
-    mir_root: ?*mir.MirNode = null,
     // ── MirStore-based fields (Phase C) ─────────────────────────
     mir_store: ?*const mir_store_mod.MirStore = null,
     mir_root_idx: mir_store_mod.MirNodeIndex = .none,
     mir_type_store: ?*const type_store_mod.TypeStore = null,
-    mir_builder_var_types: ?*const std.StringHashMapUnmanaged(type_store_mod.TypeId) = null,
     /// AstNodeIndex → MirNodeIndex reverse map built from MirStore in generate().
     span_to_mir: std.AutoHashMapUnmanaged(ast_store_mod.AstNodeIndex, mir_store_mod.MirNodeIndex) = .{},
     /// AstNodeIndex → *parser.Node bridge from ast_conv.ConvContext.reverse_map.
     /// Needed for typeToZig calls when type annotations are stored as AstNodeIndex in MirStore.
     ast_reverse_map: ?*const std.AutoHashMap(ast_store_mod.AstNodeIndex, *parser.Node) = null,
-    /// *parser.Node → AstNodeIndex inverse map (built from ast_reverse_map at start of generate()).
-    /// Enables bridge: old *mir.MirNode.ast → AstNodeIndex → MirStore lookup.
-    parser_to_ast_idx: std.AutoHashMapUnmanaged(*parser.Node, ast_store_mod.AstNodeIndex) = .{},
-    /// AstNodeIndex → *mir.MirNode bridge built from old MirNode tree in generate().
-    /// Enables C2-C6 transition: functions now accept MirNodeIndex but still retrieve old
-    /// *mir.MirNode data via this map (deleted at B10 when old tree is removed).
-    span_to_old_mir: std.AutoHashMapUnmanaged(ast_store_mod.AstNodeIndex, *mir.MirNode) = .{},
-    /// Synthetic fallback when mir_store is unavailable (unit tests, compat helpers).
-    /// Maps a counter-assigned MirNodeIndex → *mir.MirNode and reverse.
-    synth_idx_to_node: std.AutoHashMapUnmanaged(mir_store_mod.MirNodeIndex, *mir.MirNode) = .{},
-    synth_node_to_idx: std.AutoHashMapUnmanaged(*const mir.MirNode, mir_store_mod.MirNodeIndex) = .{},
-    synth_counter: u32 = 0x80000001, // high base to avoid collision with real MirStore indices
     // Zig-backed module — all declarations are re-exported from {name}_zig
     is_zig_module: bool = false,
     // Mixed module — user .orh + .zig sidecar; body-less decls re-exported from {name}_zig
     has_zig_sidecar: bool = false,
     // Tracks emitted declaration names for deduplication in mixed modules
     emitted_names: std.StringHashMapUnmanaged(void) = .{},
-    // MIR node for the current function — set by generateFuncMir.
-    current_func_mir: ?*mir.MirNode = null,
     // MirStore index for the current function — set by generateFuncMir (MirStore path).
     current_func_idx: mir_store_mod.MirNodeIndex = .none,
     // Pre-statement hoisting buffer — interpolation temp vars are appended here,
@@ -97,27 +78,6 @@ pub const CodeGen = struct {
     match_var_subst: ?struct { original: []const u8, capture: []const u8, eff_tc: ?mir.TypeClass = null } = null,
     narrowing_count: u32 = 0, // unique counter for narrowing binding names
 
-    /// Query MIR annotation for an AST node.
-    pub fn getNodeInfo(self: *const CodeGen, node: *parser.Node) ?mir.NodeInfo {
-        if (self.node_map) |nm| return nm.get(node);
-        return null;
-    }
-
-    /// Get the TypeClass for an AST node from MIR annotations.
-    pub fn getTypeClass(self: *const CodeGen, node: *parser.Node) mir.TypeClass {
-        if (self.getNodeInfo(node)) |info| return info.typeClass();
-        return .plain;
-    }
-
-    /// Get the union member types for an arb union node from MIR annotations.
-    /// Returns null if the node is not an arb union or not in the node_map.
-    pub fn getUnionMembers(self: *const CodeGen, node: *parser.Node) ?[]const RT {
-        if (self.getNodeInfo(node)) |info| {
-            if (info.resolved_type == .union_type) return info.resolved_type.union_type;
-        }
-        return null;
-    }
-
     /// Whether the current function is a compt function (all loops should be inline).
     pub fn inComptFunc(self: *const CodeGen) bool {
         if (self.current_func_idx != .none) {
@@ -126,7 +86,6 @@ pub const CodeGen = struct {
                 return (rec.flags & 2) != 0; // FLAG_COMPT
             }
         }
-        if (self.current_func_mir) |m| return m.is_compt;
         return false;
     }
 
@@ -138,7 +97,6 @@ pub const CodeGen = struct {
                 return store.getNode(self.current_func_idx).type_class;
             }
         }
-        if (self.current_func_mir) |m| return m.type_class;
         return .plain;
     }
 
@@ -153,9 +111,6 @@ pub const CodeGen = struct {
                     if (rt == .union_type) return rt.union_type;
                 }
             }
-        }
-        if (self.current_func_mir) |m| {
-            if (m.resolved_type == .union_type) return m.resolved_type.union_type;
         }
         return null;
     }
@@ -175,16 +130,6 @@ pub const CodeGen = struct {
         if (!self.has_zig_sidecar) return false;
         try self.generateZigReExport(name, is_pub);
         return true;
-    }
-
-    /// Name-based union member lookup via MIR var_types (fallback).
-    pub fn getVarUnionMembers(self: *const CodeGen, name: []const u8) ?[]const RT {
-        if (self.var_types) |vt| {
-            if (vt.get(name)) |info| {
-                if (info.resolved_type == .union_type) return info.resolved_type.union_type;
-            }
-        }
-        return null;
     }
 
     /// Sanitize an error message string literal into a Zig error name.
@@ -239,11 +184,6 @@ pub const CodeGen = struct {
         return module.resolveNodeLoc(self.locs, self.file_offsets, node);
     }
 
-    /// Source location from MirNode — convenience wrapper over nodeLoc.
-    pub fn nodeLocMir(self: *const CodeGen, m: *const mir.MirNode) ?errors.SourceLoc {
-        return self.nodeLoc(m.ast);
-    }
-
     pub fn deinit(self: *CodeGen) void {
         for (self.type_strings.items) |s| self.allocator.free(s);
         self.type_strings.deinit(self.allocator);
@@ -254,10 +194,6 @@ pub const CodeGen = struct {
         self.pre_stmts.deinit(self.allocator);
         self.emitted_names.deinit(self.allocator);
         self.span_to_mir.deinit(self.allocator);
-        self.parser_to_ast_idx.deinit(self.allocator);
-        self.span_to_old_mir.deinit(self.allocator);
-        self.synth_idx_to_node.deinit(self.allocator);
-        self.synth_node_to_idx.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
@@ -288,18 +224,6 @@ pub const CodeGen = struct {
         try self.emit("\n");
     }
 
-    /// Emit a type-name path (a.b.c) from a MIR field_access chain without semantic transforms.
-    /// Used only for `is` type-check RHS in MIR-path codegen.
-    pub fn emitTypeMirPath(self: *CodeGen, m: *mir.MirNode) anyerror!void {
-        if (m.kind == .field_access and m.children.len > 0) {
-            try self.emitTypeMirPath(m.children[0]);
-            try self.emit(".");
-            try self.emit(m.name orelse "");
-        } else {
-            try self.emit(m.name orelse "");
-        }
-    }
-
     /// Flush hoisted pre-statement declarations (interpolation temp vars) to main output.
     /// Must be called before emitting the statement that references the hoisted vars.
     pub fn flushPreStmts(self: *CodeGen) !void {
@@ -325,65 +249,6 @@ pub const CodeGen = struct {
         return null;
     }
 
-    /// Bridge *parser.Node → MirNodeIndex via parser_to_ast_idx + span_to_mir.
-    /// Returns .none if the node has no corresponding MirStore entry.
-    pub fn getMirIdxForParserNode(self: *const CodeGen, node: *parser.Node) mir_store_mod.MirNodeIndex {
-        const ast_idx = self.parser_to_ast_idx.get(node) orelse return .none;
-        return self.span_to_mir.get(ast_idx) orelse .none;
-    }
-
-    /// Recursively populate span_to_old_mir from old MirNode tree.
-    /// Uses put (last write wins) — injected temp_var/injected_defer nodes that share
-    /// an AST pointer with a real node are overwritten when the real node is visited later.
-    fn populateOldMirMap(self: *CodeGen, m: *mir.MirNode) anyerror!void {
-        if (self.parser_to_ast_idx.get(m.ast)) |ast_idx| {
-            try self.span_to_old_mir.put(self.allocator, ast_idx, m);
-        }
-        // Build synthetic maps for ALL nodes — covers nodes not in MirStore
-        // (e.g., while-loop continue expressions missing from B9 WhileStmt).
-        const synth: mir_store_mod.MirNodeIndex = @enumFromInt(self.synth_counter);
-        self.synth_counter += 1;
-        try self.synth_idx_to_node.put(self.allocator, synth, m);
-        try self.synth_node_to_idx.put(self.allocator, m, synth);
-        for (m.children) |child| {
-            try self.populateOldMirMap(child);
-        }
-    }
-
-    /// Bridge MirNodeIndex → *mir.MirNode via span_to_old_mir.
-    /// Returns null for .none or any index not covered by the old tree.
-    pub fn getOldMirNode(self: *const CodeGen, idx: mir_store_mod.MirNodeIndex) ?*mir.MirNode {
-        if (idx == .none) return null;
-        if (self.mir_store) |store| {
-            const raw: u32 = @intFromEnum(idx);
-            if (raw < store.nodes.len) {
-                const entry = store.getNode(idx);
-                if (entry.span != .none) {
-                    if (self.span_to_old_mir.get(entry.span)) |m| return m;
-                }
-            }
-        }
-        return self.synth_idx_to_node.get(idx);
-    }
-
-    /// Shorthand: convert *mir.MirNode → MirNodeIndex.
-    /// Primary: parser_to_ast_idx + span_to_mir (requires ast_reverse_map + mir_store).
-    /// Fallback: synth_node_to_idx (used when mir_store is unavailable).
-    pub fn mirIdx(self: *const CodeGen, m: *const mir.MirNode) mir_store_mod.MirNodeIndex {
-        const primary = self.getMirIdxForParserNode(m.ast);
-        if (primary != .none) return primary;
-        return self.synth_node_to_idx.get(m) orelse .none;
-    }
-
-    /// Bridge *parser.Node → MirEntry via parser_to_ast_idx + span_to_mir + MirStore.
-    /// Returns null if not found. Prefer MirStore data over old MirNode fields when non-null.
-    pub fn getMirEntryForParserNode(self: *const CodeGen, node: *parser.Node) ?mir_store_mod.MirEntry {
-        const store = self.mir_store orelse return null;
-        const idx = self.getMirIdxForParserNode(node);
-        if (idx == .none) return null;
-        return store.getNode(idx);
-    }
-
     /// Generate Zig source from a program AST
     pub fn generate(self: *CodeGen, ast: *parser.Node, module_name: []const u8) !void {
         if (ast.* != .program) return;
@@ -400,17 +265,6 @@ pub const CodeGen = struct {
                 if (entry.span != .none) {
                     self.span_to_mir.putAssumeCapacityNoClobber(entry.span, idx);
                 }
-            }
-        }
-
-        // Build *parser.Node → AstNodeIndex inverse map from ast_reverse_map.
-        // Enables bridge: old MirNode.ast (*parser.Node) → AstNodeIndex → MirStore lookup.
-        if (self.ast_reverse_map) |rm| {
-            self.parser_to_ast_idx.clearRetainingCapacity();
-            try self.parser_to_ast_idx.ensureTotalCapacity(self.allocator, @intCast(rm.count()));
-            var it = rm.iterator();
-            while (it.next()) |entry| {
-                self.parser_to_ast_idx.putAssumeCapacity(entry.value_ptr.*, entry.key_ptr.*);
             }
         }
 
@@ -437,25 +291,10 @@ pub const CodeGen = struct {
         try self.emit("\n");
 
         // Generate top-level declarations.
-        if (self.mir_store != null and self.mir_root_idx != .none) {
-            // Populate span_to_old_mir bridge if old tree is available (satellite files still use getOldMirNode).
-            if (self.mir_root) |root| try self.populateOldMirMap(root);
-            const store = self.mir_store.?;
-            for (mir_typed.Block.getStmts(store, self.mir_root_idx)) |idx| {
-                try self.generateTopLevelMir(idx);
-                try self.emit("\n");
-            }
-        } else if (self.mir_root) |root| {
-            try self.populateOldMirMap(root);
-            for (root.children) |child_m| {
-                const child_idx = self.mirIdx(child_m);
-                if (child_idx != .none) {
-                    try self.generateTopLevelMir(child_idx);
-                    try self.emit("\n");
-                }
-            }
-        } else {
-            return error.CompileError;
+        const store = self.mir_store.?;
+        for (mir_typed.Block.getStmts(store, self.mir_root_idx)) |idx| {
+            try self.generateTopLevelMir(idx);
+            try self.emit("\n");
         }
 
         // Insert _unions import if any arbitrary unions were used in this module
@@ -472,9 +311,6 @@ pub const CodeGen = struct {
 
     /// MIR-path: wrap a MirNode expression in an arbitrary union tag.
     pub fn generateArbitraryUnionWrappedExprMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex, members_rt: ?[]const RT) anyerror!void { return exprs_impl.generateArbitraryUnionWrappedExprMir(self, idx, members_rt); }
-
-    /// Infer union tag from MirNode literal_kind.
-    pub fn inferArbitraryUnionTagMir(m: *const mir.MirNode, members_rt: ?[]const RT) ?[]const u8 { return exprs_impl.inferArbitraryUnionTagMir(m, members_rt); }
 
     pub fn generateImport(self: *CodeGen, node: *parser.Node) anyerror!void {
         if (node.* != .import_decl) return;
@@ -550,29 +386,6 @@ pub const CodeGen = struct {
                 return;
             }
         }
-        // Old-path fallback: synthetic index or no MirStore
-        const m = self.getOldMirNode(idx) orelse return;
-        if (self.has_zig_sidecar) {
-            if (m.name) |name| {
-                if (self.emitted_names.contains(name)) return;
-                try self.emitted_names.put(self.allocator, name, {});
-            }
-        }
-        switch (m.kind) {
-            .func => {
-                const prev = self.current_func_mir;
-                self.current_func_mir = m;
-                defer self.current_func_mir = prev;
-                try self.generateFuncMir(idx);
-            },
-            .struct_def => try self.generateStructMir(idx),
-            .enum_def => try self.generateEnumMir(idx),
-            .handle_def => try self.generateHandleMir(idx),
-            .var_decl => try self.generateTopLevelDeclMir(idx),
-            .test_def => try self.generateTestMir(idx),
-            .import => {},
-            else => {},
-        }
     }
 
     // ============================================================
@@ -585,11 +398,6 @@ pub const CodeGen = struct {
     /// MIR-path function codegen — reads all data from MirNode.
     pub fn generateFuncMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return decls_impl.generateFuncMir(self, idx); }
 
-    /// MIR-path collectAssigned — traverses MirNode tree.
-    pub fn collectAssignedMir(m: *mir.MirNode, set: *std.StringHashMapUnmanaged(void), alloc: std.mem.Allocator) anyerror!void { return decls_impl.collectAssignedMir(m, set, alloc); }
-
-    pub fn getRootIdentMir(m: *const mir.MirNode) ?[]const u8 { return decls_impl.getRootIdentMir(m); }
-
 
     // ============================================================
     // STRUCTS
@@ -597,7 +405,6 @@ pub const CodeGen = struct {
 
     /// MIR-path struct codegen — iterates MirNode children instead of AST members.
     pub fn generateStructMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return decls_impl.generateStructMir(self, idx); }
-    pub fn emitStructBody(self: *CodeGen, children: []*mir.MirNode) anyerror!void { return decls_impl.emitStructBody(self, children); }
 
     // ============================================================
     // ENUMS
@@ -647,11 +454,7 @@ pub const CodeGen = struct {
 
     pub fn generateCoercedExprMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return exprs_impl.generateCoercedExprMir(self, idx); }
 
-    pub fn mirIsString(m: *const mir.MirNode) bool { return exprs_impl.mirIsString(m); }
     pub fn mirIsStringFromStore(store: *const mir_store_mod.MirStore, idx: mir_store_mod.MirNodeIndex) bool { return exprs_impl.mirIsStringFromStore(store, idx); }
-
-    pub fn mirIsVector(m: *const mir.MirNode) bool { return exprs_impl.mirIsVector(m); }
-    // mirIsVector has no MirStore variant: TypeClass has no .vector value; bridge via getOldMirNode
 
     pub fn generateContinueExprMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return exprs_impl.generateContinueExprMir(self, idx); }
 
@@ -663,8 +466,6 @@ pub const CodeGen = struct {
 
     pub fn mirContainsIdentifier(store: *const mir_store_mod.MirStore, idx: mir_store_mod.MirNodeIndex, name: []const u8) bool { return match_impl.mirContainsIdentifier(store, idx, name); }
 
-    pub fn hasGuardedArm(arms: []*mir.MirNode) bool { return match_impl.hasGuardedArm(arms); }
-
     pub fn generateGuardedMatchMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return match_impl.generateGuardedMatchMir(self, idx); }
 
     pub fn generateMatchMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return match_impl.generateMatchMir(self, idx); }
@@ -672,10 +473,6 @@ pub const CodeGen = struct {
     pub fn generateTypeMatchMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex, is_null_union: bool) anyerror!void { return match_impl.generateTypeMatchMir(self, idx, is_null_union); }
 
     pub fn generateStringMatchMir(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) anyerror!void { return match_impl.generateStringMatchMir(self, idx); }
-
-    pub fn generateInterpolatedStringMirInline(self: *CodeGen, parts: []const parser.InterpolatedPart, expr_children: []*mir.MirNode) anyerror!void { return match_impl.generateInterpolatedStringMirInline(self, parts, expr_children); }
-
-    pub fn generateInterpolatedStringMir(self: *CodeGen, parts: []const parser.InterpolatedPart, expr_children: []*mir.MirNode) anyerror!void { return match_impl.generateInterpolatedStringMir(self, parts, expr_children); }
 
     pub fn generateInterpolatedStringMirFromStore(self: *CodeGen, store: *const mir_store_mod.MirStore, parts_start: u32, parts_end: u32) anyerror!void { return match_impl.generateInterpolatedStringMirFromStore(self, store, parts_start, parts_end); }
 
@@ -1013,14 +810,8 @@ fn exprToString(node: *parser.Node) []const u8 {
 /// File-scope isTypeAlias for helper modules.
 pub fn isTypeAlias(type_annotation: ?*parser.Node) bool { return decls_impl.isTypeAlias(type_annotation); }
 
-/// File-scope mirIsString for helper modules (codegen_match.zig needs this without importing exprs directly).
-pub fn mirIsString(m: *const mir.MirNode) bool { return exprs_impl.mirIsString(m); }
 /// File-scope mirIsStringFromStore — MirStore path for new callers.
 pub fn mirIsStringFromStore(store: *const mir_store_mod.MirStore, idx: mir_store_mod.MirNodeIndex) bool { return exprs_impl.mirIsStringFromStore(store, idx); }
-
-/// File-scope mirIsVector for helper modules.
-/// No MirStore variant: TypeClass has no .vector value — bridge via getOldMirNode in callers.
-pub fn mirIsVector(m: *const mir.MirNode) bool { return exprs_impl.mirIsVector(m); }
 
 /// File-scope mirContainsIdentifier for helper modules (new MirStore-based path).
 pub fn mirContainsIdentifier(store: *const mir_store_mod.MirStore, idx: mir_store_mod.MirNodeIndex, name: []const u8) bool { return match_impl.mirContainsIdentifier(store, idx, name); }

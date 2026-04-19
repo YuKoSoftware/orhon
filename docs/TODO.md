@@ -72,9 +72,9 @@ Full rebuild of parser/AST and MIR storage from pointer-based trees to index-bas
 - [x] **B7** Populate expressions cluster
 - [x] **B8** Populate types + members + injected
 - [x] **B9** Delete parity harness — `MirBuilder` is the sole producer
-- [ ] **B10** Delete `MirAnnotator`, `MirAnnotator_nodes`, `MirLowerer`, old `MirNode`, `NodeMap`
+- [x] **B10** Delete `MirAnnotator`, `MirAnnotator_nodes`, `MirLowerer`, old `MirNode`, `NodeMap`
   - Phase C progress (C1–C6 complete): all codegen signatures migrated to MirNodeIndex; bridge infra with synthetic fallback for nodes not yet in MirStore. B10 can now proceed.
-- [ ] **B11** Phase B merge — final `testall.sh`, merge to main, tag
+- [x] **B11** Phase B merge — final `testall.sh`, merge to main, tag
 
 ### Phase B — pre-flight hygiene
 
@@ -96,7 +96,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 ### Phase C — Codegen migration `0.5-1 week`
 
 > **Phase C complete (2026-04-19)** — all codegen signatures migrated to MirNodeIndex; 361/361 green.
-> **⬅ RESUME HERE: B10** — delete MirAnnotator, MirAnnotator_nodes, MirLowerer, old MirNode, NodeMap.
+> **Phase B complete (2026-04-19)** — MIR rebuild done; old infra deleted; 361/361 green on main.
 
 **C-prep — semantic completion (do before C1):**
 - [x] **CP1** Add `coercion_kind: u8` to `MirEntry` in `src/mir_store.zig`; add `coercionFromKind`/`coercionToKind` helpers + round-trip tests

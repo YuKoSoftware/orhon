@@ -465,12 +465,16 @@ fn convertNodeInner(ctx: *ConvContext, node: *const Node) anyerror!AstNodeIndex 
             for (c.arg_names, 0..) |n, i| {
                 name_sis[i] = try internStr(ctx, n);
             }
-            const names_range = try appendStringSlice(ctx, name_sis);
+            // 0 = sentinel for "no named args"; only store range when names are present.
+            const arg_names_start: u32 = if (c.arg_names.len == 0) 0 else blk: {
+                const names_range = try appendStringSlice(ctx, name_sis);
+                break :blk names_range.start;
+            };
             return ast_typed.CallExpr.pack(&ctx.store, ctx.allocator, span_none, .{
                 .callee = callee_idx,
                 .args_start = args_range.start,
                 .args_end = args_range.end,
-                .arg_names_start = names_range.start,
+                .arg_names_start = arg_names_start,
             });
         },
 
@@ -577,14 +581,15 @@ fn convertNodeInner(ctx: *ConvContext, node: *const Node) anyerror!AstNodeIndex 
             const elem_idxs = try convertSlice(ctx, tl.elements);
             defer ctx.allocator.free(elem_idxs);
             const elems_range = try appendNodeSlice(ctx, elem_idxs);
-            // Intern names if present
-            const names_start: u32 = @intCast(ctx.store.extra_data.items.len);
-            if (tl.names) |names| {
-                for (names) |n| {
+            // 0 = sentinel for "no field names"; only record start when names are present.
+            const names_start: u32 = if (tl.names == null) 0 else blk: {
+                const start: u32 = @intCast(ctx.store.extra_data.items.len);
+                for (tl.names.?) |n| {
                     const si = try internStr(ctx, n);
                     try ctx.store.extra_data.append(ctx.allocator, @intFromEnum(si));
                 }
-            }
+                break :blk start;
+            };
             return ast_typed.TupleLiteral.pack(&ctx.store, ctx.allocator, span_none, .{
                 .elements_start = elems_range.start,
                 .elements_end = elems_range.end,

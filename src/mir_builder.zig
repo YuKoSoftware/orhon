@@ -9,6 +9,7 @@ const errors = @import("errors.zig");
 const mir_types = @import("mir/mir_types.zig");
 const mir_registry = @import("mir/mir_registry.zig");
 const ast_store_mod = @import("ast_store.zig");
+const ast_typed = @import("ast_typed.zig");
 const mir_store_mod = @import("mir_store.zig");
 const mir_typed = @import("mir_typed.zig");
 const type_store_mod = @import("type_store.zig");
@@ -85,6 +86,17 @@ pub const MirBuilder = struct {
     }
 
     pub fn build(self: *MirBuilder, root: AstNodeIndex) !MirNodeIndex {
+        // Program root: iterate all top-level declarations so MirStore is fully populated.
+        // Returns a passthrough for the program node itself; the root index is not
+        // used for iteration — callers query MirStore via span_to_mir.
+        const kind = self.ast.getNode(root).tag;
+        if (kind == .program) {
+            const rec = ast_typed.Program.unpack(self.ast, root);
+            for (self.ast.extra_data.items[rec.top_level_start..rec.top_level_end]) |idx_u32| {
+                _ = try self.lowerNode(@enumFromInt(idx_u32));
+            }
+            return mir_typed.Passthrough.pack(self.store, self.allocator, root, .none, .plain, .{});
+        }
         return self.lowerNode(root);
     }
 
@@ -238,8 +250,6 @@ fn typesMatchForCoercion(a: RT, b: RT) bool {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-
-const ast_typed = @import("ast_typed.zig");
 
 fn testBuilder(allocator: std.mem.Allocator, ast_store: *AstStore, mir_store: *MirStore, type_map: *std.AutoHashMapUnmanaged(AstNodeIndex, RT), union_registry: *UnionRegistry) MirBuilder {
     return MirBuilder.init(allocator, undefined, undefined, type_map, ast_store, mir_store, union_registry);

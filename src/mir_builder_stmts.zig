@@ -248,8 +248,10 @@ fn extractNarrowing(b: *MirBuilder, cond_idx: AstNodeIndex, then_idx: AstNodeInd
             if (rt == .union_type or rt == .null_type or rt == .err) break :blk rt;
         }
         if (b.var_types.get(val_name)) |type_id| {
-            const rt = b.store.types.get(type_id);
-            if (rt == .union_type) break :blk rt;
+            if (type_id != .none) {
+                const rt = b.store.types.get(type_id);
+                if (rt == .union_type) break :blk rt;
+            }
         }
         return .none;
     };

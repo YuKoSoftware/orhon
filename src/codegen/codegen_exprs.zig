@@ -46,9 +46,11 @@ pub fn findMemberByKind(members_rt: ?[]const RT, kind: TypeKind) ?[]const u8 {
 
 /// MIR-path: wrap a MirNode expression in an arbitrary union tag.
 pub fn generateArbitraryUnionWrappedExprMir(cg: *CodeGen, m: *mir.MirNode, members_rt: ?[]const RT) anyerror!void {
-    // Prefer MirStore coercion (set by MirBuilder) over old MirNode.coercion.
+    // Use MirStore coercion when non-zero; fall back to old MirNode.coercion when zero/absent.
     const has_coercion = blk: {
-        if (cg.getMirEntryForParserNode(m.ast)) |entry| break :blk entry.coercion_kind != 0;
+        if (cg.getMirEntryForParserNode(m.ast)) |entry| {
+            if (entry.coercion_kind != 0) break :blk true;
+        }
         break :blk m.coercion != null;
     };
     if (has_coercion) {

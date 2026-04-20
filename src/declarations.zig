@@ -81,6 +81,39 @@ pub const VarSig = struct {
     is_pub: bool,
 };
 
+/// Unified symbol: one entry per top-level declaration name in a module.
+pub const Symbol = union(enum) {
+    func:       FuncSig,
+    @"struct":  StructSig,
+    @"enum":    EnumSig,
+    handle:     HandleSig,
+    @"var":     VarSig,
+    type_alias: []const u8, // target type name string
+    blueprint:  BlueprintSig,
+
+    /// True when the symbol is exported from its module.
+    /// type_alias has no pub gate in the current model — always true.
+    pub fn isPub(self: Symbol) bool {
+        return switch (self) {
+            .func      => |s| s.is_pub,
+            .@"struct" => |s| s.is_pub,
+            .@"enum"   => |s| s.is_pub,
+            .handle    => |s| s.is_pub,
+            .@"var"    => |s| s.is_pub,
+            .blueprint => |s| s.is_pub,
+            .type_alias => true,
+        };
+    }
+
+    /// True when the symbol is usable as a type annotation.
+    pub fn isType(self: Symbol) bool {
+        return switch (self) {
+            .@"struct", .@"enum", .handle, .type_alias => true,
+            else => false,
+        };
+    }
+};
+
 /// Inner map from method name to its signature, owned per struct.
 pub const StructMethodMap = std.StringHashMapUnmanaged(FuncSig);
 
@@ -97,6 +130,7 @@ pub const DeclTable = struct {
     /// inner map keyed by method name. Used by MIR annotator to detect
     /// const & param coercions for cross-module calls.
     struct_methods: std.StringHashMapUnmanaged(StructMethodMap),
+    symbols: std.StringHashMap(Symbol),
     allocator: std.mem.Allocator,
     type_arena: std.heap.ArenaAllocator, // owns all ResolvedType inner allocations
 
@@ -115,6 +149,7 @@ pub const DeclTable = struct {
             .types = std.StringHashMap([]const u8).init(allocator),
             .blueprints = std.StringHashMap(BlueprintSig).init(allocator),
             .struct_methods = .{},
+            .symbols = std.StringHashMap(Symbol).init(allocator),
             .allocator = allocator,
             .type_arena = std.heap.ArenaAllocator.init(allocator),
         };
@@ -165,6 +200,7 @@ pub const DeclTable = struct {
             entry.value_ptr.deinit(self.allocator);
         }
         self.struct_methods.deinit(self.allocator);
+        self.symbols.deinit();
     }
 
     /// Look up a struct method by (struct_name, method_name). Returns null if either is absent.
@@ -334,6 +370,7 @@ pub const DeclCollector = struct {
         }
 
         try self.table.funcs.put(f.name, sig);
+        try self.table.symbols.put(f.name, .{ .func = sig });
     }
 
     fn collectStruct(self: *DeclCollector, s: parser.StructDecl, loc: ?errors.SourceLoc) anyerror!void {
@@ -385,6 +422,7 @@ pub const DeclCollector = struct {
         }
 
         try self.table.structs.put(s.name, sig);
+        try self.table.symbols.put(s.name, .{ .@"struct" = sig });
 
         // Register struct methods into struct_methods so borrow checker and MIR can
         // detect self parameter mutability for all structs.
@@ -433,11 +471,13 @@ pub const DeclCollector = struct {
             return;
         }
 
-        try self.table.blueprints.put(b.name, .{
+        const bp_sig = BlueprintSig{
             .name = b.name,
             .methods = try methods.toOwnedSlice(self.allocator),
             .is_pub = b.is_pub,
-        });
+        };
+        try self.table.blueprints.put(b.name, bp_sig);
+        try self.table.symbols.put(b.name, .{ .blueprint = bp_sig });
     }
 
     /// Report a user-facing error for union type resolution failures.
@@ -488,6 +528,7 @@ pub const DeclCollector = struct {
         }
 
         try self.table.enums.put(e.name, sig);
+        try self.table.symbols.put(e.name, .{ .@"enum" = sig });
     }
 
     fn collectHandle(self: *DeclCollector, h: parser.HandleDecl, loc: ?errors.SourceLoc) anyerror!void {
@@ -502,12 +543,14 @@ pub const DeclCollector = struct {
             .name = h.name,
             .is_pub = h.is_pub,
         });
+        try self.table.symbols.put(h.name, .{ .handle = .{ .name = h.name, .is_pub = h.is_pub } });
     }
 
     fn collectVar(self: *DeclCollector, v: parser.VarDecl, is_const: bool, loc: ?errors.SourceLoc) anyerror!void {
         // Type alias: const Name: type = T — register in types map, not vars
         if (is_const and isTypeAlias(v.type_annotation)) {
             try self.table.types.put(v.name, v.name);
+            try self.table.symbols.put(v.name, .{ .type_alias = v.name });
             return;
         }
 
@@ -537,6 +580,7 @@ pub const DeclCollector = struct {
         }
 
         try self.table.vars.put(v.name, sig);
+        try self.table.symbols.put(v.name, .{ .@"var" = sig });
     }
 
 };
@@ -1120,4 +1164,42 @@ test "isTypeAlias - detects type keyword annotation" {
     const i32_node = try a.create(parser.Node);
     i32_node.* = .{ .type_named = "i32" };
     try std.testing.expect(!isTypeAlias(i32_node));
+}
+
+test "Symbol.isPub - each variant" {
+    const alloc = std.testing.allocator;
+    _ = alloc;
+    const pub_func = Symbol{ .func = .{
+        .name = "f", .params = &.{}, .param_nodes = &.{},
+        .return_type = .{ .primitive = .void },
+        .context = .normal, .is_pub = true, .is_instance = false,
+    }};
+    try std.testing.expect(pub_func.isPub());
+    const priv_func = Symbol{ .func = .{
+        .name = "f", .params = &.{}, .param_nodes = &.{},
+        .return_type = .{ .primitive = .void },
+        .context = .normal, .is_pub = false, .is_instance = false,
+    }};
+    try std.testing.expect(!priv_func.isPub());
+    const pub_struct = Symbol{ .@"struct" = .{ .name = "S", .fields = &.{}, .is_pub = true } };
+    try std.testing.expect(pub_struct.isPub());
+    const priv_struct = Symbol{ .@"struct" = .{ .name = "S", .fields = &.{}, .is_pub = false } };
+    try std.testing.expect(!priv_struct.isPub());
+    const alias = Symbol{ .type_alias = "i64" };
+    try std.testing.expect(alias.isPub());
+    const pub_var = Symbol{ .@"var" = .{ .name = "v", .type_ = null, .is_const = true, .is_pub = true } };
+    try std.testing.expect(pub_var.isPub());
+}
+
+test "Symbol.isType - each variant" {
+    try std.testing.expect((Symbol{ .@"struct" = .{ .name = "S", .fields = &.{}, .is_pub = true } }).isType());
+    try std.testing.expect((Symbol{ .@"enum" = .{ .name = "E", .backing_type = .{ .primitive = .void }, .variants = &.{}, .is_pub = true } }).isType());
+    try std.testing.expect((Symbol{ .handle = .{ .name = "H", .is_pub = true } }).isType());
+    try std.testing.expect((Symbol{ .type_alias = "i64" }).isType());
+    try std.testing.expect(!(Symbol{ .func = .{
+        .name = "f", .params = &.{}, .param_nodes = &.{},
+        .return_type = .{ .primitive = .void },
+        .context = .normal, .is_pub = true, .is_instance = false,
+    } }).isType());
+    try std.testing.expect(!(Symbol{ .@"var" = .{ .name = "v", .type_ = null, .is_const = true, .is_pub = true } }).isType());
 }

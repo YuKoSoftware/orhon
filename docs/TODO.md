@@ -5,7 +5,7 @@ Master tracking file. Everything is organized into phases ordered by dependency.
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase D (cleanup) — complete; Phase 1 (Semantic Layer) is next
+- **Active project:** Phase 1 (Semantic Layer Cleanup) — not yet started; S1 is the entry point
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -117,6 +117,8 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 > - `m.union_tag` on Binary nodes → MirStore Binary has no union_tag; must compute from var_types at call site
 
 > **Phase D complete** (v0.53.0, 2026-04-20, 367/367 green). Phase 1 (Semantic Layer Cleanup) is next.
+
+> **⬅ RESUME HERE: S1** — Phase D complete (v0.53.1, 2026-04-20). Start Phase 1 with S1: fold `K.Type.*` stringly-typed specials into `Primitive` enum.
 
 ### Phase D — Cleanup `0.5 week`
 

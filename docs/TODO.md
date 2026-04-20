@@ -4,8 +4,8 @@ Master tracking file. Everything is organized into phases ordered by dependency.
 
 ## Current status
 
-- **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ (tagged `phase-a-complete`, merged 2026-04-16)
-- **Active project:** Phase R — Phase B (MIR rebuild) is next
+- **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
+- **Active project:** Phase D (cleanup) — complete; Phase 1 (Semantic Layer) is next
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -116,17 +116,17 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 - [x] **C7** Phase C merge — 361/361 green, committed 2026-04-19 (v0.51.8)
 > - `m.union_tag` on Binary nodes → MirStore Binary has no union_tag; must compute from var_types at call site
 
-> **⬅ RESUME HERE: D1** — Phase B complete (v0.52.0, 2026-04-19, 361/361 green). Start Phase D cleanup.
+> **Phase D complete** (v0.53.0, 2026-04-20, 367/367 green). Phase 1 (Semantic Layer Cleanup) is next.
 
 ### Phase D — Cleanup `0.5 week`
 
-- [ ] **D1** `AstStore` pretty-printer + debug dump
-- [ ] **D2** `MirStore` pretty-printer + debug dump
-- [ ] **D3** Golden-file fixtures for canonical `.orh` inputs (one `.ast.golden` + `.mir.golden` per fixture). **Bundle H4d here:** expand coverage to one snapshot per language feature category (~20 files covering compt, blueprints, generics, handles, interpolation, slicing, defer, ownership-edge, borrow-edge).
-- [ ] **D4** Dead code sweep (grep for removed types, delete orphaned helpers)
-- [ ] **D5** Update `docs/COMPILER.md` to reflect new architecture (also fixes F20 stale pipeline diagram)
-- [ ] **D6** Update this file — close obsolete entries, mark newly unblocked projects
-- [ ] **D7** Version bump, final `testall.sh`, merge
+- [x] **D1** `AstStore` pretty-printer + debug dump
+- [x] **D2** `MirStore` pretty-printer + debug dump
+- [x] **D3** Golden-file fixtures for canonical `.orh` inputs (one `.ast.golden` + `.mir.golden` per fixture). **Bundle H4d here:** expand coverage to one snapshot per language feature category (~20 files covering compt, blueprints, generics, handles, interpolation, slicing, defer, ownership-edge, borrow-edge).
+- [x] **D4** Dead code sweep (grep for removed types, delete orphaned helpers)
+- [x] **D5** Update `docs/COMPILER.md` to reflect new architecture (also fixes F20 stale pipeline diagram)
+- [x] **D6** Update this file — close obsolete entries, mark newly unblocked projects
+- [x] **D7** Version bump, final `testall.sh`, merge
 
 ### Cross-phase invariants
 

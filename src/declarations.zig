@@ -31,6 +31,9 @@ pub const ParamSig = struct {
     type_: types.ResolvedType,
 };
 
+/// Inner map from method name to its signature, owned per struct.
+pub const StructMethodMap = std.StringHashMapUnmanaged(FuncSig);
+
 /// A struct declaration summary
 pub const StructSig = struct {
     name: []const u8,
@@ -38,6 +41,7 @@ pub const StructSig = struct {
     type_params: []ParamSig = &.{}, // generic type params, e.g. (T: type, flags: any)
     conforms_to: []const []const u8 = &.{},
     is_pub: bool,
+    methods: StructMethodMap = .{},
 };
 
 pub const FieldSig = struct {
@@ -114,16 +118,9 @@ pub const Symbol = union(enum) {
     }
 };
 
-/// Inner map from method name to its signature, owned per struct.
-pub const StructMethodMap = std.StringHashMapUnmanaged(FuncSig);
-
 /// The declaration table for a module
 pub const DeclTable = struct {
     symbols: std.StringHashMap(Symbol),
-    /// Bridge struct method signatures: outer map keyed by struct name,
-    /// inner map keyed by method name. Used by MIR annotator to detect
-    /// const & param coercions for cross-module calls.
-    struct_methods: std.StringHashMapUnmanaged(StructMethodMap),
     allocator: std.mem.Allocator,
     type_arena: std.heap.ArenaAllocator, // owns all ResolvedType inner allocations
 
@@ -135,7 +132,6 @@ pub const DeclTable = struct {
     pub fn init(allocator: std.mem.Allocator) DeclTable {
         return .{
             .symbols = std.StringHashMap(Symbol).init(allocator),
-            .struct_methods = .{},
             .allocator = allocator,
             .type_arena = std.heap.ArenaAllocator.init(allocator),
         };
@@ -150,6 +146,10 @@ pub const DeclTable = struct {
                 .@"struct" => |sig| {
                     self.allocator.free(sig.fields);
                     self.allocator.free(sig.type_params);
+                    var m = sig.methods;
+                    var m_it = m.iterator();
+                    while (m_it.next()) |method| self.allocator.free(method.value_ptr.params);
+                    m.deinit(self.allocator);
                 },
                 .@"enum" => |sig| self.allocator.free(sig.variants),
                 .blueprint => |sig| {
@@ -160,36 +160,10 @@ pub const DeclTable = struct {
             }
         }
         self.symbols.deinit();
-        var sm_it = self.struct_methods.iterator();
-        while (sm_it.next()) |entry| {
-            var m_it = entry.value_ptr.iterator();
-            while (m_it.next()) |m| self.allocator.free(m.value_ptr.params);
-            entry.value_ptr.deinit(self.allocator);
-        }
-        self.struct_methods.deinit(self.allocator);
     }
 
     pub fn hasDecl(self: *const DeclTable, name: []const u8) bool {
         return self.symbols.contains(name);
-    }
-
-    /// Look up a struct method by (struct_name, method_name). Returns null if either is absent.
-    pub fn getMethod(self: *const DeclTable, struct_name: []const u8, method_name: []const u8) ?FuncSig {
-        const inner = self.struct_methods.get(struct_name) orelse return null;
-        return inner.get(method_name);
-    }
-
-    /// Register a method signature under a struct. Creates the inner map on first insert.
-    pub fn putMethod(self: *DeclTable, struct_name: []const u8, method_name: []const u8, sig: FuncSig) !void {
-        const gop = try self.struct_methods.getOrPut(self.allocator, struct_name);
-        if (!gop.found_existing) gop.value_ptr.* = .{};
-        try gop.value_ptr.put(self.allocator, method_name, sig);
-    }
-
-    /// Get the inner method map for a struct, for iteration. Returns null when
-    /// the struct has no registered methods.
-    pub fn methodsFor(self: *const DeclTable, struct_name: []const u8) ?StructMethodMap {
-        return self.struct_methods.get(struct_name);
     }
 };
 
@@ -365,12 +339,34 @@ pub const DeclCollector = struct {
             }
         }
 
+        // Build the per-struct methods map so it can be stored on the StructSig itself.
+        var methods_map: StructMethodMap = .{};
+        for (s.members) |member| {
+            if (member.* == .func_decl) {
+                const f = member.func_decl;
+                const is_instance = f.params.len > 0 and
+                    f.params[0].* == .param and
+                    std.mem.eql(u8, f.params[0].param.name, "self");
+                const method_sig = FuncSig{
+                    .name = f.name,
+                    .params = try self.resolveParams(f.params),
+                    .param_nodes = f.params,
+                    .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
+                    .context = f.context,
+                    .is_pub = f.is_pub,
+                    .is_instance = is_instance,
+                };
+                try methods_map.put(self.allocator, f.name, method_sig);
+            }
+        }
+
         const sig = StructSig{
             .name = s.name,
             .fields = try fields.toOwnedSlice(self.allocator),
             .type_params = try self.resolveParams(s.type_params),
             .conforms_to = s.blueprints,
             .is_pub = s.is_pub,
+            .methods = methods_map,
         };
 
         if (self.table.symbols.contains(s.name)) {
@@ -382,30 +378,6 @@ pub const DeclCollector = struct {
         }
 
         try self.table.symbols.put(s.name, .{ .@"struct" = sig });
-
-        // Register struct methods into struct_methods so borrow checker and MIR can
-        // detect self parameter mutability for all structs.
-        // Key: "StructName.method" to avoid collisions with same-named methods on other structs.
-        {
-            for (s.members) |member| {
-                if (member.* == .func_decl) {
-                    const f = member.func_decl;
-                    const is_instance = f.params.len > 0 and
-                        f.params[0].* == .param and
-                        std.mem.eql(u8, f.params[0].param.name, "self");
-                    const method_sig = FuncSig{
-                        .name = f.name,
-                        .params = try self.resolveParams(f.params),
-                        .param_nodes = f.params,
-                        .return_type = try types.resolveTypeNode(self.table.typeAllocator(), f.return_type),
-                        .context = f.context,
-                        .is_pub = f.is_pub,
-                        .is_instance = is_instance,
-                    };
-                    try self.table.putMethod(s.name, f.name, method_sig);
-                }
-            }
-        }
     }
 
     fn collectBlueprint(self: *DeclCollector, b: parser.BlueprintDecl, loc: ?errors.SourceLoc) anyerror!void {
@@ -944,7 +916,8 @@ test "declaration collector - struct methods registered" {
     try testCollect(&collector, prog);
 
     try std.testing.expect(!reporter.hasErrors());
-    try std.testing.expect(collector.table.getMethod("Point", "getX") != null);
+    const point_sym = collector.table.symbols.get("Point") orelse return error.TestExpectedSymbol;
+    try std.testing.expect(point_sym.@"struct".methods.get("getX") != null);
 }
 
 test "declaration collector - field name conflicts with type" {

@@ -378,7 +378,11 @@ pub fn checkBlueprintConformance(self: *TypeResolver, s: parser.StructDecl, loc:
 
         // Check each required method
         for (bp_sig.methods) |bp_method| {
-            const struct_method = self.ctx.decls.getMethod(s.name, bp_method.name) orelse {
+            const struct_method: declarations.FuncSig = blk: {
+                if (self.ctx.decls.symbols.get(s.name)) |sym| switch (sym) {
+                    .@"struct" => |sig| if (sig.methods.get(bp_method.name)) |m| break :blk m,
+                    else => {},
+                };
                 try self.ctx.reporter.reportFmt(loc, "struct '{s}' does not implement '{s}' required by blueprint '{s}'",
                     .{ s.name, bp_method.name, bp_name });
                 continue;

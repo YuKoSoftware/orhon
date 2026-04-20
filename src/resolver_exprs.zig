@@ -15,6 +15,15 @@ const TypeResolver = resolver_mod.TypeResolver;
 const Scope = resolver_mod.Scope;
 const RT = types.ResolvedType;
 
+/// Look up a method on a struct by name in the given DeclTable.
+fn lookupMethod(decls: *const declarations.DeclTable, struct_name: []const u8, method_name: []const u8) ?declarations.FuncSig {
+    if (decls.symbols.get(struct_name)) |sym| switch (sym) {
+        .@"struct" => |sig| return sig.methods.get(method_name),
+        else => {},
+    };
+    return null;
+}
+
 /// Resolve an expression and return its ResolvedType.
 /// Accepts AstNodeIndex; bridges to *parser.Node for existing logic.
 pub fn resolveExpr(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope) anyerror!RT {
@@ -375,7 +384,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                         break :blk "";
                     };
                     if (struct_name.len > 0) {
-                        if (self.ctx.decls.getMethod(struct_name, fe.field)) |sig| {
+                        if (lookupMethod(self.ctx.decls, struct_name, fe.field)) |sig| {
                             try validateCallStyle(self, sig, called_on_type, fe.field, struct_name, node);
                             try validateCallArity(self, sig, c.args.len, !called_on_type, fe.field, node);
                             return sig.return_type;
@@ -383,7 +392,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                         // Cross-module: check all loaded module decls
                         if (self.ctx.all_decls) |ad| {
                             if (ad.get(obj_id)) |mod_decls| {
-                                if (mod_decls.getMethod(struct_name, fe.field)) |sig| {
+                                if (lookupMethod(mod_decls, struct_name, fe.field)) |sig| {
                                     try validateCallStyle(self, sig, called_on_type, fe.field, struct_name, node);
                                     try validateCallArity(self, sig, c.args.len, !called_on_type, fe.field, node);
                                     return sig.return_type;
@@ -391,7 +400,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                             }
                             var it = ad.iterator();
                             while (it.next()) |entry| {
-                                if (entry.value_ptr.*.getMethod(struct_name, fe.field)) |sig| {
+                                if (lookupMethod(entry.value_ptr.*, struct_name, fe.field)) |sig| {
                                     try validateCallStyle(self, sig, called_on_type, fe.field, struct_name, node);
                                     try validateCallArity(self, sig, c.args.len, !called_on_type, fe.field, node);
                                     return sig.return_type;
@@ -407,7 +416,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                     if (inner.object.* == .identifier) {
                         const type_name = inner.field;
                         const method_name = fe.field;
-                        if (self.ctx.decls.getMethod(type_name, method_name)) |sig| {
+                        if (lookupMethod(self.ctx.decls, type_name, method_name)) |sig| {
                             try validateCallStyle(self, sig, true, method_name, type_name, node);
                             try validateCallArity(self, sig, c.args.len, false, fe.field, node);
                             return sig.return_type;
@@ -415,7 +424,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                         if (self.ctx.all_decls) |ad| {
                             var it = ad.iterator();
                             while (it.next()) |entry| {
-                                if (entry.value_ptr.*.getMethod(type_name, method_name)) |sig| {
+                                if (lookupMethod(entry.value_ptr.*, type_name, method_name)) |sig| {
                                     try validateCallStyle(self, sig, true, method_name, type_name, node);
                                     try validateCallArity(self, sig, c.args.len, false, fe.field, node);
                                     return sig.return_type;

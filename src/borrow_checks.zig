@@ -118,7 +118,7 @@ pub fn checkExpr(self: *BorrowChecker, node: *parser.Node) anyerror!void {
                     const obj_name = fe.object.identifier;
                     const method_name = fe.field;
                     // Look up method to check self parameter mutability.
-                    // Try top-level funcs first, then struct_methods ("Type.method" key).
+                    // Try top-level funcs first, then per-struct methods on StructSig.methods.
                     {
                         const method_sig_opt: ?declarations.FuncSig = blk: {
                             if (self.ctx.decls.symbols.get(method_name)) |sym| switch (sym) {

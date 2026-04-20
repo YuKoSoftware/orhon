@@ -120,15 +120,19 @@ pub const OwnershipChecker = struct {
         // Fast path: use the variable's type_name if available
         if (scope.getState(obj_name)) |state| {
             if (state.type_name.len > 0) {
-                if (decls.getMethod(state.type_name, method_name)) |sig| return sig;
+                if (decls.symbols.get(state.type_name)) |sym| switch (sym) {
+                    .@"struct" => |sig| if (sig.methods.get(method_name)) |m| return m,
+                    else => {},
+                };
             }
         }
 
-        // Slow path: scan all registered struct method tables (type_name may be empty)
-        var it = decls.struct_methods.iterator();
-        while (it.next()) |entry| {
-            if (entry.value_ptr.get(method_name)) |sig| return sig;
-        }
+        // Slow path: scan all struct symbols for a matching method name (type_name may be empty)
+        var sym_it = decls.symbols.valueIterator();
+        while (sym_it.next()) |sym| switch (sym.*) {
+            .@"struct" => |sig| if (sig.methods.get(method_name)) |m| return m,
+            else => {},
+        };
         return null;
     }
 

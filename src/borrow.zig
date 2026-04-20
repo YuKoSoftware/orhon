@@ -173,11 +173,12 @@ pub const BorrowChecker = struct {
     /// Look up a struct method given the call's receiver node.
     ///
     /// Preferred path: read the receiver's ResolvedType from `ctx.type_map` (populated
-    /// by pass 5), extract the owning struct name, and call `decls.getMethod(name, ...)`.
-    /// This picks the correct per-struct signature so `self` mutability is accurate.
+    /// by pass 5), extract the owning struct name, and look up the method on that
+    /// struct's `StructSig.methods` map. This picks the correct per-struct signature
+    /// so `self` mutability is accurate.
     ///
     /// Fallback path (object_node == null, or receiver type unknown / not a named struct):
-    /// scan every registered struct method table and return the first match. This keeps
+    /// scan every struct symbol's methods map and return the first match. This keeps
     /// older/partial call sites working but is the ambiguous path that caused CB1.
     pub fn lookupStructMethod(
         self: *BorrowChecker,
@@ -188,15 +189,20 @@ pub const BorrowChecker = struct {
             if (self.ctx.type_map) |tm| {
                 if (tm.get(obj)) |rt| {
                     if (receiverStructName(rt)) |sname| {
-                        if (self.ctx.decls.getMethod(sname, method_name)) |sig| return sig;
+                        if (self.ctx.decls.symbols.get(sname)) |sym| switch (sym) {
+                            .@"struct" => |sig| if (sig.methods.get(method_name)) |m| return m,
+                            else => {},
+                        };
                     }
                 }
             }
         }
-        var it = self.ctx.decls.struct_methods.iterator();
-        while (it.next()) |entry| {
-            if (entry.value_ptr.get(method_name)) |sig| return sig;
-        }
+        // Slow path: scan all struct symbols for a matching method name.
+        var sym_it = self.ctx.decls.symbols.valueIterator();
+        while (sym_it.next()) |sym| switch (sym.*) {
+            .@"struct" => |sig| if (sig.methods.get(method_name)) |m| return m,
+            else => {},
+        };
         return null;
     }
 
@@ -747,10 +753,9 @@ test "borrow checker - lookupStructMethod" {
     var decl_table = declarations.DeclTable.init(alloc);
     defer decl_table.deinit();
 
-    // Register struct and struct method
-    try decl_table.symbols.put("Point", .{ .@"struct" = .{ .name = "Point", .fields = &.{}, .is_pub = true } });
-
-    try decl_table.putMethod("Point", "scale", .{
+    // Register struct with its scale method on the StructSig itself.
+    var point_methods: declarations.StructMethodMap = .{};
+    try point_methods.put(alloc, "scale", .{
         .name = "scale",
         .params = &.{},
         .param_nodes = &.{},
@@ -759,6 +764,12 @@ test "borrow checker - lookupStructMethod" {
         .is_pub = true,
         .is_instance = false,
     });
+    try decl_table.symbols.put("Point", .{ .@"struct" = .{
+        .name = "Point",
+        .fields = &.{},
+        .is_pub = true,
+        .methods = point_methods,
+    } });
 
     const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
     var checker = BorrowChecker.init(alloc, &ctx);
@@ -786,8 +797,8 @@ test "borrow checker - lookupStructMethod resolves by receiver type (CB1)" {
     // Two distinct param_nodes — param_nodes[0] drives isMutableBorrowType checks
     // in the borrow checker. We don't need realistic param shapes for this test, just
     // two signatures that differ in a discriminable way (return type).
-    try decl_table.symbols.put("Writer", .{ .@"struct" = .{ .name = "Writer", .fields = &.{}, .is_pub = true } });
-    try decl_table.putMethod("Writer", "op", .{
+    var writer_methods: declarations.StructMethodMap = .{};
+    try writer_methods.put(alloc, "op", .{
         .name = "op_writer",
         .params = &.{},
         .param_nodes = &.{},
@@ -796,9 +807,15 @@ test "borrow checker - lookupStructMethod resolves by receiver type (CB1)" {
         .is_pub = true,
         .is_instance = true,
     });
+    try decl_table.symbols.put("Writer", .{ .@"struct" = .{
+        .name = "Writer",
+        .fields = &.{},
+        .is_pub = true,
+        .methods = writer_methods,
+    } });
 
-    try decl_table.symbols.put("Reader", .{ .@"struct" = .{ .name = "Reader", .fields = &.{}, .is_pub = true } });
-    try decl_table.putMethod("Reader", "op", .{
+    var reader_methods: declarations.StructMethodMap = .{};
+    try reader_methods.put(alloc, "op", .{
         .name = "op_reader",
         .params = &.{},
         .param_nodes = &.{},
@@ -807,6 +824,12 @@ test "borrow checker - lookupStructMethod resolves by receiver type (CB1)" {
         .is_pub = true,
         .is_instance = true,
     });
+    try decl_table.symbols.put("Reader", .{ .@"struct" = .{
+        .name = "Reader",
+        .fields = &.{},
+        .is_pub = true,
+        .methods = reader_methods,
+    } });
 
     // Build a type_map with a receiver identifier node resolved to `.named = "Reader"`.
     var type_map = std.AutoHashMapUnmanaged(*parser.Node, types.ResolvedType){};

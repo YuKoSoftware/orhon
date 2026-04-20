@@ -395,7 +395,7 @@ pub const ContinueStmt = struct {
 // Expressions cluster
 // ---------------------------------------------------------------------------
 
-/// literal_kind values match LiteralKind enum from mir_node.zig, encoded as u32.
+/// literal_kind values match LiteralKind enum from mir/mir_types.zig, encoded as u32.
 /// bool_val: 1 = true, 0 = false (only meaningful when kind = bool_lit).
 pub const Literal = struct {
     pub const Record = struct { text: StringIndex, kind: u32, bool_val: u32 };

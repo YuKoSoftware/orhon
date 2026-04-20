@@ -1,5 +1,5 @@
 // mir_builder.zig — fused MIR builder hub (Phase B: passthrough skeleton)
-// Replaces MirAnnotator + MirLowerer once populated (B5-B8).
+// Fused annotation + lowering pass that builds MirStore (Phase B, complete).
 // Satellite files (mir_builder_decls.zig, etc.) added per cluster in B5-B8.
 // Contract: AstStore must outlive MirBuilder (span back-pointers are AstNodeIndex).
 

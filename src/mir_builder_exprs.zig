@@ -31,7 +31,7 @@ fn internStr(b: *MirBuilder, ast_si: StringIndex) !StringIndex {
     return b.store.strings.intern(b.allocator, b.ast.strings.get(ast_si));
 }
 
-/// Resolve a FuncSig for a call expression's callee (simplified port from MirAnnotator).
+/// Resolve a FuncSig for a call expression's callee.
 /// Only handles direct identifier and field_expr callee forms.
 fn resolveCallSig(b: *const MirBuilder, call_idx: AstNodeIndex) ?@import("declarations.zig").FuncSig {
     const ast_rec = ast_typed.CallExpr.unpack(b.ast, call_idx);

@@ -208,8 +208,6 @@ pub fn runSemanticAndCodegen(
 
     // ── Pass 9 (new): MIR Builder — fused annotation + lowering into MirStore ──
     // MirBuilder is now the authoritative MIR producer (B9). The old
-    // MirAnnotator + MirLowerer below remain as codegen compatibility shims
-    // until Phase C migrates codegen to read MirStore directly (B10).
     var mir_store = mir_store_mod.MirStore.init();
     defer mir_store.deinit(allocator);
     var mir_builder = mir_builder_mod.MirBuilder.init(

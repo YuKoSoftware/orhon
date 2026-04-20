@@ -95,8 +95,8 @@ pub const TypeResolver = struct {
         return self.ctx.nodeLocFromIdx(idx);
     }
 
-    /// Store a resolved type in both type_maps: pointer-keyed (for MirAnnotator)
-    /// and index-keyed (for MirBuilder, B5+).
+    /// Store a resolved type in both type_maps: pointer-keyed (reverse_map compat)
+    /// and index-keyed (for MirBuilder).
     pub fn putTypeMap(self: *TypeResolver, idx: AstNodeIndex, rt: RT) !void {
         if (self.reverseNodeMut(idx)) |n| try self.type_map.put(self.ctx.allocator, n, rt);
         try self.ast_type_map.put(self.ctx.allocator, idx, rt);

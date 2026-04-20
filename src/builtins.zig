@@ -74,14 +74,12 @@ pub const BUILTIN_VALUES = [_][]const u8{
 /// Value types — fixed-size types that always copy, never move.
 /// Distinct from primitives (i32, f32) but share copy semantics.
 pub fn isValueType(name: []const u8) bool {
-    return std.mem.eql(u8, name, K.Type.VECTOR);
+    return @import("types.zig").Primitive.fromName(name) == .vector;
 }
 
 pub fn isBuiltinType(name: []const u8) bool {
-    for (BUILTIN_TYPES) |bt| {
-        if (std.mem.eql(u8, name, bt)) return true;
-    }
-    return false;
+    const p = @import("types.zig").Primitive.fromName(name) orelse return false;
+    return p == .err or p == .vector;
 }
 
 pub fn isBuiltinValue(name: []const u8) bool {

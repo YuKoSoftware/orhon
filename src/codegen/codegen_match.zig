@@ -250,7 +250,7 @@ pub fn generateMatchMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
             }
             if (pat_entry.tag == .identifier) {
                 const id = mir_typed.Identifier.unpack(store, pat);
-                if (std.mem.eql(u8, store.strings.get(id.name), K.Type.ERROR)) break :blk true;
+                if (types.Primitive.fromName(store.strings.get(id.name)) == .err) break :blk true;
             }
         }
         break :blk false;
@@ -377,7 +377,7 @@ pub fn generateTypeMatchMir(cg: *CodeGen, idx: MirNodeIndex, is_null_union: bool
             const pat_entry = store.getNode(pat);
             if (pat_entry.tag == .identifier) {
                 const id = mir_typed.Identifier.unpack(store, pat);
-                if (std.mem.eql(u8, store.strings.get(id.name), K.Type.ERROR)) break :blk false;
+                if (types.Primitive.fromName(store.strings.get(id.name)) == .err) break :blk false;
             }
             if (pat_entry.tag == .literal) {
                 const lit = mir_typed.Literal.unpack(store, pat);
@@ -393,7 +393,7 @@ pub fn generateTypeMatchMir(cg: *CodeGen, idx: MirNodeIndex, is_null_union: bool
             const arm = mir_typed.MatchArm.unpack(store, arm_idx);
             if (store.getNode(arm.pattern).tag == .identifier) {
                 const id = mir_typed.Identifier.unpack(store, arm.pattern);
-                if (std.mem.eql(u8, store.strings.get(id.name), K.Type.ERROR)) break :blk true;
+                if (types.Primitive.fromName(store.strings.get(id.name)) == .err) break :blk true;
             }
         }
         break :blk false;
@@ -416,7 +416,7 @@ pub fn generateTypeMatchMir(cg: *CodeGen, idx: MirNodeIndex, is_null_union: bool
             if (pat_entry.tag == .identifier) {
                 const id = mir_typed.Identifier.unpack(store, pat);
                 const n = store.strings.get(id.name);
-                if (std.mem.eql(u8, n, K.Type.ERROR)) {
+                if (types.Primitive.fromName(n) == .err) {
                     error_body = arm.body;
                 } else if (std.mem.eql(u8, n, "else")) {
                     else_body = arm.body;
@@ -476,7 +476,7 @@ pub fn generateTypeMatchMir(cg: *CodeGen, idx: MirNodeIndex, is_null_union: bool
             if (pat_entry.tag == .identifier) {
                 const id = mir_typed.Identifier.unpack(store, pat);
                 const n = store.strings.get(id.name);
-                if (std.mem.eql(u8, n, K.Type.ERROR)) {
+                if (types.Primitive.fromName(n) == .err) {
                     error_body = arm.body;
                 } else if (std.mem.eql(u8, n, "else")) {
                     else_body = arm.body;
@@ -566,7 +566,7 @@ pub fn generateTypeMatchMir(cg: *CodeGen, idx: MirNodeIndex, is_null_union: bool
     if (val_rt == .union_type) {
         for (val_rt.union_type) |mem| {
             const n = mem.name();
-            if (std.mem.eql(u8, n, "Error") or std.mem.eql(u8, n, "null")) continue;
+            if (types.Primitive.fromName(n) == .err or types.Primitive.fromName(n) == .null_type) continue;
             if (sorted_len >= max_arity) break;
             sorted_buf[sorted_len] = n;
             sorted_len += 1;

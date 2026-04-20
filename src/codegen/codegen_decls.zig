@@ -8,7 +8,8 @@ const parser = @import("../parser.zig");
 const declarations = @import("../declarations.zig");
 const errors = @import("../errors.zig");
 const K = @import("../constants.zig");
-const RT = @import("../types.zig").ResolvedType;
+const types = @import("../types.zig");
+const RT = types.ResolvedType;
 const mir_store_mod = @import("../mir_store.zig");
 const mir_typed = @import("../mir_typed.zig");
 const ast_store_mod = @import("../ast_store.zig");
@@ -52,7 +53,7 @@ fn generateFuncMirFromStore(cg: *CodeGen, store: *const MirStore, idx: MirNodeIn
     if (body_stmts.len == 0) {
         const ret_node = cg.getAstNode(rec.return_type);
         const is_void_ret = if (ret_node) |rt| rt.* == .type_named and
-            std.mem.eql(u8, rt.type_named, K.Type.VOID) else false;
+            types.Primitive.fromName(rt.type_named) == .void else false;
         if (!std.mem.eql(u8, func_name, "main")) {
             if (!is_void_ret) {
                 if (try cg.reExportIfSidecar(func_name, is_pub)) return;
@@ -91,7 +92,7 @@ fn generateFuncMirFromStore(cg: *CodeGen, store: *const MirStore, idx: MirNodeIn
     if (is_pub or std.mem.eql(u8, func_name, "main")) try cg.emit("pub ");
 
     const returns_type = ret_type.* == .type_named and
-        std.mem.eql(u8, ret_type.type_named, K.Type.TYPE);
+        types.Primitive.fromName(ret_type.type_named) == .@"type";
     const is_type_generic = is_compt and returns_type;
 
     try cg.emitFmt("fn {s}(", .{func_name});
@@ -108,9 +109,9 @@ fn generateFuncMirFromStore(cg: *CodeGen, store: *const MirStore, idx: MirNodeIn
         if (emitted > 0) try cg.emit(", ");
         emitted += 1;
         const is_any = pta.* == .type_named and
-            std.mem.eql(u8, pta.type_named, K.Type.ANY);
+            types.Primitive.fromName(pta.type_named) == .any;
         const is_type_param = pta.* == .type_named and
-            std.mem.eql(u8, pta.type_named, K.Type.TYPE);
+            types.Primitive.fromName(pta.type_named) == .@"type";
         if (is_any and first_any_param == null) first_any_param = pname;
         if (is_type_param) {
             try cg.emitFmt("comptime {s}: type", .{pname});
@@ -133,7 +134,7 @@ fn generateFuncMirFromStore(cg: *CodeGen, store: *const MirStore, idx: MirNodeIn
 
     // Return type
     const return_is_any = ret_type.* == .type_named and
-        std.mem.eql(u8, ret_type.type_named, K.Type.ANY);
+        types.Primitive.fromName(ret_type.type_named) == .any;
     if (return_is_any) {
         if (first_any_param) |pname| {
             try cg.emitFmt("@TypeOf({s})", .{pname});
@@ -415,7 +416,7 @@ fn generateHandleMirFromStore(cg: *CodeGen, store: *const MirStore, idx: MirNode
 /// Returns true if the type annotation is the `type` keyword — indicating a type alias declaration.
 pub fn isTypeAlias(type_annotation: ?*parser.Node) bool {
     const ta = type_annotation orelse return false;
-    return ta.* == .type_named and std.mem.eql(u8, ta.type_named, K.Type.TYPE);
+    return ta.* == .type_named and types.Primitive.fromName(ta.type_named) == .@"type";
 }
 
 /// MIR-path top-level var/const/compt declaration.

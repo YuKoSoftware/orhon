@@ -199,7 +199,7 @@ pub const DeclTable = struct {
 /// Returns true if the type annotation is the `type` keyword — indicating a type alias declaration.
 fn isTypeAlias(type_annotation: ?*parser.Node) bool {
     const ta = type_annotation orelse return false;
-    return ta.* == .type_named and std.mem.eql(u8, ta.type_named, K.Type.TYPE);
+    return ta.* == .type_named and types.Primitive.fromName(ta.type_named) == .@"type";
 }
 
 /// The declaration collector
@@ -774,7 +774,7 @@ test "declaration collector - pub func is registered" {
 /// Used to prevent field names like `str`, `i32`, `File` etc.
 fn isReservedTypeName(name: []const u8) bool {
     if (types.isPrimitiveName(name)) return true;
-    if (std.mem.eql(u8, name, K.Type.ERROR)) return true;
+    if (types.Primitive.fromName(name) == .err) return true;
     return builtins.isBuiltinType(name);
 }
 

@@ -228,7 +228,7 @@ fn generateBinaryMir(cg: *CodeGen, store: *const MirStore, idx: MirNodeIndex) an
         const lhs_fn_rec = mir_typed.CompilerFn.unpack(store, rec.lhs);
         const fn_name = store.strings.get(lhs_fn_rec.name);
         const lhs_args_count = lhs_fn_rec.args_end - lhs_fn_rec.args_start;
-        if (std.mem.eql(u8, fn_name, K.Type.TYPE) and lhs_args_count > 0) {
+        if (types.Primitive.fromName(fn_name) == .@"type" and lhs_args_count > 0) {
             const val_idx: MirNodeIndex = @enumFromInt(store.extra_data.items[lhs_fn_rec.args_start]);
             const cmp = if (is_eq) "==" else "!=";
             const rhs_entry = store.getNode(rec.rhs);
@@ -261,7 +261,7 @@ fn generateBinaryMir(cg: *CodeGen, store: *const MirStore, idx: MirNodeIndex) an
             if (rhs_entry.tag == .identifier) {
                 const rhs_id_rec = mir_typed.Identifier.unpack(store, rec.rhs);
                 const rhs = store.strings.get(rhs_id_rec.name);
-                if (std.mem.eql(u8, rhs, K.Type.ERROR)) {
+                if (types.Primitive.fromName(rhs) == .err) {
                     const val_entry = store.getNode(val_idx);
                     if (val_entry.tag == .identifier) {
                         const val_ident = mir_typed.Identifier.unpack(store, val_idx);
@@ -490,7 +490,7 @@ fn generateFieldAccessMir(cg: *CodeGen, store: *const MirStore, idx: MirNodeInde
             const obj_id_rec = mir_typed.Identifier.unpack(store, obj_idx);
             const obj_name = store.strings.get(obj_id_rec.name);
             if (std.mem.eql(u8, obj_name, subst.original)) {
-                if (codegen.isResultValueField(field, cg.decls) or std.mem.eql(u8, field, K.Type.ERROR)) {
+                if (codegen.isResultValueField(field, cg.decls) or types.Primitive.fromName(field) == .err) {
                     try cg.emit(subst.capture);
                     return;
                 }
@@ -498,7 +498,7 @@ fn generateFieldAccessMir(cg: *CodeGen, store: *const MirStore, idx: MirNodeInde
         }
     }
 
-    if (std.mem.eql(u8, field, K.Type.ERROR)) {
+    if (types.Primitive.fromName(field) == .err) {
         // Use obj type_class directly from MirStore entry
         const err_tc = obj_tc;
         if (err_tc == .null_error_union) {

@@ -246,7 +246,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                 if (callee_sig) |sig| {
                     if (idx < sig.params.len) {
                         const pt = sig.params[idx].type_;
-                        if (pt == .named and std.mem.eql(u8, pt.named, "any")) {
+                        if (pt == .named and types.Primitive.fromName(pt.named) == .any) {
                             self.in_anytype_arg = true;
                         }
                     }

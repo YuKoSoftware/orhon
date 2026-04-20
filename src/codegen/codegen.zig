@@ -583,9 +583,11 @@ pub const CodeGen = struct {
     pub fn typeToZig(self: *CodeGen, node: *parser.Node) anyerror![]const u8 {
         return switch (node.*) {
             .type_named => |name| {
-                if (std.mem.eql(u8, name, K.Type.ERROR)) return "anyerror";
-                // @this / Self maps to @This() inside any struct
-                if (self.in_struct and (std.mem.eql(u8, name, K.Type.THIS) or std.mem.eql(u8, name, K.Type.SELF_DEPRECATED))) return "@This()";
+                if (types.Primitive.fromName(name)) |p| switch (p) {
+                    .err => return "anyerror",
+                    .this, .self_deprecated => if (self.in_struct) return "@This()",
+                    else => {},
+                };
                 // Inside a generic struct, the struct's own name also maps to @This()
                 if (self.generic_struct_name) |gsn| {
                     if (std.mem.eql(u8, name, gsn)) return "@This()";
@@ -608,9 +610,9 @@ pub const CodeGen = struct {
                 var other_types = std.ArrayListUnmanaged(*parser.Node){};
                 defer other_types.deinit(self.allocator);
                 for (u) |t| {
-                    if (t.* == .type_named and std.mem.eql(u8, t.type_named, K.Type.ERROR)) {
+                    if (t.* == .type_named and types.Primitive.fromName(t.type_named) == .err) {
                         has_error = true;
-                    } else if (t.* == .type_named and std.mem.eql(u8, t.type_named, "null")) {
+                    } else if (t.* == .type_named and types.Primitive.fromName(t.type_named) == .null_type) {
                         has_null = true;
                     } else {
                         try other_types.append(self.allocator, t);
@@ -655,7 +657,7 @@ pub const CodeGen = struct {
                     .{ params_str.items, ret });
             },
             .type_generic => |g| blk: {
-                if (std.mem.eql(u8, g.name, K.Type.VECTOR)) {
+                if (types.Primitive.fromName(g.name) == .vector) {
                     // Vector(N, T) → @Vector(N, T)
                     if (g.args.len >= 2) {
                         const size_str = if (g.args[0].* == .int_literal) g.args[0].int_literal else "0";
@@ -719,7 +721,7 @@ pub const CodeGen = struct {
             .binary_expr => |b| blk: {
                 if (b.op != .bit_or) break :blk "anyopaque";
                 // Check for (Error | T) or (null | T) patterns
-                const left_is_error = b.left.* == .identifier and std.mem.eql(u8, b.left.identifier, K.Type.ERROR);
+                const left_is_error = b.left.* == .identifier and types.Primitive.fromName(b.left.identifier) == .err;
                 const left_is_null = b.left.* == .null_literal;
                 if (left_is_error) {
                     const inner = try self.typeToZig(b.right);
@@ -740,11 +742,11 @@ pub const CodeGen = struct {
                 defer others.deinit(self.allocator);
                 for (members.items) |m| {
                     if (m.* == .null_literal or
-                        (m.* == .type_named and std.mem.eql(u8, m.type_named, "null")))
+                        (m.* == .type_named and types.Primitive.fromName(m.type_named) == .null_type))
                     {
                         has_null = true;
-                    } else if ((m.* == .identifier and std.mem.eql(u8, m.identifier, K.Type.ERROR)) or
-                        (m.* == .type_named and std.mem.eql(u8, m.type_named, K.Type.ERROR)))
+                    } else if ((m.* == .identifier and types.Primitive.fromName(m.identifier) == .err) or
+                        (m.* == .type_named and types.Primitive.fromName(m.type_named) == .err))
                     {
                         has_error = true;
                     } else {
@@ -785,7 +787,7 @@ pub fn extractValueType(node: *parser.Node) ?*parser.Node {
         const members = node.type_union;
         var value_node: ?*parser.Node = null;
         for (members) |m| {
-            if (m.* == .type_named and (std.mem.eql(u8, m.type_named, K.Type.ERROR) or std.mem.eql(u8, m.type_named, "null"))) continue;
+            if (m.* == .type_named and (types.Primitive.fromName(m.type_named) == .err or types.Primitive.fromName(m.type_named) == .null_type)) continue;
             if (value_node != null) return null; // multiple non-special members
             value_node = m;
         }

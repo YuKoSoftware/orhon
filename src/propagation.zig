@@ -343,7 +343,7 @@ pub const PropagationChecker = struct {
                 }
                 // Direct type check: @type(x) == Error / @type(x) != null
                 if (be.op == .eq or be.op == .ne) {
-                    if (be.left.* == .compiler_func and std.mem.eql(u8, be.left.compiler_func.name, K.Type.TYPE)) {
+                    if (be.left.* == .compiler_func and types.Primitive.fromName(be.left.compiler_func.name) == .@"type") {
                         if (be.left.compiler_func.args.len > 0) {
                             const checked_var = be.left.compiler_func.args[0];
                             if (checked_var.* == .identifier) {
@@ -410,10 +410,10 @@ fn typeNodeIsUnion(node: *parser.Node) ?bool {
     switch (node.*) {
         .type_union => |members| {
             for (members) |m| {
-                if (m.* == .type_named and std.mem.eql(u8, m.type_named, K.Type.ERROR)) return true;
+                if (m.* == .type_named and types.Primitive.fromName(m.type_named) == .err) return true;
             }
             for (members) |m| {
-                if (m.* == .type_named and std.mem.eql(u8, m.type_named, K.Type.NULL)) return false;
+                if (m.* == .type_named and types.Primitive.fromName(m.type_named) == .null_type) return false;
             }
             return null;
         },

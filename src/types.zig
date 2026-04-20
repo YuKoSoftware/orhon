@@ -7,6 +7,8 @@ const K = @import("constants.zig");
 
 /// Primitive type enum — replaces string-based primitive type identification.
 /// Exhaustive switching, zero-cost comparison, no typo risk.
+/// Includes special compiler-known types (err, null_type, any, this, vector)
+/// so every comparison site uses fromName() instead of std.mem.eql.
 pub const Primitive = enum {
     i8,
     i16,
@@ -32,6 +34,18 @@ pub const Primitive = enum {
     numeric_literal,
     /// Unresolved float literal — requires explicit type annotation
     float_literal,
+    /// Built-in error sentinel type ("Error" in source)
+    err,
+    /// Built-in null sentinel type ("null" in source)
+    null_type,
+    /// anytype parameter marker ("any" in source)
+    any,
+    /// Self-reference inside a type declaration ("@this" in source)
+    this,
+    /// Deprecated alias for @this ("Self" in source)
+    self_deprecated,
+    /// SIMD vector type ("Vector" in source, generic)
+    vector,
 
     /// Convert from AST/source name string. Returns null for non-primitive names.
     pub fn fromName(n: []const u8) ?Primitive {
@@ -58,6 +72,12 @@ pub const Primitive = enum {
             .{ "type", .@"type" },
             .{ "numeric_literal", .numeric_literal },
             .{ "float_literal", .float_literal },
+            .{ "Error", .err },
+            .{ "null", .null_type },
+            .{ "any", .any },
+            .{ "@this", .this },
+            .{ "Self", .self_deprecated },
+            .{ "Vector", .vector },
         });
         return map.get(n);
     }
@@ -87,6 +107,12 @@ pub const Primitive = enum {
             .@"type" => "type",
             .numeric_literal => "numeric_literal",
             .float_literal => "float_literal",
+            .err => "Error",
+            .null_type => "null",
+            .any => "any",
+            .this => "@this",
+            .self_deprecated => "Self",
+            .vector => "Vector",
         };
     }
 
@@ -99,6 +125,11 @@ pub const Primitive = enum {
             .@"type" => "type",
             .numeric_literal => "comptime_int",
             .float_literal => "comptime_float",
+            .err => "anyerror",
+            .null_type => "null",
+            .any => "anytype",
+            .this, .self_deprecated => "@This()",
+            .vector => "@Vector",
             // All others map 1:1 to Zig
             else => self.toName(),
         };
@@ -335,12 +366,14 @@ pub fn resolveTypeNode(alloc: std.mem.Allocator, node: *parser.Node) anyerror!Re
 
 /// Classify a named type string into the appropriate ResolvedType variant
 fn classifyNamed(n: []const u8) ResolvedType {
-    // Check for Error and null first
-    if (std.mem.eql(u8, n, K.Type.ERROR)) return .err;
-    if (std.mem.eql(u8, n, K.Type.NULL)) return .null_type;
-    // Check primitives
-    if (Primitive.fromName(n)) |prim| return .{ .primitive = prim };
-    // Everything else is a named type (struct/enum/etc.)
+    if (Primitive.fromName(n)) |prim| return switch (prim) {
+        .err => .err,
+        .null_type => .null_type,
+        // Special compiler-known types exist in Primitive only for comparison;
+        // they remain .named in the type system so anytype/self-ref semantics hold.
+        .any, .this, .self_deprecated, .vector => .{ .named = n },
+        else => .{ .primitive = prim },
+    };
     return .{ .named = n };
 }
 
@@ -404,11 +437,20 @@ pub fn findDuplicateUnionMember(alloc: std.mem.Allocator, members: []*parser.Nod
     return null;
 }
 
-/// Check if a name is a primitive type (copy semantics)
+/// Check if a name is a primitive type (copy semantics, user-facing numeric/bool/str/void).
+/// Excludes pseudo-types and special compiler-known names that are in Primitive for
+/// comparison purposes only (any, err, null_type, this, self_deprecated, vector).
 pub fn isPrimitiveName(n: []const u8) bool {
     if (Primitive.fromName(n)) |p| {
-        // numeric_literal and float_literal are pseudo-types, not user-facing primitives
-        return p != .numeric_literal and p != .float_literal and p != .@"type";
+        return switch (p) {
+            .i8, .i16, .i32, .i64, .i128,
+            .u8, .u16, .u32, .u64, .u128,
+            .isize, .usize,
+            .f16, .f32, .f64, .f128,
+            .bool, .string, .void,
+            => true,
+            else => false,
+        };
     }
     return false;
 }
@@ -473,6 +515,25 @@ test "isPrimitiveName" {
     try std.testing.expect(isPrimitiveName("str"));
     try std.testing.expect(!isPrimitiveName("Player"));
     try std.testing.expect(!isPrimitiveName("List"));
+    // Special compiler-known types are in Primitive for comparison only — not user primitives
+    try std.testing.expect(!isPrimitiveName("Error"));
+    try std.testing.expect(!isPrimitiveName("null"));
+    try std.testing.expect(!isPrimitiveName("any"));
+    try std.testing.expect(!isPrimitiveName("@this"));
+    try std.testing.expect(!isPrimitiveName("Self"));
+    try std.testing.expect(!isPrimitiveName("Vector"));
+}
+
+test "classifyNamed - special types stay .named" {
+    // "any", "@this", "Self", "Vector" must remain .named so the resolver's
+    // anytype/self-reference semantics continue to work correctly.
+    try std.testing.expect(classifyNamed("any") == .named);
+    try std.testing.expect(classifyNamed("@this") == .named);
+    try std.testing.expect(classifyNamed("Self") == .named);
+    try std.testing.expect(classifyNamed("Vector") == .named);
+    // "Error" and "null" map to their dedicated ResolvedType variants
+    try std.testing.expect(classifyNamed("Error") == .err);
+    try std.testing.expect(classifyNamed("null") == .null_type);
 }
 
 test "resolveUnion - allows Error in union" {

@@ -142,18 +142,18 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                 self.ctx.decls.types.contains(type_name) or // type aliases
                 builtins.isBuiltinType(type_name) or
                 self.isIncludedType(type_name) or
-                std.mem.eql(u8, type_name, K.Type.ANY) or
-                std.mem.eql(u8, type_name, K.Type.VOID) or
-                std.mem.eql(u8, type_name, K.Type.NULL) or
-                std.mem.eql(u8, type_name, "type") or
+                types.Primitive.fromName(type_name) == .any or
+                types.Primitive.fromName(type_name) == .void or
+                types.Primitive.fromName(type_name) == .null_type or
+                types.Primitive.fromName(type_name) == .@"type" or
                 // @this is valid inside struct bodies — maps to @This() in codegen
-                (std.mem.eql(u8, type_name, K.Type.THIS) and self.type_decl_depth > 0) or
+                (types.Primitive.fromName(type_name) == .this and self.type_decl_depth > 0) or
                 // Self is deprecated in favor of @this
-                (std.mem.eql(u8, type_name, K.Type.SELF_DEPRECATED) and self.type_decl_depth > 0) or
+                (types.Primitive.fromName(type_name) == .self_deprecated and self.type_decl_depth > 0) or
                 scope.lookup(type_name) != null;
 
             // Deprecation warning: Self → @this
-            if (is_known and std.mem.eql(u8, type_name, K.Type.SELF_DEPRECATED)) {
+            if (is_known and types.Primitive.fromName(type_name) == .self_deprecated) {
                 try self.ctx.reporter.warn(.{
                     .message = "'Self' is deprecated — use '@this' instead",
                     .loc = self.ctx.nodeLoc(node),
@@ -169,7 +169,7 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                 }
 
                 // @this / Self outside struct gets a specific error message
-                if (std.mem.eql(u8, type_name, K.Type.THIS) or std.mem.eql(u8, type_name, K.Type.SELF_DEPRECATED)) {
+                if (types.Primitive.fromName(type_name) == .this or types.Primitive.fromName(type_name) == .self_deprecated) {
                     try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
                         "'{s}' can only be used inside struct bodies — it refers to the enclosing struct type", .{type_name});
                     return;
@@ -256,7 +256,7 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope) anye
                 try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown generic type '{s}'", .{g.name});
             }
             // Validate type arguments (Ring/ORing second arg is a size, Vector first arg is a size)
-            const is_vector = std.mem.eql(u8, g.name, K.Type.VECTOR);
+            const is_vector = types.Primitive.fromName(g.name) == .vector;
             for (g.args, 0..) |arg, idx| {
                 if (is_vector and idx == 0) continue; // lane count, not a type
                 try validateType(self, arg, scope);

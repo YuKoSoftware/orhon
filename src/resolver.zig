@@ -295,7 +295,7 @@ pub const TypeResolver = struct {
                 // Skip for methods inside generic structs — `any` may be a fallback for unmappable types
                 if (!self.in_generic_struct and
                     self.store.getNode(f.return_type).tag == .type_named and
-                    std.mem.eql(u8, self.store.strings.get(ast_typed.TypeNamed.unpack(self.store, f.return_type).name), K.Type.ANY))
+                    types.Primitive.fromName(self.store.strings.get(ast_typed.TypeNamed.unpack(self.store, f.return_type).name)) == .any)
                 {
                     var has_any_param = false;
                     for (params_slice) |p_u32| {
@@ -303,7 +303,7 @@ pub const TypeResolver = struct {
                         if (self.store.getNode(p_idx).tag == .param) {
                             const p = ast_typed.Param.unpack(self.store, p_idx);
                             if (self.store.getNode(p.type_annotation).tag == .type_named and
-                                std.mem.eql(u8, self.store.strings.get(ast_typed.TypeNamed.unpack(self.store, p.type_annotation).name), K.Type.ANY))
+                                types.Primitive.fromName(self.store.strings.get(ast_typed.TypeNamed.unpack(self.store, p.type_annotation).name)) == .any)
                             {
                                 has_any_param = true;
                                 break;
@@ -447,7 +447,7 @@ pub const TypeResolver = struct {
                 try self.validateType(f.type_annotation, scope);
                 // 'any' is not valid as a struct field type
                 if (self.store.getNode(f.type_annotation).tag == .type_named and
-                    std.mem.eql(u8, self.store.strings.get(ast_typed.TypeNamed.unpack(self.store, f.type_annotation).name), K.Type.ANY))
+                    types.Primitive.fromName(self.store.strings.get(ast_typed.TypeNamed.unpack(self.store, f.type_annotation).name)) == .any)
                 {
                     try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx),
                         "'any' is not valid as a struct field type — use a type parameter instead", .{});
@@ -963,7 +963,7 @@ pub fn isIsCheck(node: *parser.Node) bool {
     const b = node.binary_expr;
     if (b.op != .eq and b.op != .ne) return false;
     if (b.left.* != .compiler_func) return false;
-    return std.mem.eql(u8, b.left.compiler_func.name, K.Type.TYPE);
+    return types.Primitive.fromName(b.left.compiler_func.name) == .@"type";
 }
 
 /// Returns true if the expression tree contains any `is` check (possibly nested inside and/or).

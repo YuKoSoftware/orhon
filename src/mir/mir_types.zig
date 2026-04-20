@@ -3,7 +3,6 @@
 const std = @import("std");
 const types = @import("../types.zig");
 const union_sort = @import("union_sort.zig");
-const K = @import("../constants.zig");
 
 pub const RT = types.ResolvedType;
 
@@ -56,15 +55,13 @@ pub const Coercion = union(enum) {
 // ── Shared union-tag helpers ────────────────────────────────
 
 /// Whether `name` is the built-in Error sentinel type name.
-/// Centralizes the `K.Type.ERROR` string comparison used throughout the
-/// MIR + codegen path. Callers pass `RT.name()` output.
 pub fn isErrorTypeName(name: []const u8) bool {
-    return std.mem.eql(u8, name, K.Type.ERROR);
+    return types.Primitive.fromName(name) == .err;
 }
 
 /// Whether `name` is the built-in null sentinel type name.
 pub fn isNullTypeName(name: []const u8) bool {
-    return std.mem.eql(u8, name, K.Type.NULL);
+    return types.Primitive.fromName(name) == .null_type;
 }
 
 /// Resolve a union member name to its canonical positional tag (0..31).

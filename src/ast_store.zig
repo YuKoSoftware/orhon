@@ -194,7 +194,41 @@ pub const AstStore = struct {
         }
         return result;
     }
+
+    pub fn dump(store: *const AstStore, writer: anytype) !void {
+        const real_nodes = if (store.nodes.len > 0) store.nodes.len - 1 else 0;
+        try writer.print("AstStore[{d} nodes, {d} extra words]\n", .{
+            real_nodes,
+            store.extra_data.items.len,
+        });
+        var i: u32 = 1;
+        while (i < store.nodes.len) : (i += 1) {
+            const node = store.nodes.get(i);
+            try writer.print("[{d}] {s} span={d} data=", .{
+                i,
+                @tagName(node.tag),
+                @intFromEnum(node.span),
+            });
+            try dumpAstData(&store.strings, node.data, writer);
+            try writer.writeByte('\n');
+        }
+    }
 };
+
+fn dumpAstData(strings: *const StringPool, data: Data, writer: anytype) !void {
+    switch (data) {
+        .none => try writer.writeAll("none"),
+        .node => |n| try writer.print("node({d})", .{@intFromEnum(n)}),
+        .two_nodes => |t| try writer.print("nodes({d},{d})", .{ @intFromEnum(t.lhs), @intFromEnum(t.rhs) }),
+        .node_and_extra => |t| try writer.print("node_extra({d},extra={d})", .{ @intFromEnum(t.node), @intFromEnum(t.extra) }),
+        .extra => |e| try writer.print("extra({d})", .{@intFromEnum(e)}),
+        .str_and_node => |t| try writer.print("str_node(\"{s}\",{d})", .{ strings.get(t.str), @intFromEnum(t.node) }),
+        .str => |s| try writer.print("str(\"{s}\")", .{strings.get(s)}),
+        .token => |t| try writer.print("token({d})", .{@intFromEnum(t)}),
+        .bool_val => |b| try writer.print("bool({s})", .{if (b) "true" else "false"}),
+        .str_and_extra => |t| try writer.print("str_extra(\"{s}\",extra={d})", .{ strings.get(t.str), @intFromEnum(t.extra) }),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -255,4 +289,32 @@ test "StringPool integration via node data" {
     try std.testing.expect(got.data == .str);
     const s = store.strings.get(got.data.str);
     try std.testing.expectEqualStrings("hello", s);
+}
+
+test "AstStore.dump basic output" {
+    var store = AstStore.init();
+    defer store.deinit(std.testing.allocator);
+
+    const si = try store.strings.intern(std.testing.allocator, "x");
+    _ = try store.appendNode(std.testing.allocator, .{
+        .tag = .identifier,
+        .span = .none,
+        .data = .{ .str = si },
+    });
+    _ = try store.appendNode(std.testing.allocator, .{
+        .tag = .bool_literal,
+        .span = .none,
+        .data = .{ .bool_val = true },
+    });
+
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(std.testing.allocator);
+    try store.dump(buf.writer(std.testing.allocator));
+
+    const out = buf.items;
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "AstStore[2 nodes"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "[1] identifier"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "str(\"x\")"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "[2] bool_literal"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "bool(true)"));
 }

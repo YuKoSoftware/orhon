@@ -13,6 +13,9 @@ pub fn ScopeBase(comptime V: type) type {
         vars: std.StringHashMap(V),
         parent: ?*Self,
         allocator: std.mem.Allocator,
+        /// True on the scope created at a function boundary.
+        /// Used by shadowing detection to stop walking at the function edge.
+        is_func_root: bool = false,
 
         pub fn init(allocator: std.mem.Allocator, parent: ?*Self) Self {
             return .{

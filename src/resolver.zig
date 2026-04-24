@@ -118,10 +118,11 @@ pub const TypeResolver = struct {
     /// root scope (parent == null). Used for cross-scope shadowing detection.
     pub fn lookupInFuncScope(_: *const TypeResolver, scope: *Scope, name: []const u8) bool {
         var s = scope.parent orelse return false;
-        while (s.parent != null) : (s = s.parent.?) {
+        while (true) {
             if (s.vars.contains(name)) return true;
+            if (s.is_func_root or s.parent == null) return false;
+            s = s.parent.?;
         }
-        return false;
     }
 
     /// Check if a type name exists as a pub declaration in any `use`-d (included) module's DeclTable.
@@ -1765,4 +1766,63 @@ test "resolver - @tuple accepted when slotted into anytype param via field_expr 
     try resolver.resolve(&tc.conv.store, tc.root_idx);
     // @tuple inside anytype arg (via field_expr callee) must be accepted — no errors expected
     try std.testing.expect(!reporter.hasErrors());
+}
+
+test "resolver - duplicate function params rejected" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Build: func foo(x: i32, x: str) -> void {}
+    const i32_type = try a.create(parser.Node);
+    i32_type.* = .{ .type_named = "i32" };
+    const str_type = try a.create(parser.Node);
+    str_type.* = .{ .type_named = "str" };
+    const p1 = try a.create(parser.Node);
+    p1.* = .{ .param = .{ .name = "x", .type_annotation = i32_type } };
+    const p2 = try a.create(parser.Node);
+    p2.* = .{ .param = .{ .name = "x", .type_annotation = str_type } };
+    const params = try a.alloc(*parser.Node, 2);
+    params[0] = p1;
+    params[1] = p2;
+
+    const ret_type = try a.create(parser.Node);
+    ret_type.* = .{ .type_named = "void" };
+    const body = try a.create(parser.Node);
+    body.* = .{ .block = .{ .statements = &.{} } };
+    const func_node = try a.create(parser.Node);
+    func_node.* = .{ .func_decl = .{
+        .name = "foo",
+        .params = params,
+        .return_type = ret_type,
+        .body = body,
+        .context = .normal,
+        .is_pub = false,
+    } };
+
+    const module_node = try a.create(parser.Node);
+    module_node.* = .{ .module_decl = .{ .name = "testmod" } };
+    const top_level = try a.alloc(*parser.Node, 1);
+    top_level[0] = func_node;
+    const program = try a.create(parser.Node);
+    program.* = .{ .program = .{
+        .module = module_node,
+        .metadata = &.{},
+        .imports = &.{},
+        .top_level = top_level,
+    } };
+
+    var decl_table = declarations.DeclTable.init(alloc);
+    defer decl_table.deinit();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    const ctx = sema.SemanticContext.initForTest(alloc, &reporter, &decl_table);
+    var type_resolver = TypeResolver.init(&ctx);
+    defer type_resolver.deinit();
+    var tc = try TestConv.init(program);
+    defer tc.deinit();
+    tc.setup(&type_resolver);
+    try type_resolver.resolve(&tc.conv.store, tc.root_idx);
+    try std.testing.expect(reporter.hasErrors());
 }

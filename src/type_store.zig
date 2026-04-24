@@ -107,6 +107,9 @@ fn writeCanonical(writer: anytype, type_: ResolvedType) !void {
             try writer.print("12:{c}:", .{tag});
             try writeCanonical(writer, p.elem.*);
         },
+        .type_param => |tp| {
+            try writer.print("13:T:{s}:{d}", .{ tp.name, @intFromEnum(tp.binder) });
+        },
     }
 }
 

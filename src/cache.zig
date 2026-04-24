@@ -545,6 +545,11 @@ fn hashResolvedType(seed: u64, rt: types.ResolvedType) u64 {
             s = XxHash3.hash(s, &[_]u8{kind_val});
             s = hashResolvedType(s, p.elem.*);
         },
+        .type_param => |tp| {
+            s = XxHash3.hash(s, tp.name);
+            const binder_val: u32 = @intFromEnum(tp.binder);
+            s = XxHash3.hash(s, std.mem.asBytes(&binder_val));
+        },
     }
     return s;
 }

@@ -4,6 +4,7 @@ zig-out/
 .obsidian/
 .orh-cache/
 *.txt
+*.log
 *.o
 *.a
 test_union_*

@@ -5,7 +5,7 @@ Master tracking file. Everything is organized into phases ordered by dependency.
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase 1 (Semantic Layer Cleanup) — S1 done (v0.53.2), S2 done (v0.53.3), S3 done (2026-04-24), S4 done (v0.53.4, 2026-04-24); S5 is next
+- **Active project:** Phase 1 (Semantic Layer Cleanup) — S1 done (v0.53.2), S2 done (v0.53.3), S3 done (2026-04-24), S4 done (v0.53.4), S5 done (v0.53.5, 2026-04-24); S6 is next
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -118,7 +118,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 > **Phase D complete** (v0.53.0, 2026-04-20, 367/367 green). Phase 1 (Semantic Layer Cleanup) is next.
 
-> **⬅ RESUME HERE: S5** — S4 done (v0.53.4, 2026-04-24). Next: uniform shadowing detection for every binder.
+> **⬅ RESUME HERE: S6** — S5 done (v0.53.5, 2026-04-24). Next: real type parameter binder model.
 
 ### Phase D — Cleanup `0.5 week`
 
@@ -159,7 +159,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 - [x] **S2** 🟠 **Replace `DeclTable`'s 7 parallel StringHashMaps with a unified `Symbols` table** [H1a, absorbs existing "DeclTable 7 maps" item] — `src/declarations.zig:84-193`. Every consumer re-glues the 7-way split (`hasDecl`, `validateType`, cross-module hint loops are O(modules × kinds × decls)). Replace with `StringHashMap(Symbol)` over a `SymbolKind` tagged union. Cross-module resolution becomes one hashmap lookup.
 - [x] **S3** 🟠 **Split `resolver.zig` along pass 4/5 boundary** [H1b, absorbs existing item] — 2038 lines mixing declaration registration, type resolution, expression checking, scoping in one file. `var_decl` case does four passes worth of work. Split into (a) `Symbols` builder (extend DeclCollector from S2), (b) `TypeChecker` that walks expressions and produces `type_map`, (c) `Validator` for shadowing/exhaustiveness/reservedness.
 - [x] **S4** 🟠 **Stateless resolver via `ResolveCtx` passed down** [H1e] — done v0.53.4, 2026-04-24 — `src/resolver.zig:33-50` has `current_node`, `param_names`, `in_is_condition`, `loop_depth`, `type_decl_depth`, `current_return_type`, `in_generic_struct`, `in_anytype_arg` as mutable per-instance fields. Blocks per-function/per-module parallelism. Pack into `ResolveCtx` value passed by const-pointer down recursion.
-- [ ] **S5** 🟠 **Uniform shadowing detection for every binder** [H1d] — `src/resolver.zig:66-72, 300-308, 554-562`. `var_decl` and `destruct_decl` check shadowing; function params, for captures, match arm bindings don't. Add `is_func_root: bool` scope marker; single `defineUnique(scope, name, loc)` helper every binder calls.
+- [x] **S5** 🟠 **Uniform shadowing detection for every binder** [H1d] — done v0.53.5, 2026-04-24 — `src/resolver.zig:66-72, 300-308, 554-562`. `var_decl` and `destruct_decl` check shadowing; function params, for captures, match arm bindings don't. Add `is_func_root: bool` scope marker; single `defineUnique(scope, name, loc)` helper every binder calls.
 - [ ] **S6** 🟠 **Real type parameter binder model** [H1f, requires CB3 already landed] — `ResolvedType` gains `.type_param` variant with explicit binder reference. Foundation for future constraint checks (`T: Eq`), better generic error messages, and explicit instantiation tracking. HKT remains out of scope.
 
 ---

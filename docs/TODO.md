@@ -38,7 +38,7 @@ Silent bugs shipping today. Each fix is small (50-200 lines). Must land before P
 
 ---
 
-## Phase R — Architecture Rebuild (Index-Based SoA) `3-6 weeks` `ACTIVE`
+## Phase R — Architecture Rebuild (Index-Based SoA) `3-6 weeks` `DONE ✓`
 
 Full rebuild of parser/AST and MIR storage from pointer-based trees to index-based struct-of-arrays. See [`docs/superpowers/specs/2026-04-14-orhon-arch-rebuild-design.md`](superpowers/specs/2026-04-14-orhon-arch-rebuild-design.md) for full design.
 
@@ -157,9 +157,9 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 - [x] **S1** 🟠 **Fold `K.Type.*` stringly-typed special types into `Primitive` enum** [H1c] — 88 `std.mem.eql` compares across 27 files for `ERROR`, `NULL`, `ANY`, `THIS`. Centralize in `types.Primitive` so every codegen site goes through `Primitive.fromName(s) → enum`, then single `switch` per emission point.
 - [x] **S2** 🟠 **Replace `DeclTable`'s 7 parallel StringHashMaps with a unified `Symbols` table** [H1a, absorbs existing "DeclTable 7 maps" item] — `src/declarations.zig:84-193`. Every consumer re-glues the 7-way split (`hasDecl`, `validateType`, cross-module hint loops are O(modules × kinds × decls)). Replace with `StringHashMap(Symbol)` over a `SymbolKind` tagged union. Cross-module resolution becomes one hashmap lookup.
-- [x] **S3** 🟠 **Split `resolver.zig` along pass 4/5 boundary** [H1b, absorbs existing item] — 2038 lines mixing declaration registration, type resolution, expression checking, scoping in one file. `var_decl` case does four passes worth of work. Split into (a) `Symbols` builder (extend DeclCollector from S2), (b) `TypeChecker` that walks expressions and produces `type_map`, (c) `Validator` for shadowing/exhaustiveness/reservedness.
-- [x] **S4** 🟠 **Stateless resolver via `ResolveCtx` passed down** [H1e] — done v0.53.4, 2026-04-24 — `src/resolver.zig:33-50` has `current_node`, `param_names`, `in_is_condition`, `loop_depth`, `type_decl_depth`, `current_return_type`, `in_generic_struct`, `in_anytype_arg` as mutable per-instance fields. Blocks per-function/per-module parallelism. Pack into `ResolveCtx` value passed by const-pointer down recursion.
-- [x] **S5** 🟠 **Uniform shadowing detection for every binder** [H1d] — done v0.53.5, 2026-04-24 — `src/resolver.zig:66-72, 300-308, 554-562`. `var_decl` and `destruct_decl` check shadowing; function params, for captures, match arm bindings don't. Add `is_func_root: bool` scope marker; single `defineUnique(scope, name, loc)` helper every binder calls.
+- [x] **S3** 🟠 **Split `resolver.zig` along pass 4/5 boundary** [H1b, absorbs existing item] — done 2026-04-24 — 2038 lines mixing declaration registration, type resolution, expression checking, scoping in one file. `var_decl` case does four passes worth of work. Split into (a) `Symbols` builder (extend DeclCollector from S2), (b) `TypeChecker` that walks expressions and produces `type_map`, (c) `Validator` for shadowing/exhaustiveness/reservedness.
+- [x] **S4** 🟠 **Stateless resolver via `ResolveCtx` passed down** [H1e] — done v0.53.4, 2026-04-24 — `current_node`, `param_names`, `in_is_condition`, `loop_depth`, `type_decl_depth`, `current_return_type`, `in_generic_struct`, `in_anytype_arg` were mutable per-instance fields on `TypeResolver`. Blocks per-function/per-module parallelism. Packed into `ResolveCtx` value passed by copy down recursion.
+- [x] **S5** 🟠 **Uniform shadowing detection for every binder** [H1d] — done v0.53.5, 2026-04-24 — `var_decl` and `destruct_decl` checked shadowing; function params, for captures, match arm bindings didn't. Added `is_func_root: bool` scope marker; single `defineUnique(scope, name, loc)` helper every binder calls.
 - [ ] **S6** 🟠 **Real type parameter binder model** [H1f, requires CB3 already landed] — `ResolvedType` gains `.type_param` variant with explicit binder reference. Foundation for future constraint checks (`T: Eq`), better generic error messages, and explicit instantiation tracking. HKT remains out of scope.
 
 ---

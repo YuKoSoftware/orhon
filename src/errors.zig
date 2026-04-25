@@ -152,7 +152,7 @@ fn flushJson(reporter: *const Reporter, writer: anytype) !void {
         first = false;
         try writeDiagJson(&diag, "error", writer);
     }
-    try writer.writeAll("]}");
+    try writer.writeAll("]}\n");
 }
 
 fn writeDiagJson(diag: *const OrhonError, severity: []const u8, writer: anytype) !void {
@@ -467,6 +467,7 @@ test "flushJson produces wrapped JSON object" {
     try flushJson(&reporter, out.writer(std.testing.allocator));
     const expected =
         \\{"version":1,"diagnostics":[{"severity":"warning","message":"unused import"},{"severity":"error","code":"E2040","message":"unknown identifier 'foo'","file":"src/main.orh","line":10,"col":5}]}
+        \\
     ;
     try std.testing.expectEqualStrings(expected, out.items);
 }

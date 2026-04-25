@@ -4,6 +4,8 @@
 
 const std = @import("std");
 
+pub const ErrorCode = @import("error_codes.zig").ErrorCode;
+
 pub const BuildMode = enum {
     debug,
     release,
@@ -20,6 +22,7 @@ pub const SourceLoc = struct {
 pub const OrhonError = struct {
     message: []const u8,
     loc: ?SourceLoc = null,
+    code: ?ErrorCode = null,
 };
 
 /// The error reporter — used by every pass
@@ -65,6 +68,7 @@ pub const Reporter = struct {
         try list.append(self.allocator, .{
             .message = owned_msg,
             .loc = owned_loc,
+            .code = diag.code,
         });
     }
 
@@ -163,14 +167,27 @@ fn printDiagnostic(stderr: anytype, diag: *const OrhonError, kind: DiagKind, mod
     const header_fg = if (is_error) WHITE else "\x1b[30m"; // white on red, black on yellow
     const lbl = kind.label();
 
+    var code_buf: [8]u8 = undefined;
+    const code_str: []const u8 = if (diag.code) |c| c.toCode(&code_buf) else "";
+    const has_code = diag.code != null;
+
     if (mode != .debug) {
-        try stderr.print("{s}: {s}\n", .{ lbl, diag.message });
+        if (has_code) {
+            try stderr.print("{s} [{s}]: {s}\n", .{ lbl, code_str, diag.message });
+        } else {
+            try stderr.print("{s}: {s}\n", .{ lbl, diag.message });
+        }
         return;
     }
 
     // Full-width colored header bar
-    const pad_len = if (HEADER_PAD.len > lbl.len + 2) HEADER_PAD.len - lbl.len - 2 else 0;
-    try stderr.print("\n{s}{s}{s}  {s}{s}{s}\n", .{ header_bg, BOLD, header_fg, lbl, HEADER_PAD[0..pad_len], RESET });
+    const full_lbl = if (has_code)
+        try std.fmt.allocPrint(std.heap.page_allocator, "{s} [{s}]", .{ lbl, code_str })
+    else
+        lbl;
+    defer if (has_code) std.heap.page_allocator.free(full_lbl);
+    const pad_len = if (HEADER_PAD.len > full_lbl.len + 2) HEADER_PAD.len - full_lbl.len - 2 else 0;
+    try stderr.print("\n{s}{s}{s}  {s}{s}{s}\n", .{ header_bg, BOLD, header_fg, full_lbl, HEADER_PAD[0..pad_len], RESET });
 
     // Message
     try stderr.print("\n  {s}{s}{s}\n", .{ BOLD, diag.message, RESET });
@@ -296,9 +313,10 @@ test "reporter collects errors" {
     var reporter = Reporter.init(std.testing.allocator, .debug);
     defer reporter.deinit();
 
-    try reporter.report(.{ .message = "test error" });
+    try reporter.report(.{ .code = .unknown_identifier, .message = "test error" });
     try std.testing.expect(reporter.hasErrors());
     try std.testing.expectEqual(@as(usize, 1), reporter.errors.items.len);
+    try std.testing.expectEqual(ErrorCode.unknown_identifier, reporter.errors.items[0].code.?);
 }
 
 test "reporter release mode" {
@@ -311,11 +329,12 @@ test "reporter collects warnings" {
     var reporter = Reporter.init(std.testing.allocator, .debug);
     defer reporter.deinit();
 
-    try reporter.warn(.{ .message = "test warning" });
+    try reporter.warn(.{ .code = .unused_import, .message = "test warning" });
     try std.testing.expect(!reporter.hasErrors());
     try std.testing.expect(reporter.hasWarnings());
     try std.testing.expectEqual(@as(usize, 1), reporter.warnings.items.len);
     try std.testing.expectEqualStrings("test warning", reporter.warnings.items[0].message);
+    try std.testing.expectEqual(ErrorCode.unused_import, reporter.warnings.items[0].code.?);
 }
 
 test "reporter warnings don't block compilation" {

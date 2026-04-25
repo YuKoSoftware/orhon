@@ -161,7 +161,7 @@ pub fn runSemanticAndCodegen(
     var conv = ast_conv.ConvContext.init(allocator);
     defer conv.deinit();
     const ast_root = ast_conv.convertNode(&conv, ast) catch {
-        try reporter.report(.{ .message = "internal: AST conversion failed" });
+        try reporter.report(.{ .code = .internal_ast_conv, .message = "internal: AST conversion failed" });
         return null;
     };
 

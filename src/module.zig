@@ -264,6 +264,7 @@ pub const Resolver = struct {
                 const mod_name = try self.readModuleName(full_path) orelse {
                     // full_path is leaked here intentionally — error path, compilation will abort
                     try self.reporter.report(.{
+                        .code = .missing_module_decl,
                         .message = "file missing module declaration",
                         .loc = .{ .file = full_path, .line = 1, .col = 1 },
                     });

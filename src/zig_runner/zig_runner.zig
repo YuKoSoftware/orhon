@@ -217,7 +217,7 @@ pub const ZigRunner = struct {
                 // "has no member named 'X'" → module has no function 'X'
                 if (self.reformatNoMember(line)) |msg| {
                     defer self.allocator.free(msg);
-                    try self.reporter.report(.{ .message = msg });
+                    try self.reporter.report(.{ .code = .zig_compile_error, .message = msg });
                     continue;
                 }
                 try self.reporter.reportFmt(null, "internal codegen error (please report): {s}", .{line});

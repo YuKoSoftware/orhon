@@ -230,6 +230,7 @@ pub fn resolveNode(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, rctx: 
             for (stmts) |stmt_idx| {
                 if (found_exit) {
                     try self.ctx.reporter.warn(.{
+                        .code = .unreachable_code,
                         .message = "unreachable code",
                         .loc = self.nodeLocFromIdx(stmt_idx),
                     });
@@ -274,6 +275,7 @@ pub fn resolveNode(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, rctx: 
                         val_type.primitive == .float_literal))
                     {
                         try self.ctx.reporter.report(.{
+                            .code = .numeric_literal_needs_type,
                             .message = "numeric literal requires explicit type — use 'const x: i32 = 42'",
                             .loc = self.nodeLocFromIdx(idx),
                         });
@@ -581,6 +583,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
         .break_stmt => {
             if (rctx.loop_depth == 0) {
                 try self.ctx.reporter.report(.{
+                    .code = .break_outside_loop,
                     .message = "'break' outside of loop",
                     .loc = self.nodeLocFromIdx(idx),
                 });
@@ -589,6 +592,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
         .continue_stmt => {
             if (rctx.loop_depth == 0) {
                 try self.ctx.reporter.report(.{
+                    .code = .continue_outside_loop,
                     .message = "'continue' outside of loop",
                     .loc = self.nodeLocFromIdx(idx),
                 });

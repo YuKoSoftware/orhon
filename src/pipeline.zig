@@ -317,7 +317,7 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         var decl_conv = ast_conv.ConvContext.init(allocator);
         defer decl_conv.deinit();
         const decl_ast_root = ast_conv.convertNode(&decl_conv, ast) catch {
-            try reporter.report(.{ .message = "internal: AST conversion failed (pass 4)" });
+            try reporter.report(.{ .code = .internal_ast_conv_p4, .message = "internal: AST conversion failed (pass 4)" });
             return null;
         };
         try decl_collector.collect(&decl_conv.store, decl_ast_root, &decl_conv.reverse_map);

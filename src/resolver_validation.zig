@@ -165,6 +165,7 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             // Deprecation warning: Self → @this
             if (is_known and types.Primitive.fromName(type_name) == .self_deprecated) {
                 try self.ctx.reporter.warn(.{
+                    .code = .self_deprecated,
                     .message = "'Self' is deprecated — use '@this' instead",
                     .loc = self.ctx.nodeLoc(node),
                 });
@@ -293,6 +294,7 @@ pub fn checkAssignCompat(self: *TypeResolver, expected: RT, actual: RT, node: *p
         actual == .slice and actual.slice.* == .primitive and actual.slice.primitive == .u8)
     {
         try self.ctx.reporter.report(.{
+            .code = .bytes_str_implicit,
             .message = "cannot assign '[]u8' to 'str' — use string.fromBytes() for explicit conversion",
             .loc = self.ctx.nodeLoc(node),
         });

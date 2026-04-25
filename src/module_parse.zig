@@ -119,7 +119,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
 
         // PEG engine: grammar validation + capture + AST building
         var grammar = peg_mod.loadGrammar(alloc) catch {
-            try self.reporter.report(.{ .message = "internal: could not load PEG grammar" });
+            try self.reporter.report(.{ .code = .internal_grammar_load, .message = "internal: could not load PEG grammar" });
             continue;
         };
         defer grammar.deinit();
@@ -170,6 +170,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
             defer alloc.free(msg);
             const resolved = module.resolveFileLoc(mod.file_offsets, err_info.line);
             try self.reporter.report(.{
+                .code = .parse_failure,
                 .message = msg,
                 .loc = .{ .file = resolved.file, .line = resolved.line, .col = err_info.col },
             });
@@ -181,7 +182,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
 
         // Build AST into the module's arena
         const build_result = peg_mod.buildASTWithArena(&cap, tokens.items, mod.ast_arena.?, alloc) catch {
-            try self.reporter.report(.{ .message = "internal: AST builder failed" });
+            try self.reporter.report(.{ .code = .internal_ast_build, .message = "internal: AST builder failed" });
             if (mod.ast_arena) |*a| a.deinit();
             mod.ast_arena = null;
             mod.locs = null;
@@ -197,6 +198,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
         for (build_result.ctx.syntax_errors.items) |err| {
             const resolved = module.resolveFileLoc(mod.file_offsets, err.line);
             try self.reporter.report(.{
+                .code = .parse_failure,
                 .message = err.message,
                 .loc = .{ .file = resolved.file, .line = resolved.line, .col = err.col },
             });

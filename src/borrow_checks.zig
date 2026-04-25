@@ -30,6 +30,7 @@ pub fn checkStatement(self: *BorrowChecker, node: *parser.Node) anyerror!void {
                 // Cannot return a reference — only owned values
                 if (val.* == .mut_borrow_expr or val.* == .const_borrow_expr) {
                     try self.ctx.reporter.report(.{
+                        .code = .cannot_return_ref,
                         .message = "cannot return a reference — functions can only return owned values",
                         .loc = self.ctx.nodeLoc(node),
                     });

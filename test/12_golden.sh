@@ -35,5 +35,6 @@ run_golden() {
 run_golden basic
 run_golden control
 run_golden structs
+run_golden enums
 
 report_results

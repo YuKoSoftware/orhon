@@ -78,10 +78,11 @@ pub const Reporter = struct {
 
     fn storeDiag(self: *Reporter, diag: OrhonDiag) !u32 {
         const owned_msg = try self.allocator.dupe(u8, diag.message);
-        const owned_loc: ?SourceLoc = if (diag.loc) |loc| .{
-            .file = if (loc.file.len > 0) try self.allocator.dupe(u8, loc.file) else "",
-            .line = loc.line,
-            .col  = loc.col,
+        errdefer self.allocator.free(owned_msg);
+        const owned_loc: ?SourceLoc = if (diag.loc) |loc| blk: {
+            const f = if (loc.file.len > 0) try self.allocator.dupe(u8, loc.file) else "";
+            errdefer if (loc.file.len > 0) self.allocator.free(f);
+            break :blk SourceLoc{ .file = f, .line = loc.line, .col = loc.col };
         } else null;
         const idx: u32 = @intCast(self.diagnostics.items.len);
         try self.diagnostics.append(self.allocator, .{

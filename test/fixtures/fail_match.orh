@@ -14,7 +14,7 @@ func bad_match_arm() void {
     const result = get_result(true)
     match(result) {
         Error  => { }
-        str => { }
+        str => { }  //> [E2072] [E2070]
     }
 }
 
@@ -29,7 +29,7 @@ func bad_null_match() void {
     const val = find(1)
     match(val) {
         null   => { }
-        str => { }
+        str => { }  //> [E2072] [E2070]
     }
 }
 

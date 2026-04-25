@@ -6,7 +6,7 @@ module fixture
 func classify(n: u32) u32 {
     match(n) {
         0 => { return 0 }
-        1 => { return 1 }
+        1 => { return 1 }  //> [E2071]
     }
     return 99
 }

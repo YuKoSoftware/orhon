@@ -347,13 +347,7 @@ run_fixture() {
 run_fixture neg_cb3_short_name fail_cb3_short_uppercase.orh "type mismatch\|incompatible\|cannot assign\|expected.*Edge.*found.*Node" "CB3: short uppercase struct name is not silently type-compatible"
 
 # function errors (first error in file: default before required)
-run_fixture neg_inline_tuple fail_inline_tuple.orh "expected\|error" "fixture: rejects inline tuple types"
 run_fixture neg_c_header fail_c_header_import.orh "not supported.*zig.*zon" "fixture: rejects import header.h"
-
-# match errors
-run_fixture neg_match fail_match.orh "not a member" "fixture: catches invalid match arm"
-run_fixture neg_match_guard fail_match_guard.orh "match with guards requires" "fixture: catches guarded match without else"
-run_fixture neg_match_noelse fail_match_no_else.orh "requires an 'else' arm" "fixture: rejects match on non-enum without else"
 
 # old C interop directives rejected (CIMP-04)
 cd "$TESTDIR"

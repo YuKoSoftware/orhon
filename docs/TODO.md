@@ -5,7 +5,7 @@ Master tracking file. Everything is organized into phases ordered by dependency.
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase 2 (Diagnostics + Testing Overhaul) — T1 done (v0.53.7), T2 done (v0.53.8), T3 done (v0.53.10, 2026-04-25), T4 done (v0.53.11, 2026-04-25), T5 done (v0.53.12, 2026-04-25), T6 done (v0.53.13, 2026-04-25), T7 done (v0.53.14, 2026-04-25), T8a done (v0.53.16, 2026-04-25), T8b done (v0.53.17, 2026-04-25), T9 done (v0.53.18, 2026-04-25)
+- **Active project:** Phase 2 (Diagnostics + Testing Overhaul) — T1 done (v0.53.7), T2 done (v0.53.8), T3 done (v0.53.10, 2026-04-25), T4 done (v0.53.11, 2026-04-25), T5 done (v0.53.12, 2026-04-25), T6 done (v0.53.13, 2026-04-25), T7 done (v0.53.14, 2026-04-25), T8a done (v0.53.16, 2026-04-25), T8b done (v0.53.17, 2026-04-25), T9 done (v0.53.18, 2026-04-25), T10 done (v0.53.19, 2026-04-25)
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -191,7 +191,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 - [x] **T8** 🟠 **Zig-based test runner** [H4c / F14] — done v0.53.17, 2026-04-25 — `test/runner.zig` compiles each `fail_*.orh` fixture and matches `(code, line)` pairs from JSON diagnostics against `//> [Exxxx]` inline annotations; `zig build test-diag` step in `build.zig`; 38/38 enrolled fixtures pass, 22 unenrollable skipped; all corresponding `run_fixture` bash calls retired from `11_errors.sh`; `run_fixture` helper kept for 4 structural/warning-only fixtures.
 - [x] **T9** 🟡 **Fixture reorganization** [F15] — subdirs `fixtures/parse/`, `fixtures/borrow/`, `fixtures/runtime/`, `fixtures/codegen/`. Per-fixture `.expect` sidecar with expected exit code, error codes, stderr snippets.
-- [ ] **T10** 🟡 **Expand snapshot coverage** — one snapshot per language feature category. Land on top of D3's golden-file infrastructure.
+- [x] **T10** 🟡 **Expand snapshot coverage** — one snapshot per language feature category. Land on top of D3's golden-file infrastructure.
 - [ ] **T11** 🟡 **Perf baseline tests** [F17] — `test/12_perf.sh` records wall time for canonical fixtures into `test/perf.log`, prints delta on each run. Essential for validating rebuild perf wins.
 - [ ] **T12** 🟡 **Property-based pipeline tests** [existing TODO item, absorbed] — parse→pretty-print round-trip, type check idempotence, codegen `zig ast-check` validity. Depends on T8.
 

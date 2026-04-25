@@ -1,0 +1,32 @@
+module borrow
+#version = (1, 0, 0)
+#build   = static
+
+pub struct Counter {
+    pub count: i32
+}
+
+func read_count(c: const& Counter) i32 {
+    return c.count
+}
+
+func add_to(c: mut& Counter, n: i32) void {
+    c.count = c.count + n
+}
+
+pub func multi_read(a: const& Counter, b: const& Counter) i32 {
+    return a.count + b.count
+}
+
+pub func scope_rebind() i32 {
+    var c: Counter = Counter{count: 0}
+    const before: i32 = read_count(const& c)
+    c.count = before + 10
+    return c.count
+}
+
+pub func mutate_then_read() i32 {
+    var c: Counter = Counter{count: 5}
+    c.count = c.count + 3
+    return c.count
+}

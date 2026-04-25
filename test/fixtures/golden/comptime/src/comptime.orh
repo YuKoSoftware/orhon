@@ -1,0 +1,39 @@
+module comptime
+#version = (1, 0, 0)
+#build   = static
+
+pub compt func doubled(n: i32) i32 {
+    return n * 2
+}
+
+pub func size_of_i32() i32 {
+    return @size(i32)
+}
+
+compt func SizeCheck(T: type) type {
+    if (@size(T) > 32) {
+        @compileError("type too large")
+    }
+    return T
+}
+
+pub func check_type() i32 {
+    const T: type = SizeCheck(i32)
+    const x: T = 42
+    return x
+}
+
+compt func Wrapper(T: type) type {
+    return struct {
+        inner: T
+
+        pub func get(self: const& @this) T {
+            return self.inner
+        }
+    }
+}
+
+pub func make_wrapper() i32 {
+    const w: Wrapper(i32) = Wrapper(i32){inner: 99}
+    return w.get()
+}

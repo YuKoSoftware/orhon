@@ -1,0 +1,27 @@
+module tuples
+#version = (1, 0, 0)
+#build   = static
+
+const MinMax: type = {min: i32, max: i32}
+const Point2: type = {x: f32, y: f32}
+
+pub func min_max(a: i32, b: i32) MinMax {
+    if(a < b) {
+        return MinMax{min: a, max: b}
+    }
+    return MinMax{min: b, max: a}
+}
+
+pub func field_access() i32 {
+    const r = min_max(3, 7)
+    return r.min + r.max
+}
+
+pub func destructure() i32 {
+    const min, max = min_max(3, 7)
+    return min + max
+}
+
+pub func make_point(x: f32, y: f32) Point2 {
+    return Point2{x: x, y: y}
+}

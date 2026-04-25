@@ -150,7 +150,128 @@ fn parseJsonDiagnostics(json: []const u8, allocator: std.mem.Allocator) ![]Diag 
     return list.toOwnedSlice(allocator);
 }
 
-pub fn main() !void {}
+/// Run a single fixture: setup temp project, invoke orhon, compare diagnostics.
+/// Uses an arena for all intermediate allocations; failure message is duped into `gpa`.
+fn runFixture(orhon_path: []const u8, fixture_path: []const u8, gpa: std.mem.Allocator) !TestResult {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const content = try std.fs.cwd().readFileAlloc(alloc, fixture_path, 512 * 1024);
+
+    const annotations = try scanAnnotationsFromContent(content, alloc);
+    if (annotations.len == 0) return .skip;
+
+    const module_name = extractModuleNameFromContent(content, alloc) catch
+        return TestResult{ .setup_error = try gpa.dupe(u8, "missing module declaration") };
+
+    // Build temp project path: /tmp/orhon-test-<ms>-<module>/
+    const tmp_root = try std.fmt.allocPrint(alloc, "/tmp/orhon-test-{d}-{s}",
+        .{ std.time.milliTimestamp(), module_name });
+    const project_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ tmp_root, module_name });
+    const src_path     = try std.fmt.allocPrint(alloc, "{s}/src", .{project_path});
+    const dest_file    = try std.fmt.allocPrint(alloc, "{s}/{s}.orh", .{ src_path, module_name });
+
+    try std.fs.makeDirAbsolute(tmp_root);
+    defer std.fs.deleteTreeAbsolute(tmp_root) catch {};
+    try std.fs.makeDirAbsolute(project_path);
+    try std.fs.makeDirAbsolute(src_path);
+
+    const dest = try std.fs.createFileAbsolute(dest_file, .{});
+    defer dest.close();
+    try dest.writeAll(content);
+
+    // Spawn orhon build --diag-format=json
+    const child_args = &[_][]const u8{ orhon_path, "build", "--diag-format=json" };
+    var child = std.process.Child.init(child_args, alloc);
+    child.cwd             = project_path;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    try child.spawn();
+
+    const stderr_out = try child.stderr.?.readToEndAlloc(alloc, 512 * 1024);
+    const stdout_out = try child.stdout.?.readToEndAlloc(alloc, 512 * 1024);
+    _ = try child.wait();
+    _ = stdout_out;
+
+    // Diagnostics are written to stderr
+    const actual = try parseJsonDiagnostics(stderr_out, alloc);
+    const mismatches = try compareResults(annotations, actual, alloc);
+
+    if (mismatches.len == 0) return .pass;
+
+    // Format mismatch details into a GPA-owned string (arena freed after this fn)
+    var msg = std.ArrayList(u8){};
+    for (mismatches) |m| {
+        switch (m) {
+            .missing    => |ann|  try msg.writer(gpa).print("        missing:    [{s}] at line {d}\n", .{ ann.code,  ann.line }),
+            .unexpected => |diag| try msg.writer(gpa).print("        unexpected: [{s}] at line {d}\n", .{ diag.code, diag.line }),
+        }
+    }
+    return TestResult{ .fail = try msg.toOwnedSlice(gpa) };
+}
+
+pub fn main() !void {
+    var gpa_state = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa_state.deinit();
+    const gpa = gpa_state.allocator();
+
+    const raw_args = try std.process.argsAlloc(gpa);
+    defer std.process.argsFree(gpa, raw_args);
+
+    if (raw_args.len < 3) {
+        std.debug.print("usage: orhon-test-runner <orhon-path> <fixtures-dir>\n", .{});
+        std.process.exit(1);
+    }
+    const orhon_path   = raw_args[1];
+    const fixtures_dir = raw_args[2];
+
+    var dir = try std.fs.openDirAbsolute(fixtures_dir, .{ .iterate = true });
+    defer dir.close();
+
+    var stdout_buf: [65536]u8 = undefined;
+    var w = std.fs.File.stdout().writer(&stdout_buf);
+    const out = &w.interface;
+
+    var passed:  u32 = 0;
+    var failed:  u32 = 0;
+    var skipped: u32 = 0;
+
+    var it = dir.iterate();
+    while (try it.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".orh")) continue;
+
+        const fixture_path = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ fixtures_dir, entry.name });
+        defer gpa.free(fixture_path);
+
+        const result = try runFixture(orhon_path, fixture_path, gpa);
+        switch (result) {
+            .pass => {
+                passed += 1;
+                try out.print("  \x1b[32mPASS\x1b[0m  {s}\n", .{entry.name});
+            },
+            .skip => skipped += 1,
+            .fail => |msg| {
+                failed += 1;
+                try out.print("  \x1b[31mFAIL\x1b[0m  {s}\n{s}", .{ entry.name, msg });
+                gpa.free(msg);
+            },
+            .setup_error => |msg| {
+                failed += 1;
+                try out.print("  \x1b[31mERROR\x1b[0m {s}: {s}\n", .{ entry.name, msg });
+                gpa.free(msg);
+            },
+        }
+    }
+
+    try out.print("\n{d}/{d} passed", .{ passed, passed + failed });
+    if (skipped > 0) try out.print(" ({d} unenrolled skipped)", .{skipped});
+    try out.print("\n", .{});
+    try out.flush();
+
+    if (failed > 0) std.process.exit(1);
+}
 
 // ── Unit tests ────────────────────────────────────────────────────────────────
 

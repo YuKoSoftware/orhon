@@ -102,4 +102,19 @@ pub fn build(b: *std.Build) void {
     const run_fuzz = b.addRunArtifact(fuzz_exe);
     const fuzz_step = b.step("fuzz", "Fuzz test the lexer and parser");
     fuzz_step.dependOn(&run_fuzz.step);
+
+    // test-diag step — compiles fixtures and asserts on JSON diagnostics
+    const runner_exe = b.addExecutable(.{
+        .name = "orhon-test-runner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test/runner.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_runner = b.addRunArtifact(runner_exe);
+    run_runner.addArtifactArg(exe);
+    run_runner.addDirectoryArg(b.path("test/fixtures"));
+    const test_diag_step = b.step("test-diag", "Run diagnostic fixture tests");
+    test_diag_step.dependOn(&run_runner.step);
 }

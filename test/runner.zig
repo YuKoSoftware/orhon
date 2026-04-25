@@ -244,11 +244,13 @@ pub fn main() !void {
         if (!std.mem.endsWith(u8, entry.basename, ".orh")) continue;
 
         // entry.path is invalidated on the next walker.next() call — dupe it now
-        const rel_path     = try gpa.dupe(u8, entry.path);
+        const rel_path = try gpa.dupe(u8, entry.path);
+        defer gpa.free(rel_path);
+
         const fixture_path = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ fixtures_dir, rel_path });
+        defer gpa.free(fixture_path);
 
         const result = try runFixture(orhon_path, fixture_path, gpa);
-        gpa.free(fixture_path);
 
         switch (result) {
             .pass => {
@@ -267,7 +269,6 @@ pub fn main() !void {
                 gpa.free(msg);
             },
         }
-        gpa.free(rel_path);
     }
 
     try out.print("\n{d}/{d} passed", .{ passed, passed + failed });

@@ -1,0 +1,28 @@
+module generics
+#version = (1, 0, 0)
+#build   = static
+
+pub struct Box(T: type) {
+    pub value: T
+
+    pub func get(self: const& Box) T {
+        return self.value
+    }
+}
+
+pub struct Pair(A: type, B: type) {
+    pub first: A
+    pub second: B
+}
+
+pub func make_int_box() Box(i32) {
+    return Box{value: 42}
+}
+
+pub func make_pair() Pair(i32, str) {
+    return Pair{first: 1, second: "hello"}
+}
+
+pub func identity(val: any) any {
+    return val
+}

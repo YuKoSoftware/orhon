@@ -216,8 +216,8 @@ pub const ZigRunner = struct {
             if (std.mem.indexOf(u8, line, ": error:")) |_| {
                 // "has no member named 'X'" → module has no function 'X'
                 if (self.reformatNoMember(line)) |msg| {
-                    defer self.allocator.free(msg);
-                    _ = try self.reporter.report(.{ .code = .zig_compile_error, .message = msg });
+                    // msg allocated with self.allocator (== reporter.allocator) — pass ownership.
+                    _ = try self.reporter.reportOwned(.{ .code = .zig_compile_error, .message = msg });
                     continue;
                 }
                 _ = try self.reporter.reportFmt(.internal_zig_codegen, null, "internal codegen error (please report): {s}", .{line});

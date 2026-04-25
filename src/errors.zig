@@ -76,6 +76,7 @@ pub const Reporter = struct {
         self.diagnostics.deinit(self.allocator);
     }
 
+    // storeDiag dupes diag.message — safe for string literals and borrowed slices.
     fn storeDiag(self: *Reporter, diag: OrhonDiag) !u32 {
         const owned_msg = try self.allocator.dupe(u8, diag.message);
         errdefer self.allocator.free(owned_msg);
@@ -95,11 +96,42 @@ pub const Reporter = struct {
         return idx;
     }
 
+    // storeDiagOwned takes ownership of diag.message — caller must allocate with self.allocator.
+    // Use for pre-allocated messages to avoid double-allocation.
+    fn storeDiagOwned(self: *Reporter, diag: OrhonDiag) !u32 {
+        errdefer self.allocator.free(diag.message);
+        const owned_loc: ?SourceLoc = if (diag.loc) |loc| blk: {
+            const f = if (loc.file.len > 0) try self.allocator.dupe(u8, loc.file) else "";
+            errdefer if (loc.file.len > 0) self.allocator.free(f);
+            break :blk SourceLoc{ .file = f, .line = loc.line, .col = loc.col };
+        } else null;
+        const idx: u32 = @intCast(self.diagnostics.items.len);
+        try self.diagnostics.append(self.allocator, .{
+            .severity = diag.severity,
+            .message  = diag.message,
+            .loc      = owned_loc,
+            .code     = diag.code,
+            .parent   = diag.parent,
+        });
+        return idx;
+    }
+
+    /// Record an error. Safe for string literals and borrowed slices (dupes internally).
     pub fn report(self: *Reporter, diag: OrhonDiag) !u32 {
         var d = diag;
         d.severity = .err;
         d.parent   = null;
         return self.storeDiag(d);
+    }
+
+    /// Record an error, taking ownership of diag.message.
+    /// diag.message must be allocated with self.allocator. Avoids double-allocation
+    /// when the caller already holds an allocated string.
+    pub fn reportOwned(self: *Reporter, diag: OrhonDiag) !u32 {
+        var d = diag;
+        d.severity = .err;
+        d.parent   = null;
+        return self.storeDiagOwned(d);
     }
 
     /// Record a non-fatal warning. Compilation continues after warnings.
@@ -110,19 +142,16 @@ pub const Reporter = struct {
         return self.storeDiag(d);
     }
 
-    /// Format and report an error in one step.
-    /// Replaces the repeated allocPrint + defer free + report pattern.
+    /// Format and report an error in one step. Allocates the message once (no double-allocation).
     pub fn reportFmt(self: *Reporter, code: ErrorCode, loc: ?SourceLoc, comptime fmt: []const u8, args: anytype) !u32 {
         const msg = try std.fmt.allocPrint(self.allocator, fmt, args);
-        defer self.allocator.free(msg);
-        return self.report(.{ .code = code, .message = msg, .loc = loc });
+        return self.storeDiagOwned(.{ .code = code, .message = msg, .loc = loc, .severity = .err });
     }
 
     /// Format and record a warning in one step. Warn-side counterpart to reportFmt.
     pub fn warnFmt(self: *Reporter, code: ErrorCode, loc: ?SourceLoc, comptime fmt: []const u8, args: anytype) !u32 {
         const msg = try std.fmt.allocPrint(self.allocator, fmt, args);
-        defer self.allocator.free(msg);
-        return self.warn(.{ .code = code, .message = msg, .loc = loc });
+        return self.storeDiagOwned(.{ .code = code, .message = msg, .loc = loc, .severity = .warning });
     }
 
     pub fn note(self: *Reporter, parent: u32, diag: OrhonDiag) !void {
@@ -134,8 +163,7 @@ pub const Reporter = struct {
 
     pub fn noteFmt(self: *Reporter, parent: u32, code: ErrorCode, loc: ?SourceLoc, comptime fmt: []const u8, args: anytype) !void {
         const msg = try std.fmt.allocPrint(self.allocator, fmt, args);
-        defer self.allocator.free(msg);
-        try self.note(parent, .{ .code = code, .message = msg, .loc = loc });
+        _ = try self.storeDiagOwned(.{ .code = code, .message = msg, .loc = loc, .severity = .note, .parent = parent });
     }
 
     pub fn hasErrors(self: *const Reporter) bool {
@@ -363,5 +391,16 @@ test "hasErrors false when werror=false and only warnings" {
     defer reporter.deinit();
     _ = try reporter.warn(.{ .message = "unused var" });
     try std.testing.expect(!reporter.hasErrors());
+}
+
+test "reportOwned takes ownership; deinit frees without double-free" {
+    var reporter = Reporter.init(std.testing.allocator, .debug);
+    defer reporter.deinit();
+
+    const msg = try std.testing.allocator.dupe(u8, "owned message");
+    const idx = try reporter.reportOwned(.{ .code = .unknown_identifier, .message = msg });
+    try std.testing.expectEqual(@as(u32, 0), idx);
+    try std.testing.expectEqualStrings("owned message", reporter.diagnostics.items[0].message);
+    try std.testing.expect(reporter.hasErrors());
 }
 

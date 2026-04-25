@@ -65,11 +65,21 @@ try std.testing.expect(node.* == .var_decl);         // CORRECT
 try std.testing.expectEqual(NodeKind.var_decl, node.*); // WRONG
 ```
 
-### Reporter owns all message strings — always `defer free` after `report()`
+### Reporter message ownership
+- **`reportFmt`/`warnFmt`/`noteFmt`** — preferred for formatted messages; allocate once, no double-alloc.
+- **`report`/`warn`/`note`** — safe for string literals and borrowed slices (dupes internally).
+- **`reportOwned`/`warnOwned`** — use when you already hold a heap-allocated string (avoids double-alloc). The message **must** be allocated with `reporter.allocator`. Never add a `defer free` — the reporter takes ownership.
+
 ```zig
-const msg = try std.fmt.allocPrint(self.allocator, "error: '{s}'", .{name});
-defer self.allocator.free(msg);
-try self.reporter.report(.{ .message = msg });
+// PREFERRED — format in one step
+_ = try reporter.reportFmt(.my_code, loc, "error: '{s}'", .{name});
+
+// OK for static strings
+_ = try reporter.report(.{ .code = .my_code, .message = "static error" });
+
+// For pre-allocated messages — no defer free
+const msg = try std.fmt.allocPrint(reporter.allocator, "error: '{s}'", .{name});
+_ = try reporter.reportOwned(.{ .code = .my_code, .message = msg });
 ```
 
 ### PEG grammar is the source of truth for syntax

@@ -167,9 +167,9 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
             } else if (err_info.expected_set.count() > 1) blk: {
                 break :blk try module.formatExpectedSet(alloc, err_info.expected_set);
             } else try std.fmt.allocPrint(alloc, "unexpected '{s}'", .{err_info.found});
-            defer alloc.free(msg);
+            // msg is allocated with alloc (== reporter.allocator) — pass ownership directly.
             const resolved = module.resolveFileLoc(mod.file_offsets, err_info.line);
-            _ = try self.reporter.report(.{
+            _ = try self.reporter.reportOwned(.{
                 .code = .parse_failure,
                 .message = msg,
                 .loc = .{ .file = resolved.file, .line = resolved.line, .col = err_info.col },

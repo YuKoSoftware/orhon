@@ -189,7 +189,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 ### Sub-project 2b — Test runner rewrite
 
-- [ ] **T8** 🟠 **Zig-based test runner** [H4c / F14] — replace ~2000 lines of bash grep-on-output with `test/runner.zig` that compiles fixtures and asserts on JSON-formatted diagnostics with `code` + `loc.line`. Keep shell tests only for end-to-end CLI verification. Enables property-based tests.
+- [x] **T8** 🟠 **Zig-based test runner** [H4c / F14] — done v0.53.17, 2026-04-25 — `test/runner.zig` compiles each `fail_*.orh` fixture and matches `(code, line)` pairs from JSON diagnostics against `//> [Exxxx]` inline annotations; `zig build test-diag` step in `build.zig`; 38/38 enrolled fixtures pass, 22 unenrollable skipped; all corresponding `run_fixture` bash calls retired from `11_errors.sh`; `run_fixture` helper kept for 4 structural/warning-only fixtures.
 - [ ] **T9** 🟡 **Fixture reorganization** [F15] — subdirs `fixtures/parse/`, `fixtures/borrow/`, `fixtures/runtime/`, `fixtures/codegen/`. Per-fixture `.expect` sidecar with expected exit code, error codes, stderr snippets.
 - [ ] **T10** 🟡 **Expand snapshot coverage** — one snapshot per language feature category. Land on top of D3's golden-file infrastructure.
 - [ ] **T11** 🟡 **Perf baseline tests** [F17] — `test/12_perf.sh` records wall time for canonical fixtures into `test/perf.log`, prints delta on each run. Essential for validating rebuild perf wins.

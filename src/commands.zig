@@ -116,6 +116,7 @@ pub fn runDebug(allocator: std.mem.Allocator, cli: *const _cli.CliArgs) !void {
 
     // Scan and report every .orh file found
     var reporter = errors.Reporter.init(allocator, .debug);
+    reporter.diag_format = cli.diag_format;
     defer reporter.deinit();
 
     var mod_resolver = module.Resolver.init(allocator, &reporter);
@@ -171,6 +172,7 @@ pub fn runGendoc(allocator: std.mem.Allocator, cli: *const _cli.CliArgs) !void {
         };
 
         var reporter = errors.Reporter.init(allocator, .debug);
+        reporter.diag_format = cli.diag_format;
         defer reporter.deinit();
 
         var mod_resolver = module.Resolver.init(allocator, &reporter);

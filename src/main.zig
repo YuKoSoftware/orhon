@@ -124,6 +124,7 @@ pub fn main() !void {
         .debug;
 
     var reporter = errors.Reporter.init(allocator, mode);
+    reporter.diag_format = cli.diag_format;
     defer reporter.deinit();
 
     // Run the pipeline

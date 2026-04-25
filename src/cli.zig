@@ -1,6 +1,7 @@
 // cli.zig — CLI argument parsing and command definitions
 
 const std = @import("std");
+const errors_mod = @import("errors.zig");
 
 // ============================================================
 // CLI TYPES
@@ -77,6 +78,7 @@ pub const CliArgs = struct {
     gen_std: bool, // -std flag for gendoc (generate stdlib docs only)
     gen_syntax: bool, // -syntax flag for gendoc (generate syntax reference only)
     line_length: u32, // max line length for fmt (0 = disabled)
+    diag_format: errors_mod.DiagFormat = .human,
     allocator: std.mem.Allocator, // owns duped strings
 
     pub fn deinit(self: *CliArgs) void {
@@ -111,6 +113,7 @@ pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
         .gen_std = false,
         .gen_syntax = false,
         .line_length = 100,
+        .diag_format = .human,
         .allocator = allocator,
     };
 
@@ -204,6 +207,17 @@ pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
                     std.debug.print("warning: invalid --line-length value '{s}', using default 100\n", .{args[i]});
                     continue;
                 };
+            }
+        } else if (std.mem.startsWith(u8, arg, "--diag-format=")) {
+            const val = arg["--diag-format=".len..];
+            if (std.mem.eql(u8, val, "human")) {
+                cli.diag_format = .human;
+            } else if (std.mem.eql(u8, val, "json")) {
+                cli.diag_format = .json;
+            } else if (std.mem.eql(u8, val, "short")) {
+                cli.diag_format = .short;
+            } else {
+                errors_mod.fatal("unknown --diag-format value: '{s}' (expected human, json, or short)", .{val});
             }
         } else {
             // Treat as source directory

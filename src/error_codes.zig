@@ -131,7 +131,7 @@ pub const ErrorCode = enum(u16) {
         return @intFromEnum(self);
     }
 
-    pub fn format(self: ErrorCode, buf: []u8) []u8 {
+    pub fn toCode(self: ErrorCode, buf: []u8) []u8 {
         return std.fmt.bufPrint(buf, "E{d:0>4}", .{self.value()}) catch buf[0..0];
     }
 };
@@ -144,8 +144,14 @@ test "ErrorCode numeric values are stable" {
 
 test "ErrorCode format produces E-prefixed zero-padded string" {
     var buf: [8]u8 = undefined;
-    const s = ErrorCode.unknown_identifier.format(&buf);
+    const s = ErrorCode.unknown_identifier.toCode(&buf);
     try std.testing.expectEqualStrings("E2040", s);
-    const s2 = ErrorCode.parse_failure.format(&buf);
+    const s2 = ErrorCode.parse_failure.toCode(&buf);
     try std.testing.expectEqualStrings("E0101", s2);
+}
+
+test "ErrorCode toCode returns empty slice on buffer too small" {
+    var tiny: [2]u8 = undefined;
+    const empty = ErrorCode.unknown_identifier.toCode(&tiny);
+    try std.testing.expectEqual(@as(usize, 0), empty.len);
 }

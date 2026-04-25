@@ -58,6 +58,7 @@ pub fn build(b: *std.Build) void {
         "src/scope.zig",
         "src/types.zig",
         "src/errors.zig",
+        "src/error_codes.zig",
         "src/builtins.zig",
         "src/cache.zig",
         "src/formatter.zig",

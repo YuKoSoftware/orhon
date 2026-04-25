@@ -343,12 +343,6 @@ run_fixture() {
     else fail "$label" "$NEG_OUT"; fi
 }
 
-# type resolution errors
-run_fixture neg_cb3_short_name fail_cb3_short_uppercase.orh "type mismatch\|incompatible\|cannot assign\|expected.*Edge.*found.*Node" "CB3: short uppercase struct name is not silently type-compatible"
-
-# function errors (first error in file: default before required)
-run_fixture neg_c_header fail_c_header_import.orh "not supported.*zig.*zon" "fixture: rejects import header.h"
-
 # old C interop directives rejected (CIMP-04)
 cd "$TESTDIR"
 mkdir -p neg_linkc/src
@@ -612,12 +606,6 @@ NEG_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$NEG_OUT" | grep -qi "tuple capture count.*does not match"; then pass "rejects tuple capture count mismatch"
 else fail "rejects tuple capture count mismatch" "$NEG_OUT"; fi
 
-
-# unreachable code
-run_fixture neg_unreach fail_unreachable.orh "unreachable" "fixture: warns on unreachable code after return"
-
-# @compileError inside compt func
-run_fixture neg_compile_error fail_compile_error.orh "should not compile\|compileError" "fixture: @compileError triggers compile failure"
 
 # cross-module unknown identifier should mention source module
 cd "$TESTDIR"

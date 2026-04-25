@@ -9,8 +9,8 @@ section "Runtime correctness"
 
 cd "$TESTDIR"
 mkdir -p comptest/src
-cp "$FIXTURES/tester_main.orh" comptest/src/comptest.orh
-cp "$FIXTURES/tester.orh" comptest/src/tester.orh
+cp "$FIXTURES/runtime/tester_main.orh" comptest/src/comptest.orh
+cp "$FIXTURES/runtime/tester.orh" comptest/src/tester.orh
 cd "$TESTDIR/comptest"
 
 "$ORHON" build >/dev/null 2>&1 || true

@@ -55,8 +55,8 @@ section "Tester module codegen"
 
 cd "$TESTDIR"
 mkdir -p comptest/src
-cp "$FIXTURES/tester_main.orh" comptest/src/comptest.orh
-cp "$FIXTURES/tester.orh" comptest/src/tester.orh
+cp "$FIXTURES/runtime/tester_main.orh" comptest/src/comptest.orh
+cp "$FIXTURES/runtime/tester.orh" comptest/src/tester.orh
 cd "$TESTDIR/comptest"
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
@@ -120,8 +120,8 @@ section "Blueprint features"
 
 cd "$TESTDIR"
 mkdir -p bptest/src
-cp "$FIXTURES/blueprint_main.orh" bptest/src/bptest.orh
-cp "$FIXTURES/blueprint_basic.orh" bptest/src/tester.orh
+cp "$FIXTURES/runtime/blueprint_main.orh" bptest/src/bptest.orh
+cp "$FIXTURES/runtime/blueprint_basic.orh" bptest/src/tester.orh
 cd bptest
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
@@ -151,9 +151,9 @@ fi
 
 cd "$TESTDIR"
 mkdir -p bpmulti/src
-cp "$FIXTURES/blueprint_main.orh" bpmulti/src/bpmulti.orh
+cp "$FIXTURES/runtime/blueprint_main.orh" bpmulti/src/bpmulti.orh
 sed -i '1s/^module bptest$/module bpmulti/' bpmulti/src/bpmulti.orh
-cp "$FIXTURES/blueprint_multiple.orh" bpmulti/src/tester.orh
+cp "$FIXTURES/runtime/blueprint_multiple.orh" bpmulti/src/tester.orh
 cd bpmulti
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
@@ -166,7 +166,7 @@ fi
 # union flattening
 cd "$TESTDIR"
 mkdir -p union_flat/src
-cp "$FIXTURES/union_flatten.orh" union_flat/src/union_flat.orh
+cp "$FIXTURES/runtime/union_flatten.orh" union_flat/src/union_flat.orh
 cd union_flat
 FLAT_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$FLAT_OUT" | grep -q "Built:"; then
@@ -179,7 +179,7 @@ fi
 # _unions cross-import gap repro that the generic factory redesign fixed.
 cd "$TESTDIR"
 mkdir -p arb_union_root/src
-cp "$FIXTURES/arbitrary_union_root_types.orh" arb_union_root/src/arb_union_root.orh
+cp "$FIXTURES/runtime/arbitrary_union_root_types.orh" arb_union_root/src/arb_union_root.orh
 cd arb_union_root
 ARB_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$ARB_OUT" | grep -q "Built:"; then
@@ -278,7 +278,7 @@ section "Correctness regression fixtures"
 
 cd "$TESTDIR"
 mkdir -p cb1_test/src
-cp "$FIXTURES/cb1_method_receiver.orh" cb1_test/src/cb1_test.orh
+cp "$FIXTURES/ownership/cb1_method_receiver.orh" cb1_test/src/cb1_test.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module cb1_test/' cb1_test/src/cb1_test.orh
 cd cb1_test
 OUTPUT=$("$ORHON" build 2>&1 || true)
@@ -287,7 +287,7 @@ else fail "CB1: two structs with same-named methods compile without borrow colli
 
 cd "$TESTDIR"
 mkdir -p cb2_test/src
-cp "$FIXTURES/cb2_outer_borrow.orh" cb2_test/src/cb2_test.orh
+cp "$FIXTURES/ownership/cb2_outer_borrow.orh" cb2_test/src/cb2_test.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module cb2_test/' cb2_test/src/cb2_test.orh
 cd cb2_test
 OUTPUT=$("$ORHON" build 2>&1 || true)

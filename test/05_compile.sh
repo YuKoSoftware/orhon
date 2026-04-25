@@ -11,9 +11,9 @@ section "orhon test command"
 
 cd "$TESTDIR"
 mkdir -p orhontest/src
-cp "$FIXTURES/tester_main.orh" orhontest/src/orhontest.orh
+cp "$FIXTURES/runtime/tester_main.orh" orhontest/src/orhontest.orh
 sed -i '1s/^module comptest$/module orhontest/' orhontest/src/orhontest.orh
-cp "$FIXTURES/tester.orh" orhontest/src/tester.orh
+cp "$FIXTURES/runtime/tester.orh" orhontest/src/tester.orh
 cd "$TESTDIR/orhontest"
 
 TEST_OUT=$("$ORHON" test 2>&1 || true)

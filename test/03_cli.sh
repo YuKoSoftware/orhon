@@ -44,7 +44,7 @@ fi
 section "CLI commands"
 
 # orhon analysis on a valid fixture
-ANALYSIS_OUT=$("$ORHON" analysis "$FIXTURES/blueprint_basic.orh" 2>&1 || true)
+ANALYSIS_OUT=$("$ORHON" analysis "$FIXTURES/runtime/blueprint_basic.orh" 2>&1 || true)
 if echo "$ANALYSIS_OUT" | grep -q "PASS"; then
     pass "orhon analysis on valid file"
 else

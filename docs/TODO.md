@@ -5,7 +5,7 @@ Master tracking file. Everything is organized into phases ordered by dependency.
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase 2 (Diagnostics + Testing Overhaul) — T1 done (v0.53.7, 2026-04-25)
+- **Active project:** Phase 2 (Diagnostics + Testing Overhaul) — T1 done (v0.53.7), T2 done (v0.53.8, 2026-04-25)
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -173,9 +173,9 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 ### Sub-project 2a — Reporter rewrite
 
 - [x] **T1** 🟠 **Error code catalog (`src/error_codes.zig`)** [H3b / F3] — done v0.53.7, 2026-04-25 — `ErrorCode enum(u16)` with 102 stable codes; `OrhonError.code: ?ErrorCode`; `reportFmt`/`warnFmt` require code first arg; `printDiagnostic` shows `[Exxxx]`; all ~110 call sites annotated.
-- [ ] **T2** 🟠 **JSON / machine-readable diagnostic output** [H3c / F4] — `Reporter.flush(writer, format)` where format is `.human | .json | .short`. Required by CI annotations, vim quickfix, emacs, non-LSP editors.
+- [x] **T2** 🟠 **JSON / machine-readable diagnostic output** [H3c / F4] — done v0.53.8, 2026-04-25 — `src/diag_format.zig` satellite; `DiagFormat enum { human, json, short }`; `Reporter.diag_format` field (default `.human`); `flush()` dispatches to `flushHuman/flushJson/flushShort`; `--diag-format=` CLI flag; 4 unit tests.
 
-> **⬅ RESUME HERE: T2** — T1 complete (v0.53.7, 2026-04-25). Next: JSON diagnostic output.
+> **⬅ RESUME HERE: T3** — T2 complete (v0.53.8, 2026-04-25). Next: NO_COLOR / TTY detection.
 - [ ] **T3** 🟡 **`NO_COLOR` / TTY detection + `--color=auto|always|never`** [H3d / F5] — `src/errors.zig:134-194`. Detect `isatty(stderr)` + `NO_COLOR` env at reporter init, cache `use_color: bool`, gate every escape sequence.
 - [ ] **T4** 🟡 **Warning gradient with notes** [F8] — add `Severity = .err | .warning | .note | .hint`; multi-location errors chain notes via `parent: ?usize`. Add `-Werror` flag.
 - [ ] **T5** 🟡 **Fix reporter ownership convention** [F7] — `src/errors.zig:58-69`. Current design: callers allocate + report dupes + defer free → double allocation + easy leak. Migrate all manual `allocPrint` + `report` + `defer free` sites to `reportFmt`. Document new contract: `report()` takes ownership.

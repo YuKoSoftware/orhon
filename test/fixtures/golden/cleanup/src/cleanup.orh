@@ -1,0 +1,28 @@
+module cleanup
+#version = (1, 0, 0)
+#build   = static
+
+pub func single_defer() i32 {
+    var x: i32 = 0
+    defer {
+        x = 0
+    }
+    x = 99
+    return x
+}
+
+pub func defer_ordering() i32 {
+    var result: i32 = 0
+    defer { result = 1 }
+    defer { result = 2 }
+    return result
+}
+
+pub func nested_defer() i32 {
+    var a: i32 = 0
+    defer { a = 10 }
+    var b: i32 = 5
+    defer { b = 0 }
+    a = b
+    return a
+}

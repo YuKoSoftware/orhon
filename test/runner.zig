@@ -98,6 +98,57 @@ fn compareResults(
     return list.toOwnedSlice(allocator);
 }
 
+/// Parse orhon's --diag-format=json output into a flat list of error-severity diagnostics.
+/// Non-error severities (warning, note, hint) are skipped.
+/// Returns empty slice if the output is not valid JSON or has no diagnostics array.
+fn parseJsonDiagnostics(json: []const u8, allocator: std.mem.Allocator) ![]Diag {
+    var list = std.ArrayList(Diag){};
+    errdefer {
+        for (list.items) |d| allocator.free(d.code);
+        list.deinit(allocator);
+    }
+
+    var parsed = std.json.parseFromSlice(std.json.Value, allocator, json, .{}) catch
+        return list.toOwnedSlice(allocator);
+    defer parsed.deinit();
+
+    const diags_val = switch (parsed.value) {
+        .object => |o| o.get("diagnostics") orelse return list.toOwnedSlice(allocator),
+        else    => return list.toOwnedSlice(allocator),
+    };
+    const diags_arr = switch (diags_val) {
+        .array => |a| a,
+        else   => return list.toOwnedSlice(allocator),
+    };
+
+    for (diags_arr.items) |item| {
+        const obj = switch (item) { .object => |o| o, else => continue };
+
+        const sev = switch (obj.get("severity") orelse continue) {
+            .string => |s| s,
+            else    => continue,
+        };
+        if (!std.mem.eql(u8, sev, "error")) continue;
+
+        const code_str = switch (obj.get("code") orelse continue) {
+            .string => |s| s,
+            else    => continue,
+        };
+        const line_val = switch (obj.get("line") orelse continue) {
+            .integer => |n| n,
+            else     => continue,
+        };
+
+        const code = try allocator.dupe(u8, code_str);
+        errdefer allocator.free(code);
+        try list.append(allocator, .{
+            .code = code,
+            .line = @intCast(line_val),
+        });
+    }
+    return list.toOwnedSlice(allocator);
+}
+
 pub fn main() !void {}
 
 // ── Unit tests ────────────────────────────────────────────────────────────────
@@ -168,4 +219,45 @@ test "compareResults: unexpected diagnostic" {
     defer alloc.free(mm);
     try std.testing.expectEqual(@as(usize, 1), mm.len);
     try std.testing.expect(mm[0] == .unexpected);
+}
+
+test "parseJsonDiagnostics: single error" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"version":1,"diagnostics":[{"severity":"error","code":"E2005","message":"bad","file":"src/x.orh","line":5,"col":1}]}
+    ;
+    const diags = try parseJsonDiagnostics(json, alloc);
+    defer { for (diags) |d| alloc.free(d.code); alloc.free(diags); }
+    try std.testing.expectEqual(@as(usize, 1), diags.len);
+    try std.testing.expectEqualStrings("E2005", diags[0].code);
+    try std.testing.expectEqual(@as(u32, 5), diags[0].line);
+}
+
+test "parseJsonDiagnostics: skips warnings and notes" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"version":1,"diagnostics":[{"severity":"warning","code":"E2038","message":"w","line":3},{"severity":"note","message":"n","line":4}]}
+    ;
+    const diags = try parseJsonDiagnostics(json, alloc);
+    defer alloc.free(diags);
+    try std.testing.expectEqual(@as(usize, 0), diags.len);
+}
+
+test "parseJsonDiagnostics: empty output returns empty slice" {
+    const alloc = std.testing.allocator;
+    const diags = try parseJsonDiagnostics("", alloc);
+    defer alloc.free(diags);
+    try std.testing.expectEqual(@as(usize, 0), diags.len);
+}
+
+test "parseJsonDiagnostics: multiple errors" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"version":1,"diagnostics":[{"severity":"error","code":"E0101","message":"a","line":9},{"severity":"error","code":"E0101","message":"b","line":12}]}
+    ;
+    const diags = try parseJsonDiagnostics(json, alloc);
+    defer { for (diags) |d| alloc.free(d.code); alloc.free(diags); }
+    try std.testing.expectEqual(@as(usize, 2), diags.len);
+    try std.testing.expectEqual(@as(u32, 9),  diags[0].line);
+    try std.testing.expectEqual(@as(u32, 12), diags[1].line);
 }

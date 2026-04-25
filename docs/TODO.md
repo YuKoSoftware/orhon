@@ -5,7 +5,7 @@ Master tracking file. Everything is organized into phases ordered by dependency.
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase 2 (Diagnostics + Testing Overhaul) — T1 done (v0.53.7), T2 done (v0.53.8), T3 done (v0.53.10, 2026-04-25), T4 done (v0.53.11, 2026-04-25), T5 done (v0.53.12, 2026-04-25), T6 done (v0.53.13, 2026-04-25), T7 done (v0.53.14, 2026-04-25), T8a done (v0.53.16, 2026-04-25), T8b done (v0.53.17, 2026-04-25), T9 done (v0.53.18, 2026-04-25), T10 done (v0.53.19, 2026-04-25)
+- **Active project:** Phase 2 (Diagnostics + Testing Overhaul) — T1 done (v0.53.7), T2 done (v0.53.8), T3 done (v0.53.10, 2026-04-25), T4 done (v0.53.11, 2026-04-25), T5 done (v0.53.12, 2026-04-25), T6 done (v0.53.13, 2026-04-25), T7 done (v0.53.14, 2026-04-25), T8a done (v0.53.16, 2026-04-25), T8b done (v0.53.17, 2026-04-25), T9 done (v0.53.18, 2026-04-25), T10 done (v0.53.20, 2026-04-25)
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -185,7 +185,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 - [x] **T7** 🟡 **Top-level `main()` ICE handler** [F24] — done v0.53.14, 2026-04-25 — `writeIceMessage` in `errors.zig`; pipeline `else` branch now prints "internal compiler error: {err}" + report URL + exits 70 instead of leaking Zig stack traces.
 
-> **T9 complete** (v0.53.18, 2026-04-25). ⬅ **RESUME HERE: T10** — Expand snapshot coverage.
+> **T10 complete** (v0.53.20, 2026-04-25). ⬅ **RESUME HERE: T11** — Perf baseline tests (`test/12_perf.sh`).
 
 ### Sub-project 2b — Test runner rewrite
 

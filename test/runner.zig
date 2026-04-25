@@ -185,14 +185,12 @@ fn runFixture(orhon_path: []const u8, fixture_path: []const u8, gpa: std.mem.All
     const child_args = &[_][]const u8{ orhon_path, "build", "--diag-format=json" };
     var child = std.process.Child.init(child_args, alloc);
     child.cwd             = project_path;
-    child.stdout_behavior = .Pipe;
+    child.stdout_behavior = .Ignore;
     child.stderr_behavior = .Pipe;
     try child.spawn();
 
     const stderr_out = try child.stderr.?.readToEndAlloc(alloc, 512 * 1024);
-    const stdout_out = try child.stdout.?.readToEndAlloc(alloc, 512 * 1024);
     _ = try child.wait();
-    _ = stdout_out;
 
     // Diagnostics are written to stderr
     const actual = try parseJsonDiagnostics(stderr_out, alloc);
@@ -225,7 +223,8 @@ pub fn main() !void {
     }
     const orhon_path   = try std.fs.realpathAlloc(gpa, raw_args[1]);
     defer gpa.free(orhon_path);
-    const fixtures_dir = raw_args[2];
+    const fixtures_dir = try std.fs.realpathAlloc(gpa, raw_args[2]);
+    defer gpa.free(fixtures_dir);
 
     var dir = try std.fs.openDirAbsolute(fixtures_dir, .{ .iterate = true });
     defer dir.close();

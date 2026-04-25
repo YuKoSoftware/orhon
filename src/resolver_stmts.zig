@@ -68,9 +68,9 @@ pub fn registerDecl(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope) anyer
 /// enclosing scope up to the function boundary (shadowing).
 fn defineUnique(self: *TypeResolver, scope: *Scope, name: []const u8, t: RT, idx: AstNodeIndex) !void {
     if (scope.vars.contains(name)) {
-        try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "'{s}' already declared in this scope", .{name});
+        try self.ctx.reporter.reportFmt(.already_declared, self.nodeLocFromIdx(idx), "'{s}' already declared in this scope", .{name});
     } else if (self.lookupInFuncScope(scope, name)) {
-        try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "'{s}' shadows a declaration in an outer scope — shadowing is not allowed", .{name});
+        try self.ctx.reporter.reportFmt(.shadowing_not_allowed, self.nodeLocFromIdx(idx), "'{s}' shadows a declaration in an outer scope — shadowing is not allowed", .{name});
     }
     try scope.define(name, t);
 }
@@ -156,7 +156,7 @@ pub fn resolveNode(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, rctx: 
                     }
                 }
                 if (!has_any_param) {
-                    try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx),
+                    try self.ctx.reporter.reportFmt(.any_return_without_param, self.nodeLocFromIdx(idx),
                         "function '{s}' returns 'any' but has no 'any'-typed parameter — return type cannot be determined", .{fname});
                 }
             }
@@ -251,16 +251,16 @@ pub fn resolveNode(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, rctx: 
                 try self.validateType(v.type_annotation, scope, rctx);
                 // Reference types (const& T, mut& T) are only valid in function parameters
                 if (self.store.getNode(v.type_annotation).tag == .type_ptr) {
-                    try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "reference type not allowed in variable declaration — use '{s}' by value or as a function parameter",
+                    try self.ctx.reporter.reportFmt(.reference_type_in_var, self.nodeLocFromIdx(idx), "reference type not allowed in variable declaration — use '{s}' by value or as a function parameter",
                         .{vname});
                 }
             }
             // Duplicate/shadowing check (only inside functions/blocks, not top-level)
             if (scope.parent != null) {
                 if (scope.vars.contains(vname)) {
-                    try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "variable '{s}' already declared in this scope", .{vname});
+                    try self.ctx.reporter.reportFmt(.already_declared, self.nodeLocFromIdx(idx), "variable '{s}' already declared in this scope", .{vname});
                 } else if (self.lookupInFuncScope(scope, vname)) {
-                    try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "variable '{s}' shadows a declaration in an outer scope — shadowing is not allowed", .{vname});
+                    try self.ctx.reporter.reportFmt(.shadowing_not_allowed, self.nodeLocFromIdx(idx), "variable '{s}' shadows a declaration in an outer scope — shadowing is not allowed", .{vname});
                 }
             }
             {
@@ -295,7 +295,7 @@ pub fn resolveNode(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, rctx: 
             if (self.store.getNode(f.type_annotation).tag == .type_named and
                 types.Primitive.fromName(self.store.strings.get(ast_typed.TypeNamed.unpack(self.store, f.type_annotation).name)) == .any)
             {
-                try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx),
+                try self.ctx.reporter.reportFmt(.any_not_valid_field_type, self.nodeLocFromIdx(idx),
                     "'any' is not valid as a struct field type — use a type parameter instead", .{});
             }
             // Type-check default value against declared type
@@ -329,7 +329,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
                         val_type != .unknown and val_type != .inferred and
                         !resolver_mod.typesCompatible(val_type, expected))
                     {
-                        try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "return type mismatch: expected '{s}', got '{s}'",
+                        try self.ctx.reporter.reportFmt(.return_type_mismatch, self.nodeLocFromIdx(idx), "return type mismatch: expected '{s}', got '{s}'",
                             .{ expected.name(), val_type.name() });
                     }
                 }
@@ -344,7 +344,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
                     cond_rctx.in_is_condition = true;
                 } else if (resolver_mod.containsIsCheck(cond_node)) {
                     cond_rctx.in_is_condition = true;
-                    try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx),
+                    try self.ctx.reporter.reportFmt(.compound_is_not_supported, self.nodeLocFromIdx(idx),
                         "compound 'is' not supported — use nested if statements for multiple type checks", .{});
                 }
             }
@@ -352,7 +352,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
             if (cond_type != .unknown and cond_type != .inferred and
                 !(cond_type == .primitive and cond_type.primitive == .bool))
             {
-                try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "type mismatch in if condition: expected bool, got '{s}'", .{cond_type.name()});
+                try self.ctx.reporter.reportFmt(.condition_not_bool, self.nodeLocFromIdx(idx), "type mismatch in if condition: expected bool, got '{s}'", .{cond_type.name()});
             }
             try self.resolveNode(i.then_block, scope, rctx);
             if (i.else_block != .none) try self.resolveNode(i.else_block, scope, rctx);
@@ -363,7 +363,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
             if (cond_type != .unknown and cond_type != .inferred and
                 !(cond_type == .primitive and cond_type.primitive == .bool))
             {
-                try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "type mismatch in while condition: expected bool, got '{s}'", .{cond_type.name()});
+                try self.ctx.reporter.reportFmt(.condition_not_bool, self.nodeLocFromIdx(idx), "type mismatch in while condition: expected bool, got '{s}'", .{cond_type.name()});
             }
             if (w.continue_expr != .none) _ = try self.resolveExpr(w.continue_expr, scope, rctx);
             var loop_rctx = rctx;
@@ -414,6 +414,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
                     const expected = sig.fields.len + extra_iterables;
                     if (n_captures != expected) {
                         try self.ctx.reporter.reportFmt(
+                            .for_capture_count_mismatch,
                             self.nodeLocFromIdx(idx),
                             "tuple capture count ({d}) does not match struct '{s}' field count ({d}){s}",
                             .{ n_captures, type_name, sig.fields.len, if (extra_iterables > 0) " plus extra iterables" else "" },
@@ -440,6 +441,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
                     }
                 } else {
                     try self.ctx.reporter.reportFmt(
+                        .for_tuple_not_struct,
                         self.nodeLocFromIdx(idx),
                         "tuple capture requires a struct element type, got '{s}'",
                         .{type_name},
@@ -453,6 +455,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
                 // Non-tuple: each capture maps 1:1 to an iterable
                 if (n_captures != n_iterables) {
                     try self.ctx.reporter.reportFmt(
+                        .for_iterable_mismatch,
                         self.nodeLocFromIdx(idx),
                         "for loop has {d} iterable(s) but {d} capture(s)",
                         .{ n_iterables, n_captures },
@@ -490,11 +493,11 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
                         const pat_name = self.store.strings.get(ast_typed.Identifier.unpack(self.store, ma.pattern).name);
                         if (std.mem.eql(u8, pat_name, "else")) {
                             if (has_else) {
-                                try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(arm_idx), "duplicate 'else' arm in match statement", .{});
+                                try self.ctx.reporter.reportFmt(.match_duplicate_else, self.nodeLocFromIdx(arm_idx), "duplicate 'else' arm in match statement", .{});
                             }
                             has_else = true;
                         } else if (has_else) {
-                            try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(arm_idx), "'else' arm must be the last arm in a match statement", .{});
+                            try self.ctx.reporter.reportFmt(.match_else_not_last, self.nodeLocFromIdx(arm_idx), "'else' arm must be the last arm in a match statement", .{});
                         }
                         // Validate union match arm patterns
                         if (!std.mem.eql(u8, pat_name, "else")) {
@@ -502,7 +505,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
                         }
                     } else {
                         if (has_else) {
-                            try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(arm_idx), "'else' arm must be the last arm in a match statement", .{});
+                            try self.ctx.reporter.reportFmt(.match_else_not_last, self.nodeLocFromIdx(arm_idx), "'else' arm must be the last arm in a match statement", .{});
                         }
                         // resolve non-identifier pattern expressions
                         _ = try self.resolveExpr(ma.pattern, scope, rctx);
@@ -525,7 +528,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
             }
             // Guards require else arm for exhaustiveness — guards don't guarantee coverage
             if (has_guard and !has_else) {
-                try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "match with guards requires an 'else' arm", .{});
+                try self.ctx.reporter.reportFmt(.match_guards_need_else, self.nodeLocFromIdx(idx), "match with guards requires an 'else' arm", .{});
             }
             // Check exhaustiveness for union matches
             if (!has_else) {
@@ -552,7 +555,7 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
                         lp != .float_literal and rp != .float_literal and
                         lp != rp)
                     {
-                        try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx),
+                        try self.ctx.reporter.reportFmt(.mixed_numeric_assignment, self.nodeLocFromIdx(idx),
                             "cannot mix {s} and {s} in compound assignment — use @cast({s}, x) to convert",
                             .{ lp.toName(), rp.toName(), lp.toName() });
                     }
@@ -572,9 +575,9 @@ pub fn resolveStatement(self: *TypeResolver, idx: AstNodeIndex, scope: *Scope, r
                 const name = self.store.strings.get(name_si);
                 if (scope.parent != null) {
                     if (scope.vars.contains(name)) {
-                        try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "variable '{s}' already declared in this scope", .{name});
+                        try self.ctx.reporter.reportFmt(.already_declared, self.nodeLocFromIdx(idx), "variable '{s}' already declared in this scope", .{name});
                     } else if (self.lookupInFuncScope(scope, name)) {
-                        try self.ctx.reporter.reportFmt(self.nodeLocFromIdx(idx), "variable '{s}' shadows a declaration in an outer scope — shadowing is not allowed", .{name});
+                        try self.ctx.reporter.reportFmt(.shadowing_not_allowed, self.nodeLocFromIdx(idx), "variable '{s}' shadows a declaration in an outer scope — shadowing is not allowed", .{name});
                     }
                 }
                 try scope.define(name, RT.inferred);

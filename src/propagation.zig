@@ -283,7 +283,7 @@ pub const PropagationChecker = struct {
                 try self.checkExprForUnsafeUnwrap(node, scope);
                 if (try self.exprReturnsUnion(node)) |is_error| {
                     const kind = if (is_error) K.Type.ERROR else K.Type.NULL;
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                    try self.ctx.reporter.reportFmt(.discarded_union_return, self.ctx.nodeLoc(node),
                         "discarded {s} union return value — assign to a variable and use if/match to handle",
                         .{kind});
                 }
@@ -301,7 +301,7 @@ pub const PropagationChecker = struct {
                     if (scope.isTracked(name)) |uvar| {
                         if (!uvar.handled) {
                             const kind = if (uvar.is_error_union) K.Type.ERROR else K.Type.NULL;
-                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unsafe unwrap of {s} union '{s}' — check with 'is' or 'match' first",
+                            try self.ctx.reporter.reportFmt(.unsafe_unwrap, self.ctx.nodeLoc(node), "unsafe unwrap of {s} union '{s}' — check with 'is' or 'match' first",
                                 .{ kind, name });
                         }
                     }
@@ -400,7 +400,7 @@ pub const PropagationChecker = struct {
                     break :blk .{ .file = resolved.file, .line = resolved.line, .col = uvar.col };
                 } else
                     null;
-                try self.ctx.reporter.reportFmt(loc, "unhandled {s} union '{s}' — use if/match to handle before scope exit",
+                try self.ctx.reporter.reportFmt(.unhandled_union, loc, "unhandled {s} union '{s}' — use if/match to handle before scope exit",
                     .{ kind, uvar.name });
             }
         }

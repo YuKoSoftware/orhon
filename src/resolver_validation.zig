@@ -94,14 +94,14 @@ pub fn checkMatchExhaustiveness(self: *TypeResolver, match_type_raw: RT, arms: [
             } else {
                 // Named type is not a known enum — require else arm
                 // (caller only calls us when !has_else)
-                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(match_node),
+                try self.ctx.reporter.reportFmt(.match_non_enum_needs_else, self.ctx.nodeLoc(match_node),
                     "match on non-enum type requires an 'else' arm", .{});
             }
         },
         // Non-enum, non-union types (integers, strings, booleans, floats) —
         // caller only calls us when !has_else, so report directly
         else => {
-            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(match_node),
+            try self.ctx.reporter.reportFmt(.match_non_enum_needs_else, self.ctx.nodeLoc(match_node),
                 "match on non-enum type requires an 'else' arm", .{});
         },
     }
@@ -117,7 +117,7 @@ fn reportMissingArms(self: *TypeResolver, missing: []const []const u8, match_nod
         try w.print("'{s}'", .{name});
     }
     try w.writeAll(", add missing arms or use 'else'");
-    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(match_node), "{s}", .{buf.items});
+    try self.ctx.reporter.reportFmt(.match_non_exhaustive, self.ctx.nodeLoc(match_node), "{s}", .{buf.items});
 }
 
 /// Validate that a match arm pattern is a valid member of the matched union type
@@ -128,7 +128,7 @@ pub fn validateMatchArm(self: *TypeResolver, pattern_name: []const u8, match_typ
             for (members) |member| {
                 if (std.mem.eql(u8, pattern_name, member.name())) return;
             }
-            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(arm_node), "match arm '{s}' is not a member of this union type", .{pattern_name});
+            try self.ctx.reporter.reportFmt(.match_arm_not_member, self.ctx.nodeLoc(arm_node), "match arm '{s}' is not a member of this union type", .{pattern_name});
         },
         else => {
             // Not a union type — pattern matching on integer/string values, not type arms
@@ -181,7 +181,7 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
 
                 // @this / Self outside struct gets a specific error message
                 if (types.Primitive.fromName(type_name) == .this or types.Primitive.fromName(type_name) == .self_deprecated) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                    try self.ctx.reporter.reportFmt(.this_outside_struct, self.ctx.nodeLoc(node),
                         "'{s}' can only be used inside struct bodies — it refers to the enclosing struct type", .{type_name});
                     return;
                 }
@@ -222,7 +222,7 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                 defer if (suggestion) |s| self.ctx.allocator.free(s);
 
                 const hint = cross_module_hint orelse suggestion orelse "";
-                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown type '{s}'{s}", .{ type_name, hint });
+                try self.ctx.reporter.reportFmt(.unknown_type, self.ctx.nodeLoc(node), "unknown type '{s}'{s}", .{ type_name, hint });
             }
         },
         .type_slice => |elem| try validateType(self, elem, scope, rctx),
@@ -262,7 +262,7 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             }
 
             if (!is_known) {
-                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown generic type '{s}'", .{g.name});
+                try self.ctx.reporter.reportFmt(.unknown_generic_type, self.ctx.nodeLoc(node), "unknown generic type '{s}'", .{g.name});
             }
             // Validate type arguments (Ring/ORing second arg is a size, Vector first arg is a size)
             const is_vector = types.Primitive.fromName(g.name) == .vector;
@@ -277,7 +277,7 @@ pub fn validateType(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             try validateType(self, f.ret, scope, rctx);
         },
         .type_tuple_named => {
-            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "anonymous tuple types are not allowed — define a named type alias with 'const'", .{});
+            try self.ctx.reporter.reportFmt(.anonymous_tuple_not_allowed, self.ctx.nodeLoc(node), "anonymous tuple types are not allowed — define a named type alias with 'const'", .{});
         },
         else => {},
     }
@@ -303,7 +303,7 @@ pub fn checkAssignCompat(self: *TypeResolver, expected: RT, actual: RT, node: *p
     // Only check when both sides are primitive — that's where we can be confident
     if (expected != .primitive or actual != .primitive) return;
     if (resolver_mod.typesCompatible(actual, expected)) return;
-    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "type mismatch: expected '{s}', got '{s}'",
+    try self.ctx.reporter.reportFmt(.type_mismatch, self.ctx.nodeLoc(node), "type mismatch: expected '{s}', got '{s}'",
         .{ expected.name(), actual.name() });
 }
 
@@ -330,7 +330,7 @@ pub fn checkByteSliceStringCoercion(self: *TypeResolver, c: parser.CallExpr, arg
         if (param_type == .primitive and param_type.primitive == .string) {
             if (arg_type == .slice) {
                 if (arg_type.slice.* == .primitive and arg_type.slice.primitive == .u8) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass '[]u8' as 'str' — use string.fromBytes() for explicit conversion",
+                    try self.ctx.reporter.reportFmt(.bytes_str_implicit, self.ctx.nodeLoc(node), "cannot pass '[]u8' as 'str' — use string.fromBytes() for explicit conversion",
                         .{});
                 }
             }
@@ -339,7 +339,7 @@ pub fn checkByteSliceStringCoercion(self: *TypeResolver, c: parser.CallExpr, arg
         if (param_type == .slice) {
             if (param_type.slice.* == .primitive and param_type.slice.primitive == .u8) {
                 if (arg_type == .primitive and arg_type.primitive == .string) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot pass 'str' as '[]u8' — use string.toBytes() for explicit conversion",
+                    try self.ctx.reporter.reportFmt(.str_bytes_implicit, self.ctx.nodeLoc(node), "cannot pass 'str' as '[]u8' — use string.toBytes() for explicit conversion",
                         .{});
                 }
             }
@@ -353,7 +353,7 @@ pub fn checkBlueprintConformance(self: *TypeResolver, s: parser.StructDecl, loc:
     for (s.blueprints, 0..) |bp_name, i| {
         for (s.blueprints[0..i]) |prev| {
             if (std.mem.eql(u8, bp_name, prev)) {
-                try self.ctx.reporter.reportFmt(loc, "struct '{s}' lists blueprint '{s}' more than once", .{ s.name, bp_name });
+                try self.ctx.reporter.reportFmt(.duplicate_blueprint_impl, loc, "struct '{s}' lists blueprint '{s}' more than once", .{ s.name, bp_name });
             }
         }
     }
@@ -375,7 +375,7 @@ pub fn checkBlueprintConformance(self: *TypeResolver, s: parser.StructDecl, loc:
                     }
                 }
             }
-            try self.ctx.reporter.reportFmt(loc, "unknown blueprint '{s}'", .{bp_name});
+            try self.ctx.reporter.reportFmt(.unknown_blueprint, loc, "unknown blueprint '{s}'", .{bp_name});
             continue;
         };
 
@@ -386,14 +386,14 @@ pub fn checkBlueprintConformance(self: *TypeResolver, s: parser.StructDecl, loc:
                     .@"struct" => |sig| if (sig.methods.get(bp_method.name)) |m| break :blk m,
                     else => {},
                 };
-                try self.ctx.reporter.reportFmt(loc, "struct '{s}' does not implement '{s}' required by blueprint '{s}'",
+                try self.ctx.reporter.reportFmt(.blueprint_not_implemented, loc, "struct '{s}' does not implement '{s}' required by blueprint '{s}'",
                     .{ s.name, bp_method.name, bp_name });
                 continue;
             };
 
             // Compare parameter count
             if (struct_method.params.len != bp_method.params.len) {
-                try self.ctx.reporter.reportFmt(loc, "method '{s}' in struct '{s}' has {d} parameter(s), blueprint '{s}' requires {d}",
+                try self.ctx.reporter.reportFmt(.blueprint_param_count, loc, "method '{s}' in struct '{s}' has {d} parameter(s), blueprint '{s}' requires {d}",
                     .{ bp_method.name, s.name, struct_method.params.len, bp_name, bp_method.params.len });
                 continue;
             }
@@ -401,7 +401,7 @@ pub fn checkBlueprintConformance(self: *TypeResolver, s: parser.StructDecl, loc:
             // Compare parameter types (with blueprint→struct name substitution)
             for (struct_method.params, bp_method.params) |sp, bp| {
                 if (!resolver_mod.typesMatchWithSubstitution(sp.type_, bp.type_, bp_name, s.name)) {
-                    try self.ctx.reporter.reportFmt(loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': parameter type mismatch",
+                    try self.ctx.reporter.reportFmt(.blueprint_param_type, loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': parameter type mismatch",
                         .{ bp_method.name, s.name, bp_name });
                     break;
                 }
@@ -409,7 +409,7 @@ pub fn checkBlueprintConformance(self: *TypeResolver, s: parser.StructDecl, loc:
 
             // Compare return type
             if (!resolver_mod.typesMatchWithSubstitution(struct_method.return_type, bp_method.return_type, bp_name, s.name)) {
-                try self.ctx.reporter.reportFmt(loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': return type mismatch",
+                try self.ctx.reporter.reportFmt(.blueprint_return_type, loc, "method '{s}' in struct '{s}' does not match blueprint '{s}': return type mismatch",
                     .{ bp_method.name, s.name, bp_name });
             }
         }

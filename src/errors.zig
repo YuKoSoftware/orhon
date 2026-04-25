@@ -83,17 +83,17 @@ pub const Reporter = struct {
 
     /// Format and report an error in one step.
     /// Replaces the repeated allocPrint + defer free + report pattern.
-    pub fn reportFmt(self: *Reporter, loc: ?SourceLoc, comptime fmt: []const u8, args: anytype) !void {
+    pub fn reportFmt(self: *Reporter, code: ErrorCode, loc: ?SourceLoc, comptime fmt: []const u8, args: anytype) !void {
         const msg = try std.fmt.allocPrint(self.allocator, fmt, args);
         defer self.allocator.free(msg);
-        try self.report(.{ .message = msg, .loc = loc });
+        try self.report(.{ .code = code, .message = msg, .loc = loc });
     }
 
     /// Format and record a warning in one step. Warn-side counterpart to reportFmt.
-    pub fn warnFmt(self: *Reporter, loc: ?SourceLoc, comptime fmt: []const u8, args: anytype) !void {
+    pub fn warnFmt(self: *Reporter, code: ErrorCode, loc: ?SourceLoc, comptime fmt: []const u8, args: anytype) !void {
         const msg = try std.fmt.allocPrint(self.allocator, fmt, args);
         defer self.allocator.free(msg);
-        try self.warn(.{ .message = msg, .loc = loc });
+        try self.warn(.{ .code = code, .message = msg, .loc = loc });
     }
 
     pub fn hasErrors(self: *const Reporter) bool {

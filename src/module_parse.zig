@@ -73,7 +73,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
                     if (trimmed_line.len > 0 and trimmed_line[0] == '#' and
                         !std.mem.startsWith(u8, trimmed_line, "//"))
                     {
-                        try self.reporter.reportFmt(null, "metadata (#{s}...) only allowed in anchor file '{s}.orh', found in '{s}'",
+                        try self.reporter.reportFmt(.metadata_in_non_anchor, null, "metadata (#{s}...) only allowed in anchor file '{s}.orh', found in '{s}'",
                             .{ trimmed_line[1..@min(trimmed_line.len, 10)], mod_name, file_path });
                         break;
                     }
@@ -220,7 +220,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
             const decl = imp.import_decl;
             // String-literal imports (import "header.h") are not supported
             if (decl.path.len > 0 and decl.path[0] == '"') {
-                try self.reporter.reportFmt(null, "import \"{s}\" is not supported — use a .zig + .zon module for C interop (see docs/14-zig-bridge.md)", .{constants.stripQuotes(decl.path)});
+                try self.reporter.reportFmt(.c_import_not_supported, null, "import \"{s}\" is not supported — use a .zig + .zon module for C interop (see docs/14-zig-bridge.md)", .{constants.stripQuotes(decl.path)});
                 continue;
             }
 
@@ -236,7 +236,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
 
                 // Only std:: imports are supported
                 if (!std.mem.eql(u8, sc, "std")) {
-                    try self.reporter.reportFmt(imp_loc, "unknown import scope '{s}' — only 'std' is supported", .{sc});
+                    try self.reporter.reportFmt(.unknown_import_scope, imp_loc, "unknown import scope '{s}' — only 'std' is supported", .{sc});
                     continue;
                 }
 
@@ -249,7 +249,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
 
                 // Check the .orh file exists
                 std.fs.cwd().access(file_path, .{}) catch {
-                    try self.reporter.reportFmt(imp_loc, "module '{s}::{s}' not found",
+                    try self.reporter.reportFmt(.std_module_not_found, imp_loc, "module '{s}::{s}' not found",
                         .{ sc, decl.path });
                     self.allocator.free(file_path);
                     continue;
@@ -350,7 +350,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
                     const val = meta.metadata.value.identifier;
                     mod.build_type = module.parseBuildType(val);
                     if (mod.build_type == .exe and !std.mem.eql(u8, val, "exe")) {
-                        try self.reporter.reportFmt(null, "unknown #build type '{s}' — expected 'exe', 'static', or 'dynamic'", .{val});
+                        try self.reporter.reportFmt(.unknown_build_type, null, "unknown #build type '{s}' — expected 'exe', 'static', or 'dynamic'", .{val});
                     }
                 } else {
                     mod.build_type = .exe;
@@ -373,7 +373,7 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
             if (std.mem.eql(u8, dir, "src")) {
                 exe_count += 1;
                 if (exe_count > 1) {
-                    try self.reporter.reportFmt(.{ .file = anchor, .line = 1, .col = 1 }, "multiple #build = exe modules in src/ — only one executable entry point is allowed", .{});
+                    try self.reporter.reportFmt(.multiple_exe_modules, .{ .file = anchor, .line = 1, .col = 1 }, "multiple #build = exe modules in src/ — only one executable entry point is allowed", .{});
                 }
             }
         }

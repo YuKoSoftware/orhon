@@ -55,12 +55,12 @@ pub fn validateMainReserved(
             if (std.mem.eql(u8, n, "main")) {
                 if (node.* == .func_decl) {
                     if (!is_exe) {
-                        try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), "func main() is only allowed in executable modules", .{});
+                        try reporter.reportFmt(.main_in_non_exe, module.resolveNodeLoc(locs_ptr, file_offsets, node), "func main() is only allowed in executable modules", .{});
                     } else {
                         has_func_main = true;
                     }
                 } else {
-                    try reporter.reportFmt(module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
+                    try reporter.reportFmt(.main_name_reserved, module.resolveNodeLoc(locs_ptr, file_offsets, node), constants.Err.MAIN_RESERVED, .{});
                 }
             }
         }
@@ -68,7 +68,7 @@ pub fn validateMainReserved(
 
     // Exe modules must have func main() in the anchor file
     if (is_exe and !has_func_main) {
-        try reporter.reportFmt(null, "executable module '{s}' requires func main() in anchor file", .{mod_ptr.name});
+        try reporter.reportFmt(.missing_main_func, null, "executable module '{s}' requires func main() in anchor file", .{mod_ptr.name});
     }
 
     return reporter.hasErrors();
@@ -135,7 +135,7 @@ pub fn checkUnusedImports(
 
         if (!used) {
             const loc = module.resolveNodeLoc(locs_ptr, file_offsets, imp_node);
-            try reporter.warnFmt(loc, "unused import: '{s}'", .{ref_name});
+            try reporter.warnFmt(.unused_import, loc, "unused import: '{s}'", .{ref_name});
         }
     }
 }

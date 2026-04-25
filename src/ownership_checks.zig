@@ -184,7 +184,7 @@ pub fn checkExpr(self: *OwnershipChecker, node: *parser.Node, scope: *OwnershipS
         .identifier => |name| {
             if (scope.getState(name)) |state| {
                 if (state.state == .moved) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "use of moved value '{s}' — consider using @copy()", .{name});
+                    try self.ctx.reporter.reportFmt(.use_of_moved_value, self.ctx.nodeLoc(node), "use of moved value '{s}' — consider using @copy()", .{name});
                 }
                 // If not a borrow, not primitive, and not const, this is a move
                 if (!is_borrow and !state.is_primitive and !state.is_const and state.state == .owned) {
@@ -263,12 +263,12 @@ pub fn checkExpr(self: *OwnershipChecker, node: *parser.Node, scope: *OwnershipS
                         if (field_is_prim) |is_prim| {
                             if (!is_prim) {
                                 // Known non-primitive field → struct atomicity error
-                                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot move field '{s}' out of '{s}' — structs are atomic ownership units — consider using @copy()",
+                                try self.ctx.reporter.reportFmt(.cannot_move_field, self.ctx.nodeLoc(node), "cannot move field '{s}' out of '{s}' — structs are atomic ownership units — consider using @copy()",
                                     .{ f.field, obj_name });
                             }
                         } else if (self.isKnownStruct(scope, obj_name)) {
                             // Known struct but field not found — conservative error
-                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot move field '{s}' out of '{s}' — structs are atomic ownership units — consider using @copy()",
+                            try self.ctx.reporter.reportFmt(.cannot_move_field, self.ctx.nodeLoc(node), "cannot move field '{s}' out of '{s}' — structs are atomic ownership units — consider using @copy()",
                                 .{ f.field, obj_name });
                         }
                         // Unknown type (union unwrap, etc.) — skip check

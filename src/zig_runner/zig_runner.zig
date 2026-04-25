@@ -220,7 +220,7 @@ pub const ZigRunner = struct {
                     try self.reporter.report(.{ .code = .zig_compile_error, .message = msg });
                     continue;
                 }
-                try self.reporter.reportFmt(null, "internal codegen error (please report): {s}", .{line});
+                try self.reporter.reportFmt(.internal_zig_codegen, null, "internal codegen error (please report): {s}", .{line});
             }
         }
     }

@@ -114,9 +114,9 @@ pub const BorrowChecker = struct {
 
             const loc = if (self.current_node) |cn| self.ctx.nodeLoc(cn) else null;
             if (field) |f| {
-                try self.ctx.reporter.reportFmt(loc, "cannot use '{s}.{s}' while it is mutably borrowed — consider borrowing with const&", .{ name, f });
+                try self.ctx.reporter.reportFmt(.use_while_borrowed, loc, "cannot use '{s}.{s}' while it is mutably borrowed — consider borrowing with const&", .{ name, f });
             } else {
-                try self.ctx.reporter.reportFmt(loc, "cannot use '{s}' while it is mutably borrowed — consider borrowing with const&", .{name});
+                try self.ctx.reporter.reportFmt(.use_while_borrowed, loc, "cannot use '{s}' while it is mutably borrowed — consider borrowing with const&", .{name});
             }
             return;
         }
@@ -137,7 +137,7 @@ pub const BorrowChecker = struct {
                     " — consider borrowing with const&"
                 else
                     "";
-                try self.ctx.reporter.reportFmt(loc, "cannot borrow '{s}' as {s}: already borrowed as {s}{s}",
+                try self.ctx.reporter.reportFmt(.borrow_conflict, loc, "cannot borrow '{s}' as {s}: already borrowed as {s}{s}",
                     .{
                         label,
                         if (is_mutable) "mutable" else "immutable",

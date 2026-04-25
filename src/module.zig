@@ -200,9 +200,9 @@ pub const Resolver = struct {
             }
 
             if (anchor_count == 0) {
-                try self.reporter.reportFmt(null, "module '{s}' has no anchor file — expected '{s}'", .{ mod_name, anchor_name });
+                try self.reporter.reportFmt(.no_anchor_file, null, "module '{s}' has no anchor file — expected '{s}'", .{ mod_name, anchor_name });
             } else if (anchor_count > 1) {
-                try self.reporter.reportFmt(null, "module '{s}' has {d} anchor files — only one '{s}' allowed per module", .{ mod_name, anchor_count, anchor_name });
+                try self.reporter.reportFmt(.multiple_anchors, null, "module '{s}' has {d} anchor files — only one '{s}' allowed per module", .{ mod_name, anchor_count, anchor_name });
             } else if (anchor_idx > 0) {
                 // Swap anchor to front
                 const tmp = files[0];
@@ -216,7 +216,7 @@ pub const Resolver = struct {
                 for (files[1..]) |f| {
                     const file_dir = std.fs.path.dirname(f) orelse "";
                     if (!std.mem.eql(u8, anchor_dir, file_dir)) {
-                        try self.reporter.reportFmt(.{ .file = f, .line = 1, .col = 1 },
+                        try self.reporter.reportFmt(.module_file_dir_mismatch, .{ .file = f, .line = 1, .col = 1 },
                             "'{s}' declares module '{s}' but is not in the same directory as anchor file '{s}'",
                             .{ f, mod_name, files[0] });
                     }
@@ -273,7 +273,7 @@ pub const Resolver = struct {
 
                 // Reject 'module main' — reserved for the executable entry point
                 if (std.mem.eql(u8, mod_name, "main")) {
-                    try self.reporter.reportFmt(.{ .file = full_path, .line = 1, .col = 1 }, constants.Err.MAIN_RESERVED ++ " — use your project name as the module name", .{});
+                    try self.reporter.reportFmt(.module_name_reserved, .{ .file = full_path, .line = 1, .col = 1 }, constants.Err.MAIN_RESERVED ++ " — use your project name as the module name", .{});
                     self.allocator.free(mod_name);
                     self.allocator.free(full_path);
                     continue;
@@ -363,7 +363,7 @@ pub const Resolver = struct {
                         }
                         break :blk null;
                     } else null;
-                    try reporter.reportFmt(loc, "module '{s}' not found — add '{s}.orh' to src/", .{ imp_name, imp_name });
+                    try reporter.reportFmt(.module_not_found, loc, "module '{s}' not found — add '{s}.orh' to src/", .{ imp_name, imp_name });
                 }
             }
         }
@@ -398,7 +398,7 @@ pub const Resolver = struct {
             if (!visited.contains(imp)) {
                 try self.dfsCircularCheck(imp, visited, in_stack);
             } else if (in_stack.get(imp) orelse false) {
-                try self.reporter.reportFmt(null, "circular import detected: {s} → {s}", .{ mod_name, imp });
+                try self.reporter.reportFmt(.circular_import, null, "circular import detected: {s} → {s}", .{ mod_name, imp });
             }
         }
 

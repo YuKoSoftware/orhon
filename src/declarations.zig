@@ -230,7 +230,7 @@ pub const DeclCollector = struct {
             .handle_decl => |h| try self.collectHandle(h, loc),
             .var_decl => |v| {
                 if (v.mutability == .mutable) {
-                    try self.reporter.reportFmt(loc, "module-level 'var' is not allowed — use 'const' for module-level declarations", .{});
+                    try self.reporter.reportFmt(.module_level_var, loc, "module-level 'var' is not allowed — use 'const' for module-level declarations", .{});
                 } else {
                     try self.collectVar(v, true, loc);
                 }
@@ -275,7 +275,7 @@ pub const DeclCollector = struct {
                 if (param_node.param.default_value != null) {
                     seen_default = true;
                 } else if (seen_default) {
-                    try self.reporter.reportFmt(loc, "parameters with defaults must come after all required parameters in '{s}'", .{f.name});
+                    try self.reporter.reportFmt(.default_before_required, loc, "parameters with defaults must come after all required parameters in '{s}'", .{f.name});
                     break;
                 }
             }
@@ -300,7 +300,7 @@ pub const DeclCollector = struct {
             if (loc) |l| {
                 if (std.mem.startsWith(u8, l.file, cache.ZIG_MODULES_DIR)) return;
             }
-            try self.reporter.reportFmt(loc, "duplicate function declaration: '{s}'", .{f.name});
+            try self.reporter.reportFmt(.duplicate_function, loc, "duplicate function declaration: '{s}'", .{f.name});
             return;
         }
 
@@ -312,7 +312,7 @@ pub const DeclCollector = struct {
             if (loc) |l| {
                 if (std.mem.startsWith(u8, l.file, cache.ZIG_MODULES_DIR)) return;
             }
-            try self.reporter.reportFmt(loc, "duplicate struct declaration: '{s}'", .{s.name});
+            try self.reporter.reportFmt(.duplicate_struct, loc, "duplicate struct declaration: '{s}'", .{s.name});
             return;
         }
 
@@ -320,7 +320,7 @@ pub const DeclCollector = struct {
         for (s.members) |member| {
             // Reject mutable static variables — only const is allowed in structs
             if (member.* == .var_decl and member.var_decl.mutability == .mutable) {
-                try self.reporter.reportFmt(loc, "mutable 'var' not allowed in struct '{s}' — use 'const' for static declarations", .{s.name});
+                try self.reporter.reportFmt(.var_in_struct, loc, "mutable 'var' not allowed in struct '{s}' — use 'const' for static declarations", .{s.name});
             }
             if (member.* == .field_decl) {
                 const f = member.field_decl;
@@ -336,12 +336,12 @@ pub const DeclCollector = struct {
         // Validate field names don't conflict with type names and no duplicates
         for (fields.items, 0..) |field, i| {
             if (isReservedTypeName(field.name)) {
-                try self.reporter.reportFmt(loc, "field name '{s}' conflicts with type name — choose a different name", .{field.name});
+                try self.reporter.reportFmt(.field_name_conflicts_type, loc, "field name '{s}' conflicts with type name — choose a different name", .{field.name});
             }
             // Check for duplicate field names
             for (fields.items[0..i]) |prev| {
                 if (std.mem.eql(u8, field.name, prev.name)) {
-                    try self.reporter.reportFmt(loc, "duplicate field '{s}' in struct '{s}'", .{ field.name, s.name });
+                    try self.reporter.reportFmt(.duplicate_field, loc, "duplicate field '{s}' in struct '{s}'", .{ field.name, s.name });
                     break;
                 }
             }
@@ -398,7 +398,7 @@ pub const DeclCollector = struct {
             if (loc) |l| {
                 if (std.mem.startsWith(u8, l.file, cache.ZIG_MODULES_DIR)) return;
             }
-            try self.reporter.reportFmt(loc, "duplicate blueprint declaration: '{s}'", .{b.name});
+            try self.reporter.reportFmt(.duplicate_blueprint, loc, "duplicate blueprint declaration: '{s}'", .{b.name});
             return;
         }
 
@@ -417,11 +417,11 @@ pub const DeclCollector = struct {
                 // Try to find the specific duplicate type name
                 if (type_node != null and type_node.?.* == .type_union) {
                     if (types.findDuplicateUnionMember(self.allocator, type_node.?.type_union)) |dup_name| {
-                        try self.reporter.reportFmt(loc, "duplicate type '{s}' in union — each type may appear only once", .{dup_name});
+                        try self.reporter.reportFmt(.duplicate_union_type, loc, "duplicate type '{s}' in union — each type may appear only once", .{dup_name});
                         return;
                     }
                 }
-                try self.reporter.reportFmt(loc, "duplicate type in union — each type may appear only once", .{});
+                try self.reporter.reportFmt(.duplicate_union_type, loc, "duplicate type in union — each type may appear only once", .{});
             },
             else => return err,
         }
@@ -434,7 +434,7 @@ pub const DeclCollector = struct {
                 // Check for duplicate variant names
                 for (variants.items) |prev| {
                     if (std.mem.eql(u8, member.enum_variant.name, prev)) {
-                        try self.reporter.reportFmt(loc, "duplicate variant '{s}' in enum '{s}'", .{ member.enum_variant.name, e.name });
+                        try self.reporter.reportFmt(.duplicate_enum_variant, loc, "duplicate variant '{s}' in enum '{s}'", .{ member.enum_variant.name, e.name });
                         break;
                     }
                 }
@@ -453,7 +453,7 @@ pub const DeclCollector = struct {
             if (loc) |l| {
                 if (std.mem.startsWith(u8, l.file, cache.ZIG_MODULES_DIR)) return;
             }
-            try self.reporter.reportFmt(loc, "duplicate enum declaration: '{s}'", .{e.name});
+            try self.reporter.reportFmt(.duplicate_enum, loc, "duplicate enum declaration: '{s}'", .{e.name});
             return;
         }
 
@@ -465,7 +465,7 @@ pub const DeclCollector = struct {
             if (loc) |l| {
                 if (std.mem.startsWith(u8, l.file, cache.ZIG_MODULES_DIR)) return;
             }
-            try self.reporter.reportFmt(loc, "duplicate handle declaration: '{s}'", .{h.name});
+            try self.reporter.reportFmt(.duplicate_handle, loc, "duplicate handle declaration: '{s}'", .{h.name});
             return;
         }
         try self.table.symbols.put(h.name, .{ .handle = .{ .name = h.name, .is_pub = h.is_pub } });
@@ -499,7 +499,7 @@ pub const DeclCollector = struct {
             if (loc) |l| {
                 if (std.mem.startsWith(u8, l.file, cache.ZIG_MODULES_DIR)) return;
             }
-            try self.reporter.reportFmt(loc, "duplicate variable declaration: '{s}'", .{v.name});
+            try self.reporter.reportFmt(.duplicate_variable, loc, "duplicate variable declaration: '{s}'", .{v.name});
             return;
         }
 

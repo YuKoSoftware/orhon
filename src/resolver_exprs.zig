@@ -127,7 +127,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             defer if (suggestion) |s| self.ctx.allocator.free(s);
 
             const hint = cross_module_hint orelse suggestion orelse "";
-            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "unknown identifier '{s}'{s}", .{ id_name, hint });
+            try self.ctx.reporter.reportFmt(.unknown_identifier, self.ctx.nodeLoc(node), "unknown identifier '{s}'{s}", .{ id_name, hint });
             return RT.unknown;
         },
 
@@ -139,7 +139,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             // Reject == and != on str — use string.equals() instead
             if (b.op == .eq or b.op == .ne) {
                 if (l_is_str or r_is_str) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                    try self.ctx.reporter.reportFmt(.str_equality, self.ctx.nodeLoc(node),
                         "cannot use '{s}' on str — use string.equals() for content comparison",
                         .{if (b.op == .eq) "==" else "!="});
                 }
@@ -150,7 +150,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                 else => false,
             };
             if (is_arithmetic and (l_is_str or r_is_str)) {
-                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                try self.ctx.reporter.reportFmt(.str_arithmetic, self.ctx.nodeLoc(node),
                     "cannot use '{s}' on str — use '++' for concatenation", .{b.op.toZig()});
             }
             // Reject ++ on numeric types — use + for arithmetic
@@ -158,7 +158,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                 const l_is_num = left == .primitive and left.primitive.isNumeric();
                 const r_is_num = right == .primitive and right.primitive.isNumeric();
                 if (l_is_num or r_is_num) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                    try self.ctx.reporter.reportFmt(.concat_on_numeric, self.ctx.nodeLoc(node),
                         "cannot use '++' on numeric types — use '+' for arithmetic", .{});
                 }
             }
@@ -173,7 +173,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                     lp != .float_literal and rp != .float_literal and
                     lp != rp)
                 {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                    try self.ctx.reporter.reportFmt(.mixed_numeric_types, self.ctx.nodeLoc(node),
                         "cannot mix {s} and {s} in binary expression — use @cast({s}, x) to convert",
                         .{ lp.toName(), rp.toName(), lp.toName() });
                 }
@@ -187,7 +187,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             const operand_type = try resolveExprNode(self, u.operand, scope, rctx);
             if (u.op == .negate) {
                 if (operand_type == .primitive and operand_type.primitive.isUnsigned()) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                    try self.ctx.reporter.reportFmt(.negate_unsigned, self.ctx.nodeLoc(node),
                         "cannot negate unsigned type '{s}'", .{operand_type.primitive.toName()});
                 }
             }
@@ -274,7 +274,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                 if (self.ctx.decls.symbols.get(name)) |sym| switch (sym) {
                     .@"struct", .type_alias => {
                         if (c.args.len > 0 and c.arg_names.len == 0) {
-                            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                            try self.ctx.reporter.reportFmt(.struct_constructor_syntax, self.ctx.nodeLoc(node),
                                 "struct constructors use '{{}}' syntax — use '{s}{{field: value}}' instead of '{s}(value)'", .{ name, name });
                         }
                         return RT{ .named = name };
@@ -285,7 +285,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                 if (builtins.isBuiltinType(name) or self.isIncludedType(name)) return RT{ .named = name };
                 // Named args only valid for struct/tuple constructors
                 if (c.arg_names.len > 0) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                    try self.ctx.reporter.reportFmt(.named_args_not_struct, self.ctx.nodeLoc(node),
                         "named arguments are only valid for struct constructors — '{s}' is not a struct", .{name});
                 }
                 if (scope.lookup(name)) |t| {
@@ -299,7 +299,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                         !self.isIncludedType(name))
                     {
                         // Non-callable variable
-                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "'{s}' is not callable — expected a function or constructor", .{name});
+                        try self.ctx.reporter.reportFmt(.not_callable, self.ctx.nodeLoc(node), "'{s}' is not callable — expected a function or constructor", .{name});
                         return t;
                     }
                 }
@@ -317,10 +317,10 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                         const max_args = sig.params.len;
                         if (c.args.len < min_args or c.args.len > max_args) {
                             if (min_args == max_args) {
-                                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                                try self.ctx.reporter.reportFmt(.arg_count_mismatch, self.ctx.nodeLoc(node),
                                     "'{s}' expects {d} argument(s), got {d}", .{ name, max_args, c.args.len });
                             } else {
-                                try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                                try self.ctx.reporter.reportFmt(.arg_count_mismatch, self.ctx.nodeLoc(node),
                                     "'{s}' expects {d} to {d} argument(s), got {d}", .{ name, min_args, max_args, c.args.len });
                             }
                         }
@@ -337,10 +337,10 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                                     else
                                         false;
                                     if (is_type_param) {
-                                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                                        try self.ctx.reporter.reportFmt(.compt_type_arg_required, self.ctx.nodeLoc(node),
                                             "compt function '{s}' expects a type argument, but '{s}' is a function parameter", .{ name, arg_name });
                                     } else {
-                                        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+                                        try self.ctx.reporter.reportFmt(.compt_runtime_arg, self.ctx.nodeLoc(node),
                                             "compt function '{s}' requires compile-time-known arguments, but '{s}' is a function parameter", .{ name, arg_name });
                                     }
                                 }
@@ -480,7 +480,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             if (obj_type == .primitive) {
                 const tn = obj_type.primitive;
                 if (tn == .bool or tn == .void) {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node), "cannot index into type '{s}'", .{tn.toName()});
+                    try self.ctx.reporter.reportFmt(.cannot_index, self.ctx.nodeLoc(node), "cannot index into type '{s}'", .{tn.toName()});
                 }
             }
             return RT.inferred;
@@ -503,13 +503,13 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             const func = builtins.CompilerFunc.fromName(cf.name);
 
             const f = func orelse {
-                try self.ctx.reporter.reportFmt(loc, "unknown compiler function '@{s}'", .{cf.name});
+                try self.ctx.reporter.reportFmt(.unknown_compiler_func, loc, "unknown compiler function '@{s}'", .{cf.name});
                 return RT.unknown;
             };
 
             // @type is an internal desugaring artifact from `is` — reject outside if/elif
             if (f == .@"type" and !rctx.in_is_condition) {
-                try self.ctx.reporter.reportFmt(loc,
+                try self.ctx.reporter.reportFmt(.compiler_func_needs_type, loc,
                     "'is' can only be used in if/elif conditions — use @typeOf(x) == T for type checks elsewhere", .{});
             }
 
@@ -525,9 +525,9 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
 
             if (cf.args.len < expected.min or cf.args.len > expected.max) {
                 if (expected.min == expected.max) {
-                    try self.ctx.reporter.reportFmt(loc, "@{s} takes exactly {d} argument(s)", .{ cf.name, expected.min });
+                    try self.ctx.reporter.reportFmt(.compiler_func_arg_count, loc, "@{s} takes exactly {d} argument(s)", .{ cf.name, expected.min });
                 } else {
-                    try self.ctx.reporter.reportFmt(loc, "@{s} takes {d} to {d} arguments", .{ cf.name, expected.min, expected.max });
+                    try self.ctx.reporter.reportFmt(.compiler_func_arg_count, loc, "@{s} takes {d} to {d} arguments", .{ cf.name, expected.min, expected.max });
                 }
             }
 
@@ -535,7 +535,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             switch (f) {
                 .hasField, .hasDecl, .fieldType => {
                     if (cf.args.len >= 2 and cf.args[1].* != .string_literal) {
-                        try self.ctx.reporter.reportFmt(loc, "@{s} requires a string literal as second argument", .{cf.name});
+                        try self.ctx.reporter.reportFmt(.compiler_func_needs_string, loc, "@{s} requires a string literal as second argument", .{cf.name});
                     }
                 },
                 else => {},
@@ -547,7 +547,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                     if (cf.args.len >= 1 and cf.args[0].* == .binary_expr) {
                         const op = cf.args[0].binary_expr.op;
                         if (op != .add and op != .sub and op != .mul) {
-                            try self.ctx.reporter.reportFmt(loc, "@{s} only supports +, -, * operators — division and modulo have no wrapping equivalents", .{cf.name});
+                            try self.ctx.reporter.reportFmt(.wrap_op_not_supported, loc, "@{s} only supports +, -, * operators — division and modulo have no wrapping equivalents", .{cf.name});
                         }
                     }
                 },
@@ -589,6 +589,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
             // will set `in_anytype_arg` while iterating matching args (Task 5).
             if (!rctx.in_anytype_arg) {
                 try self.ctx.reporter.reportFmt(
+                    .tuple_literal_context,
                     self.ctx.nodeLoc(node),
                     "@tuple(...) can only be used as an anytype argument to a Zig function",
                     .{},
@@ -607,7 +608,7 @@ fn resolveExprInner(self: *TypeResolver, node: *parser.Node, scope: *Scope, rctx
                 } else if (t != .inferred and t != .unknown and elem_type != .unknown and
                     !resolver_mod.typesCompatible(t, elem_type))
                 {
-                    try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(elem),
+                    try self.ctx.reporter.reportFmt(.array_elem_type_mismatch, self.ctx.nodeLoc(elem),
                         "array element type mismatch — expected '{s}', got '{s}'", .{ elem_type.name(), t.name() });
                 }
             }
@@ -663,11 +664,11 @@ fn validateCallStyle(
     node: *parser.Node,
 ) !void {
     if (sig.is_instance and called_on_type) {
-        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+        try self.ctx.reporter.reportFmt(.instance_method_on_type, self.ctx.nodeLoc(node),
             "'{s}' is an instance method — call it on a value: 'value.{s}()'", .{ method_name, method_name });
     }
     if (!sig.is_instance and !called_on_type) {
-        try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+        try self.ctx.reporter.reportFmt(.static_method_on_value, self.ctx.nodeLoc(node),
             "'{s}' is a static method — call it on the type: '{s}.{s}()'", .{ method_name, struct_name, method_name });
     }
 }
@@ -697,10 +698,10 @@ fn validateCallArity(
 
     if (call_args_len < min_args or call_args_len > max_args) {
         if (min_args == max_args) {
-            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+            try self.ctx.reporter.reportFmt(.arg_count_mismatch, self.ctx.nodeLoc(node),
                 "'{s}' expects {d} argument(s), got {d}", .{ callee_name, max_args, call_args_len });
         } else {
-            try self.ctx.reporter.reportFmt(self.ctx.nodeLoc(node),
+            try self.ctx.reporter.reportFmt(.arg_count_mismatch, self.ctx.nodeLoc(node),
                 "'{s}' expects {d} to {d} argument(s), got {d}", .{ callee_name, min_args, max_args, call_args_len });
         }
     }

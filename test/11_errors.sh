@@ -346,17 +346,6 @@ run_fixture() {
 # type resolution errors
 run_fixture neg_cb3_short_name fail_cb3_short_uppercase.orh "type mismatch\|incompatible\|cannot assign\|expected.*Edge.*found.*Node" "CB3: short uppercase struct name is not silently type-compatible"
 
-# ownership errors
-run_fixture neg_own fail_ownership.orh "use of moved value\|moved" "fixture: catches use after move"
-
-# borrow errors
-run_fixture neg_borrow fail_borrow.orh "reference type not allowed in variable declaration" "fixture: catches borrow conflict"
-# propagation errors
-run_fixture neg_prop fail_propagation.orh "unhandled.*union" "fixture: catches unhandled error union"
-run_fixture neg_unwrap fail_propagation.orh "unsafe unwrap" "fixture: catches unsafe union unwrap"
-run_fixture neg_prop_errfunc fail_propagation_in_error_func.orh "unhandled.*union" "fixture: rejects unhandled union in error-returning function"
-run_fixture neg_prop_discard fail_propagation_discarded.orh "discarded.*union" "fixture: rejects bare call with discarded union return"
-
 # struct errors
 run_fixture neg_struct_dup fail_structs.orh "duplicate field" "fixture: catches duplicate struct field"
 run_fixture neg_struct_pos fail_struct_positional.orh "struct constructors use.*syntax" "fixture: rejects positional struct constructor"

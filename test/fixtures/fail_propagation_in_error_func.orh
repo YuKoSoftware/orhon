@@ -9,7 +9,7 @@ func may_fail(n: i32) (Error | i32) {
 }
 
 func also_fails(n: i32) (Error | i32) {
-    const result = may_fail(n)
+    const result = may_fail(n)  //> [E4003]
     return 0
 }
 

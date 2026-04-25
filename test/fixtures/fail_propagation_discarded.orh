@@ -12,7 +12,7 @@ func may_fail(n: i32) (Error | i32) {
 
 // bare call — result discarded, union never handled
 func bad() void {
-    may_fail(1)
+    may_fail(1)  //> [E4001]
 }
 
 func main() void { }

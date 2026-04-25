@@ -6,6 +6,8 @@ const std = @import("std");
 
 pub const ErrorCode = @import("error_codes.zig").ErrorCode;
 
+pub const DiagFormat = enum { human, json, short };
+
 pub const BuildMode = enum {
     debug,
     release,
@@ -31,6 +33,7 @@ pub const Reporter = struct {
     errors: std.ArrayListUnmanaged(OrhonError),
     warnings: std.ArrayListUnmanaged(OrhonError),
     allocator: std.mem.Allocator,
+    diag_format: DiagFormat = .human,
 
     pub fn init(allocator: std.mem.Allocator, mode: BuildMode) Reporter {
         return .{
@@ -110,27 +113,28 @@ pub const Reporter = struct {
         var w = std.fs.File.stderr().writer(&buf);
         const stderr = &w.interface;
 
-        for (self.warnings.items) |diag| {
-            try printDiagnostic(stderr, &diag, .warning, self.mode);
+        switch (self.diag_format) {
+            .human => {
+                for (self.warnings.items) |diag| {
+                    try printDiagnostic(stderr, &diag, .warning, self.mode);
+                }
+                for (self.errors.items) |diag| {
+                    try printDiagnostic(stderr, &diag, .err, self.mode);
+                }
+                const warning_count = self.warnings.items.len;
+                const error_count = self.errors.items.len;
+                if (warning_count > 0 or error_count > 0) try stderr.print("\n", .{});
+                if (warning_count > 0 and error_count > 0) {
+                    try stderr.print("{s}{d} warning(s){s}, {s}{d} error(s){s}\n", .{ YELLOW, warning_count, RESET, RED, error_count, RESET });
+                } else if (warning_count > 0) {
+                    try stderr.print("{s}{d} warning(s){s}\n", .{ YELLOW, warning_count, RESET });
+                } else if (error_count > 0) {
+                    try stderr.print("{s}{d} error(s){s}\n", .{ RED, error_count, RESET });
+                }
+            },
+            .json => {}, // Task 2
+            .short => {}, // Task 3
         }
-        for (self.errors.items) |diag| {
-            try printDiagnostic(stderr, &diag, .err, self.mode);
-        }
-
-        // Summary line
-        const warning_count = self.warnings.items.len;
-        const error_count = self.errors.items.len;
-        if (warning_count > 0 or error_count > 0) {
-            try stderr.print("\n", .{});
-        }
-        if (warning_count > 0 and error_count > 0) {
-            try stderr.print("{s}{d} warning(s){s}, {s}{d} error(s){s}\n", .{ YELLOW, warning_count, RESET, RED, error_count, RESET });
-        } else if (warning_count > 0) {
-            try stderr.print("{s}{d} warning(s){s}\n", .{ YELLOW, warning_count, RESET });
-        } else if (error_count > 0) {
-            try stderr.print("{s}{d} error(s){s}\n", .{ RED, error_count, RESET });
-        }
-
         try stderr.flush();
     }
 };

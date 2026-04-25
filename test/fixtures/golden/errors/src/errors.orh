@@ -1,0 +1,32 @@
+module errors
+#version = (1, 0, 0)
+#build   = static
+
+pub func safe_div(a: i32, b: i32) (Error | i32) {
+    if(b == 0) {
+        return Error("division by zero")
+    }
+    return a / b
+}
+
+pub func find_value(id: i32) (null | i32) {
+    if(id > 0) {
+        return id * 10
+    }
+    return null
+}
+
+pub func get_value(flag: bool) (i32 | str) {
+    if(flag) {
+        return 42
+    }
+    return "hello"
+}
+
+pub func propagate(a: i32, b: i32) (Error | i32) {
+    const r = safe_div(a, b)
+    if(r is Error) {
+        return r
+    }
+    return r.i32
+}

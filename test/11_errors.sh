@@ -346,20 +346,7 @@ run_fixture() {
 # type resolution errors
 run_fixture neg_cb3_short_name fail_cb3_short_uppercase.orh "type mismatch\|incompatible\|cannot assign\|expected.*Edge.*found.*Node" "CB3: short uppercase struct name is not silently type-compatible"
 
-# struct errors
-run_fixture neg_struct_dup fail_structs.orh "duplicate field" "fixture: catches duplicate struct field"
-run_fixture neg_struct_pos fail_struct_positional.orh "struct constructors use.*syntax" "fixture: rejects positional struct constructor"
-run_fixture neg_struct_var fail_struct_var.orh "mutable.*var.*not allowed" "fixture: rejects var in struct"
-# enum errors
-run_fixture neg_enum_dup fail_enums.orh "duplicate variant" "fixture: catches duplicate enum variant"
-
-# handle errors
-run_fixture neg_handle_dup fail_handle.orh "duplicate handle" "fixture: catches duplicate handle declaration"
-
 # function errors (first error in file: default before required)
-run_fixture neg_func fail_functions.orh "defaults.*must.*after\|required.*param" "fixture: catches default before required param"
-run_fixture neg_method_arity fail_method_arity.orh "expects 0 argument.*got 1" "fixture: rejects wrong method call arity"
-run_fixture neg_call_style fail_call_style.orh "instance method\|static method" "fixture: rejects wrong call style for methods"
 run_fixture neg_inline_tuple fail_inline_tuple.orh "expected\|error" "fixture: rejects inline tuple types"
 run_fixture neg_c_header fail_c_header_import.orh "not supported.*zig.*zon" "fixture: rejects import header.h"
 
@@ -492,8 +479,6 @@ else
     fail "rejects unknown blueprint" "$NEG_OUT"
 fi
 
-# duplicate union member after flattening
-run_fixture neg_union_dup fail_union_duplicate.orh "duplicate type.*union" "fixture: rejects duplicate type in flattened union"
 
 
 # ── module main rejection ────────────────────────────────────────

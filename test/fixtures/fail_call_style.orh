@@ -17,11 +17,11 @@ pub struct Counter {
 
 func bad_static_on_instance() void {
     var c: Counter = Counter.zero()
-    c.zero()
+    c.zero()  //> [E2054]
 }
 
 func bad_instance_on_type() void {
-    Counter.increment()
+    Counter.increment()  //> [E2053] [E2049]
 }
 
 func main() void { }

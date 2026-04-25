@@ -7,7 +7,7 @@ module fixture
 
 struct BadStruct {
     pub name: str
-    pub name: i32
+    pub name: i32  //> [E2007]
 }
 
 // missing required field in constructor

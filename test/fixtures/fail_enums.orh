@@ -8,7 +8,7 @@ module fixture
 enum(u8) Color {
     Red
     Green
-    Red
+    Red  //> [E2010]
 }
 
 func main() void { }

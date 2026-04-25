@@ -13,7 +13,7 @@ pub struct Counter {
 
 func bad_method_arity() void {
     var c: Counter = Counter{count: 0}
-    c.increment(42)
+    c.increment(42)  //> [E2049]
 }
 
 func main() void { }

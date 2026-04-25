@@ -6,7 +6,7 @@ module fixture
 // default param before required param — parser catches first
 
 func bad_defaults(a: i32 = 5, b: i32) i32 {
-    return a + b
+    return a + b  //> [E2002]
 }
 
 // return type mismatch — declared i32, returns String

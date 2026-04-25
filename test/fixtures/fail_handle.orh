@@ -1,4 +1,4 @@
 module fail_handle
 
 handle Foo
-handle Foo
+handle Foo  //> [E2012]

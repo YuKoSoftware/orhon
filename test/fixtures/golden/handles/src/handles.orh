@@ -1,0 +1,22 @@
+module handles
+#version = (1, 0, 0)
+#build   = static
+
+handle ResourceHandle
+handle ConnectionHandle
+
+pub func null_resource() ResourceHandle {
+    return @cast(ResourceHandle, 0)
+}
+
+pub func is_valid(r: ResourceHandle) bool {
+    return r != @cast(ResourceHandle, 0)
+}
+
+pub func null_conn() ConnectionHandle {
+    return @cast(ConnectionHandle, 0)
+}
+
+pub func conn_valid(c: ConnectionHandle) bool {
+    return c != @cast(ConnectionHandle, 0)
+}

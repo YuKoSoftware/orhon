@@ -14,6 +14,7 @@ const _commands = @import("commands.zig");
 const build_helpers = @import("pipeline_build.zig");
 const passes = @import("pipeline_passes.zig");
 const ast_conv = @import("ast_conv.zig");
+const pipeline_context = @import("pipeline_context.zig");
 const zig_module = @import("zig_module.zig");
 const constants = @import("constants.zig");
 const mir = @import("mir/mir.zig");
@@ -324,12 +325,38 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
         if (reporter.hasErrors()) return null;
         try all_module_decls.put(mod_name, &decl_collector.table);
 
+        // ── Passes 5–11: Temporary BuildContext + ModuleCompile shim ──
+        // Declared early so _tmp_mc.arena.allocator() is available to all
+        // per-module passes below (checkUnusedImports, runSemanticAndCodegen).
+        // Until Task 3 extracts compileOne, decl_collector is heap-allocated
+        // outside the arena; the stub borrows it. Real cleanup goes through
+        // decl_collector_ptrs.
+        var _tmp_ctx: pipeline_context.BuildContext = .{
+            .gpa = allocator,
+            .comp_cache = &comp_cache,
+            .union_registry = &union_registry,
+            .all_module_decls = &all_module_decls,
+            .prev_iface_hashes = &prev_iface_hashes,
+            .module_builds = &module_builds,
+            .reporter = reporter,
+            .cli = cli,
+            .all_warnings = &all_warnings,
+            .all_union_entries = &all_union_entries,
+        };
+        var _tmp_mc: pipeline_context.ModuleCompile = .{
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .mod_name = mod_name,
+            .mod_ptr = mod_ptr,
+            .decl_collector = decl_collector,
+        };
+        defer _tmp_mc.arena.deinit();
+
         // ── Validate 'main' as reserved name ─────────────────
         if (try passes.validateMainReserved(ast, mod_ptr, locs_ptr, file_offsets, reporter))
             return null;
 
         // ── Check for unused imports ────────────────────────
-        try passes.checkUnusedImports(allocator, ast, mod_ptr, locs_ptr, file_offsets, reporter);
+        try passes.checkUnusedImports(_tmp_mc.arena.allocator(), ast, mod_ptr, locs_ptr, file_offsets, reporter);
 
         // Compute this module's current interface hash (after pass 4, before skip decision).
         // Stored here so it is available whether or not we recompile.
@@ -439,9 +466,8 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
 
         // ── Passes 5–11: Type Resolution through Zig Code Generation ──
         _ = try passes.runSemanticAndCodegen(
-            allocator, ast, mod_name, decl_collector, &all_module_decls,
-            locs_ptr, file_offsets, &module_builds, reporter, cli,
-            mod_ptr.is_zig_module, mod_ptr.has_zig_sidecar, &union_registry,
+            _tmp_mc.arena.allocator(), &_tmp_ctx, &_tmp_mc, ast,
+            mod_ptr.is_zig_module, mod_ptr.has_zig_sidecar,
         ) orelse return null;
 
         // Capture this module's arity contribution for caching. The registry

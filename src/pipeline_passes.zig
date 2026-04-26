@@ -21,14 +21,7 @@ const ast_conv = @import("ast_conv.zig");
 const ast_store_mod = @import("ast_store.zig");
 const mir_store_mod = @import("mir_store.zig");
 const mir_builder_mod = @import("mir_builder.zig");
-
-/// Result of compiling a single module through passes 4–11.
-pub const CompileResult = struct {
-    /// Whether a fatal error was encountered.
-    had_error: bool = false,
-    /// The declaration collector (owned by caller via decl_collector_ptrs).
-    decl_collector: *declarations.DeclCollector,
-};
+const pipeline_context = @import("pipeline_context.zig");
 
 /// Validate 'main' as reserved name in a module's top-level declarations.
 pub fn validateMainReserved(
@@ -79,6 +72,10 @@ pub fn validateMainReserved(
 /// `use` (include) imports are always considered used since they merge symbols.
 /// Library root modules (#build = static/dynamic) are skipped — they import
 /// modules to expose them, not necessarily to use them directly.
+///
+/// `allocator` should be the per-module arena (`mc.arena.allocator()`).
+/// All file-content allocations are scratch and freed when the function returns
+/// or when the arena is destroyed.
 pub fn checkUnusedImports(
     allocator: std.mem.Allocator,
     ast: *parser.Node,
@@ -141,24 +138,25 @@ pub fn checkUnusedImports(
 }
 
 /// Run semantic passes 5–8 and codegen passes 10–11 for a single module.
-/// Returns the generated Zig output string slice (owned by cg).
+/// `arena` is the per-module arena (`mc.arena.allocator()`); all internal
+/// scratch allocates from it. `ctx` carries cross-module shared state;
+/// `mc` carries module identity, source data, and the decl collector.
+/// Returns the generated Zig output string slice (owned by the codegen
+/// instance, lifetime tied to `arena`).
 pub fn runSemanticAndCodegen(
-    allocator: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    ctx: *pipeline_context.BuildContext,
+    mc: *pipeline_context.ModuleCompile,
     ast: *parser.Node,
-    mod_name: []const u8,
-    decl_collector: *declarations.DeclCollector,
-    all_module_decls: *std.StringHashMap(*declarations.DeclTable),
-    locs_ptr: ?*const parser.LocMap,
-    file_offsets: []module.FileOffset,
-    module_builds: *std.StringHashMapUnmanaged(module.BuildType),
-    reporter: *errors.Reporter,
-    cli: *_cli.CliArgs,
     is_zig_module: bool,
     has_zig_sidecar: bool,
-    union_registry: *mir.UnionRegistry,
 ) !?[]const u8 {
+    const reporter = ctx.reporter;
+    const locs_ptr: ?*const parser.LocMap = if (mc.mod_ptr.locs) |*l| l else null;
+    const file_offsets = mc.mod_ptr.file_offsets;
+
     // ── Convert AST to AstStore for index-based traversal (Phase A) ──
-    var conv = ast_conv.ConvContext.init(allocator);
+    var conv = ast_conv.ConvContext.init(arena);
     defer conv.deinit();
     const ast_root = ast_conv.convertNode(&conv, ast) catch {
         _ = try reporter.report(.{ .code = .internal_ast_conv, .message = "internal: AST conversion failed" });
@@ -167,12 +165,12 @@ pub fn runSemanticAndCodegen(
 
     // Debug dump: ORHON_DUMP_AST=1 orhon build (from project dir)
     if (!is_zig_module) {
-        if (std.process.getEnvVarOwned(allocator, "ORHON_DUMP_AST") catch null) |v| {
-            defer allocator.free(v);
+        if (std.process.getEnvVarOwned(arena, "ORHON_DUMP_AST") catch null) |v| {
+            defer arena.free(v);
             if (std.mem.eql(u8, v, "1")) {
                 var buf: std.ArrayList(u8) = .{};
-                defer buf.deinit(allocator);
-                conv.store.dump(buf.writer(allocator)) catch {};
+                defer buf.deinit(arena);
+                conv.store.dump(buf.writer(arena)) catch {};
                 std.debug.print("{s}", .{buf.items});
             }
         }
@@ -180,12 +178,12 @@ pub fn runSemanticAndCodegen(
 
     // ── Shared context for type resolution + validation passes 5–9 ──
     var sema_ctx = sema.SemanticContext{
-        .allocator = allocator,
+        .allocator = arena,
         .reporter = reporter,
-        .decls = &decl_collector.table,
+        .decls = &mc.decl_collector.table,
         .locs = locs_ptr,
         .file_offsets = file_offsets,
-        .all_decls = all_module_decls,
+        .all_decls = ctx.all_module_decls,
         .ast = &conv.store,
         .reverse_map = &conv.reverse_map,
     };
@@ -204,63 +202,63 @@ pub fn runSemanticAndCodegen(
     sema_ctx.type_map = &type_resolver.type_map;
 
     // ── Pass 6: Ownership Analysis ─────────────────────────
-    var ownership_checker = ownership.OwnershipChecker.init(allocator, &sema_ctx);
+    var ownership_checker = ownership.OwnershipChecker.init(arena, &sema_ctx);
     try ownership_checker.check(ast);
     if (reporter.hasErrors()) return null;
 
     // ── Pass 7: Borrow Checking ────────────────────────────
-    var borrow_checker = borrow.BorrowChecker.init(allocator, &sema_ctx);
+    var borrow_checker = borrow.BorrowChecker.init(arena, &sema_ctx);
     defer borrow_checker.deinit();
     try borrow_checker.check(ast);
     if (reporter.hasErrors()) return null;
 
     // ── Pass 8: Error Propagation ──────────────────────────
-    var prop_checker = propagation.PropagationChecker.init(allocator, &sema_ctx);
+    var prop_checker = propagation.PropagationChecker.init(arena, &sema_ctx);
     try prop_checker.check(&conv.store, ast_root);
     if (reporter.hasErrors()) return null;
 
     // ── Pass 9 (new): MIR Builder — fused annotation + lowering into MirStore ──
     // MirBuilder is now the authoritative MIR producer (B9). The old
     var mir_store = mir_store_mod.MirStore.init();
-    defer mir_store.deinit(allocator);
+    defer mir_store.deinit(arena);
     var mir_builder = mir_builder_mod.MirBuilder.init(
-        allocator,
+        arena,
         reporter,
-        &decl_collector.table,
+        &mc.decl_collector.table,
         &type_resolver.ast_type_map,
         &conv.store,
         &mir_store,
-        union_registry,
+        ctx.union_registry,
     );
     defer mir_builder.deinit();
-    mir_builder.current_module_name = mod_name;
+    mir_builder.current_module_name = mc.mod_name;
     const mir_root_idx_val = try mir_builder.build(ast_root);
     if (reporter.hasErrors()) return null;
 
     // Debug dump: ORHON_DUMP_MIR=1 orhon build (from project dir)
     if (!is_zig_module) {
-        if (std.process.getEnvVarOwned(allocator, "ORHON_DUMP_MIR") catch null) |v| {
-            defer allocator.free(v);
+        if (std.process.getEnvVarOwned(arena, "ORHON_DUMP_MIR") catch null) |v| {
+            defer arena.free(v);
             if (std.mem.eql(u8, v, "1")) {
                 var buf: std.ArrayList(u8) = .{};
-                defer buf.deinit(allocator);
-                mir_store.dump(buf.writer(allocator)) catch {};
+                defer buf.deinit(arena);
+                mir_store.dump(buf.writer(arena)) catch {};
                 std.debug.print("{s}", .{buf.items});
             }
         }
     }
 
     // ── Pass 10 (compat): Zig Code Generation ─────────────────
-    const is_debug = cli.optimize == .debug;
-    var cg = codegen.CodeGen.init(allocator, reporter, is_debug);
+    const is_debug = ctx.cli.optimize == .debug;
+    var cg = codegen.CodeGen.init(arena, reporter, is_debug);
     defer cg.deinit();
-    cg.decls = &decl_collector.table;
-    cg.all_decls = all_module_decls;
+    cg.decls = &mc.decl_collector.table;
+    cg.all_decls = ctx.all_module_decls;
     cg.locs = locs_ptr;
     cg.file_offsets = file_offsets;
-    cg.module_builds = module_builds;
-    cg.union_registry = union_registry;
-    cg.current_module_name = mod_name;
+    cg.module_builds = ctx.module_builds;
+    cg.union_registry = ctx.union_registry;
+    cg.current_module_name = mc.mod_name;
     cg.is_zig_module = is_zig_module;
     cg.has_zig_sidecar = has_zig_sidecar;
     cg.mir_store = &mir_store;
@@ -268,11 +266,11 @@ pub fn runSemanticAndCodegen(
     cg.mir_type_store = &mir_store.types;
     cg.ast_reverse_map = &conv.reverse_map;
 
-    try cg.generate(ast, mod_name);
+    try cg.generate(ast, mc.mod_name);
     if (reporter.hasErrors()) return null;
 
     // Write generated .zig file to cache
-    try cache.writeGeneratedZig(mod_name, cg.getOutput(), allocator);
+    try cache.writeGeneratedZig(mc.mod_name, cg.getOutput(), arena);
 
     return cg.getOutput();
 }

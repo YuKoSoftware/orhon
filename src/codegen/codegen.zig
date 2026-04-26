@@ -588,6 +588,181 @@ pub const CodeGen = struct {
         return try self.allocTypeStr("{s}", .{buf.items});
     }
 
+    /// Same as canonicalUnionRef but operates on resolved RT members.
+    /// Sort key: RT.name() for flat types (.named, .primitive, .err, .null_type, .type_param),
+    /// Zig output string for compound types — matches the annotator's sort order.
+    fn canonicalUnionRefRT(self: *CodeGen, members: []const RT) anyerror![]const u8 {
+        const Pair = struct { sort_key: []const u8, zig: []const u8 };
+        var pairs = std.ArrayListUnmanaged(Pair){};
+        defer pairs.deinit(self.allocator);
+        for (members) |m| {
+            const zig = try self.zigOfRT(m);
+            const sort_key: []const u8 = switch (m) {
+                .named, .primitive, .err, .null_type, .type_param => m.name(),
+                else => zig,
+            };
+            try pairs.append(self.allocator, .{ .sort_key = sort_key, .zig = zig });
+        }
+        std.mem.sort(Pair, pairs.items, {}, struct {
+            fn lt(_: void, a: Pair, b: Pair) bool {
+                return std.mem.lessThan(u8, a.sort_key, b.sort_key);
+            }
+        }.lt);
+
+        const arity = pairs.items.len;
+        if (self.union_registry) |reg| {
+            try reg.registerArity(self.current_module_name, arity);
+        }
+
+        var buf = std.ArrayListUnmanaged(u8){};
+        defer buf.deinit(self.allocator);
+        try buf.writer(self.allocator).print("_unions.OrhonUnion{d}(", .{arity});
+        for (pairs.items, 0..) |p, i| {
+            if (i > 0) try buf.appendSlice(self.allocator, ", ");
+            try buf.appendSlice(self.allocator, p.zig);
+        }
+        try buf.append(self.allocator, ')');
+        self.needs_unions_import = true;
+        return try self.allocTypeStr("{s}", .{buf.items});
+    }
+
+    /// Write the Zig type string for `rt` to `w`. No intermediate allocations.
+    fn zigOfRTInner(self: *CodeGen, rt: RT, w: anytype) anyerror!void {
+        switch (rt) {
+            .primitive => |p| try w.writeAll(p.toZig()),
+            .named => |n| {
+                if (self.generic_struct_name) |gsn| {
+                    if (std.mem.eql(u8, n, gsn)) {
+                        try w.writeAll("@This()");
+                        return;
+                    }
+                }
+                try w.writeAll(types.Primitive.nameToZig(n));
+            },
+            .err => try w.writeAll("anyerror"),
+            .null_type => try w.writeAll("null"),
+            .slice => |elem| {
+                try w.writeAll("[]");
+                try self.zigOfRTInner(elem.*, w);
+            },
+            .array => |a| {
+                const size_text = exprToString(a.size);
+                try w.print("[{s}]", .{size_text});
+                try self.zigOfRTInner(a.elem.*, w);
+            },
+            .ptr => |p| {
+                switch (p.kind) {
+                    .const_ref => try w.writeAll("*const "),
+                    .mut_ref => try w.writeAll("*"),
+                }
+                try self.zigOfRTInner(p.elem.*, w);
+            },
+            .func_ptr => |f| {
+                try w.writeAll("*const fn (");
+                for (f.params, 0..) |p, i| {
+                    if (i > 0) try w.writeAll(", ");
+                    try self.zigOfRTInner(p, w);
+                }
+                try w.writeAll(") ");
+                try self.zigOfRTInner(f.return_type.*, w);
+            },
+            .generic => |g| {
+                if (self.generic_struct_name) |gsn| {
+                    if (std.mem.eql(u8, g.name, gsn)) {
+                        try w.writeAll("@This()");
+                        return;
+                    }
+                }
+                if (types.Primitive.fromName(g.name) == .vector and g.args.len >= 2) {
+                    // Vector(N, T) → @Vector(N, T); first arg is size stored as .named = "N"
+                    const size_str: []const u8 = switch (g.args[0]) {
+                        .named => |n| n,
+                        .primitive => |p| p.toName(),
+                        else => "0",
+                    };
+                    try w.print("@Vector({s}, ", .{size_str});
+                    try self.zigOfRTInner(g.args[1], w);
+                    try w.writeByte(')');
+                    return;
+                }
+                if (g.args.len > 0) {
+                    try w.writeAll(g.name);
+                    try w.writeByte('(');
+                    for (g.args, 0..) |arg, i| {
+                        if (i > 0) try w.writeAll(", ");
+                        try self.zigOfRTInner(arg, w);
+                    }
+                    try w.writeByte(')');
+                } else {
+                    try w.writeAll(g.name);
+                }
+            },
+            .tuple => |fields| {
+                try w.writeAll("struct { ");
+                for (fields) |f| {
+                    try w.print("{s}: ", .{f.name});
+                    try self.zigOfRTInner(f.type_, w);
+                    try w.writeAll(", ");
+                }
+                try w.writeAll("}");
+            },
+            .union_type => |members| {
+                var has_error = false;
+                var has_null = false;
+                var others = std.ArrayListUnmanaged(RT){};
+                defer others.deinit(self.allocator);
+                for (members) |m| {
+                    if (m == .err) {
+                        has_error = true;
+                    } else if (m == .null_type) {
+                        has_null = true;
+                    } else {
+                        try others.append(self.allocator, m);
+                    }
+                }
+                if (has_null and has_error) {
+                    try w.writeAll("?anyerror!");
+                    if (others.items.len == 1) {
+                        try self.zigOfRTInner(others.items[0], w);
+                    } else {
+                        try w.writeAll(try self.canonicalUnionRefRT(others.items));
+                    }
+                } else if (has_error) {
+                    try w.writeAll("anyerror!");
+                    if (others.items.len == 1) {
+                        try self.zigOfRTInner(others.items[0], w);
+                    } else {
+                        try w.writeAll(try self.canonicalUnionRefRT(others.items));
+                    }
+                } else if (has_null) {
+                    try w.writeByte('?');
+                    if (others.items.len == 1) {
+                        try self.zigOfRTInner(others.items[0], w);
+                    } else {
+                        try w.writeAll(try self.canonicalUnionRefRT(others.items));
+                    }
+                } else {
+                    try w.writeAll(try self.canonicalUnionRefRT(members));
+                }
+            },
+            .type_param => |tp| try w.writeAll(tp.name),
+            .inferred, .unknown => {
+                _ = try self.reporter.reportFmt(.internal_zig_codegen, null,
+                    "internal: unresolvable type in codegen", .{});
+                return error.CompileError;
+            },
+        }
+    }
+
+    /// Produce the Zig type string for `rt`. Single final allocation via allocTypeStr;
+    /// intermediate writes use a local buffer (no quadratic string tracking).
+    pub fn zigOfRT(self: *CodeGen, rt: RT) anyerror![]const u8 {
+        var buf = std.ArrayListUnmanaged(u8){};
+        defer buf.deinit(self.allocator);
+        try self.zigOfRTInner(rt, buf.writer(self.allocator));
+        return try self.allocTypeStr("{s}", .{buf.items});
+    }
+
     pub fn typeToZig(self: *CodeGen, node: *parser.Node) anyerror![]const u8 {
         return switch (node.*) {
             .type_named => |name| {
@@ -1071,5 +1246,15 @@ test "codegen - extractValueType" {
     // non-union → null
     var plain = parser.Node{ .type_named = "i32" };
     try std.testing.expect(extractValueType(&plain) == null);
+}
+
+test "codegen - zigOfRT primitive str" {
+    const alloc = std.testing.allocator;
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+    const s = try gen.zigOfRT(.{ .primitive = .string });
+    try std.testing.expectEqualStrings("[]const u8", s);
 }
 

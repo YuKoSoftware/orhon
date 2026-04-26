@@ -72,6 +72,8 @@ pub const CodeGen = struct {
     // flushed to main output before the statement that references them.
     pre_stmts: std.ArrayListUnmanaged(u8) = .{},
     interp_count: u32 = 0,
+    // Source map — zig_line → orh_file:orh_line, built during emit, one entry per decl/stmt.
+    source_map: std.ArrayListUnmanaged(module.SourceMapEntry) = .{},
     // Match variable substitution — inside match arm bodies, the original variable
     // name compiles as the Zig capture variable (e.g., "result" → "_match_val").
     // Saved/restored for nested match support.
@@ -194,11 +196,34 @@ pub const CodeGen = struct {
         self.pre_stmts.deinit(self.allocator);
         self.emitted_names.deinit(self.allocator);
         self.span_to_mir.deinit(self.allocator);
+        self.source_map.deinit(self.allocator);
     }
 
     /// Get the generated Zig source
     pub fn getOutput(self: *CodeGen) []const u8 {
         return self.output.items;
+    }
+
+    /// Record a zig_line → orh_file:orh_line entry for the current emit position.
+    /// Called before emitting each top-level declaration and each statement.
+    /// Silently skips if the MirNode has no span or the span has no AST node.
+    pub fn recordLoc(self: *CodeGen, idx: mir_store_mod.MirNodeIndex) !void {
+        const store = self.mir_store orelse return;
+        const span = store.getNode(idx).span;
+        if (span == .none) return;
+        const ast_node = self.getAstNode(span) orelse return;
+        const loc = self.nodeLoc(ast_node) orelse return;
+        const zig_line: u32 = @intCast(std.mem.count(u8, self.output.items, "\n") + 1);
+        try self.source_map.append(self.allocator, .{
+            .zig_line = zig_line,
+            .orh_file = loc.file,
+            .orh_line = @intCast(loc.line),
+        });
+    }
+
+    /// Return the built source map. Entries are sorted by zig_line (emission order).
+    pub fn getSourceMap(self: *const CodeGen) []const module.SourceMapEntry {
+        return self.source_map.items;
     }
 
     pub fn emit(self: *CodeGen, s: []const u8) !void {

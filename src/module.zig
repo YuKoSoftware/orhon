@@ -40,7 +40,7 @@ pub const FileOffset = struct {
 /// naturally sorted by `zig_line`. Use a floor binary-search for lookup.
 pub const SourceMapEntry = struct {
     zig_line: u32,        // 1-based line in the generated .zig file
-    orh_file: []const u8, // borrowed — same lifetime as the codegen arena
+    orh_file: []const u8, // borrowed from Module.files — valid for the lifetime of the module resolver
     orh_line: u32,        // 1-based line in the .orh source
 };
 

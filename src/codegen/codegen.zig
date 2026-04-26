@@ -402,6 +402,7 @@ pub const CodeGen = struct {
                         try self.emitted_names.put(self.allocator, name, {});
                     }
                 }
+                try self.recordLoc(idx);
                 switch (entry.tag) {
                     .func => {
                         const prev_idx = self.current_func_idx;

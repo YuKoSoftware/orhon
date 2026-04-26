@@ -256,6 +256,7 @@ fn emitStatementsWithNarrowing(cg: *CodeGen, stmts: []const MirNodeIndex) anyerr
 pub fn generateStatementMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
     const store = cg.mir_store.?;
     const entry = store.getNode(idx);
+    try cg.recordLoc(idx);
     switch (entry.tag) {
         .var_decl => {
             const rec = mir_typed.VarDecl.unpack(store, idx);

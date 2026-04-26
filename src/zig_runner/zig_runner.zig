@@ -209,18 +209,37 @@ pub const ZigRunner = struct {
         try out.flush();
     }
 
-    /// Parse Zig compiler errors and reformat as Orhon errors
-    /// This should ideally never trigger in a correct compiler implementation
+    /// Parse a Zig error line ("path:line:col: …") and return the mapped .orh SourceLoc.
+    /// Returns null if the path is not in source_maps or has no entry ≤ zig_line.
+    fn mapZigLine(self: *const ZigRunner, line: []const u8) ?errors.SourceLoc {
+        const first_colon = std.mem.indexOfScalar(u8, line, ':') orelse return null;
+        const path = line[0..first_colon];
+        const after_path = line[first_colon + 1..];
+        const second_colon = std.mem.indexOfScalar(u8, after_path, ':') orelse return null;
+        const zig_line = std.fmt.parseInt(u32, after_path[0..second_colon], 10) catch return null;
+        const module_name = std.fs.path.stem(std.fs.path.basename(path));
+        const entries = self.source_maps.get(module_name) orelse return null;
+        const entry = floorEntry(entries, zig_line) orelse return null;
+        return errors.SourceLoc{ .file = entry.orh_file, .line = entry.orh_line, .col = 1 };
+    }
+
+    /// Parse Zig compiler errors and reformat as Orhon errors.
+    /// For errors in generated modules, maps zig_line → orh_file:orh_line via source_maps.
+    /// Falls through to generic internal error for paths not in source_maps.
     fn reformatZigErrors(self: *ZigRunner, stderr: []const u8) !void {
-        // Zig errors look like: path/to/file.zig:line:col: error: message
         var lines = std.mem.splitScalar(u8, stderr, '\n');
         while (lines.next()) |line| {
             if (line.len == 0) continue;
-            // Try to parse Zig error format
-            if (std.mem.indexOf(u8, line, ": error:")) |_| {
-                // "has no member named 'X'" → module has no function 'X'
+
+            if (std.mem.indexOf(u8, line, ": error:")) |marker_pos| {
+                const loc = self.mapZigLine(line);
+                if (loc != null) {
+                    const msg_text = std.mem.trimLeft(u8, line[marker_pos + 8..], " ");
+                    _ = try self.reporter.reportFmt(.zig_compile_error, loc, "{s}", .{msg_text});
+                    continue;
+                }
+                // Not a mapped module — existing fallback behaviour
                 if (self.reformatNoMember(line)) |msg| {
-                    // msg allocated with self.allocator (== reporter.allocator) — pass ownership.
                     _ = try self.reporter.reportOwned(.{ .code = .zig_compile_error, .message = msg });
                     continue;
                 }
@@ -316,6 +335,24 @@ pub const ZigRunner = struct {
     }
 };
 
+/// Floor binary search: return the entry with the largest zig_line ≤ query.
+/// Assumes entries are sorted ascending by zig_line (guaranteed by emission order).
+fn floorEntry(entries: []const module.SourceMapEntry, zig_line: u32) ?module.SourceMapEntry {
+    if (entries.len == 0) return null;
+    var lo: usize = 0;
+    var hi: usize = entries.len;
+    while (lo + 1 < hi) {
+        const mid = lo + (hi - lo) / 2;
+        if (entries[mid].zig_line <= zig_line) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    if (entries[lo].zig_line <= zig_line) return entries[lo];
+    return null;
+}
+
 /// Parse Zig test output and write clean PASS/FAIL lines to the given writer.
 /// Extracted for testability — formatTestOutput calls this with a stderr writer.
 fn writeTestOutput(allocator: std.mem.Allocator, stderr: []const u8, all_passed: bool, out: anytype) !void {
@@ -394,4 +431,45 @@ test "formatTestOutput - failure reports FAIL and counts" {
     const output = out_buf.items;
     try std.testing.expect(std.mem.indexOf(u8, output, "FAIL") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "wrong") != null);
+}
+
+test "floorEntry returns null for empty slice" {
+    const entries: []const module.SourceMapEntry = &.{};
+    try std.testing.expect(floorEntry(entries, 42) == null);
+}
+
+test "floorEntry returns null when zig_line before first entry" {
+    const entries = [_]module.SourceMapEntry{
+        .{ .zig_line = 10, .orh_file = "a.orh", .orh_line = 5 },
+    };
+    try std.testing.expect(floorEntry(&entries, 5) == null);
+}
+
+test "floorEntry returns exact match" {
+    const entries = [_]module.SourceMapEntry{
+        .{ .zig_line = 10, .orh_file = "a.orh", .orh_line = 5 },
+    };
+    const result = floorEntry(&entries, 10).?;
+    try std.testing.expectEqual(@as(u32, 10), result.zig_line);
+    try std.testing.expectEqualStrings("a.orh", result.orh_file);
+}
+
+test "floorEntry returns entry below zig_line" {
+    const entries = [_]module.SourceMapEntry{
+        .{ .zig_line = 5,  .orh_file = "a.orh", .orh_line = 1 },
+        .{ .zig_line = 10, .orh_file = "a.orh", .orh_line = 5 },
+        .{ .zig_line = 20, .orh_file = "a.orh", .orh_line = 10 },
+    };
+    const result = floorEntry(&entries, 15).?;
+    try std.testing.expectEqual(@as(u32, 10), result.zig_line);
+    try std.testing.expectEqual(@as(u32, 5), result.orh_line);
+}
+
+test "floorEntry returns last entry when zig_line past all entries" {
+    const entries = [_]module.SourceMapEntry{
+        .{ .zig_line = 5,  .orh_file = "a.orh", .orh_line = 1 },
+        .{ .zig_line = 10, .orh_file = "a.orh", .orh_line = 5 },
+    };
+    const result = floorEntry(&entries, 999).?;
+    try std.testing.expectEqual(@as(u32, 10), result.zig_line);
 }

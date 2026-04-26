@@ -374,6 +374,30 @@ pub fn resolveTypeNode(alloc: std.mem.Allocator, node: *parser.Node) anyerror!Re
             return .{ .ptr = .{ .kind = p.kind, .elem = inner } };
         },
 
+        // Binary | expression in type-alias position: (null | T) or (Error | T) parsed as binary OR.
+        .binary_expr => |b| {
+            if (b.op != .bit_or) return .unknown;
+            var members = std.ArrayListUnmanaged(*parser.Node){};
+            defer members.deinit(alloc);
+            try collectBinaryOrLeaves(alloc, b, &members);
+            return resolveUnion(alloc, members.items);
+        },
+
+        // Generic type constructor in expression position: List(T), Map(K,V).
+        .call_expr => |c| {
+            if (c.callee.* != .identifier) return .unknown;
+            var args = try alloc.alloc(ResolvedType, c.args.len);
+            for (c.args, 0..) |a, i| {
+                args[i] = try resolveTypeNode(alloc, a);
+            }
+            return .{ .generic = .{ .name = c.callee.identifier, .args = args } };
+        },
+        // Bare identifier in type position: cast(i64, x) type arg, or unknown type name.
+        .identifier => |n| classifyNamed(n),
+        // Integer literal in type position (e.g. Vector(4, f32) size arg) — preserve
+        // the text so zigOfRTInner can extract it for @Vector(N, T) emission.
+        .int_literal => |n| .{ .named = n },
+
         // Non-type AST nodes (77+ variants) — only type_* nodes resolve to types
         else => .unknown,
     };
@@ -390,6 +414,20 @@ fn classifyNamed(n: []const u8) ResolvedType {
         else => .{ .primitive = prim },
     };
     return .{ .named = n };
+}
+
+/// Flatten a left-recursive binary `|` expression tree into a flat list of leaf nodes.
+fn collectBinaryOrLeaves(alloc: std.mem.Allocator, b: parser.BinaryOp, out: *std.ArrayListUnmanaged(*parser.Node)) anyerror!void {
+    if (b.left.* == .binary_expr and b.left.binary_expr.op == .bit_or) {
+        try collectBinaryOrLeaves(alloc, b.left.binary_expr, out);
+    } else {
+        try out.append(alloc, b.left);
+    }
+    if (b.right.* == .binary_expr and b.right.binary_expr.op == .bit_or) {
+        try collectBinaryOrLeaves(alloc, b.right.binary_expr, out);
+    } else {
+        try out.append(alloc, b.right);
+    }
 }
 
 /// Resolve a union type node. Flattens nested unions, checks for duplicates.
@@ -612,4 +650,47 @@ test "type_param variant - distinct binders are distinguishable" {
     const t1 = ResolvedType{ .type_param = .{ .name = "T", .binder = b1 } };
     const t2 = ResolvedType{ .type_param = .{ .name = "T", .binder = b2 } };
     try std.testing.expect(t1.type_param.binder != t2.type_param.binder);
+}
+
+test "resolveTypeNode - binary_expr union (null | i32)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var left = parser.Node{ .type_named = "null" };
+    var right = parser.Node{ .type_named = "i32" };
+    var b_expr = parser.Node{ .binary_expr = .{ .left = &left, .right = &right, .op = .bit_or } };
+    const rt = try resolveTypeNode(a, &b_expr);
+    try std.testing.expect(rt == .union_type);
+    try std.testing.expectEqual(@as(usize, 2), rt.union_type.len);
+    var found_null = false;
+    var found_i32 = false;
+    for (rt.union_type) |m| {
+        if (m == .null_type) found_null = true;
+        if (m == .primitive and m.primitive == .i32) found_i32 = true;
+    }
+    try std.testing.expect(found_null);
+    try std.testing.expect(found_i32);
+}
+
+test "resolveTypeNode - identifier" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var node = parser.Node{ .identifier = "i32" };
+    const rt = try resolveTypeNode(arena.allocator(), &node);
+    try std.testing.expect(rt == .primitive);
+    try std.testing.expectEqual(Primitive.i32, rt.primitive);
+}
+
+test "resolveTypeNode - call_expr as generic" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var callee = parser.Node{ .identifier = "List" };
+    var arg = parser.Node{ .type_named = "i32" };
+    var args = [_]*parser.Node{&arg};
+    var node = parser.Node{ .call_expr = .{ .callee = &callee, .args = &args, .arg_names = &.{} } };
+    const rt = try resolveTypeNode(a, &node);
+    try std.testing.expect(rt == .generic);
+    try std.testing.expectEqualStrings("List", rt.generic.name);
+    try std.testing.expectEqual(@as(usize, 1), rt.generic.args.len);
 }

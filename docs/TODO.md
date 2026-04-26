@@ -5,7 +5,7 @@ Master tracking file. Everything is organized into phases ordered by dependency.
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase 3 (Parallelism + LSP + Codegen Quality) — P1 done (v0.53.23, 2026-04-26), P2 done (v0.53.25, 2026-04-26)
+- **Active project:** Phase 3 (Parallelism + LSP + Codegen Quality) — P1 done (v0.53.23), P2 done (v0.53.25), P3 done (v0.53.26), P4 done (v0.53.27), P5 done (v0.53.28)
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph

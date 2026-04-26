@@ -46,6 +46,7 @@ pub fn build(b: *std.Build) void {
         "src/std_bundle.zig",
         "src/interface.zig",
         "src/pipeline.zig",
+        "src/pipeline_context.zig",
         "src/commands.zig",
         "src/lexer.zig",
         "src/parser.zig",

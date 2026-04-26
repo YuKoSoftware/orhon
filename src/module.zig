@@ -35,6 +35,15 @@ pub const FileOffset = struct {
     original_start: usize,  // line number in original file that maps to start_line (1 if no lines stripped, 2 if module line stripped)
 };
 
+/// Maps one generated Zig line back to the originating `.orh` file and line.
+/// Entries are appended during codegen in emission order, so they are
+/// naturally sorted by `zig_line`. Use a floor binary-search for lookup.
+pub const SourceMapEntry = struct {
+    zig_line: u32,        // 1-based line in the generated .zig file
+    orh_file: []const u8, // borrowed — same lifetime as the codegen arena
+    orh_line: u32,        // 1-based line in the .orh source
+};
+
 /// Format a set of expected token kinds as a human-readable string.
 /// Produces: "expected 'X'" for 1 item, "expected 'X' or 'Y'" for 2,
 /// and "expected 'X', 'Y', or 'Z'" for 3+.

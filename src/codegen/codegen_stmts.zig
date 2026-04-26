@@ -65,24 +65,7 @@ fn emitNarrowedBlockFromStore(cg: *CodeGen, block_idx: MirNodeIndex, var_name: [
     // Generate body with substitution active
     const prev = cg.match_var_subst;
     cg.match_var_subst = .{ .original = var_name, .capture = "_is_val" };
-    const saved_pre = cg.pre_stmts;
-    cg.pre_stmts = .{};
-    for (stmts) |child_idx| {
-        try cg.flushPreStmts();
-        const stmt_start = cg.output.items.len;
-        try cg.emitIndent();
-        try generateStatementMir(cg, child_idx);
-        try cg.emit("\n");
-        if (cg.pre_stmts.items.len > 0) {
-            const stmt_bytes = try cg.allocator.dupe(u8, cg.output.items[stmt_start..]);
-            defer cg.allocator.free(stmt_bytes);
-            cg.output.shrinkRetainingCapacity(stmt_start);
-            try cg.flushPreStmts();
-            try cg.output.appendSlice(cg.allocator, stmt_bytes);
-        }
-    }
-    cg.pre_stmts.deinit(cg.allocator);
-    cg.pre_stmts = saved_pre;
+    try emitStatementsWithNarrowing(cg, stmts);
     cg.match_var_subst = prev;
     cg.indent -= 1;
     try cg.emitIndent();
@@ -150,14 +133,10 @@ pub fn generateBlockMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
     const stmts = mir_typed.Block.getStmts(store, idx);
     try cg.emit("{\n");
     cg.indent += 1;
-    // Isolate pre_stmts: any pre_stmts from the outer scope (e.g. from an if-condition)
-    // must not be flushed inside this nested block — they belong before the entire
-    // statement that opened this block. Save and restore around body emission.
-    const saved_pre = cg.pre_stmts;
-    cg.pre_stmts = .{};
+    // The stack of pre-statement frames isolates inner statements naturally:
+    // each inner statement pushes its own frame on top of the outer statement's frame,
+    // so outer pre_stmts are never touched by inner statement codegen.
     try emitStatementsWithNarrowing(cg, stmts);
-    cg.pre_stmts.deinit(cg.allocator);
-    cg.pre_stmts = saved_pre;
     cg.indent -= 1;
     try cg.emitIndent();
     try cg.emit("}");
@@ -175,19 +154,21 @@ pub fn generateBodyStatements(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
 /// When narrowing fires, emits a binding and recursively processes remaining siblings.
 fn emitStatementsWithNarrowing(cg: *CodeGen, stmts: []const MirNodeIndex) anyerror!void {
     const store = cg.mir_store.?;
+    const base_depth = cg.pre_stmts_stack.items.len;
     for (stmts, 0..) |child_idx, i| {
-        try cg.flushPreStmts();
+        std.debug.assert(cg.pre_stmts_stack.items.len == base_depth);
+        try cg.pushPreStmtsFrame();
         const stmt_start = cg.output.items.len;
         try cg.emitIndent();
         try generateStatementMir(cg, child_idx);
         try cg.emit("\n");
-        // If generateStatementMir populated pre_stmts (e.g. interpolation temp vars),
-        // hoist them before the statement we just emitted.
-        if (cg.pre_stmts.items.len > 0) {
+        var frame = cg.popPreStmtsFrame();
+        defer frame.deinit(cg.allocator);
+        if (frame.items.len > 0) {
             const stmt_bytes = try cg.allocator.dupe(u8, cg.output.items[stmt_start..]);
             defer cg.allocator.free(stmt_bytes);
             cg.output.shrinkRetainingCapacity(stmt_start);
-            try cg.flushPreStmts();
+            try cg.output.appendSlice(cg.allocator, frame.items);
             try cg.output.appendSlice(cg.allocator, stmt_bytes);
         }
         // Post-if narrowing: if this if_stmt has early exit and post_branch,

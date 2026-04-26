@@ -674,7 +674,9 @@ pub fn generateStringMatchMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
 /// Reads (tag, payload) pairs from extra_data[parts_start..parts_end]:
 ///   tag==0: string literal (payload is StringIndex)
 ///   tag==1: expression (payload is MirNodeIndex)
-/// Hoists the allocPrint call to a temp variable in pre_stmts (same as old variant).
+/// Builds the allocPrint decl in a local buffer and appends it to the top pre_stmts frame.
+/// Per-arg frames capture any inner-dep pre_stmts (from nested expressions when @{} gains
+/// full-expression support) and prepend them to the parent frame before this decl.
 pub fn generateInterpolatedStringMirFromStore(cg: *CodeGen, store: *const MirStore, parts_start: u32, parts_end: u32) anyerror!void {
     const n = cg.interp_count;
     cg.interp_count += 1;
@@ -691,74 +693,91 @@ pub fn generateInterpolatedStringMirFromStore(cg: *CodeGen, store: *const MirSto
 
     var name_buf: [32]u8 = undefined;
     const var_name = std.fmt.bufPrint(&name_buf, "_interp_{d}", .{n}) catch "_interp";
-    try cg.pre_stmts.appendSlice(cg.allocator, indent_str);
-    try cg.pre_stmts.appendSlice(cg.allocator, "const ");
-    try cg.pre_stmts.appendSlice(cg.allocator, var_name);
-    try cg.pre_stmts.appendSlice(cg.allocator, " = std.fmt.allocPrint(std.heap.smp_allocator, \"");
 
-    // Build format string into pre_stmts
-    // Pairs: extra_data[parts_start..parts_end] = (tag, payload) pairs, step 2
+    // Build the entire decl in a local buffer so inner-dep frames (from nested expressions
+    // in arg codegen) can be prepended to the parent frame before this decl is appended,
+    // giving correct declaration order: inner deps → outer decl → statement.
+    var decl_buf = std.ArrayListUnmanaged(u8){};
+    defer decl_buf.deinit(cg.allocator);
+
+    try decl_buf.appendSlice(cg.allocator, indent_str);
+    try decl_buf.appendSlice(cg.allocator, "const ");
+    try decl_buf.appendSlice(cg.allocator, var_name);
+    try decl_buf.appendSlice(cg.allocator, " = std.fmt.allocPrint(std.heap.smp_allocator, \"");
+
+    // Pass 1: build format string into decl_buf
     var j: u32 = parts_start;
     while (j + 1 <= parts_end) : (j += 2) {
         const tag = store.extra_data.items[j];
         const payload = store.extra_data.items[j + 1];
         if (tag == 0) {
-            // String literal part — payload is StringIndex
+            // String literal part — escape for Zig fmt
             const si: mir_typed.StringIndex = @enumFromInt(payload);
             const text = store.strings.get(si);
             for (text) |ch| {
                 switch (ch) {
-                    '{' => try cg.pre_stmts.appendSlice(cg.allocator, "{{"),
-                    '}' => try cg.pre_stmts.appendSlice(cg.allocator, "}}"),
-                    '\\' => try cg.pre_stmts.appendSlice(cg.allocator, "\\"),
-                    else => try cg.pre_stmts.append(cg.allocator, ch),
+                    '{' => try decl_buf.appendSlice(cg.allocator, "{{"),
+                    '}' => try decl_buf.appendSlice(cg.allocator, "}}"),
+                    '\\' => try decl_buf.appendSlice(cg.allocator, "\\"),
+                    else => try decl_buf.append(cg.allocator, ch),
                 }
             }
         } else {
-            // Expression part — payload is MirNodeIndex
+            // Expression part — choose format specifier
             const expr_idx: MirNodeIndex = @enumFromInt(payload);
             if (CodeGen.mirIsStringFromStore(store, expr_idx)) {
-                try cg.pre_stmts.appendSlice(cg.allocator, "{s}");
+                try decl_buf.appendSlice(cg.allocator, "{s}");
             } else {
-                try cg.pre_stmts.appendSlice(cg.allocator, "{}");
+                try decl_buf.appendSlice(cg.allocator, "{}");
             }
         }
     }
-    try cg.pre_stmts.appendSlice(cg.allocator, "\", .{");
+    try decl_buf.appendSlice(cg.allocator, "\", .{");
 
-    // Redirect output to pre_stmts to emit arg expressions
-    const saved_output = cg.output;
-    cg.output = cg.pre_stmts;
+    // Pass 2: per-arg capture — each arg expression is emitted into a fresh output buffer.
+    // A per-arg frame on the pre_stmts stack collects any inner-dep pre_stmts that arg
+    // codegen produces, which are flushed to the parent frame before this decl.
     var first = true;
     var k: u32 = parts_start;
     while (k + 1 <= parts_end) : (k += 2) {
-        const tag = store.extra_data.items[k];
-        const payload = store.extra_data.items[k + 1];
-        if (tag == 1) {
-            // Expression part
-            if (!first) try cg.emit(", ");
-            const expr_idx: MirNodeIndex = @enumFromInt(payload);
-            try cg.generateExprMir(expr_idx);
-            first = false;
-        }
-    }
-    cg.pre_stmts = cg.output;
-    cg.output = saved_output;
+        if (store.extra_data.items[k] != 1) continue;
+        if (!first) try decl_buf.appendSlice(cg.allocator, ", ");
 
-    // Use error propagation only if the enclosing function has an error return type.
+        try cg.pushPreStmtsFrame(); // frame for inner deps this arg may produce
+        const saved_output = cg.output;
+        cg.output = .{}; // fresh capture buffer — never aliases pre_stmts_stack
+        const expr_idx: MirNodeIndex = @enumFromInt(store.extra_data.items[k + 1]);
+        try cg.generateExprMir(expr_idx);
+        var arg_buf = cg.output;
+        cg.output = saved_output;
+        var inner_deps = cg.popPreStmtsFrame();
+        defer inner_deps.deinit(cg.allocator);
+        defer arg_buf.deinit(cg.allocator);
+
+        // Inner deps go to the parent frame before this decl; arg text goes into decl_buf
+        if (inner_deps.items.len > 0) {
+            try cg.topPreStmts().appendSlice(cg.allocator, inner_deps.items);
+        }
+        try decl_buf.appendSlice(cg.allocator, arg_buf.items);
+        first = false;
+    }
+
+    // Complete the allocPrint call
     const ret_tc = cg.funcReturnTypeClass();
     if (ret_tc == .error_union or ret_tc == .null_error_union) {
-        try cg.pre_stmts.appendSlice(cg.allocator, "}) catch |err| return err;\n");
+        try decl_buf.appendSlice(cg.allocator, "}) catch |err| return err;\n");
     } else {
-        try cg.pre_stmts.appendSlice(cg.allocator, "}) catch unreachable;\n");
+        try decl_buf.appendSlice(cg.allocator, "}) catch unreachable;\n");
     }
-    // Append: <indent>defer std.heap.smp_allocator.free(_interp_N);
-    try cg.pre_stmts.appendSlice(cg.allocator, indent_str);
-    try cg.pre_stmts.appendSlice(cg.allocator, "defer std.heap.smp_allocator.free(");
-    try cg.pre_stmts.appendSlice(cg.allocator, var_name);
-    try cg.pre_stmts.appendSlice(cg.allocator, ");\n");
+    try decl_buf.appendSlice(cg.allocator, indent_str);
+    try decl_buf.appendSlice(cg.allocator, "defer std.heap.smp_allocator.free(");
+    try decl_buf.appendSlice(cg.allocator, var_name);
+    try decl_buf.appendSlice(cg.allocator, ");\n");
 
-    // Emit just the temp var name as the expression
+    // Append this decl to the parent frame (after any inner deps already prepended above)
+    try cg.topPreStmts().appendSlice(cg.allocator, decl_buf.items);
+
+    // Emit just the temp var name as the expression result
     try cg.emit(var_name);
 }
 

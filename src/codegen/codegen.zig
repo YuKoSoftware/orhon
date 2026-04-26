@@ -68,9 +68,11 @@ pub const CodeGen = struct {
     emitted_names: std.StringHashMapUnmanaged(void) = .{},
     // MirStore index for the current function — set by generateFuncMir (MirStore path).
     current_func_idx: mir_store_mod.MirNodeIndex = .none,
-    // Pre-statement hoisting buffer — interpolation temp vars are appended here,
-    // flushed to main output before the statement that references them.
-    pre_stmts: std.ArrayListUnmanaged(u8) = .{},
+    // Stack of pre-statement hoisting frames. The statement loop pushes a fresh frame
+    // before each statement and pops+hoists after. Interpolation builds its decl in a
+    // local buffer and appends inner-dep frames then its own decl to topPreStmts() —
+    // ordered correctly for nested expressions when @{} gains full-expression support.
+    pre_stmts_stack: std.ArrayListUnmanaged(std.ArrayListUnmanaged(u8)) = .{},
     interp_count: u32 = 0,
     // Source map — zig_line → orh_file:orh_line, built during emit, one entry per decl/stmt.
     source_map: std.ArrayListUnmanaged(module.SourceMapEntry) = .{},
@@ -193,7 +195,8 @@ pub const CodeGen = struct {
         self.reassigned_vars.deinit(self.allocator);
         self.error_narrowed.deinit(self.allocator);
         self.null_narrowed.deinit(self.allocator);
-        self.pre_stmts.deinit(self.allocator);
+        for (self.pre_stmts_stack.items) |*frame| frame.deinit(self.allocator);
+        self.pre_stmts_stack.deinit(self.allocator);
         self.emitted_names.deinit(self.allocator);
         self.span_to_mir.deinit(self.allocator);
         self.source_map.deinit(self.allocator);
@@ -249,12 +252,19 @@ pub const CodeGen = struct {
         try self.emit("\n");
     }
 
-    /// Flush hoisted pre-statement declarations (interpolation temp vars) to main output.
-    /// Must be called before emitting the statement that references the hoisted vars.
-    pub fn flushPreStmts(self: *CodeGen) !void {
-        if (self.pre_stmts.items.len == 0) return;
-        try self.output.appendSlice(self.allocator, self.pre_stmts.items);
-        self.pre_stmts.clearRetainingCapacity();
+    /// Push a fresh pre-statement frame. Called by the statement loop before each statement.
+    pub fn pushPreStmtsFrame(self: *CodeGen) !void {
+        try self.pre_stmts_stack.append(self.allocator, .{});
+    }
+
+    /// Pop the top pre-statement frame and return it. Caller owns the returned buffer.
+    pub fn popPreStmtsFrame(self: *CodeGen) std.ArrayListUnmanaged(u8) {
+        return self.pre_stmts_stack.pop().?;
+    }
+
+    /// Pointer to the top pre-statement frame. Only valid while a frame is on the stack.
+    pub fn topPreStmts(self: *CodeGen) *std.ArrayListUnmanaged(u8) {
+        return &self.pre_stmts_stack.items[self.pre_stmts_stack.items.len - 1];
     }
 
     pub fn emitLineFmt(self: *CodeGen, comptime fmt: []const u8, args: anytype) !void {

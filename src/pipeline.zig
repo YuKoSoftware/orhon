@@ -20,6 +20,7 @@ const constants = @import("constants.zig");
 const mir = @import("mir/mir.zig");
 const mir_registry = @import("mir/mir_registry.zig");
 const codegen_unions = @import("codegen/codegen_unions.zig");
+const manifest_mod = @import("manifest.zig");
 
 /// Owns an ArrayList of duped slices. On deinit, frees every stored slice
 /// (and, when `deep` is true, each element inside them) followed by the list.
@@ -145,11 +146,15 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     var mod_resolver = module.Resolver.init(allocator, reporter);
     defer mod_resolver.deinit();
 
+    // ── Manifest ──────────────────────────────────────────────
+    const manifest = (try manifest_mod.readManifest(allocator, reporter)) orelse return null;
+    defer manifest.deinit(allocator);
+
     // Check source dir exists before scanning — give a clear error if not
     std.fs.cwd().access(cli.source_dir, .{}) catch {
         std.debug.print("error: source directory '{s}' not found\n", .{cli.source_dir});
         std.debug.print("  run `orhon build` from inside an orhon project directory\n", .{});
-        std.debug.print("  expected: {s}/<project_name>.orh with #build = exe\n", .{cli.source_dir});
+        std.debug.print("  expected: src/ directory with orhon.project in project root\n", .{});
         return null;
     };
 
@@ -220,6 +225,19 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     // Validate imports and get compilation order
     const order = try mod_resolver.validateAndOrder(allocator) orelse return null;
     defer allocator.free(order);
+
+    // Apply manifest targets — mark root modules and set build types from orhon.project
+    for (manifest.targets) |target| {
+        if (mod_resolver.modules.getPtr(target.name)) |mod| {
+            mod.is_root    = true;
+            mod.build_type = target.build_type;
+        } else {
+            _ = try reporter.reportFmt(.manifest_parse_error, null,
+                "manifest target '{s}' has no matching module in src/ — check #target name in orhon.project",
+                .{target.name});
+            return null;
+        }
+    }
 
     // Build module build-type map for codegen — lets import generation
     // distinguish lib targets (linked via build system) from source modules
@@ -470,20 +488,8 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
             const mod = entry.value_ptr;
             if (!mod.is_root) continue;
 
-            var build_type: module.BuildType = .exe;
-            var mt_version: ?[3]u64 = null;
-            if (mod.ast) |ast| {
-                for (ast.program.metadata) |meta| {
-                    if (meta.metadata.field == .build) {
-                        if (meta.metadata.value.* == .identifier) {
-                            build_type = module.parseBuildType(meta.metadata.value.identifier);
-                        }
-                    }
-                    if (meta.metadata.field == .version) {
-                        mt_version = module.extractVersion(meta.metadata.value);
-                    }
-                }
-            }
+            const build_type = mod.build_type;   // set from manifest
+            const mt_version = manifest.version; // project-level version
 
             // Binary name always comes from the module name
             const binary_name = mod.name;

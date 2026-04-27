@@ -185,7 +185,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 - [x] **T7** 🟡 **Top-level `main()` ICE handler** [F24] — done v0.53.14, 2026-04-25 — `writeIceMessage` in `errors.zig`; pipeline `else` branch now prints "internal compiler error: {err}" + report URL + exits 70 instead of leaking Zig stack traces.
 
-> **Session bookmark** (v0.53.36, 2026-04-27). X5 done — safer `addtopath`. ⬅ **RESUME HERE: Phase 4 (X6/X7)** or **Phase 5 (I1)**.
+> **Session bookmark** (v0.53.37, 2026-04-27). X6 done — versioning doc + CI. ⬅ **RESUME HERE: Phase 4 (X7)** or **Phase 5 (I1)**.
 
 ### Sub-project 2b — Test runner rewrite
 
@@ -227,7 +227,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 - [x] **X3** 🟡 **`orhon init -update` migration** [F11] — done v0.53.35, 2026-04-27 — stamp file `.orh-cache/init.stamp` written by `orhon init` (inside project dir for both named and in-place); `orhon init -update` re-writes all 8 example files when stamp differs from running version; user files never touched; 390/390 green.
 - [x] **X4** 🟡 **`orhon check` command** [F22] — done v0.53.34, 2026-04-27 — passes 1-8 only (no MIR/codegen/Zig invocation); fast path in `compileOne` + early return in `runPipeline`; `runSemanticOnly` in `pipeline_passes.zig`; 380/380 green.
 - [x] **X5** 🟡 **Safer `addtopath`** [F21] — done v0.53.36, 2026-04-27 — `computeAddToPathContent` pure helper + `backupPath`; backup written before any edit; atomic tmp→rename write; `-dry-run` flag shows what would change without writing; already-in-PATH path honours dry-run; 5 unit tests; 392/392 green.
-- [ ] **X6** 🟡 **Versioning policy doc + CI workflow** — pre-1.0 has no documented breaking-change policy; no `.github/workflows/` or equivalent (releases ship without recorded green run on clean machine). Write `docs/versioning.md`; land a minimal CI config.
+- [x] **X6** 🟡 **Versioning policy doc + CI workflow** — done v0.53.37, 2026-04-27 — `docs/versioning.md` defines pre-1.0 breaking-change policy; `.github/workflows/ci.yml` runs `./testall.sh` on push/PR to main via `mlugg/setup-zig@v1` + Zig 0.15.2.
 - [ ] **X7** 🟡 **Per-command help** — `orhon build --help` currently shows the generic help page. Fix: each command declares its own flag list and description string; `--help` after a command dispatches to that command's help instead of the global page.
 
 ---

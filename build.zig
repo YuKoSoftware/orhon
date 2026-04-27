@@ -61,6 +61,7 @@ pub fn build(b: *std.Build) void {
         "src/errors.zig",
         "src/diag_format.zig",
         "src/error_codes.zig",
+        "src/manifest.zig",
         "src/builtins.zig",
         "src/cache.zig",
         "src/formatter.zig",

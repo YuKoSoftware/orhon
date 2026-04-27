@@ -157,7 +157,7 @@ pub fn buildMetadata(ctx: *BuildContext, cap: *const CaptureNode) !*Node {
     const field = builder.tokenText(ctx, field_pos);
 
     const parsed_field = parser.MetadataField.parse(field) orelse {
-        const msg = std.fmt.allocPrint(ctx.alloc(), "unknown metadata directive '#{s}' — expected #build, #version, or #description", .{field}) catch "unknown metadata directive";
+        const msg = std.fmt.allocPrint(ctx.alloc(), "unknown metadata directive '#{s}' — the only valid source metadata is #description (put #build and #version in orhon.project)", .{field}) catch "unknown metadata directive";
         ctx.reportError(msg, field_pos);
         return error.ParseError;
     };

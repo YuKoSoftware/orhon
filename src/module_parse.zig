@@ -342,42 +342,20 @@ pub fn parseModules(self: *Resolver, alloc: std.mem.Allocator) !void {
             mod.imports_owned = false;
         }
 
-        // Validate metadata fields and check if root module
+        // Hard-error: #build and #version must be in orhon.project, not in source files
         for (build_result.node.program.metadata) |meta| {
-            if (meta.metadata.field == .build) {
-                mod.is_root = true;
-                if (meta.metadata.value.* == .identifier) {
-                    const val = meta.metadata.value.identifier;
-                    mod.build_type = module.parseBuildType(val);
-                    if (mod.build_type == .exe and !std.mem.eql(u8, val, "exe")) {
-                        _ = try self.reporter.reportFmt(.unknown_build_type, null, "unknown #build type '{s}' — expected 'exe', 'static', or 'dynamic'", .{val});
-                    }
-                } else {
-                    mod.build_type = .exe;
-                }
+            if (meta.metadata.field == .build or meta.metadata.field == .version) {
+                const key = if (meta.metadata.field == .build) "build" else "version";
+                const anchor = if (mod.files.len > 0) mod.files[0] else mod_name;
+                _ = try self.reporter.reportFmt(.metadata_in_source,
+                    .{ .file = anchor, .line = 1, .col = 1 },
+                    "#{s} belongs in orhon.project, not in source files — move it to orhon.project",
+                    .{key});
             }
         }
 
     }
 
-    // Validate exe layout — only one #build = exe module allowed in src/
-    var exe_count: usize = 0;
-    var exe_it = self.modules.iterator();
-    while (exe_it.next()) |entry| {
-        const mod = entry.value_ptr;
-        if (mod.build_type != .exe) continue;
-
-        if (mod.files.len > 0) {
-            const anchor = mod.files[0];
-            const dir = std.fs.path.dirname(anchor) orelse "";
-            if (std.mem.eql(u8, dir, "src")) {
-                exe_count += 1;
-                if (exe_count > 1) {
-                    _ = try self.reporter.reportFmt(.multiple_exe_modules, .{ .file = anchor, .line = 1, .col = 1 }, "multiple #build = exe modules in src/ — only one executable entry point is allowed", .{});
-                }
-            }
-        }
-    }
 }
 
 /// Returns true if the file path is under the std cache directory (.orh-cache/std/).

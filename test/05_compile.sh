@@ -14,6 +14,7 @@ mkdir -p orhontest/src
 cp "$FIXTURES/runtime/tester_main.orh" orhontest/src/orhontest.orh
 sed -i '1s/^module comptest$/module orhontest/' orhontest/src/orhontest.orh
 cp "$FIXTURES/runtime/tester.orh" orhontest/src/tester.orh
+printf '#name  = orhontest\n#build = exe\n' > orhontest/orhon.project
 cd "$TESTDIR/orhontest"
 
 TEST_OUT=$("$ORHON" test 2>&1 || true)
@@ -35,8 +36,6 @@ cd "$TESTDIR"
 mkdir -p failtest/src
 cat > failtest/src/failtest.orh <<'ORHON'
 module failtest
-#version = (1, 0, 0)
-#build   = exe
 func add(a: i32, b: i32) i32 {
     return a + b
 }
@@ -45,6 +44,7 @@ test "wrong" {
 }
 func main() void { }
 ORHON
+printf '#name  = failtest\n#build = exe\n' > failtest/orhon.project
 cd failtest
 FAIL_OUT=$("$ORHON" test 2>&1 || true)
 if echo "$FAIL_OUT" | grep -qi "fail\|FAIL\|error"; then pass "orhon test — detects failure"

@@ -57,6 +57,7 @@ cd "$TESTDIR"
 mkdir -p comptest/src
 cp "$FIXTURES/runtime/tester_main.orh" comptest/src/comptest.orh
 cp "$FIXTURES/runtime/tester.orh" comptest/src/tester.orh
+printf '#name  = comptest\n#build = exe\n' > comptest/orhon.project
 cd "$TESTDIR/comptest"
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
@@ -122,6 +123,7 @@ cd "$TESTDIR"
 mkdir -p bptest/src
 cp "$FIXTURES/runtime/blueprint_main.orh" bptest/src/bptest.orh
 cp "$FIXTURES/runtime/blueprint_basic.orh" bptest/src/tester.orh
+printf '#name  = bptest\n#build = exe\n' > bptest/orhon.project
 cd bptest
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
@@ -154,6 +156,7 @@ mkdir -p bpmulti/src
 cp "$FIXTURES/runtime/blueprint_main.orh" bpmulti/src/bpmulti.orh
 sed -i '1s/^module bptest$/module bpmulti/' bpmulti/src/bpmulti.orh
 cp "$FIXTURES/runtime/blueprint_multiple.orh" bpmulti/src/tester.orh
+printf '#name  = bpmulti\n#build = exe\n' > bpmulti/orhon.project
 cd bpmulti
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
@@ -167,6 +170,7 @@ fi
 cd "$TESTDIR"
 mkdir -p union_flat/src
 cp "$FIXTURES/runtime/union_flatten.orh" union_flat/src/union_flat.orh
+printf '#name  = union_flat\n#build = exe\n' > union_flat/orhon.project
 cd union_flat
 FLAT_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$FLAT_OUT" | grep -q "Built:"; then
@@ -180,6 +184,7 @@ fi
 cd "$TESTDIR"
 mkdir -p arb_union_root/src
 cp "$FIXTURES/runtime/arbitrary_union_root_types.orh" arb_union_root/src/arb_union_root.orh
+printf '#name  = arb_union_root\n#build = exe\n' > arb_union_root/orhon.project
 cd arb_union_root
 ARB_OUT=$("$ORHON" build 2>&1 || true)
 if echo "$ARB_OUT" | grep -q "Built:"; then
@@ -195,6 +200,7 @@ mkdir -p multizig/src
 cp "$FIXTURES/multizig_main.orh" multizig/src/multizig.orh
 cp "$FIXTURES/multizig.zig" multizig/src/multizig.zig
 cp "$FIXTURES/multizig_helper.zig" multizig/src/helper.zig
+printf '#name  = multizig\n#build = static\n' > multizig/orhon.project
 cd "$TESTDIR/multizig"
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
@@ -280,6 +286,7 @@ cd "$TESTDIR"
 mkdir -p cb1_test/src
 cp "$FIXTURES/ownership/cb1_method_receiver.orh" cb1_test/src/cb1_test.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module cb1_test/' cb1_test/src/cb1_test.orh
+printf '#name  = cb1_test\n#build = exe\n' > cb1_test/orhon.project
 cd cb1_test
 OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built:"; then pass "CB1: two structs with same-named methods compile without borrow collision"
@@ -289,6 +296,7 @@ cd "$TESTDIR"
 mkdir -p cb2_test/src
 cp "$FIXTURES/ownership/cb2_outer_borrow.orh" cb2_test/src/cb2_test.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module cb2_test/' cb2_test/src/cb2_test.orh
+printf '#name  = cb2_test\n#build = exe\n' > cb2_test/orhon.project
 cd cb2_test
 OUTPUT=$("$ORHON" build 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Built:"; then pass "CB2: outer-scope borrow survives inner block (NLL guard)"

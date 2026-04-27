@@ -11,6 +11,7 @@ cd "$TESTDIR"
 mkdir -p comptest/src
 cp "$FIXTURES/runtime/tester_main.orh" comptest/src/comptest.orh
 cp "$FIXTURES/runtime/tester.orh" comptest/src/tester.orh
+printf '#name  = comptest\n#build = exe\n' > comptest/orhon.project
 cd "$TESTDIR/comptest"
 
 "$ORHON" build >/dev/null 2>&1 || true

@@ -436,7 +436,8 @@ null_literal    <- 'null'
 void_literal    <- 'void'
 
 string_literal
-    <- STRING_LITERAL                           # may contain @{expr} interpolation
+    <- STRING_LITERAL                           # plain string — no @{} (unchanged)
+     / STRING_INTERP_START (!STRING_INTERP_END .)* STRING_INTERP_END  # interpolated string
 
 array_literal
     <- '[' _ (expr (_ ',' _ expr)* (_ ',')?)? _ ']'  {label: "array literal"}
@@ -586,6 +587,9 @@ INT_LITERAL     <- '0x' [0-9a-fA-F_]+          # hex
                  / [0-9] [0-9_]*               # decimal
 FLOAT_LITERAL   <- [0-9] [0-9_]* '.' [0-9] [0-9_]*  # simplified — lexer handles full parsing
 STRING_LITERAL  <- '"' (!'"' .)* '"'            # simplified — lexer handles escapes
+STRING_INTERP_START <- string_interp_start      # opening " of an interpolated string
+STRING_PART         <- string_part              # literal segment of an interpolated string
+STRING_INTERP_END   <- string_interp_end        # closing " of an interpolated string
 DOC_COMMENT     <- '///' (!'\n' .)*
 NL              <- '\n'
 EOF             <- !.

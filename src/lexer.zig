@@ -10,6 +10,9 @@ pub const TokenKind = enum {
     int_literal,
     float_literal,
     string_literal,
+    string_interp_start, // opening " of an interp string (signals start to the PEG grammar)
+    string_part,         // literal segment of an interp string; text = raw chars, slice into source
+    string_interp_end,   // closing " of an interp string; text = slice of the closing quote
 
     // Identifiers and keywords
     identifier,
@@ -157,12 +160,19 @@ fn isOctalDigit(ch: u8) bool {
     return ch >= '0' and ch <= '7';
 }
 
+const LexerMode = union(enum) {
+    normal:        void,
+    string_body:   void,
+    string_interp: struct { depth: u32 },
+};
+
 /// The lexer state machine
 pub const Lexer = struct {
     source: []const u8,
     pos: usize,
     line: usize,
     col: usize,
+    mode: LexerMode = .normal,
 
     pub fn init(source: []const u8) Lexer {
         return .{
@@ -349,9 +359,8 @@ pub const Lexer = struct {
     }
 
     /// Get the next token
-    pub fn next(self: *Lexer) Token {
-        self.skipWhitespaceAndComments();
-
+    /// Lex a single token from the current position (whitespace already skipped).
+    fn lexToken(self: *Lexer) Token {
         const start_line = self.line;
         const start_col = self.col;
 
@@ -462,6 +471,198 @@ pub const Lexer = struct {
         };
 
         return .{ .kind = kind, .text = self.source[start..self.pos], .line = start_line, .col = start_col };
+    }
+
+    /// Get the next token
+    pub fn next(self: *Lexer) Token {
+        switch (self.mode) {
+            .string_body => return self.lexStringBody(),
+            .string_interp => |interp| return self.nextInInterp(interp.depth),
+            .normal => {
+                self.skipWhitespaceAndComments();
+                // Intercept interpolated strings before they reach lexToken()
+                if (self.peek() == '"' and self.containsInterpolation()) {
+                    const start_line = self.line;
+                    const start_col  = self.col;
+                    _ = self.advance(); // consume opening "
+                    self.mode = .string_body;
+                    // Emit string_interp_start so the PEG grammar can cheaply identify
+                    // the start of an interpolated string without lookahead.
+                    return .{
+                        .kind = .string_interp_start,
+                        .text = "\"",
+                        .line = start_line,
+                        .col  = start_col,
+                    };
+                }
+                return self.lexToken();
+            },
+        }
+    }
+
+    /// In .string_interp mode: lex one expression token, track brace depth.
+    /// Discards newlines (not significant inside @{}).
+    /// When the matching } is found (depth reaches 1 — the closing @{): switches to .string_body and returns
+    /// the next string_part or string_interp_end immediately.
+    fn nextInInterp(self: *Lexer, depth: u32) Token {
+        while (true) {
+            self.skipWhitespaceAndComments();
+
+            // EOF before closing } — error recovery
+            if (self.peek() == null) {
+                self.mode = .normal;
+                return .{
+                    .kind = .string_interp_end,
+                    .text = self.source[self.pos..self.pos],
+                    .line = self.line,
+                    .col  = self.col,
+                };
+            }
+
+            // Discard newlines inside @{...}
+            if (self.peek() == '\n') {
+                _ = self.advance();
+                continue;
+            }
+
+            // A literal " inside @{...} means the string ended without closing } — error recovery.
+            if (self.peek() == '"') {
+                self.mode = .normal;
+                return .{
+                    .kind = .string_interp_end,
+                    .text = self.source[self.pos..self.pos],
+                    .line = self.line,
+                    .col  = self.col,
+                };
+            }
+
+            const tok = self.lexToken();
+
+            switch (tok.kind) {
+                .lbrace => {
+                    self.mode = .{ .string_interp = .{ .depth = depth + 1 } };
+                    return tok;
+                },
+                .rbrace => {
+                    if (depth > 1) {
+                        self.mode = .{ .string_interp = .{ .depth = depth - 1 } };
+                        return tok;
+                    }
+                    // Depth hits 0 — @{...} is closed. Resume string body.
+                    self.mode = .string_body;
+                    return self.lexStringBody();
+                },
+                .eof => {
+                    self.mode = .normal;
+                    return .{
+                        .kind = .string_interp_end,
+                        .text = self.source[self.pos..self.pos],
+                        .line = self.line,
+                        .col  = self.col,
+                    };
+                },
+                else => {
+                    // Expression token — mode stays .string_interp{depth} (unchanged in self.mode)
+                    return tok;
+                },
+            }
+        }
+    }
+
+    /// Scan literal characters in .string_body mode. Emits:
+    ///   - string_part  for any accumulated literal text (raw source slice, no quotes)
+    ///   - string_interp_end  when the closing " is reached (or on unterminated string)
+    /// When @{ is found: emits string_part (if non-empty), advances past @{, switches to
+    /// .string_interp{depth:1}, and falls through to nextInInterp for the first expr token.
+    fn lexStringBody(self: *Lexer) Token {
+        const start_line = self.line;
+        const start_col  = self.col;
+        const part_start = self.pos;
+
+        while (self.peek()) |ch| {
+            switch (ch) {
+                '@' => {
+                    if (self.peekAt(1) == '{') {
+                        const part_end = self.pos;
+                        _ = self.advance(); // @
+                        _ = self.advance(); // {
+                        self.mode = .{ .string_interp = .{ .depth = 1 } };
+                        if (part_end > part_start) {
+                            return .{
+                                .kind = .string_part,
+                                .text = self.source[part_start..part_end],
+                                .line = start_line,
+                                .col  = start_col,
+                            };
+                        }
+                        // No preceding text — lex the first expression token immediately
+                        return self.nextInInterp(1);
+                    }
+                    _ = self.advance();
+                },
+                '"' => {
+                    const part_end = self.pos;
+                    if (part_end > part_start) {
+                        // Trailing literal text exists. Emit string_part WITHOUT consuming ".
+                        // Next call: peek()=='"', part_start==part_end, falls to else branch.
+                        return .{
+                            .kind = .string_part,
+                            .text = self.source[part_start..part_end],
+                            .line = start_line,
+                            .col  = start_col,
+                        };
+                    }
+                    // No trailing text — emit string_interp_end and close.
+                    _ = self.advance(); // consume "
+                    self.mode = .normal;
+                    return .{
+                        .kind = .string_interp_end,
+                        .text = self.source[self.pos - 1..self.pos],
+                        .line = start_line,
+                        .col  = start_col,
+                    };
+                },
+                '\n' => {
+                    // Unterminated interpolated string — error recovery.
+                    self.mode = .normal;
+                    return .{
+                        .kind = .string_interp_end,
+                        .text = self.source[self.pos..self.pos],
+                        .line = start_line,
+                        .col  = start_col,
+                    };
+                },
+                '\\' => {
+                    _ = self.advance(); // backslash
+                    if (self.peek() != null) _ = self.advance(); // escaped char
+                },
+                else => _ = self.advance(),
+            }
+        }
+        // EOF inside string body
+        self.mode = .normal;
+        return .{
+            .kind = .string_interp_end,
+            .text = self.source[self.pos..self.pos],
+            .line = start_line,
+            .col  = start_col,
+        };
+    }
+
+    /// Pure peek: returns true if the string starting at pos (the opening ") contains @{.
+    /// Does not advance pos.
+    fn containsInterpolation(self: *Lexer) bool {
+        var i = self.pos + 1; // skip the opening "
+        while (i < self.source.len) : (i += 1) {
+            switch (self.source[i]) {
+                '"'  => return false,
+                '\n' => return false,
+                '\\' => i += 1, // skip escaped character
+                '@'  => if (i + 1 < self.source.len and self.source[i + 1] == '{') return true,
+                else => {},
+            }
+        }
+        return false;
     }
 
     /// Tokenize all source into a flat list
@@ -1036,4 +1237,137 @@ test "lexer - %= is two tokens" {
     const tok2 = lex.next();
     try std.testing.expectEqual(TokenKind.percent, tok1.kind);
     try std.testing.expectEqual(TokenKind.assign, tok2.kind);
+}
+
+/// Helper: collect non-newline, non-eof token kinds into a list.
+fn collectKinds(tokens: []const Token, allocator: std.mem.Allocator) !std.ArrayListUnmanaged(TokenKind) {
+    var kinds = std.ArrayListUnmanaged(TokenKind){};
+    for (tokens) |t| {
+        if (t.kind != .newline and t.kind != .eof) {
+            try kinds.append(allocator, t.kind);
+        }
+    }
+    return kinds;
+}
+
+test "interp - fast path unchanged" {
+    // A plain string with no @{ must still produce a single string_literal token.
+    var lex = Lexer.init("\"hello\"");
+    var tokens = try lex.tokenize(std.testing.allocator);
+    defer tokens.deinit(std.testing.allocator);
+    var kinds = try collectKinds(tokens.items, std.testing.allocator);
+    defer kinds.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.string_literal, kinds.items[0]);
+}
+
+test "interp - single interpolation" {
+    var lex = Lexer.init("\"hello @{x} world\"");
+    var tokens = try lex.tokenize(std.testing.allocator);
+    defer tokens.deinit(std.testing.allocator);
+    var kinds = try collectKinds(tokens.items, std.testing.allocator);
+    defer kinds.deinit(std.testing.allocator);
+    // string_interp_start, string_part("hello "), identifier("x"), string_part(" world"), string_interp_end
+    try std.testing.expectEqual(@as(usize, 5), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.string_interp_start, kinds.items[0]);
+    try std.testing.expectEqual(TokenKind.string_part,         kinds.items[1]);
+    try std.testing.expectEqual(TokenKind.identifier,          kinds.items[2]);
+    try std.testing.expectEqual(TokenKind.string_part,         kinds.items[3]);
+    try std.testing.expectEqual(TokenKind.string_interp_end,   kinds.items[4]);
+}
+
+test "interp - no leading text" {
+    var lex = Lexer.init("\"@{x}\"");
+    var tokens = try lex.tokenize(std.testing.allocator);
+    defer tokens.deinit(std.testing.allocator);
+    var kinds = try collectKinds(tokens.items, std.testing.allocator);
+    defer kinds.deinit(std.testing.allocator);
+    // string_interp_start, identifier("x"), string_interp_end
+    try std.testing.expectEqual(@as(usize, 3), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.string_interp_start, kinds.items[0]);
+    try std.testing.expectEqual(TokenKind.identifier,          kinds.items[1]);
+    try std.testing.expectEqual(TokenKind.string_interp_end,   kinds.items[2]);
+}
+
+test "interp - no trailing text" {
+    var lex = Lexer.init("\"hello @{x}\"");
+    var tokens = try lex.tokenize(std.testing.allocator);
+    defer tokens.deinit(std.testing.allocator);
+    var kinds = try collectKinds(tokens.items, std.testing.allocator);
+    defer kinds.deinit(std.testing.allocator);
+    // string_interp_start, string_part("hello "), identifier("x"), string_interp_end
+    try std.testing.expectEqual(@as(usize, 4), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.string_interp_start, kinds.items[0]);
+    try std.testing.expectEqual(TokenKind.string_part,         kinds.items[1]);
+    try std.testing.expectEqual(TokenKind.identifier,          kinds.items[2]);
+    try std.testing.expectEqual(TokenKind.string_interp_end,   kinds.items[3]);
+}
+
+test "interp - multiple interpolations" {
+    var lex = Lexer.init("\"@{x} @{y}\"");
+    var tokens = try lex.tokenize(std.testing.allocator);
+    defer tokens.deinit(std.testing.allocator);
+    var kinds = try collectKinds(tokens.items, std.testing.allocator);
+    defer kinds.deinit(std.testing.allocator);
+    // string_interp_start, identifier("x"), string_part(" "), identifier("y"), string_interp_end
+    try std.testing.expectEqual(@as(usize, 5), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.string_interp_start, kinds.items[0]);
+    try std.testing.expectEqual(TokenKind.identifier,          kinds.items[1]);
+    try std.testing.expectEqual(TokenKind.string_part,         kinds.items[2]);
+    try std.testing.expectEqual(TokenKind.identifier,          kinds.items[3]);
+    try std.testing.expectEqual(TokenKind.string_interp_end,   kinds.items[4]);
+}
+
+test "interp - expression with operators" {
+    var lex = Lexer.init("\"@{a + 1}\"");
+    var tokens = try lex.tokenize(std.testing.allocator);
+    defer tokens.deinit(std.testing.allocator);
+    var kinds = try collectKinds(tokens.items, std.testing.allocator);
+    defer kinds.deinit(std.testing.allocator);
+    // string_interp_start, identifier("a"), plus, int_literal("1"), string_interp_end
+    try std.testing.expectEqual(@as(usize, 5), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.string_interp_start, kinds.items[0]);
+    try std.testing.expectEqual(TokenKind.identifier,          kinds.items[1]);
+    try std.testing.expectEqual(TokenKind.plus,                kinds.items[2]);
+    try std.testing.expectEqual(TokenKind.int_literal,         kinds.items[3]);
+    try std.testing.expectEqual(TokenKind.string_interp_end,   kinds.items[4]);
+}
+
+test "interp - nested braces in expression" {
+    // @{foo({})} — the inner {} must not close the @{ early
+    var lex = Lexer.init("\"@{foo({})}\"");
+    var tokens = try lex.tokenize(std.testing.allocator);
+    defer tokens.deinit(std.testing.allocator);
+    var kinds = try collectKinds(tokens.items, std.testing.allocator);
+    defer kinds.deinit(std.testing.allocator);
+    // string_interp_start, identifier, lparen, lbrace, rbrace, rparen, string_interp_end
+    try std.testing.expectEqual(@as(usize, 7), kinds.items.len);
+    try std.testing.expectEqual(TokenKind.string_interp_start, kinds.items[0]);
+    try std.testing.expectEqual(TokenKind.identifier,          kinds.items[1]);
+    try std.testing.expectEqual(TokenKind.lparen,              kinds.items[2]);
+    try std.testing.expectEqual(TokenKind.lbrace,              kinds.items[3]);
+    try std.testing.expectEqual(TokenKind.rbrace,              kinds.items[4]);
+    try std.testing.expectEqual(TokenKind.rparen,              kinds.items[5]);
+    try std.testing.expectEqual(TokenKind.string_interp_end,   kinds.items[6]);
+}
+
+test "interp - unclosed @{ error recovery" {
+    // An unclosed @{ must produce string_interp_end (no hang/panic).
+    // After error recovery, the unconsumed " is lexed as a string_literal in .normal mode.
+    var lex = Lexer.init("\"@{x\"");
+    var tokens = try lex.tokenize(std.testing.allocator);
+    defer tokens.deinit(std.testing.allocator);
+    var kinds = try collectKinds(tokens.items, std.testing.allocator);
+    defer kinds.deinit(std.testing.allocator);
+    // Must contain string_interp_end; exact prefix may vary
+    try std.testing.expect(kinds.items.len >= 1);
+    // Check that string_interp_end appears in the stream (error recovery was triggered)
+    var found_interp_end = false;
+    for (kinds.items) |kind| {
+        if (kind == .string_interp_end) {
+            found_interp_end = true;
+            break;
+        }
+    }
+    try std.testing.expect(found_interp_end);
 }

@@ -1,6 +1,66 @@
 # Build System & CLI
 
-Fully integrated into the compiler. No build files ever.
+Fully integrated into the compiler. The only required project file is `orhon.project`.
+
+---
+
+## `orhon.project` — Project Manifest
+
+Every Orhon project has a single `orhon.project` file at the project root (next to `src/`).
+It uses the same `#key = value` syntax familiar from `.orh` metadata.
+
+### Single-target project (most common)
+
+```
+// orhon.project
+#name    = mygame
+#version = (1, 0, 0)
+#build   = exe
+```
+
+### Multi-target project
+
+```
+// orhon.project
+#name    = mygame
+#version = (1, 0, 0)
+
+#target game
+#build = exe
+
+#target game_server
+#build = exe
+```
+
+### Keys
+
+| Key | Scope | Values | Required |
+|-----|-------|--------|----------|
+| `#name` | Project-level | identifier | Yes |
+| `#version` | Project-level | `(major, minor, patch)` | No |
+| `#build` | Target-level | `exe`, `static`, `dynamic` | Yes |
+| `#target` | Section header | identifier | Only for multi-target |
+
+### Rules
+
+- `#name` and `#version` must appear before any `#target` section.
+- A top-level `#build` with no `#target` sections names the single target after `#name`.
+- `//` comments and blank lines are ignored.
+- Unknown keys are hard errors (`E1014`).
+- `#build` and `#version` in `.orh` source files are hard errors (`E1013`) — they belong in `orhon.project` only.
+- `#description` remains valid in `.orh` files — it is per-module documentation.
+
+### Error codes
+
+| Code | Trigger |
+|------|---------|
+| `E1012` | `orhon.project` not found at project root |
+| `E1013` | `#build` or `#version` found in a `.orh` source file |
+| `E1014` | Unknown key in `orhon.project` |
+
+`orhon init` creates `orhon.project` automatically with `#name`, `#version`, and `#build = exe`.
+
+---
 
 ```
 orhon build                          // debug build, native platform

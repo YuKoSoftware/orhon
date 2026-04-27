@@ -26,6 +26,14 @@ else
     fail "orhon <unknown> exits non-zero"
 fi
 
+cd "$TESTDIR" && "$ORHON" init flagtest_proj >/dev/null 2>&1 && cd flagtest_proj
+if ! "$ORHON" build -unknownflag 2>/dev/null; then
+    pass "orhon build <unknown flag> exits non-zero"
+else
+    fail "orhon build <unknown flag> exits non-zero"
+fi
+cd "$TESTDIR"
+
 cd "$TESTDIR" && mkdir -p inplace_test && cd inplace_test
 if "$ORHON" init >/dev/null 2>&1 && [ -f src/inplace_test.orh ]; then
     pass "orhon init (no name) inits in current dir"

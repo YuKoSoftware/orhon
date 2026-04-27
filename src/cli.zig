@@ -66,6 +66,84 @@ pub const OptLevel = enum {
     small,
 };
 
+// ============================================================
+// COMMAND + FLAG TABLE
+// ============================================================
+
+pub const FlagEffect = union(enum) {
+    set_verbose,
+    set_fast,
+    set_small,
+    set_werror,
+    set_gen_api,
+    set_gen_std,
+    set_gen_syntax,
+    set_diag_format,   // takes_value=true
+    set_color,         // takes_value=true
+    set_line_length,   // takes_value=true
+    append_target: BuildTarget,
+};
+
+pub const FlagSpec = struct {
+    name: []const u8,
+    takes_value: bool,
+    help: []const u8,
+    effect: FlagEffect,
+};
+
+pub const CommandSpec = struct {
+    cmd: Command,
+    description: []const u8,
+    positional: ?[]const u8,
+    flags: []const FlagSpec,
+};
+
+// --- Shared flag constants ---
+const flag_verbose     = FlagSpec{ .name = "-verbose",     .takes_value = false, .help = "Show raw Zig compiler output",            .effect = .set_verbose };
+const flag_fast        = FlagSpec{ .name = "-fast",        .takes_value = false, .help = "Maximum speed optimization",              .effect = .set_fast };
+const flag_small       = FlagSpec{ .name = "-small",       .takes_value = false, .help = "Minimum binary size optimization",        .effect = .set_small };
+const flag_werror      = FlagSpec{ .name = "-werror",      .takes_value = false, .help = "Treat all warnings as errors",            .effect = .set_werror };
+const flag_diag_format = FlagSpec{ .name = "-diag-format", .takes_value = true,  .help = "Diagnostic format: human, json, short",  .effect = .set_diag_format };
+const flag_color       = FlagSpec{ .name = "-color",       .takes_value = true,  .help = "Color output: auto, always, never",      .effect = .set_color };
+const flag_line_length = FlagSpec{ .name = "-line-length", .takes_value = true,  .help = "Max line length (default: 100)",         .effect = .set_line_length };
+const flag_gen_api     = FlagSpec{ .name = "-api",         .takes_value = false, .help = "Generate project API docs only",         .effect = .set_gen_api };
+const flag_gen_std     = FlagSpec{ .name = "-std",         .takes_value = false, .help = "Generate stdlib reference only",         .effect = .set_gen_std };
+const flag_gen_syntax  = FlagSpec{ .name = "-syntax",      .takes_value = false, .help = "Generate syntax reference only",        .effect = .set_gen_syntax };
+
+const flag_linux_x64 = FlagSpec{ .name = "-linux_x64", .takes_value = false, .help = "Linux x86-64",              .effect = .{ .append_target = .linux_x64 } };
+const flag_linux_arm = FlagSpec{ .name = "-linux_arm", .takes_value = false, .help = "Linux ARM64",                .effect = .{ .append_target = .linux_arm } };
+const flag_win_x64   = FlagSpec{ .name = "-win_x64",   .takes_value = false, .help = "Windows x86-64",             .effect = .{ .append_target = .win_x64 } };
+const flag_mac_x64   = FlagSpec{ .name = "-mac_x64",   .takes_value = false, .help = "macOS x86-64",               .effect = .{ .append_target = .mac_x64 } };
+const flag_mac_arm   = FlagSpec{ .name = "-mac_arm",   .takes_value = false, .help = "macOS ARM64 (Apple Silicon)", .effect = .{ .append_target = .mac_arm } };
+const flag_wasm      = FlagSpec{ .name = "-wasm",      .takes_value = false, .help = "WebAssembly",                 .effect = .{ .append_target = .wasm } };
+const flag_zig_emit  = FlagSpec{ .name = "-zig",       .takes_value = false, .help = "Emit Zig source project",    .effect = .{ .append_target = .zig } };
+
+// --- Grouped flag arrays (comptime ++ concatenation) ---
+const output_flags  = [_]FlagSpec{ flag_diag_format, flag_color, flag_werror };
+const compile_flags = [_]FlagSpec{ flag_fast, flag_small, flag_verbose };
+const target_flags  = [_]FlagSpec{ flag_linux_x64, flag_linux_arm, flag_win_x64, flag_mac_x64, flag_mac_arm, flag_wasm, flag_zig_emit };
+
+const build_flags  = target_flags ++ compile_flags ++ output_flags;
+const run_flags    = compile_flags ++ output_flags;   // reused by run, test, debug
+const gendoc_flags = [_]FlagSpec{ flag_gen_api, flag_gen_std, flag_gen_syntax } ++ output_flags;
+const fmt_flags    = [_]FlagSpec{ flag_line_length } ++ output_flags;
+
+pub const command_table = [_]CommandSpec{
+    .{ .cmd = .build,     .description = "Compile the project in the current directory",                    .positional = null,     .flags = &build_flags },
+    .{ .cmd = .run,       .description = "Build and immediately execute the binary",                        .positional = null,     .flags = &run_flags },
+    .{ .cmd = .@"test",   .description = "Run all test { } blocks in the project",                         .positional = null,     .flags = &run_flags },
+    .{ .cmd = .init,      .description = "Create a new project (in ./<name>/ or current dir if omitted)",  .positional = "[name]", .flags = &output_flags },
+    .{ .cmd = .fmt,       .description = "Format all .orh files in the project",                           .positional = null,     .flags = &fmt_flags },
+    .{ .cmd = .gendoc,    .description = "Generate documentation",                                         .positional = null,     .flags = &gendoc_flags },
+    .{ .cmd = .lsp,       .description = "Start the language server",                                      .positional = null,     .flags = &output_flags },
+    .{ .cmd = .addtopath, .description = "Add orhon to your shell PATH",                                   .positional = null,     .flags = &output_flags },
+    .{ .cmd = .debug,     .description = "Show project info — modules, files, source directory",            .positional = null,     .flags = &run_flags },
+    .{ .cmd = .analysis,  .description = "Run PEG grammar validation on a single .orh file",               .positional = "<file>", .flags = &output_flags },
+    .{ .cmd = .version,   .description = "Print the compiler version",                                     .positional = null,     .flags = &output_flags },
+    .{ .cmd = .which,     .description = "Print the path to the orhon executable",                         .positional = null,     .flags = &output_flags },
+    .{ .cmd = .help,      .description = "Show this help message",                                         .positional = null,     .flags = &output_flags },
+};
+
 pub const CliArgs = struct {
     command: Command,
     targets: std.ArrayListUnmanaged(BuildTarget),
@@ -94,6 +172,43 @@ pub const CliArgs = struct {
 // CLI PARSING
 // ============================================================
 
+fn applyFlag(effect: FlagEffect, value: []const u8, cli: *CliArgs, allocator: std.mem.Allocator) !void {
+    switch (effect) {
+        .set_verbose    => cli.verbose = true,
+        .set_fast       => cli.optimize = .fast,
+        .set_small      => cli.optimize = .small,
+        .set_werror     => cli.werror = true,
+        .set_gen_api    => cli.gen_api = true,
+        .set_gen_std    => cli.gen_std = true,
+        .set_gen_syntax => cli.gen_syntax = true,
+        .set_diag_format => {
+            if (std.mem.eql(u8, value, "human"))      cli.diag_format = .human
+            else if (std.mem.eql(u8, value, "json"))  cli.diag_format = .json
+            else if (std.mem.eql(u8, value, "short")) cli.diag_format = .short
+            else {
+                std.debug.print("error: invalid value '{s}' for flag '-diag-format' (expected: human, json, short)\n", .{value});
+                std.process.exit(1);
+            }
+        },
+        .set_color => {
+            if (std.mem.eql(u8, value, "auto"))        cli.color_mode = .auto
+            else if (std.mem.eql(u8, value, "always")) cli.color_mode = .always
+            else if (std.mem.eql(u8, value, "never"))  cli.color_mode = .never
+            else {
+                std.debug.print("error: invalid value '{s}' for flag '-color' (expected: auto, always, never)\n", .{value});
+                std.process.exit(1);
+            }
+        },
+        .set_line_length => {
+            cli.line_length = std.fmt.parseInt(u32, value, 10) catch {
+                std.debug.print("error: invalid value '{s}' for flag '-line-length' (expected: non-negative integer)\n", .{value});
+                std.process.exit(1);
+            };
+        },
+        .append_target => |target| try cli.targets.append(allocator, target),
+    }
+}
+
 pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
@@ -103,57 +218,44 @@ pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
         std.process.exit(1);
     }
 
-    var cli = CliArgs{
-        .command = .help,
-        .targets = .{},
-        .optimize = .debug,
-        .verbose = false,
-        .source_dir = "src",
-        .project_name = "",
-        .init_in_place = false,
-        .gen_api = false,
-        .gen_std = false,
-        .gen_syntax = false,
-        .line_length = 100,
-        .diag_format = .human,
-        .color_mode = .auto,
-        .werror = false,
-        .allocator = allocator,
+    // Locate command spec by matching args[1] against @tagName of each Command variant
+    const spec: *const CommandSpec = blk: {
+        for (&command_table) |*s| {
+            if (std.mem.eql(u8, args[1], @tagName(s.cmd))) break :blk s;
+        }
+        std.debug.print("error: unknown command '{s}', run 'orhon help'\n", .{args[1]});
+        std.process.exit(1);
     };
 
-    // Parse command
-    const cmd_map = std.StaticStringMap(Command).initComptime(.{
-        .{ "build", .build },
-        .{ "run", .run },
-        .{ "test", .@"test" },
-        .{ "init", .init },
-        .{ "debug", .debug },
-        .{ "fmt", .fmt },
-        .{ "gendoc", .gendoc },
-        .{ "addtopath", .addtopath },
-        .{ "-addtopath", .addtopath },
-        .{ "version", .version },
-        .{ "--version", .version },
-        .{ "lsp", .lsp },
-        .{ "which", .which },
-        .{ "analysis", .analysis },
-        .{ "help", .help },
-        .{ "--help", .help },
-    });
+    var cli = CliArgs{
+        .command       = spec.cmd,
+        .targets       = .{},
+        .optimize      = .debug,
+        .verbose       = false,
+        .source_dir    = "src",
+        .project_name  = "",
+        .init_in_place = false,
+        .gen_api       = false,
+        .gen_std       = false,
+        .gen_syntax    = false,
+        .line_length   = 100,
+        .diag_format   = .human,
+        .color_mode    = .auto,
+        .werror        = false,
+        .allocator     = allocator,
+    };
 
-    const cmd_str = args[1];
-    if (cmd_map.get(cmd_str)) |cmd| {
-        cli.command = cmd;
-    } else {
-        printUsage();
-        std.process.exit(1);
-    }
-
-    // Handle positional arguments for commands that take them
-    if (cli.command == .init) {
-        if (args.len >= 3) {
-            cli.project_name = try allocator.dupe(u8, args[2]);
-        } else {
+    // Consume positional argument if declared for this command
+    var flags_start: usize = 2;
+    if (spec.positional != null) {
+        if (args.len >= 3 and !std.mem.startsWith(u8, args[2], "-")) {
+            switch (spec.cmd) {
+                .init     => cli.project_name = try allocator.dupe(u8, args[2]),
+                .analysis => cli.source_dir   = try allocator.dupe(u8, args[2]),
+                else      => {},
+            }
+            flags_start = 3;
+        } else if (spec.cmd == .init) {
             cli.init_in_place = true;
             const cwd_path = try std.process.getCwdAlloc(allocator);
             defer allocator.free(cwd_path);
@@ -164,90 +266,31 @@ pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
             }
             cli.project_name = try allocator.dupe(u8, dir_name);
         }
-    } else if (cli.command == .analysis) {
-        if (args.len >= 3) {
-            cli.source_dir = try allocator.dupe(u8, args[2]);
-        }
     }
 
-    // Parse flags — start past any positional arg consumed above
-    const flags_start: usize = switch (cli.command) {
-        .init, .analysis => 3,
-        else => 2,
-    };
+    // Parse flags via command's flag table
     var i: usize = flags_start;
-    while (i < args.len) : (i += 1) {
+    while (i < args.len) {
         const arg = args[i];
-        const target_map = std.StaticStringMap(BuildTarget).initComptime(.{
-            .{ "-linux_x64", .linux_x64 },
-            .{ "-linux_arm", .linux_arm },
-            .{ "-win_x64", .win_x64 },
-            .{ "-mac_x64", .mac_x64 },
-            .{ "-mac_arm", .mac_arm },
-            .{ "-wasm", .wasm },
-            .{ "-zig", .zig },
-        });
-
-        if (target_map.get(arg)) |target| {
-            if (cli.command != .build) {
-                std.debug.print("warning: target flag '{s}' ignored (only valid with 'build')\n", .{arg});
-                continue;
+        const flag_spec: FlagSpec = blk: {
+            for (spec.flags) |f| {
+                if (std.mem.eql(u8, arg, f.name)) break :blk f;
             }
-            try cli.targets.append(allocator, target);
-        } else if (std.mem.eql(u8, arg, "-fast")) {
-            cli.optimize = .fast;
-        } else if (std.mem.eql(u8, arg, "-small")) {
-            cli.optimize = .small;
-        } else if (std.mem.eql(u8, arg, "-verbose")) {
-            cli.verbose = true;
-        } else if (std.mem.eql(u8, arg, "-api")) {
-            cli.gen_api = true;
-        } else if (std.mem.eql(u8, arg, "-std")) {
-            cli.gen_std = true;
-        } else if (std.mem.eql(u8, arg, "-syntax")) {
-            cli.gen_syntax = true;
-        } else if (std.mem.startsWith(u8, arg, "--line-length=")) {
-            const val = arg["--line-length=".len..];
-            cli.line_length = std.fmt.parseInt(u32, val, 10) catch {
-                std.debug.print("warning: invalid --line-length value '{s}', using default 100\n", .{val});
-                continue;
-            };
-        } else if (std.mem.eql(u8, arg, "--line-length")) {
-            i += 1;
-            if (i < args.len) {
-                cli.line_length = std.fmt.parseInt(u32, args[i], 10) catch {
-                    std.debug.print("warning: invalid --line-length value '{s}', using default 100\n", .{args[i]});
-                    continue;
-                };
-            }
-        } else if (std.mem.startsWith(u8, arg, "--diag-format=")) {
-            const val = arg["--diag-format=".len..];
-            if (std.mem.eql(u8, val, "human")) {
-                cli.diag_format = .human;
-            } else if (std.mem.eql(u8, val, "json")) {
-                cli.diag_format = .json;
-            } else if (std.mem.eql(u8, val, "short")) {
-                cli.diag_format = .short;
-            } else {
-                std.debug.print("warning: unknown --diag-format value '{s}', using default 'human'\n", .{val});
-            }
-        } else if (std.mem.startsWith(u8, arg, "--color=")) {
-            const val = arg["--color=".len..];
-            if (std.mem.eql(u8, val, "auto")) {
-                cli.color_mode = .auto;
-            } else if (std.mem.eql(u8, val, "always")) {
-                cli.color_mode = .always;
-            } else if (std.mem.eql(u8, val, "never")) {
-                cli.color_mode = .never;
-            } else {
-                std.debug.print("warning: unknown --color value '{s}', using default 'auto'\n", .{val});
-            }
-        } else if (std.mem.eql(u8, arg, "-Werror")) {
-            cli.werror = true;
-        } else {
-            std.debug.print("error: unknown argument '{s}'\n", .{arg});
+            std.debug.print("error: unknown flag '{s}' for command '{s}'\n", .{ arg, @tagName(spec.cmd) });
             std.process.exit(1);
+        };
+
+        if (flag_spec.takes_value) {
+            i += 1;
+            if (i >= args.len) {
+                std.debug.print("error: flag '{s}' requires a value\n", .{arg});
+                std.process.exit(1);
+            }
+            try applyFlag(flag_spec.effect, args[i], &cli, allocator);
+        } else {
+            try applyFlag(flag_spec.effect, "", &cli, allocator);
         }
+        i += 1;
     }
 
     return cli;
@@ -273,6 +316,7 @@ pub fn printHelp() void {
         \\  test                Run all test { } blocks in the project
         \\  init [name]         Create a new project (in ./<name>/ or current dir if no name)
         \\  fmt                 Format all .orh files in the project
+        \\                        -line-length <n>  Max line length (default: 100)
         \\  gendoc              Generate all docs (api + std + syntax)
         \\                        -api     Project API docs only (docs/api/)
         \\                        -std     Stdlib reference only (docs/std/)
@@ -298,9 +342,9 @@ pub fn printHelp() void {
         \\  -verbose            Show raw Zig compiler output
         \\
         \\Output flags:
-        \\  --diag-format=      Diagnostic format: human (default), json, short
-        \\  --color=            Color output: auto (default), always, never
-        \\  -Werror             Treat all warnings as errors
+        \\  -diag-format <val>  Diagnostic format: human (default), json, short
+        \\  -color <val>        Color output: auto (default), always, never
+        \\  -werror             Treat all warnings as errors
         \\
     ;
     std.debug.print("{s}", .{help});
@@ -338,4 +382,100 @@ test "cli - folderName" {
     try std.testing.expectEqualStrings("mac_arm", BuildTarget.mac_arm.folderName());
     try std.testing.expectEqualStrings("wasm", BuildTarget.wasm.folderName());
     try std.testing.expectEqualStrings("zig", BuildTarget.zig.folderName());
+}
+
+fn testCli() CliArgs {
+    return .{
+        .command       = .help,
+        .targets       = .{},
+        .optimize      = .debug,
+        .verbose       = false,
+        .source_dir    = "src",
+        .project_name  = "",
+        .init_in_place = false,
+        .gen_api       = false,
+        .gen_std       = false,
+        .gen_syntax    = false,
+        .line_length   = 100,
+        .diag_format   = .human,
+        .color_mode    = .auto,
+        .werror        = false,
+        .allocator     = std.testing.allocator,
+    };
+}
+
+test "applyFlag - bool effects" {
+    var cli = testCli();
+    defer cli.deinit();
+
+    try applyFlag(.set_verbose, "", &cli, std.testing.allocator);
+    try std.testing.expect(cli.verbose);
+
+    try applyFlag(.set_fast, "", &cli, std.testing.allocator);
+    try std.testing.expectEqual(OptLevel.fast, cli.optimize);
+
+    try applyFlag(.set_small, "", &cli, std.testing.allocator);
+    try std.testing.expectEqual(OptLevel.small, cli.optimize);
+
+    try applyFlag(.set_werror, "", &cli, std.testing.allocator);
+    try std.testing.expect(cli.werror);
+
+    try applyFlag(.set_gen_api, "", &cli, std.testing.allocator);
+    try std.testing.expect(cli.gen_api);
+
+    try applyFlag(.set_gen_std, "", &cli, std.testing.allocator);
+    try std.testing.expect(cli.gen_std);
+
+    try applyFlag(.set_gen_syntax, "", &cli, std.testing.allocator);
+    try std.testing.expect(cli.gen_syntax);
+}
+
+test "applyFlag - diag_format" {
+    var cli = testCli();
+    defer cli.deinit();
+
+    try applyFlag(.set_diag_format, "json", &cli, std.testing.allocator);
+    try std.testing.expectEqual(errors_mod.DiagFormat.json, cli.diag_format);
+
+    try applyFlag(.set_diag_format, "short", &cli, std.testing.allocator);
+    try std.testing.expectEqual(errors_mod.DiagFormat.short, cli.diag_format);
+
+    try applyFlag(.set_diag_format, "human", &cli, std.testing.allocator);
+    try std.testing.expectEqual(errors_mod.DiagFormat.human, cli.diag_format);
+}
+
+test "applyFlag - color" {
+    var cli = testCli();
+    defer cli.deinit();
+
+    try applyFlag(.set_color, "always", &cli, std.testing.allocator);
+    try std.testing.expectEqual(errors_mod.ColorMode.always, cli.color_mode);
+
+    try applyFlag(.set_color, "never", &cli, std.testing.allocator);
+    try std.testing.expectEqual(errors_mod.ColorMode.never, cli.color_mode);
+
+    try applyFlag(.set_color, "auto", &cli, std.testing.allocator);
+    try std.testing.expectEqual(errors_mod.ColorMode.auto, cli.color_mode);
+}
+
+test "applyFlag - line_length" {
+    var cli = testCli();
+    defer cli.deinit();
+
+    try applyFlag(.set_line_length, "80", &cli, std.testing.allocator);
+    try std.testing.expectEqual(@as(u32, 80), cli.line_length);
+
+    try applyFlag(.set_line_length, "0", &cli, std.testing.allocator);
+    try std.testing.expectEqual(@as(u32, 0), cli.line_length);
+}
+
+test "applyFlag - append_target" {
+    var cli = testCli();
+    defer cli.deinit();
+
+    try applyFlag(.{ .append_target = .linux_x64 }, "", &cli, std.testing.allocator);
+    try applyFlag(.{ .append_target = .wasm }, "", &cli, std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 2), cli.targets.items.len);
+    try std.testing.expectEqual(BuildTarget.linux_x64, cli.targets.items[0]);
+    try std.testing.expectEqual(BuildTarget.wasm, cli.targets.items[1]);
 }

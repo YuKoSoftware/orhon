@@ -247,6 +247,13 @@ fn runFixture(orhon_path: []const u8, fixture_path: []const u8, gpa: std.mem.All
     defer dest.close();
     try dest.writeAll(content);
 
+    // Write orhon.project so the compiler finds the manifest
+    const manifest_path = try std.fmt.allocPrint(alloc, "{s}/orhon.project", .{project_path});
+    const mf = try std.fs.createFileAbsolute(manifest_path, .{});
+    defer mf.close();
+    const manifest_content = try std.fmt.allocPrint(alloc, "#name  = {s}\n#build = exe\n", .{module_name});
+    try mf.writeAll(manifest_content);
+
     // Spawn orhon build --diag-format=json
     const child_args = &[_][]const u8{ orhon_path, "build", "--diag-format=json" };
     var child = std.process.Child.init(child_args, alloc);
@@ -301,6 +308,13 @@ fn runFixtureSidecar(
     const dest = try std.fs.createFileAbsolute(dest_file, .{});
     defer dest.close();
     try dest.writeAll(content);
+
+    // Write orhon.project so the compiler finds the manifest
+    const manifest_path = try std.fmt.allocPrint(alloc, "{s}/orhon.project", .{project_path});
+    const mf = try std.fs.createFileAbsolute(manifest_path, .{});
+    defer mf.close();
+    const manifest_content = try std.fmt.allocPrint(alloc, "#name  = {s}\n#build = exe\n", .{module_name});
+    try mf.writeAll(manifest_content);
 
     const child_args = &[_][]const u8{ orhon_path, "build", "--diag-format=json" };
     var child = std.process.Child.init(child_args, alloc);

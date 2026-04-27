@@ -185,7 +185,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 - [x] **T7** 🟡 **Top-level `main()` ICE handler** [F24] — done v0.53.14, 2026-04-25 — `writeIceMessage` in `errors.zig`; pipeline `else` branch now prints "internal compiler error: {err}" + report URL + exits 70 instead of leaking Zig stack traces.
 
-> **Session bookmark** (v0.53.38, 2026-04-27). X7 done — per-command help. Phase 4 complete. ⬅ **RESUME HERE: Phase 5 (I1)**.
+> **Session bookmark** (v0.53.39, 2026-04-27). I1 done — lexer interp tokenization. ⬅ **RESUME HERE: Phase 5 (I2)**.
 
 ### Sub-project 2b — Test runner rewrite
 
@@ -244,7 +244,7 @@ one token, so the builder extracts expression text with a raw `}` scan and store
 requires threading the full token stream through `@{...}`. Codegen (P7) is already ready.
 **Internal ordering:** I1 → I2 → I3 → I4 → I5 (sequential dependency chain).
 
-- [ ] **I1** 🟠 **Lexer: sub-expression tokenization inside string literals** — `src/lexer.zig`. Currently `STRING_LITERAL` is one token swallowing `@{...}` raw. Change: when scanning a string, `@{` starts a sub-expression mode — track brace depth, tokenize content as normal code until the matching `}`, then resume string scan. Emit interleaved token types: `string_part` (literal text segments) + normal expression tokens + `string_interp_end`. Must handle balanced braces (`@{arr[i]}`, `@{f(a, b)}`).
+- [x] **I1** 🟠 **Lexer: sub-expression tokenization inside string literals** — done v0.53.39, 2026-04-27 — stateful `LexerMode` state machine (`.normal`/`.string_body`/`.string_interp{depth}`); `string_part`/`string_interp_start`/`string_interp_end` token kinds; `containsInterpolation()` fast-path check; `lexStringBody()`/`nextInInterp()` helpers; grammar rule `string_literal` extended with `STRING_INTERP_START (!STRING_INTERP_END .)* STRING_INTERP_END`; token_map updated; builder dispatches to I3 placeholder; 8 unit tests; 392/392 tests passing.
 - [ ] **I2** 🟡 **Grammar: update `string_literal` rule for interleaved tokens** — `src/peg/orhon.peg`. Replace `STRING_LITERAL` with a rule that matches `string_part* (@{ expr } string_part*)* string_end` using the new token types from I1.
 - [ ] **I3** 🟡 **PEG builder: emit real AST expression nodes from `buildStringLiteral`** — `src/peg/builder_exprs.zig`. Replace the raw-text scan + `.identifier = expr_text` with reads of the new token stream; call `buildNode` on each expression sub-sequence to produce a proper `*Node` per `@{...}` slot.
 - [ ] **I4** 🟡 **MIR builder: lower arbitrary expression parts in interpolation** — `src/mir_builder_exprs.zig`. Interpolation parts are currently lowered as name lookups. With real AST nodes from I3, call `lowerNode` on each part expression instead — arbitrary expressions fold in naturally; type_class inference for format specifier selection (`{s}` vs `{}`) needs to handle any expression type.

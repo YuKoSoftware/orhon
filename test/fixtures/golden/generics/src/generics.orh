@@ -1,6 +1,4 @@
 module generics
-#version = (1, 0, 0)
-#build   = static
 
 pub struct Box(T: type) {
     pub value: T

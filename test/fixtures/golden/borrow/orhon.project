@@ -1,0 +1,3 @@
+#name    = borrow
+#version = (1, 0, 0)
+#build   = static

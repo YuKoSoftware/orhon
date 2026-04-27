@@ -1,0 +1,3 @@
+#name    = generics
+#version = (1, 0, 0)
+#build   = static

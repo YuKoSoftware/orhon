@@ -1,6 +1,4 @@
 module slicing
-#version = (1, 0, 0)
-#build   = static
 
 pub func fixed_sum() i32 {
     const arr: [4]i32 = [1, 2, 3, 4]

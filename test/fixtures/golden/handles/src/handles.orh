@@ -1,6 +1,4 @@
 module handles
-#version = (1, 0, 0)
-#build   = static
 
 handle ResourceHandle
 handle ConnectionHandle

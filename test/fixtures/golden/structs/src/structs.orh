@@ -1,6 +1,4 @@
 module structs
-#version = (1, 0, 0)
-#build   = static
 
 blueprint Summable {
     func sum(self: const& Summable) i32

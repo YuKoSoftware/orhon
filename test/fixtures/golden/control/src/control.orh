@@ -1,6 +1,4 @@
 module control
-#version = (1, 0, 0)
-#build   = static
 
 pub func classify(n: i32) str {
     if (n > 0) {

@@ -1,6 +1,4 @@
 module basic
-#version = (1, 0, 0)
-#build   = static
 
 pub func add(a: i32, b: i32) i32 {
     return a + b

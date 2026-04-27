@@ -1,6 +1,4 @@
 module borrow
-#version = (1, 0, 0)
-#build   = static
 
 pub struct Counter {
     pub count: i32

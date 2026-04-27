@@ -1,6 +1,4 @@
 module interpolation
-#version = (1, 0, 0)
-#build   = static
 
 pub func greet(name: str) str {
     return "hello @{name}!"

@@ -1,6 +1,4 @@
 module tuples
-#version = (1, 0, 0)
-#build   = static
 
 const MinMax: type = {min: i32, max: i32}
 const Point2: type = {x: f32, y: f32}

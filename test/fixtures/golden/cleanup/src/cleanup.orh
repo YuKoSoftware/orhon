@@ -1,6 +1,4 @@
 module cleanup
-#version = (1, 0, 0)
-#build   = static
 
 pub func single_defer() i32 {
     var x: i32 = 0

@@ -1,6 +1,4 @@
 module comptime
-#version = (1, 0, 0)
-#build   = static
 
 pub compt func doubled(n: i32) i32 {
     return n * 2

@@ -1,6 +1,4 @@
 module matching
-#version = (1, 0, 0)
-#build   = static
 
 pub enum(u8) Color {
     Red

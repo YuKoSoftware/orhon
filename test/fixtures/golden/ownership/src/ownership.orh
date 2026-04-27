@@ -1,6 +1,4 @@
 module ownership
-#version = (1, 0, 0)
-#build   = static
 
 pub struct Vec2 {
     pub x: f32

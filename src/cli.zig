@@ -239,6 +239,27 @@ pub fn parseArgs(allocator: std.mem.Allocator) !CliArgs {
         std.process.exit(1);
     };
 
+    // orhon <cmd> -help — per-command help (anywhere in remaining args)
+    for (args[2..]) |arg| {
+        if (std.mem.eql(u8, arg, "-help")) {
+            printCommandHelp(spec);
+            std.process.exit(0);
+        }
+    }
+
+    // orhon help <cmd> — per-command help via the help subcommand
+    if (spec.cmd == .help and args.len >= 3 and !std.mem.startsWith(u8, args[2], "-")) {
+        const cmd_name = args[2];
+        for (&command_table) |*s| {
+            if (std.mem.eql(u8, cmd_name, @tagName(s.cmd))) {
+                printCommandHelp(s);
+                std.process.exit(0);
+            }
+        }
+        std.debug.print("error: unknown command '{s}', run 'orhon help'\n", .{cmd_name});
+        std.process.exit(1);
+    }
+
     var cli = CliArgs{
         .command       = spec.cmd,
         .targets       = .{},
@@ -362,8 +383,35 @@ pub fn printHelp() void {
         \\  -color <val>        Color output: auto (default), always, never
         \\  -werror             Treat all warnings as errors
         \\
+        \\Run 'orhon <command> -help' for command-specific help.
+        \\
     ;
     std.debug.print("{s}", .{help});
+}
+
+pub fn printCommandHelp(spec: *const CommandSpec) void {
+    if (spec.positional) |pos| {
+        std.debug.print("Usage: orhon {s} {s} [flags]\n\n", .{ @tagName(spec.cmd), pos });
+    } else if (spec.flags.len > 0) {
+        std.debug.print("Usage: orhon {s} [flags]\n\n", .{@tagName(spec.cmd)});
+    } else {
+        std.debug.print("Usage: orhon {s}\n\n", .{@tagName(spec.cmd)});
+    }
+    std.debug.print("{s}\n", .{spec.description});
+    if (spec.flags.len > 0) {
+        std.debug.print("\nFlags:\n", .{});
+        const col_width = 22; // fits "  -diag-format <val>" (20 chars) + 2 gap
+        const spaces = "                        "; // 24 spaces for padding
+        for (spec.flags) |f| {
+            var buf: [32]u8 = undefined;
+            const col: []const u8 = if (f.takes_value)
+                std.fmt.bufPrint(&buf, "  {s} <val>", .{f.name}) catch unreachable
+            else
+                std.fmt.bufPrint(&buf, "  {s}", .{f.name}) catch unreachable;
+            const pad = if (col.len < col_width) col_width - col.len else 1;
+            std.debug.print("{s}{s}  {s}\n", .{ col, spaces[0..pad], f.help });
+        }
+    }
 }
 
 // ============================================================

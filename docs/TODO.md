@@ -185,7 +185,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 - [x] **T7** 🟡 **Top-level `main()` ICE handler** [F24] — done v0.53.14, 2026-04-25 — `writeIceMessage` in `errors.zig`; pipeline `else` branch now prints "internal compiler error: {err}" + report URL + exits 70 instead of leaking Zig stack traces.
 
-> **Session bookmark** (v0.53.33, 2026-04-27). X2 done — `orhon.project` manifest; `#build`/`#version` removed from `.orh` files. ⬅ **RESUME HERE: Phase 4 (X3/X4/X5/X6/X7)** or **Phase 5 (I1)** — lexer sub-expression tokenization to enable full expressions inside `@{}`.
+> **Session bookmark** (v0.53.34, 2026-04-27). X4 done — `orhon check` semantic-only command. ⬅ **RESUME HERE: Phase 4 (X3/X5/X6/X7)** or **Phase 5 (I1)** — lexer sub-expression tokenization to enable full expressions inside `@{}`.
 
 ### Sub-project 2b — Test runner rewrite
 

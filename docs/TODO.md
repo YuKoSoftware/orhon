@@ -185,7 +185,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 - [x] **T7** 🟡 **Top-level `main()` ICE handler** [F24] — done v0.53.14, 2026-04-25 — `writeIceMessage` in `errors.zig`; pipeline `else` branch now prints "internal compiler error: {err}" + report URL + exits 70 instead of leaking Zig stack traces.
 
-> **Session bookmark** (v0.53.34, 2026-04-27). X4 done — `orhon check` semantic-only command. ⬅ **RESUME HERE: Phase 4 (X3/X5/X6/X7)** or **Phase 5 (I1)** — lexer sub-expression tokenization to enable full expressions inside `@{}`.
+> **Session bookmark** (v0.53.35, 2026-04-27). X3 done — `orhon init -update`. ⬅ **RESUME HERE: Phase 4 (X5/X6/X7)** or **Phase 5 (I1)**.
 
 ### Sub-project 2b — Test runner rewrite
 
@@ -224,7 +224,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 - [x] **X1** 🟠 **Table-driven CLI parser** [H4a / F9] — done v0.53.32, 2026-04-27 — `FlagEffect` tagged-union + `FlagSpec`/`CommandSpec` comptime table; `applyFlag` centralizes all `CliArgs` mutations; `parseArgs` rewritten to ~85 lines. Flags normalized to single-dash space-separated (`-werror`, `-diag-format`, `-color`, `-line-length`). Undocumented `--version`/`--help`/`-addtopath` aliases dropped.
 - [x] **X2** 🟠 **`orhon.project` manifest** [H4b / F10] — done v0.53.33, 2026-04-27 — `src/manifest.zig` with `ProjectManifest`/`ManifestTarget`; single-target (`#build` top-level) and multi-target (`#target name` sections); `#build`/`#version` in `.orh` files are hard errors (E1013); E1012 for missing manifest, E1014 for unknown keys; `orhon init` generates `orhon.project`; all test fixtures migrated (380/380 green).
-- [ ] **X3** 🟡 **`orhon init --update` migration** [F11] — templates are a living language manual but existing projects freeze at install time. Stamp templates with hash/version, `orhon init --update` diffs and refreshes unmodified files only.
+- [x] **X3** 🟡 **`orhon init --update` migration** [F11] — done v0.53.35, 2026-04-27 — stamp file `.orh-cache/init.stamp` written by `orhon init`; `orhon init -update` re-writes all 8 example files when stamp differs from running version; user files never touched; 388/388 green.
 - [x] **X4** 🟡 **`orhon check` command** [F22] — done v0.53.34, 2026-04-27 — passes 1-8 only (no MIR/codegen/Zig invocation); fast path in `compileOne` + early return in `runPipeline`; `runSemanticOnly` in `pipeline_passes.zig`; 380/380 green.
 - [ ] **X5** 🟡 **Safer `addtopath`** [F21] — `src/commands.zig:212-314` edits shell rc files directly with no backup, no `--dry-run`, no Windows handling. Fix: write `<rc>.orhon-backup` before editing, print diff, support `--dry-run`; long-term suggest the user adds the export line themselves.
 - [ ] **X6** 🟡 **Versioning policy doc + CI workflow** — pre-1.0 has no documented breaking-change policy; no `.github/workflows/` or equivalent (releases ship without recorded green run on clean machine). Write `docs/versioning.md`; land a minimal CI config.

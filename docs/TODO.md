@@ -185,7 +185,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 - [x] **T7** 🟡 **Top-level `main()` ICE handler** [F24] — done v0.53.14, 2026-04-25 — `writeIceMessage` in `errors.zig`; pipeline `else` branch now prints "internal compiler error: {err}" + report URL + exits 70 instead of leaking Zig stack traces.
 
-> **Session bookmark** (v0.53.31, 2026-04-26). P7 done — `pre_stmts` replaced with stack-of-frames; codegen ready for full `@{}` expression support. ⬅ **RESUME HERE: Phase 4 (X1)** — table-driven CLI parser (independent); or **Phase 5 (I1)** — lexer sub-expression tokenization to enable full expressions inside `@{}`.
+> **Session bookmark** (v0.53.32, 2026-04-27). X1 done — table-driven CLI parser with `FlagEffect`/`FlagSpec`/`CommandSpec`; flags normalized to single-dash. ⬅ **RESUME HERE: Phase 4 (X2)** — `orhon.zon` project manifest; or **Phase 5 (I1)** — lexer sub-expression tokenization to enable full expressions inside `@{}`.
 
 ### Sub-project 2b — Test runner rewrite
 
@@ -222,7 +222,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 **Blockers:** none. Can run parallel to Phase R (touches entirely different files).
 **Internal ordering:** X1 → X2-X6 in parallel.
 
-- [ ] **X1** 🟠 **Table-driven CLI parser** [H4a / F9] — `src/cli.zig:93-215`. 120-line `while` loop of string compares, mixed flag conventions, source-dir as fall-through positional (`orhon biuld` tries to compile a directory named "biuld"), no per-command help. Fix: per-command struct declaring flags as a comptime array; parser dispatches table-driven. Prerequisite for every new command.
+- [x] **X1** 🟠 **Table-driven CLI parser** [H4a / F9] — done v0.53.32, 2026-04-27 — `FlagEffect` tagged-union + `FlagSpec`/`CommandSpec` comptime table; `applyFlag` centralizes all `CliArgs` mutations; `parseArgs` rewritten to ~85 lines. Flags normalized to single-dash space-separated (`-werror`, `-diag-format`, `-color`, `-line-length`). Undocumented `--version`/`--help`/`-addtopath` aliases dropped.
 - [ ] **X2** 🟠 **`orhon.zon` project manifest** [H4b / F10] — move `#version`/`#build` metadata out of `.orh` files. Holds targets, optimization level, future dependency list, LSP settings. Pre-1.0 is the time to design; post-1.0 every choice is a migration problem.
 - [ ] **X3** 🟡 **`orhon init --update` migration** [F11] — templates are a living language manual but existing projects freeze at install time. Stamp templates with hash/version, `orhon init --update` diffs and refreshes unmodified files only.
 - [ ] **X4** 🟡 **`orhon check` command** [F22] — passes 1-9 only, no MIR/codegen/Zig invocation. Standard in cargo/swift/go. CI speed-up + pre-commit hook material. Already implemented internally for LSP.

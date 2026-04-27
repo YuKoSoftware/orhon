@@ -49,10 +49,22 @@ else
     fail "testproj.orh has 'module testproj'"
 fi
 
-if grep -q '#build   = exe' testproj/src/testproj.orh; then
-    pass "testproj.orh has #build = exe"
+if [ -f testproj/orhon.project ]; then
+    pass "creates orhon.project manifest"
 else
-    fail "testproj.orh has #build = exe"
+    fail "creates orhon.project manifest"
+fi
+
+if grep -q '#build   = exe' testproj/orhon.project; then
+    pass "orhon.project has #build = exe"
+else
+    fail "orhon.project has #build = exe"
+fi
+
+if grep -q '#build' testproj/src/testproj.orh; then
+    fail "testproj.orh should not have #build"
+else
+    pass "testproj.orh has no #build"
 fi
 
 if grep -q "^module example$" testproj/src/example/example.orh; then

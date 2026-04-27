@@ -1,6 +1,4 @@
 module snaptest_errors
-#version = (1, 0, 0)
-#build   = exe
 
 import snap_errors
 

@@ -1,6 +1,4 @@
 module snaptest_control
-#version = (1, 0, 0)
-#build   = exe
 
 import snap_control
 

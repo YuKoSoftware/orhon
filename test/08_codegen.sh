@@ -62,10 +62,9 @@ else fail "main is pub"; fi
 # Build a project with a bare call to a non-void function
 cd "$TESTDIR"
 mkdir -p discardtest/src
+printf '#name  = discardtest\n#build = exe\n' > discardtest/orhon.project
 cat > discardtest/src/discardtest.orh <<'ORHON'
 module discardtest
-#version = (1, 0, 0)
-#build   = exe
 import std::console
 func compute() i32 {
     return 42
@@ -106,6 +105,7 @@ snapshot_test() {
     local name="$1"
     local projdir="$TESTDIR/snaptest_${name}"
     mkdir -p "$projdir/src"
+    printf '#name  = snaptest_%s\n#build = exe\n' "$name" > "$projdir/orhon.project"
     cp "$REPO_DIR/test/snapshots/snap_${name}.orh" "$projdir/src/snap_${name}.orh"
     cp "$REPO_DIR/test/snapshots/snap_${name}_main.orh" "$projdir/src/snaptest_${name}.orh"
     cd "$projdir"

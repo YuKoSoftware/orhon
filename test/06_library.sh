@@ -10,12 +10,11 @@ section "Static library"
 cd "$TESTDIR"
 "$ORHON" init testlib >/dev/null 2>&1 || true
 cd "$TESTDIR/testlib"
+printf '#name = testlib\n#build = static\n' > orhon.project
 
 # Rewrite as static library (func main not allowed in lib modules)
 cat > src/testlib.orh <<'ORHON'
 module testlib
-#version = (1, 0, 0)
-#build   = static
 
 pub func add(a: i32, b: i32) i32 {
     return a + b
@@ -43,7 +42,7 @@ else fail "static: no memory leaks" "$(echo "$OUTPUT" | grep 'error(gpa)')"; fi
 
 section "Dynamic library"
 
-sed -i 's/#build   = static/#build   = dynamic/' src/testlib.orh
+sed -i 's/#build = static/#build = dynamic/' orhon.project
 rm -rf .orh-cache bin
 
 OUTPUT=$("$ORHON" build 2>&1 || true)
@@ -64,10 +63,9 @@ section "Interface file import"
 # Build a minimal library with a pub function
 cd "$TESTDIR"
 mkdir -p ifacelib/src
+printf '#name = ifacelib\n#build = static\n' > ifacelib/orhon.project
 cat > ifacelib/src/ifacelib.orh <<'ORHON'
 module ifacelib
-#version = (1, 0, 0)
-#build   = static
 pub func add(a: i32, b: i32) i32 {
     return a + b
 }
@@ -81,10 +79,9 @@ else fail "iface: library interface generated"; fi
 # Verify the interface file can be parsed by another project
 cd "$TESTDIR"
 mkdir -p ifaceuser/src
+printf '#name = ifaceuser\n#build = exe\n' > ifaceuser/orhon.project
 cat > ifaceuser/src/ifaceuser.orh <<'ORHON'
 module ifaceuser
-#version = (1, 0, 0)
-#build   = exe
 import ifacelib
 func main() void {
 }

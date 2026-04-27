@@ -41,10 +41,9 @@ fi
 # missing anchor file
 cd "$TESTDIR"
 mkdir -p neg_anchor/src
+printf '#name  = neg_anchor\n#build = exe\n' > neg_anchor/orhon.project
 cat > neg_anchor/src/neg_anchor.orh <<'ORHON'
 module neg_anchor
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
 }
 ORHON
@@ -62,8 +61,6 @@ cd "$TESTDIR"
 "$ORHON" init badimport >/dev/null 2>&1
 cat > "$TESTDIR/badimport/src/badimport.orh" <<'ORHON'
 module badimport
-#version = (1, 0, 0)
-#build   = exe
 import nonexistent
 func main() void {
 }
@@ -103,10 +100,9 @@ else fail "missing anchor file error" "$ANCHOR_OUT"; fi
 # use after @splitAt error
 cd "$TESTDIR"
 mkdir -p neg_split/src
+printf '#name  = neg_split\n#build = exe\n' > neg_split/orhon.project
 cat > neg_split/src/neg_split.orh <<'ORHON'
 module neg_split
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
     const arr: [4]i32 = [1, 2, 3, 4]
     const left, right = @splitAt(arr, 2)
@@ -121,10 +117,9 @@ else fail "rejects use after @splitAt" "$NEG_OUT"; fi
 # return type mismatch
 cd "$TESTDIR"
 mkdir -p neg_rettype/src
+printf '#name  = neg_rettype\n#build = exe\n' > neg_rettype/orhon.project
 cat > neg_rettype/src/neg_rettype.orh <<'ORHON'
 module neg_rettype
-#version = (1, 0, 0)
-#build   = exe
 func foo() i32 {
     return "hello"
 }
@@ -139,10 +134,9 @@ else fail "rejects return type mismatch" "$NEG_OUT"; fi
 # non-bool if condition
 cd "$TESTDIR"
 mkdir -p neg_ifcond/src
+printf '#name  = neg_ifcond\n#build = exe\n' > neg_ifcond/orhon.project
 cat > neg_ifcond/src/neg_ifcond.orh <<'ORHON'
 module neg_ifcond
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
     if(42) { }
 }
@@ -155,10 +149,9 @@ else fail "rejects non-bool if condition" "$NEG_OUT"; fi
 # non-bool while condition
 cd "$TESTDIR"
 mkdir -p neg_whilecond/src
+printf '#name  = neg_whilecond\n#build = exe\n' > neg_whilecond/orhon.project
 cat > neg_whilecond/src/neg_whilecond.orh <<'ORHON'
 module neg_whilecond
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
     while(42) { }
 }
@@ -171,10 +164,9 @@ else fail "rejects non-bool while condition" "$NEG_OUT"; fi
 # break outside loop
 cd "$TESTDIR"
 mkdir -p neg_break/src
+printf '#name  = neg_break\n#build = exe\n' > neg_break/orhon.project
 cat > neg_break/src/neg_break.orh <<'ORHON'
 module neg_break
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
     break
 }
@@ -187,10 +179,9 @@ else fail "rejects break outside loop" "$NEG_OUT"; fi
 # continue outside loop
 cd "$TESTDIR"
 mkdir -p neg_continue/src
+printf '#name  = neg_continue\n#build = exe\n' > neg_continue/orhon.project
 cat > neg_continue/src/neg_continue.orh <<'ORHON'
 module neg_continue
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
     continue
 }
@@ -203,10 +194,9 @@ else fail "rejects continue outside loop" "$NEG_OUT"; fi
 # var &T rejected (use &T instead)
 cd "$TESTDIR"
 mkdir -p neg_varref/src
+printf '#name  = neg_varref\n#build = exe\n' > neg_varref/orhon.project
 cat > neg_varref/src/neg_varref.orh <<'ORHON'
 module neg_varref
-#version = (1, 0, 0)
-#build   = exe
 struct Foo {
     x: i32
     func set(self: var &Foo, v: i32) void {
@@ -223,10 +213,9 @@ else fail "rejects var &T (use &T)" "$NEG_OUT"; fi
 # type mismatch on assignment (string to int)
 cd "$TESTDIR"
 mkdir -p neg_typemismatch/src
+printf '#name  = neg_typemismatch\n#build = exe\n' > neg_typemismatch/orhon.project
 cat > neg_typemismatch/src/neg_typemismatch.orh <<'ORHON'
 module neg_typemismatch
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
     var x: i32 = "hello"
 }
@@ -239,10 +228,9 @@ else fail "rejects type mismatch on assignment" "$NEG_OUT"; fi
 # duplicate variable in same scope
 cd "$TESTDIR"
 mkdir -p neg_dupvar/src
+printf '#name  = neg_dupvar\n#build = exe\n' > neg_dupvar/orhon.project
 cat > neg_dupvar/src/neg_dupvar.orh <<'ORHON'
 module neg_dupvar
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
     const x: i32 = 1
     const x: i32 = 2
@@ -256,10 +244,9 @@ else fail "rejects duplicate variable" "$NEG_OUT"; fi
 # default param before required param
 cd "$TESTDIR"
 mkdir -p neg_default_order/src
+printf '#name  = neg_default_order\n#build = exe\n' > neg_default_order/orhon.project
 cat > neg_default_order/src/neg_default_order.orh <<'ORHON'
 module neg_default_order
-#version = (1, 0, 0)
-#build   = exe
 func foo(a: i32 = 5, b: i32) i32 {
     return a + b
 }
@@ -273,10 +260,9 @@ else fail "rejects default before required param" "$NEG_OUT"; fi
 # []u8 → str coercion rejected
 cd "$TESTDIR"
 mkdir -p neg_u8str/src
+printf '#name  = neg_u8str\n#build = exe\n' > neg_u8str/orhon.project
 cat > neg_u8str/src/neg_u8str.orh <<'ORHON'
 module neg_u8str
-#version = (1, 0, 0)
-#build   = exe
 func greet(s: str) void { }
 func main() void {
     var buf: [5]u8 = [104, 101, 108, 108, 111]
@@ -292,10 +278,9 @@ else fail "rejects []u8 as str" "$NEG_OUT"; fi
 # str == error (no magic equality)
 cd "$TESTDIR"
 mkdir -p neg_str_eq/src
+printf '#name  = neg_str_eq\n#build = exe\n' > neg_str_eq/orhon.project
 cat > neg_str_eq/src/neg_str_eq.orh <<'ORHON'
 module neg_str_eq
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
     const a: str = "hello"
     if(a == "hello") { }
@@ -309,10 +294,9 @@ else fail "rejects == on str" "$NEG_OUT"; fi
 # duplicate anchor file
 cd "$TESTDIR"
 mkdir -p neg_dup_anchor/src/sub
+printf '#name  = neg_dup_anchor\n#build = exe\n' > neg_dup_anchor/orhon.project
 cat > neg_dup_anchor/src/neg_dup_anchor.orh <<'ORHON'
 module neg_dup_anchor
-#version = (1, 0, 0)
-#build   = exe
 func main() void { }
 ORHON
 cat > neg_dup_anchor/src/example.orh <<'ORHON'
@@ -335,6 +319,7 @@ run_fixture() {
     local name="$1" fixture="$2" pattern="$3" label="$4"
     cd "$TESTDIR"
     mkdir -p "$name/src"
+    printf '#name  = %s\n#build = exe\n' "$name" > "$name/orhon.project"
     cp "$FIXTURES/$fixture" "$name/src/$name.orh"
     sed -i "1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module $name/" "$name/src/$name.orh"
     cd "$name"
@@ -346,6 +331,7 @@ run_fixture() {
 # old C interop directives rejected (CIMP-04)
 cd "$TESTDIR"
 mkdir -p neg_linkc/src
+printf '#name  = neg_linkc\n#build = exe\n' > neg_linkc/orhon.project
 cp "$FIXTURES/parse/fail_old_linkc.orh" neg_linkc/src/neg_linkc.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_linkc/' neg_linkc/src/neg_linkc.orh
 cd neg_linkc
@@ -361,6 +347,7 @@ fi
 # did you mean suggestion (ERR-01)
 cd "$TESTDIR"
 mkdir -p neg_did_you_mean/src
+printf '#name  = neg_did_you_mean\n#build = exe\n' > neg_did_you_mean/orhon.project
 cp "$FIXTURES/semantic/fail_did_you_mean.orh" neg_did_you_mean/src/neg_did_you_mean.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_did_you_mean/' neg_did_you_mean/src/neg_did_you_mean.orh
 cd neg_did_you_mean
@@ -374,6 +361,7 @@ fi
 # type mismatch display (ERR-02)
 cd "$TESTDIR"
 mkdir -p neg_type_display/src
+printf '#name  = neg_type_display\n#build = exe\n' > neg_type_display/orhon.project
 cp "$FIXTURES/semantic/fail_type_mismatch_display.orh" neg_type_display/src/neg_type_display.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_type_display/' neg_type_display/src/neg_type_display.orh
 cd neg_type_display
@@ -387,6 +375,7 @@ fi
 # ownership fix hint (ERR-03)
 cd "$TESTDIR"
 mkdir -p neg_ownership_hint/src
+printf '#name  = neg_ownership_hint\n#build = exe\n' > neg_ownership_hint/orhon.project
 cp "$FIXTURES/ownership/fail_ownership.orh" neg_ownership_hint/src/neg_ownership_hint.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_ownership_hint/' neg_ownership_hint/src/neg_ownership_hint.orh
 cd neg_ownership_hint
@@ -400,6 +389,7 @@ fi
 # borrow ref hint (ERR-03)
 cd "$TESTDIR"
 mkdir -p neg_borrow_hint/src
+printf '#name  = neg_borrow_hint\n#build = exe\n' > neg_borrow_hint/orhon.project
 cp "$FIXTURES/ownership/fail_borrow.orh" neg_borrow_hint/src/neg_borrow_hint.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_borrow_hint/' neg_borrow_hint/src/neg_borrow_hint.orh
 cd neg_borrow_hint
@@ -413,6 +403,7 @@ fi
 # introspection — wrong argument count / type
 cd "$TESTDIR"
 mkdir -p neg_introspect/src
+printf '#name  = neg_introspect\n#build = exe\n' > neg_introspect/orhon.project
 cp "$FIXTURES/semantic/fail_introspection.orh" neg_introspect/src/neg_introspect.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_introspect/' neg_introspect/src/neg_introspect.orh
 cd neg_introspect
@@ -431,6 +422,7 @@ fi
 # blueprint: missing method
 cd "$TESTDIR"
 mkdir -p neg_bp_missing/src
+printf '#name  = neg_bp_missing\n#build = exe\n' > neg_bp_missing/orhon.project
 cp "$FIXTURES/semantic/fail_blueprint_missing_method.orh" neg_bp_missing/src/neg_bp_missing.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_bp_missing/' neg_bp_missing/src/neg_bp_missing.orh
 cd neg_bp_missing
@@ -444,6 +436,7 @@ fi
 # blueprint: wrong signature
 cd "$TESTDIR"
 mkdir -p neg_bp_sig/src
+printf '#name  = neg_bp_sig\n#build = exe\n' > neg_bp_sig/orhon.project
 cp "$FIXTURES/semantic/fail_blueprint_wrong_sig.orh" neg_bp_sig/src/neg_bp_sig.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_bp_sig/' neg_bp_sig/src/neg_bp_sig.orh
 cd neg_bp_sig
@@ -457,6 +450,7 @@ fi
 # blueprint: unknown blueprint
 cd "$TESTDIR"
 mkdir -p neg_bp_unknown/src
+printf '#name  = neg_bp_unknown\n#build = exe\n' > neg_bp_unknown/orhon.project
 cp "$FIXTURES/semantic/fail_blueprint_unknown.orh" neg_bp_unknown/src/neg_bp_unknown.orh
 sed -i '1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module neg_bp_unknown/' neg_bp_unknown/src/neg_bp_unknown.orh
 cd neg_bp_unknown
@@ -473,10 +467,9 @@ fi
 # module main is reserved — compiler must reject it
 cd "$TESTDIR"
 mkdir -p neg_modmain/src
+printf '#name  = neg_modmain\n#build = exe\n' > neg_modmain/orhon.project
 cat > neg_modmain/src/neg_modmain.orh <<'ORHON'
 module main
-#version = (1, 0, 0)
-#build   = exe
 func main() void { }
 ORHON
 cd neg_modmain
@@ -487,10 +480,9 @@ else fail "rejects module main" "$NEG_OUT"; fi
 # func main() in library module rejected
 cd "$TESTDIR"
 mkdir -p neg_libmain/src
+printf '#name  = neg_libmain\n#build = static\n' > neg_libmain/orhon.project
 cat > neg_libmain/src/neg_libmain.orh <<'ORHON'
 module neg_libmain
-#version = (1, 0, 0)
-#build   = static
 func main() void { }
 ORHON
 cd neg_libmain
@@ -501,11 +493,10 @@ else fail "rejects func main() in library" "$NEG_OUT"; fi
 # #name directive rejected (unknown metadata directive)
 cd "$TESTDIR"
 mkdir -p neg_hashname/src
+printf '#name  = neg_hashname\n#build = exe\n' > neg_hashname/orhon.project
 cat > neg_hashname/src/neg_hashname.orh <<'ORHON'
 module neg_hashname
 #name    = "somename"
-#version = (1, 0, 0)
-#build   = exe
 func main() void { }
 ORHON
 cd neg_hashname
@@ -516,12 +507,11 @@ else fail "rejects #name directive" "$NEG_OUT"; fi
 # circular imports (module A imports B, B imports A)
 cd "$TESTDIR"
 mkdir -p neg_circular/src
+printf '#name  = neg_circular\n#build = exe\n' > neg_circular/orhon.project
 cp "$FIXTURES/module/fail_circular_a.orh" neg_circular/src/circular_a.orh
 cp "$FIXTURES/module/fail_circular_b.orh" neg_circular/src/circular_b.orh
 cat > neg_circular/src/neg_circular.orh <<'ORHON'
 module neg_circular
-#version = (1, 0, 0)
-#build   = exe
 import circular_a
 func main() void { }
 ORHON
@@ -533,10 +523,9 @@ else fail "rejects circular imports" "$NEG_OUT"; fi
 # struct main {} in exe module — main is reserved for func main()
 cd "$TESTDIR"
 mkdir -p neg_structmain/src
+printf '#name  = neg_structmain\n#build = exe\n' > neg_structmain/orhon.project
 cat > neg_structmain/src/neg_structmain.orh <<'ORHON'
 module neg_structmain
-#version = (1, 0, 0)
-#build   = exe
 struct main { x: i32 }
 func entry() void { }
 ORHON
@@ -548,10 +537,9 @@ else fail "rejects struct main in exe module" "$NEG_OUT"; fi
 # module files must be in same directory as anchor
 cd "$TESTDIR"
 mkdir -p neg_moddir/src/sub
+printf '#name  = neg_moddir\n#build = exe\n' > neg_moddir/orhon.project
 cat > neg_moddir/src/neg_moddir.orh <<'ORHON'
 module neg_moddir
-#version = (1, 0, 0)
-#build   = exe
 func main() void { }
 ORHON
 cat > neg_moddir/src/sub/extra.orh <<'ORHON'
@@ -566,10 +554,9 @@ else fail "rejects module files in different directories" "$NEG_OUT"; fi
 # tuple capture on non-struct element type
 cd "$TESTDIR"
 mkdir -p neg_tuple_nonstruct/src
+printf '#name  = neg_tuple_nonstruct\n#build = exe\n' > neg_tuple_nonstruct/orhon.project
 cat > neg_tuple_nonstruct/src/neg_tuple_nonstruct.orh <<'ORHON'
 module neg_tuple_nonstruct
-#version = (1, 0, 0)
-#build   = exe
 func main() void {
     const nums: []i32 = [1, 2, 3]
     for(nums) |a, b| {
@@ -584,10 +571,9 @@ else fail "rejects tuple capture on non-struct element" "$NEG_OUT"; fi
 # tuple capture count mismatch
 cd "$TESTDIR"
 mkdir -p neg_tuple_count/src
+printf '#name  = neg_tuple_count\n#build = exe\n' > neg_tuple_count/orhon.project
 cat > neg_tuple_count/src/neg_tuple_count.orh <<'ORHON'
 module neg_tuple_count
-#version = (1, 0, 0)
-#build   = exe
 struct Pair {
     x: i32
     y: i32
@@ -610,10 +596,9 @@ else fail "rejects tuple capture count mismatch" "$NEG_OUT"; fi
 # cross-module unknown identifier should mention source module
 cd "$TESTDIR"
 mkdir -p neg_cross/src
+printf '#name  = neg_cross\n#build = exe\n' > neg_cross/orhon.project
 cat > neg_cross/src/neg_cross.orh <<'ORHON'
 module neg_cross
-#version = (1, 0, 0)
-#build = exe
 import helper
 
 func main() void {
@@ -635,10 +620,9 @@ else fail "unknown identifier mentions source module" "$NEG_OUT"; fi
 # cross-module unknown type should mention source module
 cd "$TESTDIR"
 mkdir -p neg_cross_type/src
+printf '#name  = neg_cross_type\n#build = exe\n' > neg_cross_type/orhon.project
 cat > neg_cross_type/src/neg_cross_type.orh <<'ORHON'
 module neg_cross_type
-#version = (1, 0, 0)
-#build = exe
 import shapes
 
 func main() void {

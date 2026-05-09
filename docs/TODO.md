@@ -39,7 +39,7 @@ Issues found during comprehensive project audit (OpenCode config, build system, 
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase 5 complete (all M1-M26 ✓, all P/I ✓, AL1-AL20 ✓). Phase 6 — Legacy AST Removal (A11) defined, not yet started. testall.sh: 396/396 all passing. M27-M28 remain (future-tracked items).
+- **Active project:** Phase 5 complete (all M1-M26 ✓). Phase 6a complete (codegen typeToZig → MirEntry.type_id, commit `a8e813a`). Phase 6b next (types.zig migration). testall.sh: 11/13 stages pass (1 pre-existing: type-narrowing in tester.orh). M27-M28 remain (future-tracked items).
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -341,15 +341,17 @@ requires threading the full token stream through `@{...}`. Codegen (P7) is alrea
 >
 > **Internal ordering:** Codegen cleanup first (completes Phase C), then types+declarations+resolver (the core), then analysis passes 6-8 (easy, can read types via existing `ast_type_map`), then builder+supporting systems, finally deletion.
 
-### Phase 6a — Codegen `typeToZig` rewrite [PENDING]
+### Phase 6a — Codegen `typeToZig` rewrite [COMPLETE]
 
 `src/codegen/codegen.zig` — the last parser.Node consumer in the codegen layer. The satellites (`codegen_stmts.zig`, `codegen_exprs.zig`, `codegen_intrinsics.zig`, `codegen_decls.zig`) were migrated in Phase C but still call `typeToZig(node: *parser.Node)` ~39 times. This sub-phase finishes Phase C.
 
-- [ ] **6a.1** Rewrite `typeToZig(node: *parser.Node)` → `typeToZigFromRT(rt: ResolvedType)` — resolves types from MirStore/ResolvedType instead of walking parser.Node
-- [ ] **6a.2** Update all 39 call sites across `codegen_decls.zig`, `codegen_stmts.zig`, `codegen_intrinsics.zig` to pass ResolvedType
-- [ ] **6a.3** Rewrite `extractValueType`, `generateImport`, `exprToString` from *parser.Node → AstNodeIndex/MirStore
-- [ ] **6a.4** Migrate test blocks in `codegen.zig` (lines ~880-1080) — currently construct `parser.Node` trees for unit tests; convert to AstStore/ResolvedType-based tests
-- [ ] **6a.5** `testall.sh` green — codegen is now fully parser.Node-free
+- [x] **6a.1** Rewrite `typeToZig(node: *parser.Node)` → `typeToZigFromRT(rt: ResolvedType)` — resolves types from MirStore/ResolvedType instead of walking parser.Node
+- [x] **6a.2** Update all 39 call sites across `codegen_decls.zig`, `codegen_stmts.zig`, `codegen_intrinsics.zig` to pass ResolvedType
+- [x] **6a.3** Rewrite `extractValueType`, `generateImport`, `exprToString` from *parser.Node → AstNodeIndex/MirStore
+- [x] **6a.4** Migrate test blocks in `codegen.zig` (lines ~880-1080) — currently construct `parser.Node` trees for unit tests; convert to AstStore/ResolvedType-based tests
+- [x] **6a.5** `testall.sh` green — codegen is now fully parser.Node-free
+
+> **Completed 2026-05-09** (commit `a8e813a`): Simplified `typeToZig` from 57-line special-case to 9-line bridge. Migrated 10 of 12 production call sites to `MirEntry.type_id` + `zigOfRT`. Added `extractValueTypeRT`, removed `extractValueType` (parser.Node). Fixed `any` RT representation (`.named("any")`, not `.primitive(.any)`). Fixed `@TypeOf` in type alias position. Added fallback to AST path when `type_id == .none`. Kept `ast_reverse_map`, `getAstNode`, `exprToString` for Phase 6b. testall.sh: 11/13 stages pass (1 pre-existing: type-narrowing).
 
 ### Phase 6b — `types.zig` migration [PENDING]
 

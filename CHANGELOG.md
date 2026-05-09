@@ -5,6 +5,27 @@ All notable changes to the Orhon compiler.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.53.60] — 2026-05-09
+
+### Added
+- M26: Dependency manager considerations documented in `docs/future.md`. Covers design decisions
+  (git vs registry, manifest format, version resolution, lock file, Zig integration), 6-phase
+  implementation plan, and relationship to Zig's package manager.
+
+### Changed
+- Phase 6 — Legacy AST Removal (A11) plan added to TODO.md. Defines 10 sub-phases (6a–6j) to
+  remove the pointer-based `parser.Node` tagged-union AST (~694 references across 20+ files)
+  and complete the migration to index-based SoA storage.
+- TODO.md status updated: Phase 5 marked complete (all M1-M26 done), phase dependency graph
+  updated to include Phase 6.
+
+## [0.53.59] — 2026-05-09
+
+### Changed
+- M21: Stdlib extraction made lazy — stdlib modules now processed from in-memory content
+  (no upfront disk I/O). Pipeline uses `getStdModules()`/`getStdContent()`/`discoverAndConvertEmbedded()`
+  for in-memory processing. `ensureStdFiles()` kept for gendoc compat.
+
 ## [0.53.58] — 2026-05-05
 
 ### Fixed

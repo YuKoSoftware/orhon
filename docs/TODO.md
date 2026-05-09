@@ -39,7 +39,7 @@ Issues found during comprehensive project audit (OpenCode config, build system, 
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase 5 (Medium/Low Cleanup Sweep) — all M items complete (M1-M25), all P/I items complete. E9005 resolved. B7 verified (no live issues). AL1-AL20 low audit sweep complete (2026-05-09). testall.sh: 396/396 all passing. M26-M28 remain (future-tracked items).
+- **Active project:** Phase 5 complete (all M1-M26 ✓, all P/I ✓, AL1-AL20 ✓). Phase 6 — Legacy AST Removal (A11) defined, not yet started. testall.sh: 396/396 all passing. M27-M28 remain (future-tracked items).
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -48,13 +48,14 @@ Issues found during comprehensive project audit (OpenCode config, build system, 
 Phase 0 (correctness) ──┬─> Phase R (rebuild) ──┬─> Phase 1 (semantic)
                         │                       ├─> Phase 2 (diagnostics + testing)
 Phase 4 (CLI + config) ─┘                       ├─> Phase 3 (parallelism + LSP)
-                                                └─> Phase 5 (medium/low sweep — opportunistic)
+                                                ├─> Phase 5 (medium/low sweep) ✓
+                                                └─> Phase 6 (legacy AST removal)
 ```
 
 Phase 0 must precede Phase R — the correctness bugs would be baked into the new storage otherwise.
 Phase 4 can run parallel to Phase R (no overlap with AST/MIR code).
 Phase 1, 2, 3 are all post-rebuild and can overlap, with internal ordering documented below.
-Phase 5 is opportunistic — pick up items as time permits.
+Phase 5 is complete (all cleanup items done). Phase 6 removes the pointer-based parser.Node AST — the last remaining legacy system from pre-rebuild.
 
 ---
 
@@ -270,7 +271,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 No dependencies. Pick up items as time permits, in any order. Grouped by subsystem for scannability.
 
-M15-M25 sweep completed 2026-05-04. E9005 cascade fixed 2026-05-05. M21 completed 2026-05-09 (lazy std_bundle extraction — in-memory processing, no upfront disk I/O). AL1-AL20 low audit sweep complete 2026-05-09. testall.sh at 396/396 all passing. M26-M28 remain (future-tracked).
+Phase 5 complete 2026-05-09 — all 26 M items (M1-M26), all P/I items, audit sweep AL1-AL20, E9005 cascade resolved. testall.sh at 396/396 all passing. M27-M28 remain (future-tracked).
 
 ### String interpolation — full expression support `~2-3 days`
 
@@ -326,9 +327,141 @@ requires threading the full token stream through `@{...}`. Codegen (P7) is alrea
 - [x] **M23** 🟢 **Hide `orhon analysis` from user help** [F18] — `src/cli.zig:243`. Developer-only debugging command listed alongside `build`/`run`/`test`. Move under `orhon -dev analysis` namespace.
 - [x] **M24** 🟢 **Stale doc: `orhon analysis` description** [F19] — `docs/13-build-cli.md:21` says "dump parse tree analysis" but actual command runs PEG grammar validation. Trivial fix.
 - [x] **M25** 🟢 **Clarify testing doc: user `test {}` blocks vs compiler test suite** [F25] — `docs/15-testing.md`. Conflates the two audiences.
-- [ ] **M26** 🟢 **Dependency manager consideration** — not mentioned in `docs/future.md`. Will become urgent once external Orhon packages exist. Ties into X2 (`orhon.zon` manifest).
+- [x] **M26** 🟢 **Dependency manager consideration** — done 2026-05-09. Added comprehensive section to `docs/future.md` covering: design decisions (git vs registry, manifest format, version resolution, lock file, Zig integration), 6-phase implementation plan (manifest expansion → git fetching → module resolution → lock file → CLI commands → registry+publish), and relationship to Zig's package manager.
 - [ ] **M27** 🟢 **Tree-sitter grammar** — listed `medium` in `docs/future.md`. Will become urgent once Orhon hits adoption (Neovim/Helix/Zed users demand it).
 - [ ] **M28** 🟢 **Source mapping `.orh.map`** — mentioned in `docs/future.md` under "debugger integration" and "source mapping" but not tracked. Related to P6.
+
+---
+
+## Phase 6 — Legacy AST Removal (A11) `~3-4 weeks`
+
+> **Status:** not-started. Completes A11 by removing the pointer-based `parser.Node` tagged-union AST (~694 references across 20+ files). Both systems currently run side-by-side with an `ast_conv.zig` bridge. Each sub-phase migrates one pass; `testall.sh` must stay green at every boundary.
+>
+> **Blockers:** none. Can start immediately. Phase 5 items (M26-M28) are orthogonal — they touch packaging/tooling, not the core pipeline.
+>
+> **Internal ordering:** Codegen cleanup first (completes Phase C), then types+declarations+resolver (the core), then analysis passes 6-8 (easy, can read types via existing `ast_type_map`), then builder+supporting systems, finally deletion.
+
+### Phase 6a — Codegen `typeToZig` rewrite [PENDING]
+
+`src/codegen/codegen.zig` — the last parser.Node consumer in the codegen layer. The satellites (`codegen_stmts.zig`, `codegen_exprs.zig`, `codegen_intrinsics.zig`, `codegen_decls.zig`) were migrated in Phase C but still call `typeToZig(node: *parser.Node)` ~39 times. This sub-phase finishes Phase C.
+
+- [ ] **6a.1** Rewrite `typeToZig(node: *parser.Node)` → `typeToZigFromRT(rt: ResolvedType)` — resolves types from MirStore/ResolvedType instead of walking parser.Node
+- [ ] **6a.2** Update all 39 call sites across `codegen_decls.zig`, `codegen_stmts.zig`, `codegen_intrinsics.zig` to pass ResolvedType
+- [ ] **6a.3** Rewrite `extractValueType`, `generateImport`, `exprToString` from *parser.Node → AstNodeIndex/MirStore
+- [ ] **6a.4** Migrate test blocks in `codegen.zig` (lines ~880-1080) — currently construct `parser.Node` trees for unit tests; convert to AstStore/ResolvedType-based tests
+- [ ] **6a.5** `testall.sh` green — codegen is now fully parser.Node-free
+
+### Phase 6b — `types.zig` migration [PENDING]
+
+`src/types.zig` — `resolveTypeNode(node: *parser.Node)` and friends convert parser type nodes to `ResolvedType`. Called from resolver and declarations. Must migrate before the resolver.
+
+- [ ] **6b.1** Add `resolveTypeNodeFromStore(store: *const AstStore, idx: AstNodeIndex)` — new entry point that reads from AstStore
+- [ ] **6b.2** Migrate `resolveUnion`, `findDuplicateUnionMember`, `resolveQualifiedName` to AstNodeIndex
+- [ ] **6b.3** Change `TypeArray.size` from `*parser.Node` to `AstNodeIndex` (or resolve the size eagerly)
+- [ ] **6b.4** Migrate test blocks (~40 lines, lines 655-760) from parser.Node construction to AstStore
+- [ ] **6b.5** `testall.sh` green
+
+### Phase 6c — Declarations migration (pass 4) [PENDING]
+
+`src/declarations.zig` — `DeclCollector.collectTopLevel(node: *parser.Node)` and `FuncSig.param_nodes: []*parser.Node`. Populates DeclTable consumed by resolver.
+
+- [ ] **6c.1** Change `FuncSig.param_nodes` from `[]*parser.Node` → `[]AstNodeIndex`
+- [ ] **6c.2** Rewrite `collectTopLevel` to traverse AstStore via `ast_typed` unpackers instead of switching on `parser.Node`
+- [ ] **6c.3** Migrate `resolveParams`, `resolveSelfParam`, `isTypeAlias` to AstNodeIndex
+- [ ] **6c.4** Migrate `nodeLoc` callers — use AstStore spans
+- [ ] **6c.5** Migrate test blocks (~90 lines)
+- [ ] **6c.6** `testall.sh` green
+
+### Phase 6d — Resolver migration (pass 5) — THE BIG ONE [PENDING]
+
+~210 references across `resolver.zig`, `resolver_exprs.zig`, `resolver_stmts.zig`, `resolver_validation.zig`. The resolver's `ast_type_map` (AstNodeIndex→RT) already exists as a parallel to `type_map` (*parser.Node→RT). This sub-phase makes it the primary.
+
+- [ ] **6d.1** Rewrite `resolveExprInner(node: *parser.Node)` → `resolveExprFromStore(idx: AstNodeIndex)` — switch on `AstKind` via `ast_typed` unpackers instead of `parser.Node` tagged union
+- [ ] **6d.2** Change `type_map` from `AutoHashMap(*parser.Node, RT)` to primary `AutoHashMap(AstNodeIndex, RT)` — remove parser.Node keys
+- [ ] **6d.3** Migrate `resolver_stmts.zig` — `resolveStmt`, `resolveVarDecl`, `resolveAssignment` etc. to AstNodeIndex
+- [ ] **6d.4** Migrate `resolver_validation.zig` — `validateType`, `checkMatchExhaustiveness`, `validateMatchArm`, `checkAssignCompat` to AstNodeIndex
+- [ ] **6d.5** Change `current_func_node: ?*parser.Node` → `AstNodeIndex`
+- [ ] **6d.6** Remove `reverseNode`/`reverseNodeMut`/`mustReverse` bridge methods
+- [ ] **6d.7** Migrate `resolveTypeAnnotationInScope` and `resolveTypeNode` callers to use `6b`'s new API
+- [ ] **6d.8** Migrate test blocks (~200 lines) — the largest test migration
+- [ ] **6d.9** `testall.sh` green
+
+### Phase 6e — Propagation checker migration (pass 8) [PENDING]
+
+`src/propagation.zig` — ~56 refs. Already partially bridged (walks AstStore root, then bridges individual nodes back to *parser.Node). The smallest analysis pass.
+
+- [ ] **6e.1** Replace `checkTopLevel(node: *parser.Node)` → `checkFromStore(idx: AstNodeIndex)` — traverse AstStore via ast_typed
+- [ ] **6e.2** Rewrite `checkNode`/`checkStatement`/`checkExpr` to switch on AstKind
+- [ ] **6e.3** Use `ast_type_map` for type lookups (already populated by resolver)
+- [ ] **6e.4** Migrate test blocks
+- [ ] **6e.5** `testall.sh` green
+
+### Phase 6f — Borrow checker migration (pass 7) [PENDING]
+
+`src/borrow.zig` + `src/borrow_checks.zig` — ~69 refs. Full tree walk via switch on parser.Node variants. No bridge currently exists.
+
+- [ ] **6f.1** Change `BorrowChecker.check(ast: *parser.Node)` → `check(store: *const AstStore, root_idx: AstNodeIndex)`
+- [ ] **6f.2** Rewrite `checkNode`/`checkStatement`/`checkExpr`/`checkExprAccess` to switch on AstKind
+- [ ] **6f.3** Change `current_node: ?*parser.Node` → `current_idx: ?AstNodeIndex`
+- [ ] **6f.4** Rewrite `buildLastUseMap` — currently records stmt indices relative to parser.Node tree; adapt for AstNodeIndex
+- [ ] **6f.5** Use `ast_type_map` for type lookups
+- [ ] **6f.6** Migrate test blocks (~80 lines)
+- [ ] **6f.7** `testall.sh` green
+
+### Phase 6g — Ownership checker migration (pass 6) [PENDING]
+
+`src/ownership.zig` + `src/ownership_checks.zig` — ~101 refs. Same pattern as borrow checker: full tree walk, no bridge.
+
+- [ ] **6g.1** Change `OwnershipChecker.check(ast: *parser.Node)` → `check(store: *const AstStore, root_idx: AstNodeIndex)`
+- [ ] **6g.2** Rewrite `checkNode`/`checkStatement`/`checkExpr` to switch on AstKind
+- [ ] **6g.3** Use `ast_type_map` for type lookups
+- [ ] **6g.4** Migrate test blocks (~120 lines)
+- [ ] **6g.5** `testall.sh` green
+
+### Phase 6h — Builder single output + delete `ast_conv.zig` [PENDING]
+
+The PEG builder (6 files under `src/peg/`) currently produces both `*parser.Node` and `AstStore` via dual output. Once all consumers are migrated, switch to AstStore-only.
+
+- [ ] **6h.1** Remove `*parser.Node` production from `src/peg/builder.zig` — all builder functions return only `AstNodeIndex`
+- [ ] **6h.2** Remove dual-output from `src/peg/builder_decls.zig`, `builder_stmts.zig`, `builder_exprs.zig`, `builder_types.zig`
+- [ ] **6h.3** Delete `src/ast_conv.zig` — the bridge is no longer needed
+- [ ] **6h.4** Remove `reverse_map` from all contexts (`CodeGen`, `SemanticContext`, `TypeResolver`, etc.)
+- [ ] **6h.5** Update `pipeline.zig` — no dual output, only AstStore flows downstream
+- [ ] **6h.6** `testall.sh` green
+
+### Phase 6i — Supporting systems migration [PENDING]
+
+Remaining files with light parser.Node usage.
+
+- [ ] **6i.1** `src/module.zig` — change `Module.ast: ?*parser.Node` → `?AstStore` (or `?AstNodeIndex`); change `resolveNodeLoc` from `*parser.Node` → `AstNodeIndex`
+- [ ] **6i.2** `src/pipeline_passes.zig` — update pass entry point signatures from `ast: *parser.Node` → AstStore
+- [ ] **6i.3** `src/sema.zig` — update `SemanticContext` fields and bridge methods
+- [ ] **6i.4** `src/lsp/lsp_analysis.zig` — migrate `ast: *parser.Node`, `statements: []*parser.Node`
+- [ ] **6i.5** `testall.sh` green — all passes now operate on AstStore
+
+### Phase 6j — Delete legacy system [PENDING]
+
+The final sweep. With all consumers migrated and the builder producing only AstStore, the legacy types can be deleted.
+
+- [ ] **6j.1** Delete `parser.Node` tagged union (line 78-135) from `src/parser.zig`
+- [ ] **6j.2** Delete `NodeKind` enum (line 15-76) from `src/parser.zig`
+- [ ] **6j.3** Delete `LocMap` (line 518+) and all location-mapping code from `src/parser.zig`
+- [ ] **6j.4** Delete all sub-types only used by parser.Node: `Program`, `ModuleDecl`, `FuncDecl`, `StructDecl`, `Block`, `BinaryOp`, `CallExpr`, `IfStmt`, `MatchStmt`, `MatchArm`, `WhileStmt`, `ForStmt`, `VarDecl`, etc. (~30 types)
+- [ ] **6j.5** Delete `Block.hasEarlyExit`, `blockHasEarlyExit` helper
+- [ ] **6j.6** Remove `const parser = @import("parser.zig");` from all files that no longer need it — grep for remaining parser.Node references and eliminate
+- [ ] **6j.7** `testall.sh` green — 396/396 (or better) with zero `parser.Node` references anywhere in `src/`
+- [ ] **6j.8** Update `docs/COMPILER.md` — remove all references to the legacy pointer-based AST; describe the fully index-based pipeline
+- [ ] **6j.9** Update `AGENTS.md` — remove references to dual system, update architecture diagram
+
+---
+
+### Cross-phase invariants for Phase 6
+
+- `./testall.sh` green at every sub-phase boundary
+- `ast_type_map` (AstNodeIndex→RT) already populates in resolver — analysis passes use it for type lookups during migration
+- Builder continues dual output until 6h — no pass loses access to parser.Node before it's migrated
+- Incremental cache format NOT changed (already AstStore-based)
+- No MIR serialization changes
 
 ---
 

@@ -112,3 +112,63 @@ Single biggest adoption accelerator for new languages.
 
 Debug symbol generation, GDB/LLDB line mapping from generated Zig back to `.orh`
 source. See also: source mapping.
+
+### Dependency / Package Manager `medium`
+
+Orhon currently has no way to depend on external packages — all imports resolve to
+local `src/` modules or the embedded stdlib. The `orhon.project` manifest only
+declares project metadata (`#name`, `#version`, `#build`, `#target`). A dependency
+manager will become essential once the Orhon ecosystem exists outside a single
+repository.
+
+**Design decisions (to settle before implementation):**
+
+- **Source of truth — git URLs or registry.** Early adopters can use direct git
+  dependencies (like Go pre-modules or Zig 0.11). A central registry can be added
+  later. The manifest should support both paths. Git is the MVP because it requires
+  zero infrastructure.
+
+- **Manifest format — extend `orhon.project` or create `orhon.zon`.** The existing
+  `#key = value` line format is simple but doesn't nest well for dependency objects
+  (name + version + url). A structured ZON format (matching Zig's `build.zig.zon`)
+  would be more natural for dependency declarations. The TODO file references this
+  as "`orhon.zon` manifest" in M26.
+
+- **Version resolution — minimum version selection (Go) vs. semver solver (Cargo/npm).**
+  MVS is simpler to implement and predict. Semver gives more flexibility but adds
+  complexity. Leaning toward MVS for a systems language.
+
+- **Lock file — `orhon.lock`.** Reproducible builds require pinning exact versions
+  and content hashes. The existing cache infrastructure (`src/cache.zig` — ZON format,
+  schema-versioned, atomic tmp→rename writes) provides a strong pattern to follow.
+
+- **Zig build integration.** Orhon transpiles to Zig and invokes `zig build`. An
+  Orhon package manager must either present fetched packages as Zig packages (via
+  `build.zig.zon` dependencies) or generate a monolithic Zig project. The monolithic
+  approach is simpler but loses incremental cache benefits. Package-as-Zig-dependency
+  requires mapping Orhon's module graph onto Zig's package graph.
+
+**Implementation phases (rough):**
+
+| Phase | Scope | Effort |
+|-------|-------|--------|
+| 1. Manifest expansion | Add `#dep` keys to `orhon.project` (name, url, version). Parse and validate. | Small |
+| 2. Git fetching | `git clone` dependencies into a local cache (`.orh-packages/`). Shallow clones, tag resolution. | Medium |
+| 3. Module resolution | Extend import resolution to search external package paths. Namespace isolation — packages must not shadow project-local modules. | Medium |
+| 4. Lock file | `orhon.lock` with pinned versions + content hashes. Generated on first resolve, checked in. | Small |
+| 5. CLI commands | `orhon add <pkg>`, `orhon remove <pkg>`, `orhon update`. Update `src/cli.zig` `Command` enum. | Small |
+| 6. Registry + publish | Central package registry service. `orhon publish` command. Versioning, ownership, documentation hosting. | Large |
+
+**Relationship to Zig's package manager:**
+Zig 0.15+ has its own package manager via `build.zig.zon` dependencies. Orhon could
+potentially piggyback on it — declare Orhon packages as Zig dependencies, let Zig
+fetch them, then have Orhon's compiler find the fetched sources. However, this
+creates a tight coupling to Zig's toolchain and doesn't handle Orhon-specific
+concerns (semver for Orhon APIs, interface hashing, documentation). A dedicated
+Orhon package manager is recommended for the long term, with the possibility of
+a bridge layer that converts Orhon dependencies into Zig build system dependencies
+under the hood.
+
+**Prerequisites:** None (can be started independently of other compiler work). The
+main dependency is having external Orhon packages to depend on — a chicken-and-egg
+problem that resolves naturally as the ecosystem grows.

@@ -248,18 +248,24 @@ pub fn generateStatementMir(cg: *CodeGen, idx: MirNodeIndex) anyerror!void {
             if (is_const) {
                 const type_ann_node = if (rec.type_annotation != .none) cg.getAstNode(rec.type_annotation) else null;
                 if (codegen.isTypeAlias(type_ann_node)) {
-                    // Type alias RHS: use the resolved type_id from the type_expr MIR node.
+                    // Type alias RHS: resolve the value expression.
+                    // Simple type expressions (type_expr MIR nodes) emit a Zig type name
+                    // directly via zigOfRT. Compiler functions like @typeOf(x) emit the
+                    // full Zig expression via generateExprMir.
                     const val_entry = store.getNode(rec.value);
                     try cg.emitFmt("const {s} = ", .{var_name});
-                    if (val_entry.type_id != .none) {
+                    if (val_entry.tag == .type_expr and val_entry.type_id != .none) {
                         const rt = store.types.get(val_entry.type_id);
                         try cg.emit(try cg.zigOfRT(rt));
-                    } else if (rec.value != .none) {
+                    } else if (val_entry.tag == .type_expr) {
                         // Fallback: walk AST node if type_id was not set
                         const val_ast = cg.getAstNode(val_entry.span) orelse return;
                         try cg.emit(try cg.typeToZig(val_ast));
+                    } else {
+                        // Expression that returns a type (e.g. @typeOf(x), compt func call).
+                        try cg.generateExprMir(rec.value);
                     }
-                    try cg.emit(";");
+                    try cg.emitFmt("; _ = &{s};", .{var_name});
                     return;
                 }
                 try cg.generateStmtDeclMir(idx, "const");
@@ -466,15 +472,19 @@ pub fn generateStmtDeclMir(cg: *CodeGen, idx: MirNodeIndex, decl_keyword: []cons
     const val_idx = rec.value;
     const val_entry = store.getNode(val_idx);
     try cg.emitFmt("{s} {s}", .{ decl_keyword, var_name });
-    if (rec.type_annotation != .none) {
-        if (cg.getAstNode(rec.type_annotation)) |ta| {
+    const decl_entry = store.getNode(idx);
+    if (decl_entry.type_id != .none) {
+        const decl_rt = store.types.get(decl_entry.type_id);
+        // Guard: skip unresolved types (shouldn't happen for codegen-reachable decls)
+        if (decl_rt == .unknown or decl_rt == .inferred) {
+            // no-op: no type annotation to emit
+        } else {
             // array_to_slice emits &source which gives *const [N]T — only coerces to []const T.
             const val_coercion = mir_store_mod.coercionFromKind(val_entry.coercion_kind);
-            if (val_coercion != null and std.meta.activeTag(val_coercion.?) == .array_to_slice and ta.* == .type_slice) {
-                const inner = try cg.typeToZig(ta.type_slice);
-                try cg.emitFmt(": []const {s}", .{inner});
+            if (val_coercion != null and std.meta.activeTag(val_coercion.?) == .array_to_slice and decl_rt == .slice) {
+                try cg.emitFmt(": []const {s}", .{try cg.zigOfRT(decl_rt.slice.*)});
             } else {
-                try cg.emitFmt(": {s}", .{try cg.typeToZig(ta)});
+                try cg.emitFmt(": {s}", .{try cg.zigOfRT(decl_rt)});
             }
         }
     }

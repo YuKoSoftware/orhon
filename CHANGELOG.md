@@ -5,6 +5,25 @@ All notable changes to the Orhon compiler.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.53.61] — 2026-05-09
+
+### Changed
+- Phase 6a — codegen `typeToZig` rewrite: migrated from `parser.Node` to `MirEntry.type_id`.
+  - Simplified `typeToZig` from 57-line special-case function to 9-line bridge.
+  - Migrated 10 of 12 production call sites to `MirEntry.type_id` + `zigOfRT`.
+  - 2 call sites (return type, enum backing) use simplified `resolveTypeNode` bridge.
+  - Added `extractValueTypeRT`, removed `extractValueType` parser.Node version.
+  - Added `zigOfRT` tests for array and tuple_named.
+  - Fix: handle `any` ~ `.named("any")` RT representation (not `.primitive`).
+  - Fix: `@TypeOf` in type alias position uses `generateExprMir`, not `typeToZig`.
+  - Fix: param/field fallback to AST path when `type_id == .none`.
+  - Kept `ast_reverse_map`, `getAstNode`, `exprToString` (for Phase 6b).
+
+### Added
+- Phase 6a plan in TODO.md: define 10 sub-phases (6a–6j) to remove pointer-based `parser.Node`
+  tagged-union AST (~694 references across 20+ files) and complete migration to index-based
+  SoA storage.
+
 ## [0.53.60] — 2026-05-09
 
 ### Added
@@ -13,9 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implementation plan, and relationship to Zig's package manager.
 
 ### Changed
-- Phase 6 — Legacy AST Removal (A11) plan added to TODO.md. Defines 10 sub-phases (6a–6j) to
-  remove the pointer-based `parser.Node` tagged-union AST (~694 references across 20+ files)
-  and complete the migration to index-based SoA storage.
+- Phase 6 plan in TODO.md: define 10 sub-phases (6a–6j) to remove the pointer-based `parser.Node`
+  tagged-union AST (~694 references across 20+ files) and complete the migration to index-based
+  SoA storage.
 - TODO.md status updated: Phase 5 marked complete (all M1-M26 done), phase dependency graph
   updated to include Phase 6.
 

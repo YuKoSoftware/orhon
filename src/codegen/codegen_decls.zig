@@ -105,28 +105,55 @@ fn generateFuncMirFromStore(cg: *CodeGen, store: *const MirStore, idx: MirNodeIn
         const param_idx: MirNodeIndex = @enumFromInt(pu32);
         const p = mir_typed.ParamDef.unpack(store, param_idx);
         const pname = store.strings.get(p.name);
-        const pta = cg.getAstNode(p.type_annotation) orelse continue;
-        if (emitted > 0) try cg.emit(", ");
-        emitted += 1;
-        const is_any = pta.* == .type_named and
-            types.Primitive.fromName(pta.type_named) == .any;
-        const is_type_param = pta.* == .type_named and
-            types.Primitive.fromName(pta.type_named) == .@"type";
-        if (is_any and first_any_param == null) first_any_param = pname;
-        if (is_type_param) {
-            try cg.emitFmt("comptime {s}: type", .{pname});
-        } else if (is_type_generic and is_any) {
-            try cg.emitFmt("comptime {s}: anytype", .{pname});
-        } else if (is_compt and is_any) {
-            try cg.emitFmt("comptime {s}: anytype", .{pname});
-        } else if (is_any) {
-            try cg.emitFmt("{s}: anytype", .{pname});
-        } else if (is_compt and !is_type_generic) {
-            const zig_type = try cg.typeToZig(pta);
-            try cg.emitFmt("comptime {s}: {s}", .{ pname, zig_type });
+        const p_entry = store.getNode(param_idx);
+        if (p_entry.type_id != .none) {
+            // Primary path: use resolved type from MirEntry
+            const ptype = store.types.get(p_entry.type_id);
+            if (emitted > 0) try cg.emit(", ");
+            emitted += 1;
+            const is_any = ptype == .named and types.Primitive.fromName(ptype.named) == .any;
+            const is_type_param = ptype == .primitive and ptype.primitive == .@"type";
+            if (is_any and first_any_param == null) first_any_param = pname;
+            if (is_type_param) {
+                try cg.emitFmt("comptime {s}: type", .{pname});
+            } else if (is_type_generic and is_any) {
+                try cg.emitFmt("comptime {s}: anytype", .{pname});
+            } else if (is_compt and is_any) {
+                try cg.emitFmt("comptime {s}: anytype", .{pname});
+            } else if (is_any) {
+                try cg.emitFmt("{s}: anytype", .{pname});
+            } else if (is_compt and !is_type_generic) {
+                const zig_type = try cg.zigOfRT(ptype);
+                try cg.emitFmt("comptime {s}: {s}", .{ pname, zig_type });
+            } else {
+                const zig_type = try cg.zigOfRT(ptype);
+                try cg.emitFmt("{s}: {s}", .{ pname, zig_type });
+            }
         } else {
-            const zig_type = try cg.typeToZig(pta);
-            try cg.emitFmt("{s}: {s}", .{ pname, zig_type });
+            // Fallback: type_id not set — resolve from AST node (old path)
+            const pta = cg.getAstNode(p.type_annotation) orelse continue;
+            if (emitted > 0) try cg.emit(", ");
+            emitted += 1;
+            const is_any = pta.* == .type_named and
+                types.Primitive.fromName(pta.type_named) == .any;
+            const is_type_param = pta.* == .type_named and
+                types.Primitive.fromName(pta.type_named) == .@"type";
+            if (is_any and first_any_param == null) first_any_param = pname;
+            if (is_type_param) {
+                try cg.emitFmt("comptime {s}: type", .{pname});
+            } else if (is_type_generic and is_any) {
+                try cg.emitFmt("comptime {s}: anytype", .{pname});
+            } else if (is_compt and is_any) {
+                try cg.emitFmt("comptime {s}: anytype", .{pname});
+            } else if (is_any) {
+                try cg.emitFmt("{s}: anytype", .{pname});
+            } else if (is_compt and !is_type_generic) {
+                const zig_type = try cg.typeToZig(pta);
+                try cg.emitFmt("comptime {s}: {s}", .{ pname, zig_type });
+            } else {
+                const zig_type = try cg.typeToZig(pta);
+                try cg.emitFmt("{s}: {s}", .{ pname, zig_type });
+            }
         }
     }
 
@@ -310,14 +337,26 @@ pub fn emitStructBodyFromStore(cg: *CodeGen, store: *const MirStore, member_extr
             .field_def => {
                 const f_rec = mir_typed.FieldDef.unpack(store, child_idx);
                 const fname = store.strings.get(f_rec.name);
-                const ftype = cg.getAstNode(f_rec.type_annotation) orelse continue;
-                try cg.emitIndent();
-                try cg.emitFmt("{s}: {s}", .{ fname, try cg.typeToZig(ftype) });
-                if (f_rec.default != .none) {
-                    try cg.emit(" = ");
-                    try cg.generateExprMir(f_rec.default);
+                const fentry = store.getNode(child_idx);
+                if (fentry.type_id != .none) {
+                    const ftype_rt = store.types.get(fentry.type_id);
+                    try cg.emitIndent();
+                    try cg.emitFmt("{s}: {s}", .{ fname, try cg.zigOfRT(ftype_rt) });
+                    if (f_rec.default != .none) {
+                        try cg.emit(" = ");
+                        try cg.generateExprMir(f_rec.default);
+                    }
+                    try cg.emit(",\n");
+                } else {
+                    const fta = cg.getAstNode(f_rec.type_annotation) orelse continue;
+                    try cg.emitIndent();
+                    try cg.emitFmt("{s}: {s}", .{ fname, try cg.typeToZig(fta) });
+                    if (f_rec.default != .none) {
+                        try cg.emit(" = ");
+                        try cg.generateExprMir(f_rec.default);
+                    }
+                    try cg.emit(",\n");
                 }
-                try cg.emit(",\n");
             },
             .func => {
                 const prev_idx = cg.current_func_idx;
@@ -332,10 +371,9 @@ pub fn emitStructBodyFromStore(cg: *CodeGen, store: *const MirStore, member_extr
                 const cname = store.strings.get(v_rec.name);
                 try cg.emitIndent();
                 try cg.emitFmt("{s} {s}", .{ decl_kw, cname });
-                if (v_rec.type_annotation != .none) {
-                    if (cg.getAstNode(v_rec.type_annotation)) |t| {
-                        try cg.emitFmt(": {s}", .{try cg.typeToZig(t)});
-                    }
+                const ventry = store.getNode(child_idx);
+                if (ventry.type_id != .none) {
+                    try cg.emitFmt(": {s}", .{try cg.zigOfRT(store.types.get(ventry.type_id))});
                 }
                 try cg.emit(" = ");
                 try cg.generateExprMir(v_rec.value);
@@ -442,19 +480,22 @@ fn generateTopLevelDeclMirFromStore(cg: *CodeGen, store: *const MirStore, idx: M
     if (is_const and isTypeAlias(type_annotation)) {
         if (is_pub) try cg.emit("pub ");
         try cg.emitFmt("const {s} = ", .{name});
-        // Type alias RHS: use the resolved type_id from the type_expr MIR node.
-        // The resolver already resolved this type; re-deriving from the AST node
-        // fails for module-qualified generics (field_expr callee on call_expr).
+        // Type alias RHS: resolve the value expression.
+        // Simple type expressions (type_expr MIR nodes) emit a Zig type name
+        // directly via zigOfRT. Compiler functions like @typeOf(x) emit the
+        // full Zig expression via generateExprMir.
         const value_entry = store.getNode(rec.value);
-        if (value_entry.type_id != .none) {
+        if (value_entry.tag == .type_expr and value_entry.type_id != .none) {
             const rt = store.types.get(value_entry.type_id);
             try cg.emit(try cg.zigOfRT(rt));
-        } else {
+        } else if (value_entry.tag == .type_expr) {
             // Fallback: if type_id was not set, walk the AST node directly.
-            // This preserves behavior for any edge case where the resolver
-            // didn't produce a resolved type for the type_expr.
             const value_ast = cg.getAstNode(value_entry.span) orelse return;
             try cg.emit(try cg.typeToZig(value_ast));
+        } else {
+            // Expression that returns a type (e.g. @typeOf(x), compt func call).
+            // Emit the full Zig expression — generateExprMir knows how to lower it.
+            try cg.generateExprMir(rec.value);
         }
         try cg.emit(";\n");
         return;
@@ -463,8 +504,9 @@ fn generateTopLevelDeclMirFromStore(cg: *CodeGen, store: *const MirStore, idx: M
     const decl_keyword: []const u8 = if (is_const) "const" else "var";
     if (is_pub) try cg.emit("pub ");
     try cg.emitFmt("{s} {s}", .{ decl_keyword, name });
-    if (type_annotation) |t| {
-        try cg.emitFmt(": {s}", .{try cg.typeToZig(t)});
+    const decl_entry = store.getNode(idx);
+    if (decl_entry.type_id != .none) {
+        try cg.emitFmt(": {s}", .{try cg.zigOfRT(store.types.get(decl_entry.type_id))});
     }
     try cg.emit(" = ");
 

@@ -286,6 +286,26 @@ pub const CodeGen = struct {
         return null;
     }
 
+    /// Get the ResolvedType for a type-expression AST node via span_to_mir.
+    /// Uses the existing AstNodeIndex → MirNodeIndex reverse map to find the
+    /// corresponding MirEntry, then reads its type_id from the TypeStore.
+    /// Returns error.InternalError if the span is not mapped or type_id is .none.
+    pub fn typeOfSpan(self: *CodeGen, span: ast_store_mod.AstNodeIndex) !types.ResolvedType {
+        const mir_idx = self.getMirNodeForSpan(span);
+        if (mir_idx == .none) return error.InternalError;
+        const store = self.mir_store orelse return error.InternalError;
+        const entry = store.getNode(mir_idx);
+        if (entry.type_id == .none) return error.InternalError;
+        return store.types.get(entry.type_id);
+    }
+
+    /// Convenience: typeOfSpan + zigOfRT in one call.
+    /// Returns the Zig type string for a type-expression AST span.
+    pub fn typeOfSpanToZig(self: *CodeGen, span: ast_store_mod.AstNodeIndex) ![]const u8 {
+        const rt = try self.typeOfSpan(span);
+        return self.zigOfRT(rt);
+    }
+
     /// Generate Zig source from a program AST
     pub fn generate(self: *CodeGen, ast: *parser.Node, module_name: []const u8) !void {
         if (ast.* != .program) return;
@@ -743,62 +763,17 @@ pub const CodeGen = struct {
     }
 
     pub fn typeToZig(self: *CodeGen, node: *parser.Node) anyerror![]const u8 {
-        // compiler_func @typeOf(val) in type-alias position: const T: type = @typeOf(val)
-        if (node.* == .compiler_func) {
-            const cf = node.compiler_func;
-            if (std.mem.eql(u8, cf.name, "typeOf") and cf.args.len > 0) {
-                return try self.allocTypeStr("@TypeOf({s})", .{exprToString(cf.args[0])});
-            }
-            _ = try self.reporter.reportFmt(.internal_zig_codegen, null,
-                "internal: unexpected compiler_func '{s}' in type position", .{cf.name});
-            return error.CompileError;
-        }
-        // type_tuple_named: preserve default field values (RT.TupleField drops them)
-        if (node.* == .type_tuple_named) {
-            const fields = node.type_tuple_named;
-            var buf = std.ArrayListUnmanaged(u8){};
-            defer buf.deinit(self.allocator);
-            try buf.appendSlice(self.allocator, "struct { ");
-            for (fields) |f| {
-                const ft = try self.typeToZig(f.type_node);
-                if (f.default) |d| {
-                    try buf.writer(self.allocator).print("{s}: {s} = {s}, ", .{ f.name, ft, exprToString(d) });
-                } else {
-                    try buf.writer(self.allocator).print("{s}: {s}, ", .{ f.name, ft });
-                }
-            }
-            try buf.appendSlice(self.allocator, "}");
-            return try self.allocTypeStr("{s}", .{buf.items});
-        }
-        // call_expr in type-alias position where callee is neither a bare identifier
-        // nor a field expression (e.g. module.Type(T)). Non-identifier/non-field_expr
-        // callees cannot be lowered; identifier and field_expr callees are handled
-        // by resolveTypeNode below.
-        if (node.* == .call_expr) {
-            const c = node.call_expr;
-            if (c.callee.* != .identifier and c.callee.* != .field_expr) {
-                _ = try self.reporter.reportFmt(.internal_zig_codegen, null,
-                    "internal: typeToZig cannot lower non-identifier call expression", .{});
-                return error.CompileError;
-            }
-        }
-        // binary_expr in type-alias position with non-bit_or op.
-        if (node.* == .binary_expr and node.binary_expr.op != .bit_or) {
-            _ = try self.reporter.reportFmt(.internal_zig_codegen, null,
-                "internal: typeToZig cannot lower binary expression with non-bit_or operator", .{});
-            return error.CompileError;
-        }
-        // All other type-position nodes: lower to RT via a scratch arena, then emit.
         var scratch = std.heap.ArenaAllocator.init(self.allocator);
         defer scratch.deinit();
         const rt = try types.resolveTypeNode(scratch.allocator(), node);
         if (rt == .unknown or rt == .inferred) {
             _ = try self.reporter.reportFmt(.internal_zig_codegen, null,
-                "internal: typeToZig cannot lower unresolved type", .{});
+                "internal: typeToZig cannot resolve type", .{});
             return error.CompileError;
         }
         return self.zigOfRT(rt);
     }
+
 };
 
 pub fn opToZig(op: parser.Operator) []const u8 { return match_impl.opToZig(op); }
@@ -806,20 +781,19 @@ pub fn opToZig(op: parser.Operator) []const u8 { return match_impl.opToZig(op); 
 /// Check if a field name is a type name used for union value access (result.i32, result.User)
 pub fn isResultValueField(name: []const u8, decls: ?*declarations.DeclTable) bool { return match_impl.isResultValueField(name, decls); }
 
-/// Extract the value type from a union type annotation containing Error or null.
+/// ResolvedType version of extractValueType — extracts the value type from a union.
 /// For (Error | T) or (null | T), returns the non-Error/non-null member.
 /// Returns null if not a recognized error/null union pattern.
-/// Available at file scope so helper modules (codegen_exprs.zig) can call codegen.extractValueType().
-pub fn extractValueType(node: *parser.Node) ?*parser.Node {
-    if (node.* == .type_union) {
-        const members = node.type_union;
-        var value_node: ?*parser.Node = null;
-        for (members) |m| {
-            if (m.* == .type_named and (types.Primitive.fromName(m.type_named) == .err or types.Primitive.fromName(m.type_named) == .null_type)) continue;
-            if (value_node != null) return null; // multiple non-special members
-            value_node = m;
+pub fn extractValueTypeRT(rt: RT) ?RT {
+    if (rt == .union_type) {
+        const ut = rt.union_type;
+        var value: ?RT = null;
+        for (ut.members) |m| {
+            if (m == .err or m == .null_type) continue;
+            if (value != null) return null; // multiple non-special members
+            value = m;
         }
-        return value_node;
+        return value;
     }
     return null;
 }
@@ -1052,39 +1026,6 @@ test "codegen - sanitizeErrorName" {
     try std.testing.expectEqualStrings("a_b", try gen.sanitizeErrorName("a--b"));
 }
 
-test "codegen - extractValueType" {
-    const alloc = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    // (Error | i32) → i32
-    const err = try a.create(parser.Node);
-    err.* = .{ .type_named = "Error" };
-    const i32_n = try a.create(parser.Node);
-    i32_n.* = .{ .type_named = "i32" };
-    const m1 = try a.alloc(*parser.Node, 2);
-    m1[0] = err;
-    m1[1] = i32_n;
-    var union1 = parser.Node{ .type_union = m1 };
-    try std.testing.expect(extractValueType(&union1).? == i32_n);
-
-    // (null | str) → str
-    const null_n = try a.create(parser.Node);
-    null_n.* = .{ .type_named = "null" };
-    const str_n = try a.create(parser.Node);
-    str_n.* = .{ .type_named = "str" };
-    const m2 = try a.alloc(*parser.Node, 2);
-    m2[0] = null_n;
-    m2[1] = str_n;
-    var union2 = parser.Node{ .type_union = m2 };
-    try std.testing.expect(extractValueType(&union2).? == str_n);
-
-    // non-union → null
-    var plain = parser.Node{ .type_named = "i32" };
-    try std.testing.expect(extractValueType(&plain) == null);
-}
-
 test "codegen - zigOfRT primitive str" {
     const alloc = std.testing.allocator;
     var reporter = errors.Reporter.init(alloc, .debug);
@@ -1158,5 +1099,81 @@ test "codegen - zigOfRT generic" {
     const arg = RT{ .primitive = .i32 };
     try std.testing.expectEqualStrings("List(i32)",
         try gen.zigOfRT(.{ .generic = .{ .name = "List", .args = &.{arg} } }));
+}
+
+test "codegen - extractValueTypeRT" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+
+    // (Error | i32) → i32
+    {
+        const members = try a.alloc(RT, 2);
+        members[0] = .err;
+        members[1] = .{ .primitive = .i32 };
+        const union1 = RT{ .union_type = .{ .has_error = true, .has_null = false, .members = members } };
+        const result1 = extractValueTypeRT(union1);
+        try std.testing.expect(result1 != null);
+        try std.testing.expectEqualStrings("i32", try gen.zigOfRT(result1.?));
+    }
+
+    // (null | str) → str
+    {
+        const members = try a.alloc(RT, 2);
+        members[0] = .null_type;
+        members[1] = .{ .primitive = .string };
+        const union2 = RT{ .union_type = .{ .has_error = false, .has_null = true, .members = members } };
+        const result2 = extractValueTypeRT(union2);
+        try std.testing.expect(result2 != null);
+        try std.testing.expectEqualStrings("[]const u8", try gen.zigOfRT(result2.?));
+    }
+
+    // non-union → null
+    {
+        const plain = RT{ .primitive = .i32 };
+        try std.testing.expect(extractValueTypeRT(plain) == null);
+    }
+}
+
+test "codegen - zigOfRT array" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+    const elem = try a.create(RT);
+    elem.* = .{ .primitive = .f32 };
+    const size_node = try a.create(parser.Node);
+    size_node.* = .{ .int_literal = "4" };
+    const arr = RT{ .array = .{ .elem = elem, .size = size_node } };
+    try std.testing.expectEqualStrings("[4]f32", try gen.zigOfRT(arr));
+}
+
+test "codegen - zigOfRT tuple_named" {
+    const alloc = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var reporter = errors.Reporter.init(alloc, .debug);
+    defer reporter.deinit();
+    var gen = CodeGen.init(alloc, &reporter, true);
+    defer gen.deinit();
+    const fields = try a.alloc(RT.TupleField, 2);
+    const x_type = try a.create(RT);
+    x_type.* = .{ .primitive = .i32 };
+    const y_type = try a.create(RT);
+    y_type.* = .{ .primitive = .string };
+    fields[0] = .{ .name = "x", .type_ = x_type.* };
+    fields[1] = .{ .name = "y", .type_ = y_type.* };
+    const tuple = RT{ .tuple = fields };
+    try std.testing.expectEqualStrings("struct { x: i32, y: []const u8, }", try gen.zigOfRT(tuple));
 }
 

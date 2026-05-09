@@ -393,6 +393,12 @@ test "peg - validate templates/example/blueprints.orh" {
     try std.testing.expect(valid);
 }
 
+test "peg - validate templates/example/handles.orh" {
+    const alloc = std.testing.allocator;
+    const valid = try validateSource(@embedFile("templates/example/handles.orh"), alloc);
+    try std.testing.expect(valid);
+}
+
 // Test fixture files — read at runtime since they're outside src/
 test "peg - validate test/fixtures/tester.orh" {
     const alloc = std.testing.allocator;

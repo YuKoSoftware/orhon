@@ -32,6 +32,13 @@ if [ -f "$LOG" ]; then
     done <<< "$prev_block"
 fi
 
+# Rotate log: keep only the most recent previous run for baseline comparison.
+# New data appended below will become the second run; next invocation will
+# again keep only the last block, so the file holds at most 2 runs.
+if [ -f "$LOG" ] && [ -n "$prev_block" ]; then
+    printf "%s\n\n" "$prev_block" > "$LOG"
+fi
+
 perf_line() {
     local name=$1 ms=$2
     local prev="${PREV_TIMES[$name]:-}"

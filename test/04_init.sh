@@ -96,13 +96,15 @@ cd "$TESTDIR/testproj"
 if [ -f .orh-cache/std/console.orh ]; then pass "build extracts std/console.orh"
 else fail "build extracts std/console.orh"; fi
 
-if [ -f .orh-cache/std/console.zig ]; then pass "build extracts std/console.zig"
-else fail "build extracts std/console.zig"; fi
+# Zig sidecar files are generated in .orh-cache/generated/ (lazy, in-memory processing)
+if [ -f .orh-cache/generated/console_zig.zig ]; then pass "build generates std/console_zig.zig"
+else fail "build generates std/console_zig.zig"; fi
 
-if grep -q "pub fn print" .orh-cache/std/console.zig; then
-    pass "console.zig contains print function"
+# Verify the generated .orh has the expected stdlib declarations
+if grep -q "pub func print" .orh-cache/std/console.orh; then
+    pass "console.orh contains print function"
 else
-    fail "console.zig contains print function"
+    fail "console.orh contains print function"
 fi
 
 section "orhon init -update"

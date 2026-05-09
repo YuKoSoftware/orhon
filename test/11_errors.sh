@@ -314,20 +314,6 @@ else fail "rejects duplicate anchor files" "$NEG_OUT"; fi
 
 # ── Fixture-based category tests ─────────────────────────────
 # Each fixture tests one compiler pass with multiple error cases.
-# Helper: run a fixture as a project and check for expected error
-run_fixture() {
-    local name="$1" fixture="$2" pattern="$3" label="$4"
-    cd "$TESTDIR"
-    mkdir -p "$name/src"
-    printf '#name  = %s\n#build = exe\n' "$name" > "$name/orhon.project"
-    cp "$FIXTURES/$fixture" "$name/src/$name.orh"
-    sed -i "1s/^module [a-zA-Z_][a-zA-Z0-9_]*/module $name/" "$name/src/$name.orh"
-    cd "$name"
-    NEG_OUT=$("$ORHON" build 2>&1 || true)
-    if echo "$NEG_OUT" | grep -qi "$pattern"; then pass "$label"
-    else fail "$label" "$NEG_OUT"; fi
-}
-
 # old C interop directives rejected (CIMP-04)
 cd "$TESTDIR"
 mkdir -p neg_linkc/src

@@ -1,5 +1,11 @@
 # Orhon
 
+[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)]()
+[![Zig](https://img.shields.io/badge/zig-0.15.2-blue)](https://ziglang.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)]()
+
+**Version:** unreleased (0.1.0-dev)
+
 **A simple yet powerful language that is safe.**
 
 Orhon is a compiled, memory-safe programming language that transpiles to Zig. It takes Rust's ownership model and Zig's simplicity — and cuts the ceremony.

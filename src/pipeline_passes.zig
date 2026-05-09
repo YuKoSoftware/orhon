@@ -1,6 +1,9 @@
-// pipeline_passes.zig — Per-module compilation passes 4–11
+// pipeline_passes.zig — Per-module compilation passes 4–10
 // Satellite of pipeline.zig. Runs declaration collection through codegen
 // for a single module.
+//
+// Note: passes 1–3 (lexer, parser, module resolution) run in `pipeline.zig`
+// before these per-module passes.
 
 const std = @import("std");
 const parser = @import("parser.zig");
@@ -130,7 +133,7 @@ pub fn checkUnusedImports(
     }
 }
 
-/// Run semantic passes 5–8 and codegen passes 10–11 for a single module.
+/// Run semantic passes 5–8 and codegen (pass 10) for a single module.
 /// `arena` is the per-module body arena (`mc.bodyAllocator()`); all internal
 /// scratch allocates from it. `ctx` carries cross-module shared state;
 /// `mc` carries module identity, source data, and the decl collector.

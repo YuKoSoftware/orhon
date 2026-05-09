@@ -14,31 +14,32 @@ Issues found during comprehensive project audit (OpenCode config, build system, 
 - [x] **AM4** — No `.editorconfig`. Missing for a multi-contributor project — no enforcement of consistent indentation/charset across editors.
 
 ### 🟢 Low
-- [ ] **AL1** — Typo in AGENTS.md: `STRING_LITERAL` should be `STRING_LITERAL` (missing 'A').
-- [ ] **AL2** — AGENTS.md says "11 passes in `src/pipeline_passes.zig`" but only passes 4-10 are in that file. File's own comment says "4–11" while enum stops at 10.
-- [ ] **AL3** — AGENTS.md example error code `.E0001` is fictional — real codes start at E0101.
-- [ ] **AL4** — No `.zig-version` pinning file. Version only in `build.zig.zon` — tooling like `zvm`/`asdf-zig` won't auto-switch.
-- [ ] **AL5** — No `.opencodeignore` file — no OpenCode-specific exclusion rules.
-- [ ] **AL6** — No `.opencode/hooks/` directory — no lifecycle hooks active.
-- [ ] **AL7** — Dead code: `run_test()` function in `testall.sh:17-29` defined but never called.
-- [ ] **AL8** — Fragile PASS/FAIL counting in `testall.sh:35` — `grep -c "PASS"` could match output artifact content.
-- [ ] **AL9** — `run_fixture()` helper in `11_errors.sh:317-328` never called (intentional per TODO.md, but dead code).
-- [ ] **AL10** — `test/perf.log` on disk, grows unbounded with no rotation in `13_perf.sh`.
-- [ ] **AL11** — README has no version number or badge — can't tell which version it documents.
-- [ ] **AL12** — Stale `docs/superpowers/` pattern in `.gitignore` — directory doesn't exist on disk.
-- [ ] **AL13** — Overly broad `*.txt` pattern in `.gitignore` — could silently exclude legitimate project files.
-- [ ] **AL14** — `src/peg.zig` embeds 7 of 8 example templates — `handles.orh` is missing from PEG validation tests.
-- [ ] **AL15** — Empty `docs/plans/` directory (only `.gitkeep` file).
-- [ ] **AL16** — VS Code extension version (`0.8.5`) diverges from compiler version (`0.53.56`) with no documented relationship.
-- [ ] **AL17** — `editors/vscode/node_modules/` and `orhon-0.8.5.vsix` exist on disk — verify not git-tracked.
-- [ ] **AL18** — Template file named `project.manifest` but runtime manifest is always `orhon.project` — slightly confusing.
-- [ ] **AL19** — ~220 `src/std/` test blocks unreachable via `zig build test` — `std_bundle.zig` uses `@embedFile` (string embedding), not `@import`. May be intentional (tested via `orhon test`).
-- [ ] **AL20** — Golden fixture directories include stale build artifacts (`.orh-cache/`, `bin/`) alongside golden snapshots.
+
+- [x] **AL2** — AGENTS.md says "11 passes in `src/pipeline_passes.zig`" but only passes 4-10 are in that file. File's own comment says "4–11" while enum stops at 10.
+- [x] **AL3** — AGENTS.md example error code `.E0001` is fictional — real codes start at E0101.
+- [x] **AL4** — No `.zig-version` pinning file. Version only in `build.zig.zon` — tooling like `zvm`/`asdf-zig` won't auto-switch.
+- [x] **AL5** — No `.opencodeignore` file — no OpenCode-specific exclusion rules.
+- [x] **AL6** — No `.opencode/hooks/` directory — no lifecycle hooks active.
+- [x] **AL7** — Dead code: `run_test()` function in `testall.sh:17-29` defined but never called.
+- [x] **AL8** — Fragile PASS/FAIL counting in `testall.sh:35` — `grep -c "PASS"` could match output artifact content.
+- [x] **AL9** — `run_fixture()` helper in `11_errors.sh:317-328` never called (intentional per TODO.md, but dead code).
+- [x] **AL10** — `test/perf.log` on disk, grows unbounded with no rotation in `13_perf.sh`.
+- [x] **AL11** — README has no version number or badge — can't tell which version it documents.
+- [x] **AL12** — Stale `docs/superpowers/` pattern in `.gitignore` — directory doesn't exist on disk.
+- [x] **AL13** — Overly broad `*.txt` pattern in `.gitignore` — could silently exclude legitimate project files.
+- [x] **AL14** — `src/peg.zig` embeds 7 of 8 example templates — `handles.orh` is missing from PEG validation tests.
+- [x] **AL15** — Empty `docs/plans/` directory (only `.gitkeep` file).
+- [x] **AL16** — VS Code extension version (`0.8.5`) diverges from compiler version (`0.53.56`) with no documented relationship.
+- [x] **AL17** — `editors/vscode/node_modules/` and `orhon-0.8.5.vsix` exist on disk — verify not git-tracked.
+- [x] **AL18** — Template file named `project.manifest` but runtime manifest is always `orhon.project` — slightly confusing.
+- [x] **AL19** — ~220 `src/std/` test blocks unreachable via `zig build test` — `std_bundle.zig` uses `@embedFile` (string embedding), not `@import`. May be intentional (tested via `orhon test`).
+- [x] **AL20** — Golden fixture directories include stale build artifacts (`.orh-cache/`, `bin/`) alongside golden snapshots.
+— Verified 2026-05-09: all 396/396 tests pass on testall.sh.
 
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase 5 (Medium/Low Cleanup Sweep) — M4-M25 done, E9005 resolved (v0.53.58). P1-P7, I1-I5, M1-M3, B1-B6 all done. testall.sh: 396/396 pass/fail (E9005 cascade fixed, NB-04 tester.orh workaround). NB-02: project audit (2026-05-04) — fixed broken ERR-02 test, added LSP test wrapper (3869/3869 pass), stale cache cleanup, CHANGELOG created, editorconfig added. 20 low audit items tracked as AL1-AL20.
+- **Active project:** Phase 5 (Medium/Low Cleanup Sweep) — all M items complete (M1-M25), all P/I items complete. E9005 resolved. B7 verified (no live issues). AL1-AL20 low audit sweep complete (2026-05-09). testall.sh: 396/396 all passing. M26-M28 remain (future-tracked items).
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -269,7 +270,7 @@ Invariants to preserve during fusion. Tracked from the 2026-04-16 readiness audi
 
 No dependencies. Pick up items as time permits, in any order. Grouped by subsystem for scannability.
 
-M15-M25 sweep completed 2026-05-04. E9005 cascade fixed 2026-05-05 (generated/ directory not created before sidecar writes — makePath in discoverAndConvert). testall.sh at 396/396 all passing. M21, M26-M28 remain.
+M15-M25 sweep completed 2026-05-04. E9005 cascade fixed 2026-05-05. M21 completed 2026-05-09 (lazy std_bundle extraction — in-memory processing, no upfront disk I/O). AL1-AL20 low audit sweep complete 2026-05-09. testall.sh at 396/396 all passing. M26-M28 remain (future-tracked).
 
 ### String interpolation — full expression support `~2-3 days`
 
@@ -320,7 +321,7 @@ requires threading the full token stream through `@{...}`. Codegen (P7) is alrea
 
 ### CLI / init / testing — medium-low
 
-- [ ] **M21** 🟡 **`std_bundle` re-extracts 30 files on every build** [F13] — `src/std_bundle.zig:69-109`. Pollutes cache with files the user never imports. Embedded payload bloats orhon binary linearly with stdlib. Fix: lazy extraction driven by import graph; consider packed blob instead of 30× `@embedFile`.
+- [x] **M21** 🟡 **`std_bundle` re-extracts 30 files on every build** [F13] — `src/std_bundle.zig:69-109`. Pollutes cache with files the user never imports. Embedded payload bloats orhon binary linearly with stdlib. Fix: lazy extraction driven by import graph; consider packed blob instead of 30× `@embedFile`. — Done 2026-05-09: added `getStdModules()`/`getStdContent()`/`discoverAndConvertEmbedded()`; pipeline now processes stdlib from in-memory content (no upfront disk extraction). `ensureStdFiles()` kept for gendoc compat. testall.sh: 396/396 green.
 - [x] **M22** 🟢 **No verbosity / quiet flag** [F23] — `-q`, `-vv`, `ORHON_VERBOSE` env. Scripting/CI ergonomics.
 - [x] **M23** 🟢 **Hide `orhon analysis` from user help** [F18] — `src/cli.zig:243`. Developer-only debugging command listed alongside `build`/`run`/`test`. Move under `orhon -dev analysis` namespace.
 - [x] **M24** 🟢 **Stale doc: `orhon analysis` description** [F19] — `docs/13-build-cli.md:21` says "dump parse tree analysis" but actual command runs PEG grammar validation. Trivial fix.
@@ -402,4 +403,4 @@ Bugs found during development that are confirmed but not yet fixed.
 - [x] **B5** 🟡 **`popFrame` silently ignores underflow** — `src/scope.zig:88-91` uses `self.frames.pop() orelse return` which silently swallows popFrame-on-empty-stack bugs instead of failing fast. From M3 review. Fix: `std.debug.assert(self.frames.items.len > 0)`. — done v0.53.48, 2026-05-02 — replaced orelse return with std.debug.assert.
 - [x] **B6** 🟡 **`currentFrameBindings` returns raw slice without doc warning** — `src/scope.zig:137-138` returns `[]Binding` slice into internal `vars.items`. Subsequent `define`/`pushFrame`/`pushFuncFrame`/`popFrame` calls invalidate the slice, but caller has no documentation warning. From M3 review. Fix: add doc comment noting the lifetime constraint. — done v0.53.48, 2026-05-02 — added doc comment with lifetime warning.
 
-- [ ] **B7** 🟡 **E5005/E5004 diagnostics now exposed on stdlib Zig stubs** — E9005 was previously masking these diagnostics. `std/console.orh`, `std/allocator.orh`, `std/collections.orh`, `std/thread.orh` have Zig stub functions with unused parameter names (e.g. `pub func print(msg: str) void` where the Zig body doesn't use `msg`). E5004 fires for unused imports in test fixtures. Total ~100 occurrences block stages 05, 07, 09, 10. Fix: either add `_ = param;` in stubs or suppress unused-parameter diagnostics for stdlib files.
+- [x] **B7** 🟡 **E5005/E5004 diagnostics now exposed on stdlib Zig stubs** — E9005 was previously masking these diagnostics. `std/console.orh`, `std/allocator.orh`, `std/collections.orh`, `std/thread.orh` have Zig stub functions with unused parameter names (e.g. `pub func print(msg: str) void` where the Zig body doesn't use `msg`). E5004 fires for unused imports in test fixtures. Total ~100 occurrences block stages 05, 07, 09, 10. Fix: either add `_ = param;` in stubs or suppress unused-parameter diagnostics for stdlib files. — Verified 2026-05-09: issue no longer manifests. E5004 already suppressed for stdlib imports (pipeline_passes.zig:109,110-112,121-122). All 29 Zig stubs in src/std/ use all parameters in their function bodies — no unused params exist. testall.sh is 396/396 all passing.

@@ -1,4 +1,12 @@
 // std_bundle.zig — Embedded stdlib files and extraction logic
+//
+// Test execution model:
+// The Zig stub files under src/std/ contain ~220 test blocks that exercise the
+// stdlib implementations. These tests are NOT reachable by `zig build test`
+// (the stubs are embedded as string literals via @embedFile, not imported as
+// modules). Instead, they are executed through `orhon test`: when a user project
+// imports stdlib modules, the codegen phase writes the stubs to disk, and the
+// test runner compiles and runs all test blocks in all imported modules.
 
 const std = @import("std");
 const cache = @import("cache.zig");
@@ -39,8 +47,78 @@ const PTR_ZIG      = @embedFile("std/ptr.zig");
 const BITFIELD_ZIG = @embedFile("std/bitfield.zig");
 
 // ============================================================
+// IN-MEMORY MODULE ACCESS (LAZY — no disk extraction needed)
+// ============================================================
+
+/// An embedded stdlib module with its name and content.
+pub const StdModule = struct {
+    name: []const u8,
+    content: []const u8,
+};
+
+/// Returns a slice of all embedded stdlib modules. Comptime-generated
+/// so the compiler can optimize the map lookup.
+pub fn getStdModules() []const StdModule {
+    return &[_]StdModule{
+        .{ .name = "thread",      .content = THREAD_ZIG },
+        .{ .name = "collections", .content = COLLECTIONS_ZIG },
+        .{ .name = "allocator",   .content = ALLOCATOR_ZIG },
+        .{ .name = "console",     .content = CONSOLE_ZIG },
+        .{ .name = "fs",          .content = FS_ZIG },
+        .{ .name = "math",        .content = MATH_ZIG },
+        .{ .name = "string",      .content = STRING_ZIG },
+        .{ .name = "system",      .content = SYSTEM_ZIG },
+        .{ .name = "time",        .content = TIME_ZIG },
+        .{ .name = "json",        .content = JSON_ZIG },
+        .{ .name = "sort",        .content = SORT_ZIG },
+        .{ .name = "random",      .content = RANDOM_ZIG },
+        .{ .name = "encoding",    .content = ENCODING_ZIG },
+        .{ .name = "stream",      .content = STREAM_ZIG },
+        .{ .name = "crypto",      .content = CRYPTO_ZIG },
+        .{ .name = "compression", .content = COMPRESS_ZIG },
+        .{ .name = "xml",         .content = XML_ZIG },
+        .{ .name = "csv",         .content = CSV_ZIG },
+        .{ .name = "testing",     .content = TESTING_ZIG },
+        .{ .name = "net",         .content = NET_ZIG },
+        .{ .name = "http",        .content = HTTP_ZIG },
+        .{ .name = "regex",       .content = REGEX_ZIG },
+        .{ .name = "ini",         .content = INI_ZIG },
+        .{ .name = "toml",        .content = TOML_ZIG },
+        .{ .name = "simd",        .content = SIMD_ZIG },
+        .{ .name = "tui",         .content = TUI_ZIG },
+        .{ .name = "yaml",        .content = YAML_ZIG },
+        .{ .name = "linear",      .content = LINEAR_ORH },
+        .{ .name = "ptr",         .content = PTR_ZIG },
+        .{ .name = "bitfield",    .content = BITFIELD_ZIG },
+    };
+}
+
+/// Look up an embedded stdlib module by name (without extension).
+/// Returns null if the module is not found.
+pub fn getStdContent(name: []const u8) ?[]const u8 {
+    for (getStdModules()) |m| {
+        if (std.mem.eql(u8, m.name, name)) return m.content;
+    }
+    return null;
+}
+
+/// Extract a single embedded stdlib file to .orh-cache/std/ on demand.
+/// Used by paths that need the raw .zig file on disk (e.g., gendoc).
+pub fn ensureStdFile(allocator: std.mem.Allocator, name: []const u8) !void {
+    const content = getStdContent(name) orelse return error.ModuleNotFound;
+    const std_dir = cache.CACHE_DIR ++ "/std";
+    try std.fs.cwd().makePath(std_dir);
+    const filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{name});
+    defer allocator.free(filename);
+    try writeStdFile(std_dir, filename, content, allocator);
+}
+
+// ============================================================
 // STDLIB FILE EXTRACTION
 // ============================================================
+
+/// Kept for gendoc compatibility: extracts all embedded files to disk.
+/// For compilation, prefer getStdModules() + in-memory processing.
 
 /// Write an embedded file to .orh-cache/std/, overwriting if content has changed
 pub fn writeStdFile(dir: []const u8, name: []const u8, content: []const u8, allocator: std.mem.Allocator) !void {

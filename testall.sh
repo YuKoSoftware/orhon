@@ -14,26 +14,12 @@ FAILED_STAGES=()
 # Tee all output to log file
 exec > >(tee "$LOG_FILE") 2>&1
 
-run_test() {
-    local script="$1"
-    local name
-    name="$(basename "$script" .sh)"
-
-    if bash "$script"; then
-        return 0
-    else
-        local exit_code=$?
-        FAILED_STAGES+=("$name")
-        return "$exit_code"
-    fi
-}
-
 # Count pass/fail from a test script's output
 count_results() {
     local output="$1"
     local p f
-    p=$(echo "$output" | grep -c "PASS" || true)
-    f=$(echo "$output" | grep -c "FAIL" || true)
+    p=$(echo "$output" | grep -c $'\033[32mPASS' || true)
+    f=$(echo "$output" | grep -c $'\033[31mFAIL' || true)
     TOTAL_PASS=$((TOTAL_PASS + p))
     TOTAL_FAIL=$((TOTAL_FAIL + f))
 }

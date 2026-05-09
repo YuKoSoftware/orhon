@@ -83,7 +83,7 @@ satellite, (3) entry in `rule_dispatch`. The engine handles matching automatical
 
 ### Compilation pipeline
 
-11 passes in `src/pipeline_passes.zig`. Each runs only if the previous succeeded:
+Three pipeline stages in `src/pipeline.zig` (lexer, parser, module resolution) followed by 7 compilation passes in `src/pipeline_passes.zig` (passes 4–10). Each runs only if the previous succeeded:
 
 1. Lexer → tokens
 2. PEG parser → capture tree → `AstStore`
@@ -95,7 +95,7 @@ satellite, (3) entry in `rule_dispatch`. The engine handles matching automatical
 8. Error propagation analysis
 9. MIR builder (fused: classify → coerce → lower into `MirStore`)
 10. Zig codegen (`MirStore` → Zig source text)
-11. Zig compiler invocation → final binary
+→ Zig compiler invocation → final binary
 
 See `docs/COMPILER.md` for the full pipeline architecture.
 
@@ -156,7 +156,7 @@ _ = try reporter.reportOwned(.{ .code = .my_code, .message = msg });
 All diagnostics use error codes from `src/error_codes.zig` (`ErrorCode enum(u16)`).
 The error code is always the **first argument** to `reportFmt`/`warnFmt`/`noteFmt`:
 ```zig
-reporter.reportFmt(.E0001, loc, "message", .{});
+reporter.reportFmt(.parse_failure, loc, "message", .{});
 ```
 
 ### Template substitution: split-write, never allocPrint

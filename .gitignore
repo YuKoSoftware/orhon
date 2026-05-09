@@ -3,7 +3,7 @@ zig-out/
 .claude/
 .obsidian/
 .orh-cache/
-*.txt
+test_log.txt
 *.log
 *.o
 *.a
@@ -12,5 +12,4 @@ test_bf16
 test_f16
 test_payload
 test[0-9]*
-docs/superpowers/
 .worktrees/

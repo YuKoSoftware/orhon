@@ -30,6 +30,9 @@ run_golden() {
     else
         fail "golden $name.mir" "$(git diff --no-index "$project_dir/$name.mir.golden" "$mir_tmp" 2>&1 | head -15)"
     fi
+
+    # Clean up build artifacts
+    rm -rf "$project_dir/bin" "$project_dir/.orh-cache" 2>/dev/null || true
 }
 
 run_golden basic

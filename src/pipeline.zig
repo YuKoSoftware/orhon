@@ -46,9 +46,6 @@ fn OwnedSliceList(comptime T: type, comptime deep: bool) type {
 
 pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *errors.Reporter) !?[]const u8 {
 
-    // Ensure embedded std files exist in .orh-cache/std/
-    try _std_bundle.ensureStdFiles(allocator);
-
     // Pre-load content hashes for import rewrite freshness checks.
     // Dependencies and interface hashes are loaded after module resolution.
     var comp_cache = cache.Cache.init(allocator);
@@ -56,13 +53,22 @@ pub fn runPipeline(allocator: std.mem.Allocator, cli: *_cli.CliArgs, reporter: *
     try comp_cache.loadHashes();
 
     // ── Stdlib Zig Conversion ────────────────────────────────
-    // Convert stdlib .zig files (in .orh-cache/std/) to .orh declarations,
-    // writing generated .orh back to .orh-cache/std/ so preScanImports finds them.
+    // Process embedded stdlib .zig files from memory (no disk extraction needed).
+    // Generated .orh declarations are written to .orh-cache/std/ so preScanImports
+    // finds them. Rewritten .zig sidecars go to .orh-cache/generated/ for the Zig
+    // build system.
     const std_dir = cache.CACHE_DIR ++ "/std";
-    const std_zig_converted = try zig_module.discoverAndConvert(allocator, std_dir, std_dir, .{
-        .dest_dir = cache.GENERATED_DIR,
-        .comp_cache = &comp_cache,
-    });
+    const std_modules = _std_bundle.getStdModules();
+    var std_embedded: std.ArrayListUnmanaged(zig_module.EmbeddedSource) = .{};
+    defer std_embedded.deinit(allocator);
+    for (std_modules) |m| {
+        try std_embedded.append(allocator, .{ .name = m.name, .content = m.content });
+    }
+    const std_zig_converted = try zig_module.discoverAndConvertEmbedded(
+        allocator, std_embedded.items, std_dir, .{
+            .dest_dir = cache.GENERATED_DIR,
+            .comp_cache = &comp_cache,
+        });
     defer {
         for (std_zig_converted) |*cm| cm.deinit(allocator);
         allocator.free(std_zig_converted);

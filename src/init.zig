@@ -9,7 +9,7 @@ const std = @import("std");
 // Templates are embedded from src/templates/ at compile time.
 // Never put multi-line file content inline in .zig source — use @embedFile instead.
 const PROJECT_ORH_TEMPLATE      = @embedFile("templates/project.orh");
-const PROJECT_MANIFEST_TEMPLATE = @embedFile("templates/project.manifest");
+const PROJECT_MANIFEST_TEMPLATE = @embedFile("templates/orhon.project.template");
 
 // Example module — single comptime array replaces individual @embedFile consts
 const example_templates = [_]struct { name: []const u8, content: []const u8 }{

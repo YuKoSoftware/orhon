@@ -39,7 +39,7 @@ Issues found during comprehensive project audit (OpenCode config, build system, 
 ## Current status
 
 - **Completed:** Phase 0 — Correctness blockers ✓ | Phase A — AST/SoA rebuild ✓ | Phase B — MIR rebuild ✓ | Phase C — Codegen migration ✓ | Phase D — Cleanup ✓
-- **Active project:** Phase 5 complete (all M1-M26 ✓). Phase 6a complete (codegen typeToZig → MirEntry.type_id, commit `a8e813a`). Phase 6b next (types.zig migration). testall.sh: 11/13 stages pass (1 pre-existing: type-narrowing in tester.orh). M27-M28 remain (future-tracked items).
+- **Active project:** Phase 6 — Legacy AST Removal (Phase 6a ✅, Phase 6b in progress). Phase 5 complete (all M1-M26 ✓). Phase 6b: types.zig migration (resolveTypeNode → AstStore). testall.sh: 11/13 stages pass (1 pre-existing: type-narrowing in tester.orh). M27-M28 remain (future-tracked items).
 - **Tracking source:** Audit findings from `2026-04-14` recorded as **CB#** (correctness blockers), **H#** (architectural walls), **M#** (medium cleanup). Preserved so each item is traceable to its audit origin.
 
 ## Phase dependency graph
@@ -49,7 +49,7 @@ Phase 0 (correctness) ──┬─> Phase R (rebuild) ──┬─> Phase 1 (sem
                         │                       ├─> Phase 2 (diagnostics + testing)
 Phase 4 (CLI + config) ─┘                       ├─> Phase 3 (parallelism + LSP)
                                                 ├─> Phase 5 (medium/low sweep) ✓
-                                                └─> Phase 6 (legacy AST removal)
+                                                └─> Phase 6 (legacy AST removal) ⚠ IN PROGRESS
 ```
 
 Phase 0 must precede Phase R — the correctness bugs would be baked into the new storage otherwise.
@@ -335,7 +335,7 @@ requires threading the full token stream through `@{...}`. Codegen (P7) is alrea
 
 ## Phase 6 — Legacy AST Removal (A11) `~3-4 weeks`
 
-> **Status:** not-started. Completes A11 by removing the pointer-based `parser.Node` tagged-union AST (~694 references across 20+ files). Both systems currently run side-by-side with an `ast_conv.zig` bridge. Each sub-phase migrates one pass; `testall.sh` must stay green at every boundary.
+> **Status:** ⚠ IN PROGRESS (Phase 6a ✅, Phase 6b next). Completes A11 by removing the pointer-based `parser.Node` tagged-union AST (~694 references across 20+ files). Both systems currently run side-by-side with an `ast_conv.zig` bridge. Each sub-phase migrates one pass; `testall.sh` must stay green at every boundary.
 >
 > **Blockers:** none. Can start immediately. Phase 5 items (M26-M28) are orthogonal — they touch packaging/tooling, not the core pipeline.
 >
